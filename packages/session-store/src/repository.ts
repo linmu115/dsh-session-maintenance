@@ -4,15 +4,21 @@ import {
   CONTRACT_SCHEMA_VERSION,
   SessionMaintenanceError,
   sessionVersionManifestSchema,
+  syncPlanSchema,
   type ContentObjectStore,
   type JsonValue,
   type LogicalSession,
   type NewVersion,
   type ObservedHead,
   type SessionVersionManifest,
+  type SyncPlan,
   type VersionGraphData,
 } from "@linmu/dsh-session-contracts";
-import { canonicalJson, sha256Canonical } from "@linmu/dsh-session-domain";
+import {
+  canonicalJson,
+  sha256Canonical,
+  verifySyncPlanIdentity,
+} from "@linmu/dsh-session-domain";
 
 interface ManifestRow {
   readonly manifest_json: string;
@@ -29,6 +35,12 @@ interface ParentRow {
 
 interface ObjectRow {
   readonly body_object: string;
+}
+
+interface PlanRow {
+  readonly id: string;
+  readonly hash: string;
+  readonly plan_json: string;
 }
 
 type JsonObject = { readonly [key: string]: JsonValue };
@@ -289,6 +301,79 @@ export class SqliteSessionRepository {
       )
       .all() as unknown as ObjectRow[];
     return rows.map((row) => row.body_object);
+  }
+
+  async savePlan(plan: SyncPlan): Promise<void> {
+    syncPlanSchema.parse(plan);
+    if (!verifySyncPlanIdentity(plan)) {
+      throw new SessionMaintenanceError(
+        "VERSION_ID_COLLISION",
+        `Sync plan identity does not match its immutable content: ${plan.id}`,
+      );
+    }
+    const serialized = canonicalJson(plan as unknown as JsonValue);
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const existingById = this.database
+        .prepare("SELECT id, hash, plan_json FROM sync_plans WHERE id = ?")
+        .get(plan.id) as PlanRow | undefined;
+      if (existingById !== undefined) {
+        if (existingById.hash !== plan.hash || existingById.plan_json !== serialized) {
+          throw new SessionMaintenanceError(
+            "VERSION_ID_COLLISION",
+            `Sync plan ID has different immutable content: ${plan.id}`,
+          );
+        }
+        this.database.exec("COMMIT");
+        return;
+      }
+
+      const existingByHash = this.database
+        .prepare("SELECT id, hash, plan_json FROM sync_plans WHERE hash = ?")
+        .get(plan.hash) as PlanRow | undefined;
+      if (existingByHash !== undefined) {
+        throw new SessionMaintenanceError(
+          "VERSION_ID_COLLISION",
+          `Sync plan hash is already assigned to ${existingByHash.id}`,
+        );
+      }
+
+      this.database
+        .prepare("INSERT INTO sync_plans (id, hash, plan_json, created_at) VALUES (?, ?, ?, ?)")
+        .run(plan.id, plan.hash, serialized, plan.createdAt);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      try {
+        this.database.exec("ROLLBACK");
+      } catch {
+        // Preserve the original transaction failure.
+      }
+      throw error;
+    }
+  }
+
+  async getPlan(id: string): Promise<SyncPlan | undefined> {
+    const row = this.database
+      .prepare("SELECT id, hash, plan_json FROM sync_plans WHERE id = ?")
+      .get(id) as PlanRow | undefined;
+    if (row === undefined) {
+      return undefined;
+    }
+
+    try {
+      const parsed: unknown = JSON.parse(row.plan_json);
+      syncPlanSchema.parse(parsed);
+      const plan = parsed as SyncPlan;
+      if (plan.id !== row.id || plan.hash !== row.hash || !verifySyncPlanIdentity(plan)) {
+        throw new Error("Stored plan identity mismatch");
+      }
+      return plan;
+    } catch (error) {
+      throw new SessionMaintenanceError("OBJECT_CORRUPT", `Stored sync plan is corrupt: ${id}`, {
+        cause: error,
+      });
+    }
   }
 
   close(): void {
