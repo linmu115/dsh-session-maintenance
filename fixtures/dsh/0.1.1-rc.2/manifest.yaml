@@ -1,0 +1,6 @@
+platform: dsh
+platformVersion: 0.1.1-rc.2
+schema: session-v0-two-frame
+synthetic: true
+containsUserData: false
+sessions: 1

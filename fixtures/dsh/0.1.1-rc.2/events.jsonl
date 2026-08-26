@@ -1,0 +1,4 @@
+{"type":"user/message","seq":0,"time":1,"data":{"content":[{"type":"text","text":"hello from fixture"}]}}
+{"type":"assistant/message","seq":1,"time":2,"data":{"content":[{"type":"text","text":"fixture response"}]}}
+{"type":"tool/call","seq":2,"time":3,"data":{"name":"fixture_tool","arguments":{"value":"synthetic"}}}
+{"type":"tool/result","seq":3,"time":4,"data":{"name":"fixture_tool","content":"synthetic result"}}

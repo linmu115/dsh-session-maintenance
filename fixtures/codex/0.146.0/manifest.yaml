@@ -1,0 +1,6 @@
+platform: codex
+platformVersion: 0.146.0
+schema: state_5/session-meta-response-item-v1
+synthetic: true
+containsUserData: false
+sessions: 1

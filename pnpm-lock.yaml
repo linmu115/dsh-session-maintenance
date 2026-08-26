@@ -39,6 +39,12 @@ importers:
         specifier: workspace:*
         version: link:../session-domain
 
+  packages/test-support:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
 packages:
 
   '@esbuild/aix-ppc64@0.28.2':
