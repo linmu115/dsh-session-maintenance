@@ -134,7 +134,14 @@ export interface MaintenanceClient {
 
 ### 阶段二：DSH 安全写入与 DSH 风格界面
 
-阶段二开始前以 P13 的真实类型、数据库 schema 和适配器契约进行新的 `writing-plans` 细化，不提前修改这些基线。
+阶段二详细计划已基于 P13 的真实类型、数据库 schema 和适配器契约完成，正式基线为 `main` 的第一阶段提交 `8d4b23e`：
+
+- [阶段二主计划](./2026-08-27-session-maintenance-phase-2-dsh-write-and-ui.md)
+- [Batch A：事务与 DSH Writer](./2026-08-27-session-maintenance-phase-2-a-transaction-and-dsh-writer.md)
+- [Batch B：API 与 Dashboard](./2026-08-27-session-maintenance-phase-2-b-api-and-dashboard.md)
+- [Batch C：DSH 插件与验收](./2026-08-27-session-maintenance-phase-2-c-plugin-and-acceptance.md)
+
+施工从合并计划后的 `main` 创建 `codex/phase-2-dsh-write-and-ui`。P14–P21 只使用隔离 fixture/profile；P22 在明确预览和用户确认后才允许替换正式 profile 中的旧同步插件。
 
 | ID | 固定交付边界 | 规格覆盖 |
 | --- | --- | --- |
