@@ -113,7 +113,7 @@ describe("SqliteSessionRepository", () => {
     const database = openMaintenanceDatabase(dbPath);
     database
       .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-      .run(2, "2026-08-26T00:00:00.000Z");
+      .run(3, "2026-08-26T00:00:00.000Z");
     database.close();
     expect(() => openMaintenanceDatabase(dbPath)).toThrow(/newer schema/iu);
 

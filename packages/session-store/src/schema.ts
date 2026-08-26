@@ -1,4 +1,4 @@
-export const MAINTENANCE_SCHEMA_VERSION = 1 as const;
+export const MAINTENANCE_SCHEMA_VERSION = 2 as const;
 
 export const MIGRATION_001 = `
 CREATE TABLE logical_sessions (

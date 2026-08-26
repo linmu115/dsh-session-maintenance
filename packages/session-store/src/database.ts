@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 import { MAINTENANCE_SCHEMA_VERSION, MIGRATION_001 } from "./schema.js";
+import { MIGRATION_002 } from "./migrations/002-job-events.js";
 
 interface VersionRow {
   readonly version: number | null;
@@ -41,6 +42,25 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
       database
         .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
         .run(1, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // Preserve the migration failure.
+      }
+      database.close();
+      throw error;
+    }
+  }
+
+  if (currentVersion < 2) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_002);
+      database
+        .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+        .run(2, new Date().toISOString());
       database.exec("COMMIT");
     } catch (error) {
       try {

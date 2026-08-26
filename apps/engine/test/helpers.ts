@@ -9,6 +9,8 @@ import {
   writeDshFixtureHome,
 } from "../../../packages/test-support/src/index.js";
 import { runCli as executeCli } from "../src/cli.js";
+import { createReadOnlyComposition, probeAndAddInstance } from "../src/composition-root.js";
+import { startMaintenanceServer } from "../src/http/server.js";
 
 export async function hashTree(root: string): Promise<string> {
   const hash = createHash("sha256");
@@ -51,4 +53,36 @@ export async function runCli(argv: readonly string[], fixture: Awaited<ReturnTyp
     stderr: (text) => { stderr += text; },
   });
   return { exitCode, stdout, stderr };
+}
+
+export async function createEngineFixture(name: string) {
+  const fixture = await createFixtureSystem(name);
+  const options = { stateRoot: fixture.stateRoot, fixturePolicy: fixture.fixturePolicy };
+  await probeAndAddInstance(options, {
+    id: "codex-fixture",
+    platform: "codex",
+    displayName: "Codex fixture",
+    root: fixture.codexHome,
+    platformVersion: "0.146.0",
+  });
+  const engine = await createReadOnlyComposition(options);
+  const servers: Array<{ close: () => Promise<void> }> = [];
+  return {
+    ...fixture,
+    engine,
+    startServer: async (input: { readonly host?: string; readonly port?: number } = {}) => {
+      const server = await startMaintenanceServer({ engine, stateRoot: fixture.stateRoot, ...input, skipAcl: true });
+      servers.push(server);
+      return server;
+    },
+    stop: async () => {
+      await Promise.all(servers.splice(0).map((server) => server.close()));
+      engine.close();
+    },
+    cleanupAll: async () => {
+      await Promise.all(servers.splice(0).map((server) => server.close()));
+      engine.close();
+      await fixture.cleanup();
+    },
+  };
 }

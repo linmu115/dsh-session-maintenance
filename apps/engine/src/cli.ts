@@ -5,6 +5,7 @@ import { SessionMaintenanceError, type JsonValue, type PlatformKind } from "@lin
 
 import { createReadOnlyComposition, probeAndAddInstance, type CompositionOptions } from "./composition-root.js";
 import { initializeStateRoot, loadConfig, registeredInstances } from "./config.js";
+import { startMaintenanceServer } from "./http/server.js";
 
 export interface CliOptions {
   readonly fixturePolicy?: (root: string) => void;
@@ -108,6 +109,24 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     const engine = await createReadOnlyComposition(compositionOptions());
     try { output(stdout, { status: await engine.status() }); } finally { engine.close(); }
   });
+
+  program.command("serve")
+    .option("--host <host>", "loopback host", "127.0.0.1")
+    .option("--port <port>", "TCP port", "0")
+    .option("--json")
+    .action(async (value: { host: string; port: string }) => {
+      const port = Number.parseInt(value.port, 10);
+      if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) throw new TypeError(`Invalid port: ${value.port}`);
+      const engine = await createReadOnlyComposition(compositionOptions());
+      const server = await startMaintenanceServer({ engine, stateRoot: compositionOptions().stateRoot, host: value.host, port });
+      output(stdout, { origin: server.origin, connectionFile: "connection.json" });
+      await new Promise<void>((resolveSignal) => {
+        process.once("SIGINT", resolveSignal);
+        process.once("SIGTERM", resolveSignal);
+      });
+      await server.close();
+      engine.close();
+    });
 
   const unsupported = (kind: string) => async () => {
     throw new SessionMaintenanceError("CAPABILITY_NOT_AVAILABLE", `${kind} is unavailable in phase one`);

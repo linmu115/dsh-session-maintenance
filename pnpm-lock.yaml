@@ -41,6 +41,9 @@ importers:
       yaml:
         specifier: 2.8.1
         version: 2.8.1
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
 
   packages/adapter-codex-read:
     dependencies:
@@ -70,6 +73,15 @@ importers:
 
   packages/contracts:
     dependencies:
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
+
+  packages/local-api-client:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
       zod:
         specifier: 4.1.5
         version: 4.1.5

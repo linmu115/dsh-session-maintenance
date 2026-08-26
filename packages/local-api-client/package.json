@@ -1,11 +1,8 @@
 {
-  "name": "@linmu/dsh-session-maintenance-engine",
+  "name": "@linmu/dsh-session-maintenance-client",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "dsh-session-maint": "./dist/main.js"
-  },
   "exports": {
     ".": {
       "development": "./src/index.ts",
@@ -19,13 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@linmu/dsh-adapter-codex-read": "workspace:*",
-    "@linmu/dsh-adapter-dsh": "workspace:*",
     "@linmu/dsh-session-contracts": "workspace:*",
-    "@linmu/dsh-session-domain": "workspace:*",
-    "@linmu/dsh-session-store": "workspace:*",
-    "commander": "14.0.0",
-    "yaml": "2.8.1",
     "zod": "4.1.5"
   }
 }

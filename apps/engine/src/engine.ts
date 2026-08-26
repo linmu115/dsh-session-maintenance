@@ -23,6 +23,7 @@ import {
   type ContentObjectStore,
 } from "@linmu/dsh-session-contracts";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
+import type { SqliteSessionRepository } from "@linmu/dsh-session-store";
 
 function semanticEvents(events: readonly NormalizedEvent[]): readonly string[] {
   return events.map((event) => JSON.stringify({
@@ -40,7 +41,7 @@ function prefix(left: readonly string[], right: readonly string[]): boolean {
 export class SessionMaintenanceEngine implements ReadOnlyEngine {
   readonly instances: readonly RegisteredInstance[];
   readonly adapters: readonly SessionReadAdapter[];
-  readonly repository: SessionRepository;
+  readonly repository: SqliteSessionRepository;
   readonly objectStore: ContentObjectStore;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
@@ -49,7 +50,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
   constructor(input: {
     readonly instances: readonly RegisteredInstance[];
     readonly adapters: readonly SessionReadAdapter[];
-    readonly repository: SessionRepository;
+    readonly repository: SqliteSessionRepository;
     readonly objectStore: ContentObjectStore;
     readonly clock?: () => string;
   }) {
