@@ -18,6 +18,19 @@ importers:
         specifier: 3.2.4
         version: 3.2.4(@types/node@24.3.0)
 
+  packages/adapter-codex-read:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-domain':
+        specifier: workspace:*
+        version: link:../session-domain
+    devDependencies:
+      '@linmu/dsh-session-test-support':
+        specifier: workspace:*
+        version: link:../test-support
+
   packages/contracts:
     dependencies:
       zod:
