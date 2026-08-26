@@ -44,3 +44,25 @@
 - 平台写入：0；正常 DSH 适配器验收前后 fixture tree hash 相同。
 
 下一批次开始前只加载总计划、已确认规格、批次 C 计划和实际涉及源码。
+
+## Batch C — Discovery, Engine and acceptance
+
+状态：完成。
+
+| 任务 | 提交 | 结果 |
+| --- | --- | --- |
+| P10 幂等发现 | `166b5e6` | 双平台首次建版、二次零重复、标题候选与复用 UUID 阻断通过 |
+| P11 Engine/CLI | `04ea792` | 单 composition root、原子配置、只读命令和 unsupported write 边界通过 |
+| P12 Loopback API/jobs/client | `d0accff` | bearer/Origin/body 上限、SSE、作业恢复和客户端 schema 验证通过 |
+| P13 验收与可迁移门禁 | `codex/phase-1-readonly-core` | 1,000 会话、4 worker、只读矩阵、portable 和 clean-clone 门禁完成 |
+
+### 批次结束门禁
+
+- `pnpm verify:clean`：通过；8 个包 typecheck/build 通过，25 个测试文件、62 个测试通过。
+- `pnpm test:phase1`：2 个测试文件、3 个验收测试通过。
+- `pnpm assert:portable`：通过；运行时代码无机器绝对路径、EAC/web-desktop 耦合、file/link 依赖或凭据 canary。
+- 1,000 会话首次扫描最多 4 个并发 observation；第二次扫描完整 observation 为 0。
+- sessions 第一页与 graph 页面均未读取正文对象。
+- 双平台 fixture 连续扫描前后 tree SHA-256 相等；第二次扫描所有 created 计数为 0，平台写入为 0。
+- API 仅绑定 `127.0.0.1`；未认证、恶意 Origin、超限 body 和路径字段均被拒绝。
+- Phase 1 未实现 Codex/DSH writer、apply、restore、镜像或 Dashboard。

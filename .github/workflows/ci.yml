@@ -23,6 +23,8 @@ jobs:
           cache: pnpm
       - run: pnpm bootstrap
       - run: pnpm check
+      - run: pnpm test:phase1
+      - run: pnpm assert:portable
       - name: Reject generated changes
         shell: pwsh
         run: |

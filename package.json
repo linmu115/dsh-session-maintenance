@@ -12,6 +12,8 @@
     "build": "pnpm -r --if-present build",
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "vitest run",
+    "test:phase1": "vitest run tests/integration/phase-1-acceptance.test.ts tests/integration/phase-1-large-catalog.test.ts",
+    "assert:portable": "node scripts/assert-portable.mjs",
     "check": "pnpm typecheck && pnpm build && pnpm test",
     "verify:clean": "pnpm bootstrap && pnpm check"
   },

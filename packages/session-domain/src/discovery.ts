@@ -156,12 +156,15 @@ export class DiscoveryService {
   private readonly repository: SessionRepository;
   private readonly objectStore: ContentObjectStore;
   private readonly peers = new Map<string, DiscoveryPeer>();
+  private readonly concurrency: number;
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: DiscoveryServiceOptions) {
     this.instances = new Map(options.instances.map((instance) => [instance.id, instance]));
     this.adapters = new Map(options.adapters.map((adapter) => [adapter.platform, adapter]));
     this.repository = options.repository;
     this.objectStore = options.objectStore;
+    this.concurrency = 4;
   }
 
   async scanAll(instanceIds: readonly string[] = [...this.instances.keys()]): Promise<DiscoveryResult> {
@@ -182,15 +185,40 @@ export class DiscoveryService {
       });
     }
 
-    let result = EMPTY_RESULT;
-    for await (const summary of adapter.list(instance)) {
+    const summaries: PlatformSessionSummary[] = [];
+    for await (const summary of adapter.list(instance)) summaries.push(summary);
+    const results: RepositoryWriteResult[] = new Array(summaries.length);
+    let nextIndex = 0;
+    const worker = async (): Promise<void> => {
+      while (true) {
+        const index = nextIndex;
+        nextIndex += 1;
+        const summary = summaries[index];
+        if (summary === undefined) return;
+        results[index] = await this.scanSummary(instance, adapter, probe.contract, summary);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(this.concurrency, summaries.length) }, worker));
+    return results.reduce<DiscoveryResult>((result, item) => addResult(result, item), EMPTY_RESULT);
+  }
+
+  private async scanSummary(
+    instance: RegisteredInstance,
+    adapter: SessionReadAdapter,
+    contract: AdapterContractRef,
+    summary: PlatformSessionSummary,
+  ): Promise<RepositoryWriteResult> {
       const binding = await this.repository.findBinding(summary.key);
       const head = binding === undefined ? undefined : await this.repository.getObservedHead(binding.id);
       const fingerprint = catalogFingerprint(summary);
-      if (head?.fingerprint.kind === "catalog" && head.fingerprint.value === fingerprint.value) continue;
+      if (head?.fingerprint.kind === "catalog" && head.fingerprint.value === fingerprint.value) {
+        return { createdLogicalSessions: 0, createdBindings: 0, createdVersions: 0, createdCandidates: 0 };
+      }
 
       const observation = await adapter.observe(instance, summary.key, summary.hint);
-      if (observation.kind === "unstable") continue;
+      if (observation.kind === "unstable") {
+        return { createdLogicalSessions: 0, createdBindings: 0, createdVersions: 0, createdCandidates: 0 };
+      }
       const normalized = await adapter.normalize(observation);
       const previous = head === undefined ? undefined : await this.loadVersionBody(binding!, head.versionId);
       if (previous !== undefined && hasUnrelatedRoot(previous, normalized)) {
@@ -200,17 +228,17 @@ export class DiscoveryService {
         );
       }
 
-      const resolved = await this.resolveIdentity(normalized, binding, probe.contract);
+      const resolved = await this.resolveIdentity(normalized, binding, contract);
       const parents = head === undefined ? [] : [head.versionId];
       if (previous !== undefined && previous.bodyHash === normalized.bodyHash && previous.metadataHash === normalized.metadataHash) {
-        await this.repository.recordObservation({
+        await this.enqueueWrite(() => this.repository.recordObservation({
           bindingId: resolved.binding.id,
           versionId: head!.versionId,
           observedAt: normalized.provenance.observedAt,
           fingerprint,
-        });
+        }));
         this.peers.set(resolved.binding.id, { session: normalized, binding: resolved.binding });
-        continue;
+        return { createdLogicalSessions: 0, createdBindings: 0, createdVersions: 0, createdCandidates: 0 };
       }
 
       const bodyObject = await this.objectStore.put(Buffer.from(canonicalJson(normalized as unknown as JsonValue)));
@@ -243,9 +271,14 @@ export class DiscoveryService {
         },
         candidates,
       };
-      result = addResult(result, await this.repository.recordObservedVersion(record));
+      const result = await this.enqueueWrite(() => this.repository.recordObservedVersion(record));
       this.peers.set(resolved.binding.id, { session: normalized, binding: resolved.binding });
-    }
+    return result;
+  }
+
+  private enqueueWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.writeQueue.then(operation, operation);
+    this.writeQueue = result.then(() => undefined, () => undefined);
     return result;
   }
 
