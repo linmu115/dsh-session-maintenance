@@ -42,7 +42,7 @@ export function mapDshEventsToCodex(
         role,
         content: [{ type: role === "assistant" ? "output_text" : "input_text", text }],
         dsh_import: {
-          mode: ordinary ? "native-message" : "visible-record",
+          mode: ordinary ? "native-message" : event.kind === "metadata" ? "metadata-record" : "visible-record",
           provenance: provenance(event),
         },
       },

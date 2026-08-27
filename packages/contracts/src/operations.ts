@@ -6,6 +6,7 @@ import type {
   CompatibilityStatus,
   InstanceStatus,
   NormalizedSession,
+  NativeMirrorRecord,
   ObservedHead,
   PlatformBinding,
   PlatformKind,
@@ -125,4 +126,31 @@ export interface PlatformSessionResolution {
   readonly bindingId: string;
   readonly title: string;
   readonly status: SessionSummary["status"];
+}
+
+export type NativeMirrorAction =
+  | "enable"
+  | "pause"
+  | "resume"
+  | "keep-branches"
+  | "choose-canonical"
+  | "unlink"
+  | "reset-target"
+  | "delete-target";
+
+export interface NativeMirrorActionRequest {
+  readonly action: NativeMirrorAction;
+  readonly platform?: "codex" | "dsh";
+  readonly reason?: string;
+  readonly confirmationToken?: string;
+}
+
+export interface NativeMirrorActionPreview {
+  readonly logicalSessionId: string;
+  readonly action: NativeMirrorAction;
+  readonly allowed: boolean;
+  readonly confirmationRequired: boolean;
+  readonly operationHash: string;
+  readonly message: string;
+  readonly mirror?: NativeMirrorRecord;
 }

@@ -8,6 +8,15 @@ export type JsonValue =
 
 export type PlatformKind = "codex" | "dsh";
 export type SyncMode = "continuation" | "native-mirror" | "paused";
+export type NativeMirrorState =
+  | "disabled"
+  | "initializing"
+  | "active"
+  | "paused"
+  | "busy"
+  | "incompatible"
+  | "conflicted"
+  | "recovering";
 export type CompatibilityStatus = "compatible" | "degraded" | "unsupported";
 export type BindingStatus = "read-only" | "writable" | "busy" | "incompatible";
 export type SessionStatus =
@@ -178,6 +187,19 @@ export interface PlatformBinding {
   readonly adapterContract: AdapterContractRef;
   readonly lastCommonVersionId: string | null;
   readonly status: BindingStatus;
+}
+
+export interface NativeMirrorRecord {
+  readonly logicalSessionId: string;
+  readonly state: NativeMirrorState;
+  readonly codexBindingId: string | null;
+  readonly dshBindingId: string | null;
+  readonly commonVersionId: string | null;
+  readonly codexVersionId: string | null;
+  readonly dshVersionId: string | null;
+  readonly lastTransactionId: string | null;
+  readonly pauseReason: string | null;
+  readonly updatedAt: string;
 }
 
 export interface MatchCandidate {

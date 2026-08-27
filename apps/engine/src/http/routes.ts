@@ -10,6 +10,7 @@ import {
   checkpointRestoreBodySchema,
   createCheckpointRequestSchema,
   maintenanceSettingsPatchSchema,
+  nativeMirrorActionRequestSchema,
   planQuerySchema,
   planRequestSchema,
   restoreOperationRequestSchema,
@@ -27,6 +28,7 @@ import {
   type CheckpointRestoreRequest,
   type CreateCheckpointRequest,
   type MaintenanceSettingsPatch,
+  type NativeMirrorActionRequest,
   type TransactionQuery,
   type PlanQuery,
 } from "@linmu/dsh-session-contracts";
@@ -159,6 +161,29 @@ export async function routeRequest(
     }
     if (request.method === "GET" && url.pathname === "/v1/overview") {
       send(response, 200, { overview: await context.engine.overview() });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/mirrors") {
+      send(response, 200, { mirrors: await context.engine.listNativeMirrors() });
+      return;
+    }
+    const mirrorPreview = url.pathname.match(/^\/v1\/mirrors\/([^/]+)\/preview$/u);
+    if (request.method === "POST" && mirrorPreview !== null) {
+      const body = nativeMirrorActionRequestSchema.parse(await readJsonBody(request)) as NativeMirrorActionRequest;
+      send(response, 200, { preview: await context.engine.previewNativeMirrorAction(pathId(mirrorPreview[1]!), body) });
+      return;
+    }
+    const mirrorAction = url.pathname.match(/^\/v1\/mirrors\/([^/]+)\/actions$/u);
+    if (request.method === "POST" && mirrorAction !== null) {
+      const body = nativeMirrorActionRequestSchema.parse(await readJsonBody(request)) as NativeMirrorActionRequest;
+      send(response, 200, { mirror: await context.engine.applyNativeMirrorAction(pathId(mirrorAction[1]!), body) });
+      return;
+    }
+    const mirror = url.pathname.match(/^\/v1\/mirrors\/([^/]+)$/u);
+    if (request.method === "GET" && mirror !== null) {
+      const stored = await context.engine.getNativeMirror(pathId(mirror[1]!));
+      if (stored === undefined) { send(response, 404, errorBody("MIRROR_NOT_ENABLED", "Native mirror is not enabled")); return; }
+      send(response, 200, { mirror: stored });
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/sessions") {

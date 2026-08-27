@@ -8,6 +8,7 @@ import {
   continuationJobSchema,
   continuationTransitionSchema,
   matchCandidateSchema,
+  nativeMirrorRecordSchema,
   observedHeadSchema,
   platformBindingSchema,
   sessionVersionManifestSchema,
@@ -24,6 +25,7 @@ import {
   type JsonValue,
   type LogicalSession,
   type MatchCandidate,
+  type NativeMirrorRecord,
   type NewVersion,
   type ObservationRecord,
   type ObservedHead,
@@ -153,6 +155,19 @@ interface TransactionRow {
   readonly result_json: string | null;
   readonly error_code: string | null;
   readonly created_at: string;
+  readonly updated_at: string;
+}
+
+interface NativeMirrorRow {
+  readonly logical_session_id: string;
+  readonly state: NativeMirrorRecord["state"];
+  readonly codex_binding_id: string | null;
+  readonly dsh_binding_id: string | null;
+  readonly common_version_id: string | null;
+  readonly codex_version_id: string | null;
+  readonly dsh_version_id: string | null;
+  readonly last_transaction_id: string | null;
+  readonly pause_reason: string | null;
   readonly updated_at: string;
 }
 
@@ -332,6 +347,21 @@ function transactionJson(row: TransactionRow): TransactionRecord {
   }) as TransactionRecord;
 }
 
+function nativeMirrorJson(row: NativeMirrorRow): NativeMirrorRecord {
+  return nativeMirrorRecordSchema.parse({
+    logicalSessionId: row.logical_session_id,
+    state: row.state,
+    codexBindingId: row.codex_binding_id,
+    dshBindingId: row.dsh_binding_id,
+    commonVersionId: row.common_version_id,
+    codexVersionId: row.codex_version_id,
+    dshVersionId: row.dsh_version_id,
+    lastTransactionId: row.last_transaction_id,
+    pauseReason: row.pause_reason,
+    updatedAt: row.updated_at,
+  }) as NativeMirrorRecord;
+}
+
 function continuationJobJson(row: ContinuationJobRow): ContinuationJob {
   return continuationJobSchema.parse({
     id: row.id,
@@ -434,6 +464,63 @@ export class SqliteSessionRepository {
         input.createdAt,
       );
     return true;
+  }
+
+  async getNativeMirror(logicalSessionId: string): Promise<NativeMirrorRecord | undefined> {
+    const row = this.database.prepare(`SELECT logical_session_id, state, codex_binding_id,
+      dsh_binding_id, common_version_id, codex_version_id, dsh_version_id,
+      last_transaction_id, pause_reason, updated_at FROM native_mirrors
+      WHERE logical_session_id = ?`).get(logicalSessionId) as NativeMirrorRow | undefined;
+    return row === undefined ? undefined : nativeMirrorJson(row);
+  }
+
+  async listNativeMirrors(): Promise<readonly NativeMirrorRecord[]> {
+    const rows = this.database.prepare(`SELECT logical_session_id, state, codex_binding_id,
+      dsh_binding_id, common_version_id, codex_version_id, dsh_version_id,
+      last_transaction_id, pause_reason, updated_at FROM native_mirrors
+      ORDER BY updated_at DESC, logical_session_id`).all() as unknown as NativeMirrorRow[];
+    return rows.map(nativeMirrorJson);
+  }
+
+  async upsertNativeMirror(input: NativeMirrorRecord): Promise<NativeMirrorRecord> {
+    nativeMirrorRecordSchema.parse(input);
+    this.database.prepare(`INSERT INTO native_mirrors
+      (logical_session_id, state, codex_binding_id, dsh_binding_id, common_version_id,
+       codex_version_id, dsh_version_id, last_transaction_id, pause_reason, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(logical_session_id) DO UPDATE SET
+        state = excluded.state,
+        codex_binding_id = excluded.codex_binding_id,
+        dsh_binding_id = excluded.dsh_binding_id,
+        common_version_id = excluded.common_version_id,
+        codex_version_id = excluded.codex_version_id,
+        dsh_version_id = excluded.dsh_version_id,
+        last_transaction_id = excluded.last_transaction_id,
+        pause_reason = excluded.pause_reason,
+        updated_at = excluded.updated_at`).run(
+      input.logicalSessionId, input.state, input.codexBindingId, input.dshBindingId,
+      input.commonVersionId, input.codexVersionId, input.dshVersionId,
+      input.lastTransactionId, input.pauseReason, input.updatedAt,
+    );
+    return (await this.getNativeMirror(input.logicalSessionId))!;
+  }
+
+  async removeNativeMirror(logicalSessionId: string): Promise<boolean> {
+    return Number(this.database.prepare("DELETE FROM native_mirrors WHERE logical_session_id = ?").run(logicalSessionId).changes) === 1;
+  }
+
+  async setLogicalSessionSyncMode(logicalSessionId: string, mode: LogicalSession["syncMode"]): Promise<void> {
+    const result = this.database.prepare("UPDATE logical_sessions SET sync_mode = ? WHERE id = ?").run(mode, logicalSessionId);
+    if (Number(result.changes) !== 1) throw new SessionMaintenanceError("OBJECT_CORRUPT", `Logical session is missing: ${logicalSessionId}`);
+  }
+
+  async setCanonicalVersion(logicalSessionId: string, versionId: string): Promise<void> {
+    const version = await this.getVersion(versionId);
+    if (version?.logicalSessionId !== logicalSessionId) {
+      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Canonical version does not belong to the logical session");
+    }
+    const result = this.database.prepare("UPDATE logical_sessions SET canonical_version_id = ? WHERE id = ?").run(versionId, logicalSessionId);
+    if (Number(result.changes) !== 1) throw new SessionMaintenanceError("OBJECT_CORRUPT", `Logical session is missing: ${logicalSessionId}`);
   }
 
   async putVersion(input: NewVersion): Promise<SessionVersionManifest> {

@@ -2,6 +2,7 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
+import { CodexNativeWriteAdapter } from "@linmu/dsh-adapter-codex-native";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
 import { DshWriteAdapter } from "@linmu/dsh-adapter-dsh-write";
@@ -11,12 +12,14 @@ import {
   normalizedSessionSchema,
   type CodexContinuationPort,
   type NormalizedSession,
+  type PlatformWriteAdapter,
   type RegisteredInstance,
   type SessionReadAdapter,
   type StateFingerprint,
   type SyncPlan,
 } from "@linmu/dsh-session-contracts";
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
+import { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
 import { SqliteSessionRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
@@ -40,6 +43,7 @@ export interface CompositionOptions {
   readonly clock?: () => string;
   readonly fixturePolicy?: (root: string) => void;
   readonly continuationAdapter?: CodexContinuationPort;
+  readonly enableCodexNativeWrites?: boolean;
 }
 
 export interface DshWritableCompositionOptions extends CompositionOptions {
@@ -123,9 +127,23 @@ async function createComposition(
     targets: registeredCodexTargets(config),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
+  const mirrors = new NativeMirrorService({ repository, ...(options.clock === undefined ? {} : { clock: options.clock }) });
   let writeService: WriteService | undefined;
+  const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
+  const writeAdapters = new Map<"codex" | "dsh", PlatformWriteAdapter>();
+  if (options.enableCodexNativeWrites === true) {
+    const codexRoots = new Map(instances.filter((instance) => instance.platform === "codex").map((instance) => [instance.id, instance.root]));
+    if (codexRoots.size > 0) {
+      writeAdapters.set("codex", new CodexNativeWriteAdapter({
+        stateRoot: options.stateRoot,
+        loadSource: (plan) => loadVersionBody(repository, objectStore, plan),
+        registeredRoots: codexRoots,
+        ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
+        ...(options.clock === undefined ? {} : { now: () => new Date(options.clock!()) }),
+      }));
+    }
+  }
   if (dshGatewayTargets.length > 0) {
-    const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
     for (const target of dshGatewayTargets) {
       const instance = instanceMap.get(target.instanceId);
       if (instance?.platform !== "dsh" || instance.platformVersion !== "0.1.1-rc.2") {
@@ -135,24 +153,31 @@ async function createComposition(
     const gateway = new RemoteDshHostGateway({
       connections: new EngineDescriptorDshGatewayConnections(options.stateRoot, dshGatewayTargets),
     });
-    const dshReader = readAdapters.find((adapter) => adapter.platform === "dsh");
-    if (dshReader === undefined) throw new TypeError("DSH read Adapter is unavailable");
     const writer = new DshWriteAdapter({
       stateRoot: options.stateRoot,
       gateway,
       loadSource: (plan) => loadVersionBody(repository, objectStore, plan),
       ...(options.clock === undefined ? {} : { now: () => new Date(options.clock!()) }),
     });
+    writeAdapters.set("dsh", writer);
+  }
+  if (writeAdapters.size > 0) {
     const executor = new TransactionExecutor({
       stateRoot: options.stateRoot,
       repository,
-      adapters: new Map([["dsh", writer]]),
+      adapters: writeAdapters,
       instances: instanceMap,
       readFingerprints: (plan) => currentFingerprints({ plan, instances: instanceMap, adapters: readAdapters }),
       confirmationService: new ConfirmationService(repository),
       ...(options.clock === undefined ? {} : { now: () => new Date(options.clock!()) }),
     });
-    writeService = new WriteService({ repository, objectStore, executor, instances: instanceMap, dshReader });
+    writeService = new WriteService({
+      repository,
+      objectStore,
+      executor,
+      instances: instanceMap,
+      readers: new Map(readAdapters.map((adapter) => [adapter.platform, adapter])),
+    });
   }
   return new SessionMaintenanceEngine({
     instances,
@@ -160,6 +185,7 @@ async function createComposition(
     repository,
     objectStore,
     continuations,
+    mirrors,
     settingsPort: {
       get: async () => (await loadConfig(options.stateRoot)).settings,
       patch: (input) => updateSettings(options.stateRoot, input),

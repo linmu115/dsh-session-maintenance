@@ -19,6 +19,9 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
 
 export const platformKindSchema = z.enum(["codex", "dsh"]);
 export const syncModeSchema = z.enum(["continuation", "native-mirror", "paused"]);
+export const nativeMirrorStateSchema = z.enum([
+  "disabled", "initializing", "active", "paused", "busy", "incompatible", "conflicted", "recovering",
+]);
 export const compatibilityStatusSchema = z.enum(["compatible", "degraded", "unsupported"]);
 export const bindingStatusSchema = z.enum(["read-only", "writable", "busy", "incompatible"]);
 export const sessionStatusSchema = z.enum([
@@ -197,6 +200,19 @@ export const platformBindingSchema = z.strictObject({
   adapterContract: adapterContractRefSchema,
   lastCommonVersionId: z.string().nullable(),
   status: bindingStatusSchema,
+});
+
+export const nativeMirrorRecordSchema = z.strictObject({
+  logicalSessionId: idSchema,
+  state: nativeMirrorStateSchema,
+  codexBindingId: idSchema.nullable(),
+  dshBindingId: idSchema.nullable(),
+  commonVersionId: idSchema.nullable(),
+  codexVersionId: idSchema.nullable(),
+  dshVersionId: idSchema.nullable(),
+  lastTransactionId: idSchema.nullable(),
+  pauseReason: z.string().nullable(),
+  updatedAt: timestampSchema,
 });
 
 export const matchCandidateSchema = z.strictObject({
@@ -714,6 +730,27 @@ export const platformSessionResolutionSchema = z.strictObject({
   title: z.string(),
   status: sessionStatusSchema,
 });
+export const nativeMirrorActionSchema = z.enum([
+  "enable", "pause", "resume", "keep-branches", "choose-canonical", "unlink", "reset-target", "delete-target",
+]);
+export const nativeMirrorActionRequestSchema = z.strictObject({
+  action: nativeMirrorActionSchema,
+  platform: platformKindSchema.optional(),
+  reason: z.string().max(1000).optional(),
+  confirmationToken: z.string().min(1).optional(),
+});
+export const nativeMirrorActionPreviewSchema = z.strictObject({
+  logicalSessionId: idSchema,
+  action: nativeMirrorActionSchema,
+  allowed: z.boolean(),
+  confirmationRequired: z.boolean(),
+  operationHash: idSchema,
+  message: z.string(),
+  mirror: nativeMirrorRecordSchema.optional(),
+});
+export const nativeMirrorListResponseSchema = z.strictObject({ mirrors: z.array(nativeMirrorRecordSchema) });
+export const nativeMirrorResponseSchema = z.strictObject({ mirror: nativeMirrorRecordSchema });
+export const nativeMirrorPreviewResponseSchema = z.strictObject({ preview: nativeMirrorActionPreviewSchema });
 export const dashboardLaunchResponseSchema = z.strictObject({ launch: dashboardLaunchInfoSchema });
 export const dashboardUiSessionResponseSchema = z.strictObject({ session: dashboardUiSessionSchema });
 export const platformSessionResolutionResponseSchema = z.strictObject({ resolution: platformSessionResolutionSchema });

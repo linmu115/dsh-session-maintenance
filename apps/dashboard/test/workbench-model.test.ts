@@ -22,11 +22,12 @@ describe("session workbench model", () => {
         return { nodes: [], refs: [] };
       },
       listCheckpoints: async () => { calls.push("checkpoints"); return []; },
+      getNativeMirror: async () => { calls.push("mirror"); return undefined; },
       getVersion: async () => { calls.push("version"); throw new Error("not expected"); },
       getDiff: async () => { calls.push("diff"); throw new Error("not expected"); },
     } as unknown as WorkbenchApi;
     await loadWorkbenchInitial(api, "logical-1");
-    expect(calls.sort()).toEqual(["checkpoints", "graph", "session"]);
+    expect(calls.sort()).toEqual(["checkpoints", "graph", "mirror", "session"]);
   });
 
   it("enables only confirmation-free safe plans", () => {

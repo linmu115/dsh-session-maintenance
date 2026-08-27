@@ -4,6 +4,7 @@ import type {
   JsonValue,
   LogicalSession,
   MatchCandidate,
+  NativeMirrorRecord,
   NewVersion,
   ObservationRecord,
   ObservedHead,
@@ -61,6 +62,15 @@ export interface SessionRepository {
   savePlan(plan: SyncPlan): Promise<void>;
   getPlan(id: string): Promise<SyncPlan | undefined>;
   listPlans(query: PlanQuery): Promise<Page<PlanSummary>>;
+}
+
+export interface NativeMirrorRepository {
+  getNativeMirror(logicalSessionId: string): Promise<NativeMirrorRecord | undefined>;
+  listNativeMirrors(): Promise<readonly NativeMirrorRecord[]>;
+  upsertNativeMirror(input: NativeMirrorRecord): Promise<NativeMirrorRecord>;
+  removeNativeMirror(logicalSessionId: string): Promise<boolean>;
+  setLogicalSessionSyncMode(logicalSessionId: string, mode: LogicalSession["syncMode"]): Promise<void>;
+  setCanonicalVersion(logicalSessionId: string, versionId: string): Promise<void>;
 }
 
 export interface ContentObjectStore {

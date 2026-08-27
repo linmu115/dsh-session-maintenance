@@ -6,6 +6,9 @@ import {
   type EngineStatus,
   type InstanceStatus,
   type NormalizedEvent,
+  type NativeMirrorActionPreview,
+  type NativeMirrorActionRequest,
+  type NativeMirrorRecord,
   type NormalizedSession,
   type Page,
   type PlanRequest,
@@ -53,6 +56,7 @@ import {
   type PlatformSessionResolution,
 } from "@linmu/dsh-session-contracts";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
+import type { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
 import type { SqliteSessionRepository } from "@linmu/dsh-session-store";
 
@@ -137,6 +141,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   private readonly clock: () => string;
   private readonly continuations: ContinuationService;
   private readonly writeService: WriteService | undefined;
+  private readonly mirrors: NativeMirrorService;
   private readonly settingsPort: EngineSettingsPort;
 
   constructor(input: {
@@ -147,6 +152,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly continuations: ContinuationService;
     readonly clock?: () => string;
     readonly writeService?: WriteService;
+    readonly mirrors: NativeMirrorService;
     readonly settingsPort?: EngineSettingsPort;
   }) {
     this.instances = input.instances;
@@ -157,6 +163,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.clock = input.clock ?? (() => new Date().toISOString());
     this.discovery = new DiscoveryService(input);
     this.writeService = input.writeService;
+    this.mirrors = input.mirrors;
     this.settingsPort = input.settingsPort ?? {
       get: async () => DEFAULT_SETTINGS,
       patch: async (patch) => ({ ...DEFAULT_SETTINGS, ...patch }),
@@ -240,7 +247,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
         displayName: instance.displayName,
         compatibility: { status: readProbe.status, issues: publicIssues(readProbe.issues) },
       };
-      if (instance.platform !== "dsh" || this.writeService === undefined) {
+      if (this.writeService === undefined || this.writeService.executor.adapters.get(instance.platform) === undefined) {
         return { instance: status, readContract: readProbe.contract, writeCapabilities: [], writeStatus: "unavailable", issues: publicIssues(readProbe.issues) };
       }
       const write = await this.writeService.probe(instance);
@@ -257,6 +264,15 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
 
   getSettings(): Promise<MaintenanceSettings> { return this.settingsPort.get(); }
   patchSettings(input: MaintenanceSettingsPatch): Promise<MaintenanceSettings> { return this.settingsPort.patch(input); }
+
+  listNativeMirrors(): Promise<readonly NativeMirrorRecord[]> { return this.mirrors.list(); }
+  getNativeMirror(logicalSessionId: string): Promise<NativeMirrorRecord | undefined> { return this.mirrors.get(logicalSessionId); }
+  previewNativeMirrorAction(logicalSessionId: string, request: NativeMirrorActionRequest): Promise<NativeMirrorActionPreview> {
+    return this.mirrors.preview(logicalSessionId, request);
+  }
+  applyNativeMirrorAction(logicalSessionId: string, request: NativeMirrorActionRequest): Promise<NativeMirrorRecord> {
+    return this.mirrors.apply(logicalSessionId, request);
+  }
 
   async resolvePlatformSession(key: PlatformSessionKey): Promise<PlatformSessionResolution | undefined> {
     const binding = await this.repository.findBinding(key);
@@ -336,7 +352,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     const sourceSnapshot = { bindingId: pair.source.id, key: pair.source.key, versionId: pair.sourceHead.versionId, fingerprints: [pair.sourceHead.fingerprint] };
     const targetSnapshot = { bindingId: pair.target.id, key: pair.target.key, versionId: pair.targetHead.versionId, fingerprints: [pair.targetHead.fingerprint] };
     const adapterContracts = [pair.source.adapterContract, pair.target.adapterContract];
-    if (pair.target.key.platform === "dsh" && this.writeService !== undefined) {
+    if (this.writeService !== undefined && this.writeService.executor.adapters.get(pair.target.key.platform) !== undefined) {
+      if (pair.target.key.platform === "codex") await this.mirrors.requireWritable(request.logicalSessionId);
       const instance = this.instances.find((item) => item.id === pair.target.key.instanceId);
       if (instance === undefined) throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", "Plan target instance is unavailable");
       adapterContracts.push((await this.writeService.probe(instance)).contract);
@@ -360,8 +377,16 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     return this.repository.listPlans(query);
   }
 
-  applyPlan(request: ApplyPlanRequest): Promise<TransactionRef> {
-    return this.writer().applyPlan(request);
+  async applyPlan(request: ApplyPlanRequest): Promise<TransactionRef> {
+    const result = await this.writer().applyPlan(request);
+    if (result.status === "completed") {
+      const plan = await this.repository.getPlan(request.planId);
+      const targetPlatform = plan?.target?.key.platform ?? (plan?.source.key.platform === "dsh" ? "codex" : "dsh");
+      if (plan !== undefined && targetPlatform === "codex") {
+        await this.mirrors.recordCompletedTransaction(plan.logicalSessionId, result.id);
+      }
+    }
+    return result;
   }
 
   getTransaction(id: string): Promise<TransactionRecord | undefined> {

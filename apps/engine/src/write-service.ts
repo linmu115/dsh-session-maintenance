@@ -26,6 +26,7 @@ import {
   canonicalJson,
   PlanningService,
   validateExecutableDshPlan,
+  validateExecutableCodexPlan,
 } from "@linmu/dsh-session-domain";
 import {
   CheckpointService,
@@ -40,7 +41,8 @@ export interface WriteServiceOptions {
   readonly objectStore: ContentObjectStore;
   readonly executor: TransactionExecutor;
   readonly instances: ReadonlyMap<string, RegisteredInstance>;
-  readonly dshReader: SessionReadAdapter;
+  readonly dshReader?: SessionReadAdapter;
+  readonly readers?: ReadonlyMap<"codex" | "dsh", SessionReadAdapter>;
 }
 
 function semanticEvent(event: NormalizedEvent): JsonValue {
@@ -87,14 +89,14 @@ function receiptTarget(record: TransactionRecord) {
   }
   const target = value.targetKey as Readonly<Record<string, JsonValue>>;
   if (
-    target.platform !== "dsh" ||
+    !["codex", "dsh"].includes(String(target.platform)) ||
     typeof target.instanceId !== "string" ||
     typeof target.sessionId !== "string"
   ) {
     throw new SessionMaintenanceError("OBJECT_CORRUPT", `Completed transaction target is invalid: ${record.id}`);
   }
   return {
-    platform: "dsh" as const,
+    platform: target.platform as "codex" | "dsh",
     instanceId: target.instanceId,
     sessionId: target.sessionId,
   };
@@ -105,7 +107,7 @@ export class WriteService {
   readonly objectStore: ContentObjectStore;
   readonly executor: TransactionExecutor;
   readonly instances: ReadonlyMap<string, RegisteredInstance>;
-  readonly dshReader: SessionReadAdapter;
+  readonly readers: ReadonlyMap<"codex" | "dsh", SessionReadAdapter>;
   private readonly checkpoints: CheckpointService;
   readonly recovery: TransactionRecovery;
 
@@ -114,7 +116,7 @@ export class WriteService {
     this.objectStore = options.objectStore;
     this.executor = options.executor;
     this.instances = options.instances;
-    this.dshReader = options.dshReader;
+    this.readers = options.readers ?? new Map(options.dshReader === undefined ? [] : [["dsh", options.dshReader]]);
     this.checkpoints = new CheckpointService(options.repository);
     this.recovery = new TransactionRecovery({
       stateRoot: options.executor.stateRoot,
@@ -128,7 +130,9 @@ export class WriteService {
 
   async applyPlan(request: ApplyPlanRequest): Promise<TransactionRef> {
     const plan = await this.requiredPlan(request.planId);
-    validateExecutableDshPlan(plan);
+    const targetPlatform = plan.target?.key.platform ?? (plan.source.key.platform === "dsh" ? "codex" : "dsh");
+    if (targetPlatform === "dsh") validateExecutableDshPlan(plan);
+    else validateExecutableCodexPlan(plan);
     const result = await this.executor.apply(request);
     if (result.status !== "completed") return result;
 
@@ -217,9 +221,9 @@ export class WriteService {
   }
 
   probe(instance: RegisteredInstance): Promise<WriteProbe> {
-    const adapter = this.executor.adapters.get("dsh");
+    const adapter = this.executor.adapters.get(instance.platform);
     if (adapter === undefined) {
-      throw new SessionMaintenanceError("CAPABILITY_NOT_AVAILABLE", "No DSH write Adapter is attached");
+      throw new SessionMaintenanceError("CAPABILITY_NOT_AVAILABLE", `No ${instance.platform} write Adapter is attached`);
     }
     return adapter.probeWrite(instance);
   }
@@ -227,24 +231,26 @@ export class WriteService {
   private async verifyAndAdvance(plan: SyncPlan, transaction: TransactionRecord): Promise<void> {
     const targetKey = receiptTarget(transaction);
     const instance = this.instances.get(targetKey.instanceId);
-    if (instance === undefined || instance.platform !== "dsh") {
-      throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", "Completed DSH instance is no longer registered");
+    if (instance === undefined || instance.platform !== targetKey.platform) {
+      throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", "Completed platform instance is no longer registered");
     }
-    const probe = await this.dshReader.probe(instance);
+    const reader = this.readers.get(targetKey.platform);
+    if (reader === undefined) throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `No ${targetKey.platform} read Adapter is attached`);
+    const probe = await reader.probe(instance);
     if (probe.status !== "compatible") {
       throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", "DSH read contract drifted after commit");
     }
-    const observation = await this.dshReader.observe(instance, targetKey);
+    const observation = await reader.observe(instance, targetKey);
     if (observation.kind === "unstable") {
       throw new SessionMaintenanceError("UNSTABLE_READ", observation.reason);
     }
-    const stable = await this.dshReader.verify(instance, targetKey, {
+    const stable = await reader.verify(instance, targetKey, {
       fingerprints: [observation.fingerprint],
     });
     if (!stable.ok) {
       throw new SessionMaintenanceError("PLAN_STALE", "DSH target changed during post-commit verification");
     }
-    const target = await this.dshReader.normalize(observation);
+    const target = await reader.normalize(observation);
     const source = await this.loadVersionBody(plan.source.versionId);
     assertSemanticTarget(source, target);
 

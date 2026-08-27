@@ -118,4 +118,51 @@ describe("CodexNativeWriteAdapter", () => {
     expect(await readFile(join(sandbox.codexHome, "session_index.jsonl"))).toEqual(original.index);
     expect(await readFile(rolloutPath)).toEqual(original.rollout);
   });
+
+  it.each(["after-rollout", "after-index", "after-database"] as const)(
+    "restores every managed file when commit fails at %s",
+    async (faultAt) => {
+      const sandbox = await createFixtureSandbox(`codex-native-${faultAt}`);
+      cleanups.push(sandbox.cleanup);
+      await writeCodexFixtureHome(sandbox.codexHome);
+      const rolloutPath = join(sandbox.codexHome, "rollouts", "thread-fixture.jsonl");
+      const original = {
+        database: await readFile(join(sandbox.codexHome, "state_5.sqlite")),
+        index: await readFile(join(sandbox.codexHome, "session_index.jsonl")),
+        rollout: await readFile(rolloutPath),
+      };
+      const adapter = new CodexNativeWriteAdapter({
+        stateRoot: join(sandbox.root, "maintenance-state"),
+        loadSource: async () => source(),
+        fixtureGuard: assertFixtureSandbox,
+        quietDelayMs: 1,
+        faultAt,
+      });
+      const transaction: TransactionContext = { id: `tx-${faultAt}`, planId: plan().id, planHash: plan().hash, startedAt: "2026-08-27T00:00:00.000Z" };
+      const prepared = await adapter.prepare({ plan: plan(), instance: instance(sandbox), transaction });
+      const backup = await adapter.backup(prepared, transaction);
+      await expect(adapter.commit(prepared, transaction)).rejects.toThrow(/Injected Codex native fault/u);
+      expect((await adapter.restore(backup, transaction)).restored).toBe(true);
+      expect(await readFile(join(sandbox.codexHome, "state_5.sqlite"))).toEqual(original.database);
+      expect(await readFile(join(sandbox.codexHome, "session_index.jsonl"))).toEqual(original.index);
+      expect(await readFile(rolloutPath)).toEqual(original.rollout);
+    },
+  );
+
+  it("performs zero writes for an unknown Codex version", async () => {
+    const sandbox = await createFixtureSandbox("codex-native-unknown");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    const paths = [join(sandbox.codexHome, "state_5.sqlite"), join(sandbox.codexHome, "session_index.jsonl"), join(sandbox.codexHome, "rollouts", "thread-fixture.jsonl")];
+    const before = await Promise.all(paths.map((path) => readFile(path)));
+    const adapter = new CodexNativeWriteAdapter({
+      stateRoot: join(sandbox.root, "maintenance-state"),
+      loadSource: async () => source(),
+      fixtureGuard: assertFixtureSandbox,
+      quietDelayMs: 1,
+    });
+    const transaction: TransactionContext = { id: "tx-unknown", planId: plan().id, planHash: plan().hash, startedAt: "2026-08-27T00:00:00.000Z" };
+    await expect(adapter.prepare({ plan: plan(), instance: instance(sandbox, "0.147.0"), transaction })).rejects.toMatchObject({ code: "CODEX_VERSION_UNSUPPORTED" });
+    expect(await Promise.all(paths.map((path) => readFile(path)))).toEqual(before);
+  });
 });

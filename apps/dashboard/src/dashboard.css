@@ -51,6 +51,10 @@
 .operation-block + .operation-block { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--dsm-border); }
 .operation-block > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
 .operation-block h3 { margin: 0; font-size: 15px; }
+.mirror-heads { display: grid; gap: 6px; margin: 10px 0; }
+.mirror-heads span { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 8px; color: var(--dsm-muted); font-size: 12px; }
+.mirror-heads code { overflow: hidden; color: var(--dsm-text); font: 10px/1.5 var(--dsm-mono); text-overflow: ellipsis; }
+.mirror-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .operation-block header p { margin: 5px 0 12px; color: var(--dsm-muted); font-size: 12px; }
 .operation-list { margin: 10px 0; padding-left: 26px; }
 .operation-list li { padding: 3px 0; }

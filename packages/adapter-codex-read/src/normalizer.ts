@@ -29,7 +29,15 @@ function messageEvent(
   if (payload.type !== "message" || typeof payload.role !== "string" || !Array.isArray(payload.content)) {
     return undefined;
   }
-  const role = ["user", "assistant", "system"].includes(payload.role)
+  const imported = typeof payload.dsh_import === "object" && payload.dsh_import !== null && !Array.isArray(payload.dsh_import)
+    ? payload.dsh_import as Readonly<Record<string, JsonValue>>
+    : undefined;
+  const importedMode = imported?.mode;
+  const role = importedMode === "visible-record"
+    ? "tool"
+    : importedMode === "metadata-record"
+      ? "unknown"
+      : ["user", "assistant", "system"].includes(payload.role)
     ? (payload.role as "user" | "assistant" | "system")
     : "unknown";
   const text: string[] = [];
@@ -61,16 +69,23 @@ function messageEvent(
     }
   }
 
+  const content = text.join("\n");
+  const importedContent = importedMode === "visible-record" || importedMode === "metadata-record"
+    ? content.replace(/^\[DSH 导入记录 · [^\]]+\]\n/u, "")
+    : content;
   return {
     sourceEventId:
       typeof payload.id === "string" && payload.id.length > 0 ? payload.id : `line-${lineIndex}`,
     parentSourceEventId: null,
     sequence,
-    kind: "message",
+    kind: importedMode === "visible-record" ? "tool-import" : importedMode === "metadata-record" ? "metadata" : "message",
     role,
-    content: text.join("\n"),
+    content: importedContent,
     attachments,
-    extensions: unknownContent.length === 0 ? {} : { unknownContent },
+    extensions: {
+      ...(unknownContent.length === 0 ? {} : { unknownContent }),
+      ...(imported === undefined ? {} : { dshImport: imported as JsonValue }),
+    },
   };
 }
 
