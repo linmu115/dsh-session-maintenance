@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 
 import { MaintenanceClient } from "../../../packages/local-api-client/src/index.js";
-import { windowsAclArgv } from "../src/http/server.js";
+import { windowsAclArgv, windowsIdentitySid } from "../src/http/server.js";
 import { createEngineFixture, hashTree } from "./helpers.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -54,8 +54,9 @@ describe("authenticated loopback API", () => {
   });
 
   it("constructs ACL arguments without a shell command string", () => {
-    expect(windowsAclArgv("C:\\state\\connection.json", "host\\user")).toEqual([
-      "C:\\state\\connection.json", "/inheritance:r", "/grant:r", "host\\user:(F)",
+    expect(windowsIdentitySid('"�ǳ�\\19717","S-1-5-21-1-2-3-1001"')).toBe("S-1-5-21-1-2-3-1001");
+    expect(windowsAclArgv("C:\\state\\connection.json", "S-1-5-21-1-2-3-1001")).toEqual([
+      "C:\\state\\connection.json", "/inheritance:r", "/grant:r", "*S-1-5-21-1-2-3-1001:(F)",
     ]);
   });
 });

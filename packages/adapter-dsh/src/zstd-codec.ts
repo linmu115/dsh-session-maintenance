@@ -18,11 +18,29 @@ export interface DshSessionHeader {
   readonly delegationDepth: number;
 }
 
-export interface DshSessionEvent {
+interface DshSessionEventBase {
   readonly type: string;
+  readonly data: Readonly<Record<string, JsonValue>>;
+}
+
+export interface DshStandardSessionEvent extends DshSessionEventBase {
   readonly seq: number;
   readonly time: number;
-  readonly data: Readonly<Record<string, JsonValue>>;
+}
+
+export interface DshPackedSessionEvent extends DshSessionEventBase {
+  readonly seq0: number;
+  readonly time0: number;
+}
+
+export type DshSessionEvent = DshStandardSessionEvent | DshPackedSessionEvent;
+
+export function dshEventSequence(event: DshSessionEvent): number {
+  return "seq" in event ? event.seq : event.seq0;
+}
+
+export function dshEventTime(event: DshSessionEvent): number {
+  return "time" in event ? event.time : event.time0;
 }
 
 export interface DecodedHeaderFrame {
@@ -179,16 +197,25 @@ function parseEvents(frames: readonly Buffer[]): readonly DshSessionEvent[] {
     } catch (error) {
       throw new Error(`Malformed DSH JSONL at line ${index + 1}`, { cause: error });
     }
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error(`Malformed DSH event at line ${index + 1}`);
+    }
+    const event = value as {
+      readonly seq?: unknown;
+      readonly time?: unknown;
+      readonly seq0?: unknown;
+      readonly time0?: unknown;
+      readonly type?: unknown;
+      readonly data?: unknown;
+    };
+    const standard = typeof event.seq === "number" && typeof event.time === "number";
+    const packed = typeof event.seq0 === "number" && typeof event.time0 === "number";
     if (
-      typeof value !== "object" ||
-      value === null ||
-      Array.isArray(value) ||
-      typeof (value as { readonly type?: unknown }).type !== "string" ||
-      typeof (value as { readonly seq?: unknown }).seq !== "number" ||
-      typeof (value as { readonly time?: unknown }).time !== "number" ||
-      typeof (value as { readonly data?: unknown }).data !== "object" ||
-      (value as { readonly data?: unknown }).data === null ||
-      Array.isArray((value as { readonly data?: unknown }).data)
+      typeof event.type !== "string" ||
+      (!standard && !packed) ||
+      typeof event.data !== "object" ||
+      event.data === null ||
+      Array.isArray(event.data)
     ) {
       throw new Error(`Malformed DSH event at line ${index + 1}`);
     }

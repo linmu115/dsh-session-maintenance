@@ -21,6 +21,12 @@ describe("DSH Zstd codec", () => {
           time: 1,
           data: { content: [{ type: "text", text: "hello" }] },
         },
+        {
+          type: "text-chunks",
+          seq0: 1,
+          time0: 2,
+          data: { turn: 1, step: 1, index: 0, dt: [0], texts: ["packed"] },
+        },
       ],
     );
 
@@ -30,7 +36,8 @@ describe("DSH Zstd codec", () => {
     expect(header.consumedBytes).toBeLessThan(artifact.byteLength);
     expect(decoded.frameCount).toBe(2);
     expect(decoded.header.version).toBe(0);
-    expect(decoded.events).toHaveLength(1);
+    expect(decoded.events).toHaveLength(2);
+    expect(decoded.events[1]).toMatchObject({ type: "text-chunks", seq0: 1, time0: 2 });
   });
 
   it("rejects invalid magic, truncated frames and oversized blocks", () => {

@@ -73,6 +73,11 @@ describe("DshReadAdapter", () => {
     adapter.resetDebugCounters();
     const [summary] = await collect(adapter.list(instance));
     expect(adapter.debugCounters()).toMatchObject({ headerFrameReads: 1, fullArtifactReads: 0 });
+    expect(summary).toMatchObject({
+      title: "Fixture conversation",
+      archived: false,
+      workspaceId: "workspace-fixture",
+    });
     const observation = stable(await adapter.observe(instance, summary!.key, summary!.hint));
     const normalized = await adapter.normalize(observation);
     expect(normalized.events.map((event) => event.role)).toEqual(["user", "assistant", "tool"]);
@@ -112,6 +117,28 @@ describe("DshReadAdapter", () => {
     expect(adapter.debugCounters()).toMatchObject({ headerFrameReads: 100, fullArtifactReads: 0 });
     await adapter.observe(registered(sandbox), summaries[0]!.key, summaries[0]!.hint);
     expect(adapter.debugCounters().fullArtifactReads).toBe(1);
+  });
+
+  it("preserves repeated packed chunk IDs as distinct degraded metadata", async () => {
+    const sandbox = await createFixtureSandbox("dsh-packed-events");
+    cleanups.push(sandbox.cleanup);
+    await writeDshFixtureHome(sandbox.dshHome);
+    await writeFile(
+      join(sandbox.dshHome, "sessions", "project-fixture", "dsh-session-1", "session.jsonl.zstd"),
+      encodeFixtureArtifact(
+        { type: "session", version: 0, id: "dsh-session-1", createdAt: 1, cwd: "C:\\fixture", delegationDepth: 0 },
+        [
+          { type: "tool-call-chunks", seq0: 1, time0: 2, data: { id: "call-1", args: ["a"] } },
+          { type: "tool-call-chunks", seq0: 2, time0: 3, data: { id: "call-1", args: ["b"] } },
+        ],
+      ),
+    );
+    const adapter = new DshReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    const [summary] = await collect(adapter.list(registered(sandbox)));
+    const normalized = await adapter.normalize(stable(await adapter.observe(registered(sandbox), summary!.key, summary!.hint)));
+    expect(normalized.compatibility.status).toBe("degraded");
+    expect(normalized.compatibility.issues).toHaveLength(2);
+    expect(new Set(normalized.events.map((event) => event.source.eventId)).size).toBe(normalized.events.length);
   });
 
   it("reports unsupported versions and session headers without guessing", async () => {
