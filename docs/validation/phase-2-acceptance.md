@@ -1,61 +1,59 @@
-# Phase 2 验收记录：DSH 写入与维护界面
+# Phase 2 验收记录：官方 DSH 写入与正式部署
 
-**日期：** 2026-08-27  
-**分支：** `codex/phase-2-dsh-core-extension`  
+**日期：** 2026-08-27
+
+**综合分支：** `codex/phase-4-native-mirror`
+
 **支持契约：** 官方 DSH `0.1.1-rc.2` / Cordis `4.0.1`
 
 ## 结论
 
-Phase 2 工程门禁通过。版本锁定 Core 扩展、远程 Gateway、可恢复写事务、Codex → DSH 安全快进、类型化 API、独立 Dashboard、DSH 入口插件和可复现发布包已闭环。正式 `web` profile 没有被修改；旧 `dsh-codex-session-sync@0.3.3` 仍保持原状，等待用户审查替换预览后另行批准。
+Phase 2 已完成正式部署，不再只是隔离 fixture 验收。版本锁定 Core 扩展、远程 Gateway、可恢复写事务、Codex → DSH 安全快进、独立 Dashboard 与 DSH 入口插件均已安装到官方 `web` profile。旧 `dsh-codex-session-sync` 已从顶层依赖、bundle 与 `node_modules` 退出。
 
-## 环境
+Maintenance 没有 EAC 运行依赖；正式 Engine 位于 `D:\AI\DeepSeek-Harness\dsh-session-maintenance`，状态位于 `%LOCALAPPDATA%\DSH-Session-Maintenance`。
 
-- OS：Windows NT `10.0.26200.0`
-- Node.js：`v24.7.0`；本机没有额外 Node 22 runtime，因此没有伪造双版本结果
-- pnpm：`11.19.0`
-- 官方 DSH runtime：`D:\AI\DeepSeek-Harness\runtime-0.1.1-rc.2`
-- 测试并发：Windows 固定 `--maxWorkers=1 --testTimeout=15000`，避免 SQLite WAL/临时文件竞争造成假失败
-
-## 发布产物
+## 最终发布产物
 
 | 产物 | 大小 | SHA-256 |
 | --- | ---: | --- |
-| `dsh-session-maintenance-engine-0.1.0.tgz` | 309,863 bytes | `b6e8e1ce3de432c183d86e40a22b9521f5b576c66076d910a181f93860a4e6b8` |
-| `dsh-session-maintenance-0.1.0.tgz` | 96,931 bytes | `b887ef36700d62c0ec41a74a6264238fa87a655be0da0214001ccb1e13700174` |
+| `dsh-session-maintenance-engine-0.1.0.tgz` | 321,594 bytes | `425ce0481624fdb8cc089204e4221efc3682e662c281fed3b96294a3bd4c7bd8` |
+| `dsh-session-maintenance-0.1.0.tgz` | 97,272 bytes | `056e387ed05a7c53b063f6e13d75ae86834f8a95330ebbbaff6176b36d9eedce` |
 
-`verify:phase2-package` 连续构建两次，两个 tgz 和 manifest 均逐字节一致。最终 release build 的来源提交与工作树是否干净由生成的 `phase2-manifest.json` 中 `sourceCommit` / `sourceDirty` 记录。
+`verify:phase2-package` 连续生成三份产物，两个 tgz 均逐字节一致。插件从固定内容地址安装，不依赖源码工作树或临时目录。
 
-## 隔离官方 runtime 验收
+## 正式部署事务
 
-`accept:phase2-official` 使用本机官方 rc.2 runtime，但把 `DSH_HOME`、profile、lockfile、node_modules、状态和 Engine fixture 全部放入带标记的 Windows 临时目录：
+- 目标：`D:\AI\DeepSeek-Harness\home\profiles\web`
+- 备份：`D:\AI\DeepSeek-Harness\home\profiles\web\.dsh-session-maintenance-backup\formal-phase4-20260827-2158`
+- 备份范围：profile package/lock/workspace/Cordis 配置、旧插件物化目录、替换前 Engine。
+- 最终插件依赖只登记一次，bundle 只登记一次。
+- `dsh-codex-session-sync`：dependency `false`、bundle `false`、物化目录不存在。
 
-1. 通过官方 `dsh plugin --profile web add <tgz> --offline --ignore-scripts` 安装包；
-2. 启动最小 `@deepseek-ai/dsh-base + @deepseek-ai/dsh-web-app + dsh-session-maintenance`；
-3. 确认 HTML client graph 包含插件；
-4. 确认 `/plugins/dsh-session-maintenance/client.js` 返回官方 factory 注册格式；
-5. 确认 host proxy 能到达隔离 Engine，Core probe 返回 `compatible`；
-6. 扫描 loader 输出，不含 failed-loader、client-module drift 或插件错误；
-7. 停止进程并只删除已验证 marker 的临时 profile。
+部署后结果：
 
-报告结果：`officialInstaller`、`minimalWebStack`、`clientModuleGraph`、`clientBundleRoute`、`hostProxy`、`materializedCoreProbe`、`loaderDiagnostics` 全部 `passed`；`formalHomeTouched=false`。
+- 官方 DSH 页面 HTTP 200；
+- Maintenance client bundle HTTP 200，并含官方 module factory；
+- Engine `ready=true`，登记 2 个实例；
+- DSH read/write adapter 均为 `compatible`；
+- DSH 正式扫描完成，新增绑定、版本和候选均为 0，平台写入为 0；
+- 0 个冲突、0 个未解决事务、0 个 manual-review 事务；
+- loader 日志无 `Failed to load plugins`、loader entry drift 或 client module 错误。
 
-合成快速验收继续覆盖 package host/client 注册、两个 endpoint、unload cleanup 与删除临时 profile 后 Engine state 保留。业务测试覆盖安全快进、分叉零写入、故障恢复、HMAC scope/重放拒绝、service/materialization drift 和 token/端口轮换。
-
-## 最终门禁
+## 自动门禁
 
 | 门禁 | 结果 |
 | --- | --- |
-| 全工作区 typecheck / build | 通过 |
-| Phase 1 回归 | 2 files / 3 tests 通过 |
-| Phase 2 聚焦套件 | 31 files / 58 tests 通过 |
-| 全工作区串行测试 | 62 files / 132 tests 通过 |
-| 两次可复现打包 | 通过 |
-| 19 个发布文件便携性/敏感信息扫描 | 通过 |
-| 合成隔离验收 | 通过 |
-| 官方 rc.2 临时 profile 验收 | 通过 |
-| 通用源码便携性门禁 | 通过 |
+| 全工作区 typecheck | 20/20 通过 |
+| 全工作区 build | 20/20 通过 |
+| 全量测试 | 66 files / 142 tests 通过 |
+| 通用便携性扫描 | 346 个文本文件通过 |
+| 三次可复现打包 | 通过 |
+| 官方 `web` profile 实际加载 | 通过 |
+| 正式 DSH 幂等扫描 | 通过 |
 | `git diff --check` | 通过 |
 
-## 尚未执行的人工门禁
+## 保留的安全边界
 
-正式 `web` profile 的 package/lock/bundle 替换与旧插件卸载尚未执行。只读预览位于 `docs/deployment/FORMAL-PROFILE-REPLACEMENT-PREVIEW.md`。该事务必须在用户明确批准后单独执行；失败时恢复整个旧 package/lock/bundle 组合。
+- Core 扩展只支持锁定的官方 `0.1.1-rc.2` 契约；漂移时失败关闭。
+- 会话正文不在安装事务中被迁移、删除或重写。
+- 旧包和替换前 Engine 仍在上述备份目录中，可执行整套恢复。
