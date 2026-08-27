@@ -11,10 +11,18 @@ import {
   type CreateContinuationRequest,
   type JsonValue,
   type PlatformBinding,
+  type ResolutionContinuationRequest,
   type SessionRepository,
   type SessionVersionManifest,
 } from "@linmu/dsh-session-contracts";
-import { bindingIdFor, canonicalJson, sha256Canonical } from "@linmu/dsh-session-domain";
+import {
+  VersionGraph,
+  bindingIdFor,
+  canonicalJson,
+  classifyHeads,
+  normalizeSession,
+  sha256Canonical,
+} from "@linmu/dsh-session-domain";
 import {
   HandoffBuilder,
   HandoffError,
@@ -24,6 +32,13 @@ import {
 } from "@linmu/dsh-session-handoff-context";
 
 type Repository = SessionRepository & ContinuationRepository;
+
+interface PreparedContinuation {
+  readonly sources: readonly [HandoffSource] | readonly [HandoffSource, HandoffSource];
+  readonly target: CodexContinuationTarget;
+  readonly handoff: HandoffRequest;
+  readonly resolution?: ResolutionContinuationRequest;
+}
 
 function errorCode(error: unknown, fallback: string): string {
   if (typeof error === "object" && error !== null && "code" in error && typeof error.code === "string") {
@@ -57,12 +72,28 @@ export class ContinuationService {
   }
 
   async preview(request: ContinuationPreviewRequest): Promise<ContinuationPreview> {
-    const prepared = await this.prepare(request);
+    const prepared = await this.prepareSingle(request);
     return this.builder.preview(prepared.handoff);
   }
 
   async create(request: CreateContinuationRequest): Promise<ContinuationJob> {
-    const prepared = await this.prepare(request);
+    return this.createPrepared(request, await this.prepareSingle(request));
+  }
+
+  async previewResolution(request: ResolutionContinuationRequest): Promise<ContinuationPreview> {
+    const prepared = await this.prepareResolution(request);
+    return this.builder.preview(prepared.handoff);
+  }
+
+  async createResolution(request: ResolutionContinuationRequest): Promise<ContinuationJob> {
+    const prepared = await this.prepareResolution(request);
+    return this.createPrepared(prepared.resolution!, prepared);
+  }
+
+  private async createPrepared(
+    request: CreateContinuationRequest | ResolutionContinuationRequest,
+    prepared: PreparedContinuation,
+  ): Promise<ContinuationJob> {
     let bundle: HandoffBundle;
     try {
       bundle = this.builder.build(prepared.handoff);
@@ -74,11 +105,15 @@ export class ContinuationService {
       }
       throw error;
     }
+    const commonVersionId = prepared.resolution === undefined
+      ? prepared.sources[0].manifest.id
+      : (await this.createResolutionVersion(prepared.resolution, prepared.sources as readonly [HandoffSource, HandoffSource])).id;
     const requestHash = sha256Canonical({
       request,
       sourceHashes: prepared.sources.map((source) => source.manifest.bodyHash),
       target: prepared.target,
       bundleId: bundle.id,
+      commonVersionId,
     } as unknown as JsonValue);
     const existing = await this.repository.findContinuationByRequestHash(requestHash);
     if (existing !== undefined) return existing;
@@ -89,7 +124,7 @@ export class ContinuationService {
       requestHash,
       request,
       logicalSessionId: request.logicalSessionId,
-      sourceVersionIds: [request.sourceVersionId],
+      sourceVersionIds: prepared.sources.map((source) => source.manifest.id),
       targetPresetId: request.targetPresetId,
       mode: request.mode,
       handoffObjectId,
@@ -135,7 +170,7 @@ export class ContinuationService {
         updatedAt: this.clock(),
       });
       const verification = await this.adapter.verify(created, prepared.target);
-      await this.bind(job, prepared.target, probe.schemaFingerprint, created.threadId);
+      await this.bind(job, prepared.target, probe.schemaFingerprint, created.threadId, commonVersionId);
       return this.repository.transitionContinuationJob(job.id, {
         expected: ["verifying"],
         status: "completed",
@@ -195,7 +230,13 @@ export class ContinuationService {
     }
     try {
       const verification = await this.adapter.verify({ threadId: job.codexThreadId }, target);
-      await this.bind(verifying, target, probe.schemaFingerprint, job.codexThreadId);
+      await this.bind(
+        verifying,
+        target,
+        probe.schemaFingerprint,
+        job.codexThreadId,
+        await this.commonVersionId(job.request),
+      );
       return this.repository.transitionContinuationJob(job.id, {
         expected: ["verifying"],
         status: "completed",
@@ -216,7 +257,7 @@ export class ContinuationService {
     return this.adapter.close();
   }
 
-  private async prepare(request: ContinuationPreviewRequest): Promise<{
+  private async prepareSingle(request: ContinuationPreviewRequest): Promise<{
     readonly sources: readonly [HandoffSource];
     readonly target: CodexContinuationTarget;
     readonly handoff: HandoffRequest;
@@ -234,6 +275,58 @@ export class ContinuationService {
         sources: [source],
         mode: request.mode,
         tokenBudget,
+        ...(request.checkpointStartSequence === undefined
+          ? {}
+          : { checkpointStartSequence: request.checkpointStartSequence }),
+      },
+    };
+  }
+
+  private async prepareResolution(request: ResolutionContinuationRequest): Promise<PreparedContinuation> {
+    if (request.leftVersionId === request.rightVersionId) {
+      throw new SessionMaintenanceError("HANDOFF_REQUEST_INVALID", "Two-parent resolution requires distinct versions");
+    }
+    const target = this.target(request.targetPresetId);
+    const [left, right] = await Promise.all([
+      this.loadSource(request.logicalSessionId, request.leftVersionId),
+      this.loadSource(request.logicalSessionId, request.rightVersionId),
+    ]);
+    const graph = await this.loadGraph(request.logicalSessionId);
+    const relation = classifyHeads(graph, request.leftVersionId, request.rightVersionId);
+    if (relation.kind !== "diverged") {
+      throw new SessionMaintenanceError(
+        "HANDOFF_REQUEST_INVALID",
+        `Two-parent resolution requires diverged versions, received ${relation.kind}`,
+      );
+    }
+    const commonAncestorVersionId = request.commonAncestorVersionId ?? relation.mergeBase;
+    if (
+      commonAncestorVersionId !== undefined &&
+      (!graph.isAncestor(commonAncestorVersionId, request.leftVersionId) ||
+        !graph.isAncestor(commonAncestorVersionId, request.rightVersionId))
+    ) {
+      throw new SessionMaintenanceError(
+        "HANDOFF_REQUEST_INVALID",
+        "The selected common ancestor is not an ancestor of both resolution parents",
+      );
+    }
+    const resolution: ResolutionContinuationRequest = {
+      ...request,
+      ...(commonAncestorVersionId === undefined ? {} : { commonAncestorVersionId }),
+    };
+    const tokenBudget = Math.floor(target.contextWindowTokens * target.inputBudgetRatio);
+    return {
+      sources: [left, right],
+      target,
+      resolution,
+      handoff: {
+        sources: [left, right],
+        mode: request.mode,
+        tokenBudget,
+        resolution: {
+          mergeNote: request.mergeNote,
+          ...(commonAncestorVersionId === undefined ? {} : { commonAncestorVersionId }),
+        },
         ...(request.checkpointStartSequence === undefined
           ? {}
           : { checkpointStartSequence: request.checkpointStartSequence }),
@@ -265,11 +358,90 @@ export class ContinuationService {
     return { manifest, session } as HandoffSource;
   }
 
+  private async loadGraph(logicalSessionId: string): Promise<VersionGraph> {
+    const nodes: SessionVersionManifest[] = [];
+    let cursor: string | undefined;
+    do {
+      const page = await this.repository.getGraphPage(logicalSessionId, cursor);
+      nodes.push(...page.nodes);
+      cursor = page.nextCursor;
+    } while (cursor !== undefined);
+    return new VersionGraph(nodes);
+  }
+
+  private async createResolutionVersion(
+    request: ResolutionContinuationRequest,
+    sources: readonly [HandoffSource, HandoffSource],
+  ): Promise<SessionVersionManifest> {
+    const [left, right] = sources;
+    const resolutionIdentity = {
+      type: "two-parent-resolution",
+      logicalSessionId: request.logicalSessionId,
+      leftVersionId: left.manifest.id,
+      rightVersionId: right.manifest.id,
+      commonAncestorVersionId: request.commonAncestorVersionId ?? null,
+      mergeNote: request.mergeNote,
+      sourceBodyHashes: [left.manifest.bodyHash, right.manifest.bodyHash],
+    } as const;
+    const resolutionHash = sha256Canonical(resolutionIdentity as unknown as JsonValue);
+    const observedAt = [left.session.provenance.observedAt, right.session.provenance.observedAt].sort().at(-1)!;
+    const session = normalizeSession({
+      key: left.session.key,
+      title: `Resolution: ${left.session.title}`,
+      archived: false,
+      workspaceId: left.session.workspaceId ?? right.session.workspaceId,
+      provenance: {
+        ...left.session.key,
+        observedAt,
+        sourceVersion: `resolution_${resolutionHash.slice(0, 24)}`,
+      },
+      compatibility: {
+        status: "degraded",
+        issues: [{
+          code: "TWO_PARENT_RESOLUTION",
+          message: "User-confirmed resolution metadata; parent histories remain separate and immutable.",
+        }],
+      },
+      events: [{
+        sourceEventId: `resolution-${resolutionHash.slice(0, 24)}`,
+        parentSourceEventId: null,
+        sequence: 0,
+        kind: "metadata",
+        role: "system",
+        content: request.mergeNote,
+        attachments: [],
+        extensions: { sessionMaintenanceResolution: resolutionIdentity },
+      }],
+    });
+    const bodyObject = await this.objectStore.put(Buffer.from(canonicalJson(session as unknown as JsonValue)));
+    return this.repository.putVersion({
+      logicalSessionId: request.logicalSessionId,
+      parents: [left.manifest.id, right.manifest.id],
+      bodyObject,
+      bodyHash: session.bodyHash,
+      metadataHash: session.metadataHash,
+      source: session.provenance,
+      compatibility: session.compatibility,
+    });
+  }
+
+  private async commonVersionId(
+    request: CreateContinuationRequest | ResolutionContinuationRequest,
+  ): Promise<string> {
+    if ("sourceVersionId" in request) return request.sourceVersionId;
+    const prepared = await this.prepareResolution(request);
+    return (await this.createResolutionVersion(
+      prepared.resolution!,
+      prepared.sources as readonly [HandoffSource, HandoffSource],
+    )).id;
+  }
+
   private async bind(
     job: ContinuationJob,
     target: CodexContinuationTarget,
     schemaFingerprint: string,
     threadId: string,
+    commonVersionId: string,
   ): Promise<void> {
     const key = { platform: "codex" as const, instanceId: target.codexInstanceId, sessionId: threadId };
     const binding: PlatformBinding = {
@@ -281,7 +453,7 @@ export class ContinuationService {
         platformVersion: target.platformVersion,
         schemaFingerprint,
       },
-      lastCommonVersionId: job.sourceVersionIds[0] ?? null,
+      lastCommonVersionId: commonVersionId,
       status: "read-only",
     };
     const existing = await this.repository.findBinding(key);

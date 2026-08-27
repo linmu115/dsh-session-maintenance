@@ -7,6 +7,7 @@ import {
   type ContinuationPreviewRequest,
   type JsonValue,
   type PlatformKind,
+  type ResolutionContinuationRequest,
 } from "@linmu/dsh-session-contracts";
 
 import { createReadOnlyComposition, probeAndAddInstance, type CompositionOptions } from "./composition-root.js";
@@ -50,6 +51,34 @@ function continuationInput(value: {
   return {
     logicalSessionId: value.logicalSession,
     sourceVersionId: value.sourceVersion,
+    targetPresetId: value.target,
+    mode: value.mode as ContinuationMode,
+    ...(checkpointStartSequence === undefined ? {} : { checkpointStartSequence }),
+  };
+}
+
+function resolutionInput(value: {
+  readonly logicalSession: string;
+  readonly leftVersion: string;
+  readonly rightVersion: string;
+  readonly commonAncestor?: string;
+  readonly mergeNote: string;
+  readonly target: string;
+  readonly mode: string;
+  readonly checkpointStart?: string;
+}): ResolutionContinuationRequest {
+  const checkpointStartSequence = value.checkpointStart === undefined
+    ? undefined
+    : Number.parseInt(value.checkpointStart, 10);
+  if (checkpointStartSequence !== undefined && (!Number.isSafeInteger(checkpointStartSequence) || checkpointStartSequence < 0)) {
+    throw new TypeError(`Invalid checkpoint start sequence: ${value.checkpointStart}`);
+  }
+  return {
+    logicalSessionId: value.logicalSession,
+    leftVersionId: value.leftVersion,
+    rightVersionId: value.rightVersion,
+    ...(value.commonAncestor === undefined ? {} : { commonAncestorVersionId: value.commonAncestor }),
+    mergeNote: value.mergeNote,
     targetPresetId: value.target,
     mode: value.mode as ContinuationMode,
     ...(checkpointStartSequence === undefined ? {} : { checkpointStartSequence }),
@@ -217,6 +246,42 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
   }) => {
     const engine = await createReadOnlyComposition(compositionOptions());
     try { output(stdout, { continuation: await engine.createContinuation(continuationInput(value)) }); } finally { engine.close(); }
+  });
+  const addResolutionOptions = (command: Command): Command => command
+    .requiredOption("--logical-session <id>")
+    .requiredOption("--left-version <id>")
+    .requiredOption("--right-version <id>")
+    .option("--common-ancestor <id>")
+    .requiredOption("--merge-note <text>")
+    .requiredOption("--target <preset-id>")
+    .addOption(new Option("--mode <mode>").choices(["full", "checkpoint", "structured-summary"]).makeOptionMandatory())
+    .option("--checkpoint-start <sequence>")
+    .option("--json");
+  addResolutionOptions(continuation.command("resolution-preview")).action(async (value: {
+    logicalSession: string;
+    leftVersion: string;
+    rightVersion: string;
+    commonAncestor?: string;
+    mergeNote: string;
+    target: string;
+    mode: string;
+    checkpointStart?: string;
+  }) => {
+    const engine = await createReadOnlyComposition(compositionOptions());
+    try { output(stdout, { preview: await engine.previewResolutionContinuation(resolutionInput(value)) }); } finally { engine.close(); }
+  });
+  addResolutionOptions(continuation.command("resolution-create")).action(async (value: {
+    logicalSession: string;
+    leftVersion: string;
+    rightVersion: string;
+    commonAncestor?: string;
+    mergeNote: string;
+    target: string;
+    mode: string;
+    checkpointStart?: string;
+  }) => {
+    const engine = await createReadOnlyComposition(compositionOptions());
+    try { output(stdout, { continuation: await engine.createResolutionContinuation(resolutionInput(value)) }); } finally { engine.close(); }
   });
   continuation.command("status").requiredOption("--id <id>").option("--json").action(async (value: { id: string }) => {
     const engine = await createReadOnlyComposition(compositionOptions());

@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import {
   SessionMaintenanceError,
   continuationPreviewRequestSchema,
+  resolutionContinuationRequestSchema,
   diffRequestSchema,
   planRequestSchema,
   scanRequestSchema,
@@ -13,6 +14,7 @@ import {
   type CreateContinuationRequest,
   type JsonValue,
   type PlanRequest,
+  type ResolutionContinuationRequest,
   type SessionQuery,
 } from "@linmu/dsh-session-contracts";
 
@@ -90,6 +92,16 @@ export async function routeRequest(
     if (request.method === "POST" && url.pathname === "/v1/continuations/preview") {
       const body = continuationPreviewRequestSchema.parse(await readJsonBody(request)) as unknown as ContinuationPreviewRequest;
       send(response, 200, { preview: await context.engine.previewContinuation(body) });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/continuations/resolutions/preview") {
+      const body = resolutionContinuationRequestSchema.parse(await readJsonBody(request)) as unknown as ResolutionContinuationRequest;
+      send(response, 200, { preview: await context.engine.previewResolutionContinuation(body) });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/continuations/resolutions") {
+      const body = resolutionContinuationRequestSchema.parse(await readJsonBody(request)) as unknown as ResolutionContinuationRequest;
+      send(response, 201, { continuation: await context.engine.createResolutionContinuation(body) });
       return;
     }
     if (request.method === "POST" && url.pathname === "/v1/continuations") {

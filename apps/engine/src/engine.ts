@@ -25,6 +25,7 @@ import {
   type ContinuationPreview,
   type ContinuationPreviewRequest,
   type CreateContinuationRequest,
+  type ResolutionContinuationRequest,
 } from "@linmu/dsh-session-contracts";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
@@ -155,6 +156,14 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
 
   createContinuation(request: CreateContinuationRequest): Promise<ContinuationJob> {
     return this.continuations.create(request);
+  }
+
+  previewResolutionContinuation(request: ResolutionContinuationRequest): Promise<ContinuationPreview> {
+    return this.continuations.previewResolution(request);
+  }
+
+  createResolutionContinuation(request: ResolutionContinuationRequest): Promise<ContinuationJob> {
+    return this.continuations.createResolution(request);
   }
 
   getContinuation(id: string): Promise<ContinuationJob | undefined> {

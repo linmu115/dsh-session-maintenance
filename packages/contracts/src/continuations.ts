@@ -128,6 +128,8 @@ export interface CodexContinuationPort {
 export interface ContinuationEngine {
   previewContinuation(request: ContinuationPreviewRequest): Promise<ContinuationPreview>;
   createContinuation(request: CreateContinuationRequest): Promise<ContinuationJob>;
+  previewResolutionContinuation(request: ResolutionContinuationRequest): Promise<ContinuationPreview>;
+  createResolutionContinuation(request: ResolutionContinuationRequest): Promise<ContinuationJob>;
   getContinuation(id: string): Promise<ContinuationJob | undefined>;
   recoverContinuation(id: string): Promise<ContinuationJob>;
 }

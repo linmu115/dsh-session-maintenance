@@ -20,6 +20,7 @@ import {
   type JobRef,
   type Page,
   type PlanRequest,
+  type ResolutionContinuationRequest,
   type SessionDiff,
   type SessionQuery,
   type SessionSummary,
@@ -85,6 +86,32 @@ export class MaintenanceClient {
   async createContinuation(input: CreateContinuationRequest, signal?: AbortSignal): Promise<ContinuationJob> {
     const response = await this.request(
       "/v1/continuations",
+      this.jsonPost(input),
+      continuationJobResponseSchema,
+      signal,
+    );
+    return response.continuation as unknown as ContinuationJob;
+  }
+
+  async previewResolutionContinuation(
+    input: ResolutionContinuationRequest,
+    signal?: AbortSignal,
+  ): Promise<ContinuationPreview> {
+    const response = await this.request(
+      "/v1/continuations/resolutions/preview",
+      this.jsonPost(input),
+      continuationPreviewResponseSchema,
+      signal,
+    );
+    return response.preview as unknown as ContinuationPreview;
+  }
+
+  async createResolutionContinuation(
+    input: ResolutionContinuationRequest,
+    signal?: AbortSignal,
+  ): Promise<ContinuationJob> {
+    const response = await this.request(
+      "/v1/continuations/resolutions",
       this.jsonPost(input),
       continuationJobResponseSchema,
       signal,

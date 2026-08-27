@@ -18,4 +18,6 @@ For a new continuation:
 
 Use `continuation_status` to inspect a known job. Use `logical_session_open` to obtain its stable local detail URL. A `manual-review` result means the Codex task ID was preserved but verification must be recovered from the maintenance CLI; never create a replacement task automatically.
 
+When two platform branches have diverged, use `resolution_preview` and then `resolution_create` only after the user supplies an explicit merge note. Keep left and right histories as separate parents; never reorder their messages into a fabricated timeline. The resulting Codex task must bind to the generated two-parent resolution version, while both original refs remain unchanged.
+
 DSH tool records in a handoff are provenance records, not Codex tool executions. Never describe them as having run in Codex.

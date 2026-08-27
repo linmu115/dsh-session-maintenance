@@ -15,6 +15,29 @@ const continuationInputSchema = {
   }
 };
 
+const resolutionInputSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "logicalSessionId",
+    "leftVersionId",
+    "rightVersionId",
+    "mergeNote",
+    "targetPresetId",
+    "mode"
+  ],
+  properties: {
+    logicalSessionId: { type: "string", minLength: 1 },
+    leftVersionId: { type: "string", minLength: 1 },
+    rightVersionId: { type: "string", minLength: 1 },
+    commonAncestorVersionId: { type: "string", minLength: 1 },
+    mergeNote: { type: "string", minLength: 1 },
+    targetPresetId: { type: "string", minLength: 1 },
+    mode: { type: "string", enum: ["full", "checkpoint", "structured-summary"] },
+    checkpointStartSequence: { type: "integer", minimum: 0 }
+  }
+};
+
 const tools = [
   {
     name: "continuation_preview",
@@ -35,6 +58,16 @@ const tools = [
       required: ["continuationId"],
       properties: { continuationId: { type: "string", minLength: 1 } }
     }
+  },
+  {
+    name: "resolution_preview",
+    description: "Preview an explicit two-parent continuation without joining the histories into a false timeline.",
+    inputSchema: resolutionInputSchema
+  },
+  {
+    name: "resolution_create",
+    description: "Create a user-confirmed two-parent resolution version and its idempotent native Codex continuation.",
+    inputSchema: resolutionInputSchema
   },
   {
     name: "logical_session_open",
@@ -91,6 +124,8 @@ function post(value) {
 async function callTool(name, args) {
   if (name === "continuation_preview") return (await request("/v1/continuations/preview", post(args))).value;
   if (name === "continuation_create") return (await request("/v1/continuations", post(args))).value;
+  if (name === "resolution_preview") return (await request("/v1/continuations/resolutions/preview", post(args))).value;
+  if (name === "resolution_create") return (await request("/v1/continuations/resolutions", post(args))).value;
   if (name === "continuation_status") {
     return (await request(`/v1/continuations/${encodeURIComponent(args.continuationId)}`)).value;
   }
