@@ -7,17 +7,19 @@ import type {
 import { normalizeSession, sha256Canonical, type RawSessionEvent } from "@linmu/dsh-session-domain";
 
 import { isDshObservationPayload } from "./reader.js";
-import type { DshSessionEvent } from "./zstd-codec.js";
+import { dshEventSequence, dshEventTime, type DshSessionEvent } from "./zstd-codec.js";
 
 function asJson(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
 function eventId(event: DshSessionEvent): string {
+  const sequence = dshEventSequence(event);
+  if ("seq0" in event) return `seq-${sequence}-${event.type}`;
   const candidate = event.data.id;
   return typeof candidate === "string" && candidate.length > 0
     ? candidate
-    : `seq-${event.seq}-${event.type}`;
+    : `seq-${sequence}-${event.type}`;
 }
 
 function contentText(event: DshSessionEvent): string {
@@ -110,7 +112,7 @@ export function normalizeDshObservation(observation: StableObservation): Normali
     });
   }
 
-  const latestTime = Math.max(payload.header.createdAt, ...payload.events.map((event) => event.time));
+  const latestTime = Math.max(payload.header.createdAt, ...payload.events.map(dshEventTime));
   const observedAt = new Date(latestTime < 1_000_000_000_000 ? latestTime * 1000 : latestTime).toISOString();
   return normalizeSession({
     key: observation.key,
