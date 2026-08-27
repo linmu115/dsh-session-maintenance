@@ -1,0 +1,14 @@
+{
+  "platformVersion": "0.146.0",
+  "protocol": "app-server-v2",
+  "requiredRequests": [
+    "initialize",
+    "thread/start",
+    "turn/start",
+    "thread/read"
+  ],
+  "requiredNotifications": [
+    "turn/completed"
+  ],
+  "historyMode": "paginated"
+}

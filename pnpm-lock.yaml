@@ -45,6 +45,12 @@ importers:
         specifier: 4.1.5
         version: 4.1.5
 
+  packages/adapter-codex-continuation:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/adapter-codex-read:
     dependencies:
       '@linmu/dsh-session-contracts':
