@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MaintenanceClient } from "../src/index.js";
+import { DashboardClient, MaintenanceClient } from "../src/index.js";
 
 describe("MaintenanceClient", () => {
   it("validates responses and redacts its token from errors", async () => {
@@ -15,5 +15,29 @@ describe("MaintenanceClient", () => {
     });
     await expect(client.listSessions()).rejects.not.toThrow(token);
     await expect(client.listSessions()).rejects.toThrow("[REDACTED]");
+  });
+
+  it("keeps the Engine capability out of the cookie-authenticated Dashboard client", async () => {
+    const calls: Array<{ readonly url: string; readonly init?: RequestInit }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input);
+      calls.push({ url, ...(init === undefined ? {} : { init }) });
+      if (url.endsWith("/v1/ui/session")) {
+        return new Response(JSON.stringify({
+          session: { csrfToken: "csrf-session-fixture", expiresAt: "2026-08-27T00:15:00.000Z" },
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        overview: { sessions: 0, conflicts: 0, unmapped: 0, unresolvedTransactions: 0, instances: [] },
+      }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    const client = await DashboardClient.connect({ origin: "http://127.0.0.1:43123", fetchImpl });
+    await client.overview();
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.init?.credentials).toBe("same-origin");
+    const headers = new Headers(calls[1]?.init?.headers);
+    expect(calls[1]?.init?.credentials).toBe("same-origin");
+    expect(headers.get("x-dsh-csrf")).toBe("csrf-session-fixture");
+    expect(headers.has("authorization")).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ import type { SessionMaintenanceEngine } from "../engine.js";
 import { JobRunner } from "../jobs/job-runner.js";
 import { JobStore } from "../jobs/job-store.js";
 import { routeRequest } from "./routes.js";
+import { UiSessionManager } from "./ui-session.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -30,6 +31,7 @@ export interface MaintenanceServer {
   readonly token: string;
   readonly jobStore: JobStore;
   readonly jobs: JobRunner;
+  readonly uiSessions: UiSessionManager;
   readonly close: () => Promise<void>;
 }
 
@@ -45,9 +47,10 @@ export async function startMaintenanceServer(input: {
   const token = randomBytes(32).toString("base64url");
   const jobStore = new JobStore(input.engine.repository.database);
   const jobs = new JobRunner(input.engine, jobStore);
+  const uiSessions = new UiSessionManager();
   let origin = "";
   const server: Server = createServer((request, response) => {
-    void routeRequest(request, response, { engine: input.engine, jobs, jobStore, token, origin });
+    void routeRequest(request, response, { engine: input.engine, jobs, jobStore, token, origin, uiSessions });
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -65,6 +68,7 @@ export async function startMaintenanceServer(input: {
     token,
     jobStore,
     jobs,
+    uiSessions,
     close: async () => new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error))),
   };
 }

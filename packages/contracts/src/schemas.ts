@@ -671,6 +671,10 @@ export const checkpointListResponseSchema = z.strictObject({ checkpoints: z.arra
 export const diagnosticsResponseSchema = z.strictObject({ diagnostics: z.array(adapterDiagnosticSchema) });
 export const settingsResponseSchema = z.strictObject({ settings: maintenanceSettingsSchema });
 export const overviewResponseSchema = z.strictObject({ overview: dashboardOverviewSchema });
+export const dashboardLaunchInfoSchema = z.strictObject({ url: z.string().url(), expiresAt: timestampSchema });
+export const dashboardUiSessionSchema = z.strictObject({ csrfToken: idSchema, expiresAt: timestampSchema });
+export const dashboardLaunchResponseSchema = z.strictObject({ launch: dashboardLaunchInfoSchema });
+export const dashboardUiSessionResponseSchema = z.strictObject({ session: dashboardUiSessionSchema });
 
 export const continuationModeSchema = z.enum(["full", "checkpoint", "structured-summary"]);
 export const continuationJobStatusSchema = z.enum([

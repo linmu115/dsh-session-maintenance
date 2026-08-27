@@ -16,6 +16,8 @@ import type {
   MaintenanceSettings,
   TransactionDetail,
   TransactionSummary,
+  DashboardLaunchInfo,
+  DashboardUiSession,
 } from "./operations.js";
 import type { JobRef } from "./jobs.js";
 import type { SyncPlan } from "./plans.js";
@@ -75,3 +77,5 @@ export interface CheckpointListApiResponse { readonly checkpoints: readonly Chec
 export interface DiagnosticsResponse { readonly diagnostics: readonly AdapterDiagnostic[] }
 export interface SettingsResponse { readonly settings: MaintenanceSettings }
 export interface OverviewResponse { readonly overview: DashboardOverview }
+export interface DashboardLaunchResponse { readonly launch: DashboardLaunchInfo }
+export interface DashboardUiSessionResponse { readonly session: DashboardUiSession }

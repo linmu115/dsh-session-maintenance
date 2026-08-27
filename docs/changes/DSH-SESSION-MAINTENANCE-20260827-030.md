@@ -6,7 +6,7 @@
 - Dashboard 已提供粘性顶部栏/导航、概览指标、实例兼容状态、分页会话摘要、刷新、加载、空数据和离线状态。
 - 首屏只并行请求 overview 与最多 25 个会话摘要；不会读取版本图、正文、diff 或事务详情。
 - Markdown 使用 React 节点渲染、跳过原始 HTML，并把链接协议限制为 HTTP(S)、页内锚点和站内绝对路径。
-- 前端只接受本次启动时注入的 loopback origin/token，读取后立即从全局对象删除；任何凭据、用户目录或 Maintenance runtime 都不进入源码常量和构建产物。
+- 受信 host 先签发一次性 launch code，浏览器兑换为短期 HttpOnly UI session；页面只使用 cookie-authenticated client 与会话内 CSRF，永不读取 Engine capability 或 DSH gateway token。
 - `--dsm-*` 设计变量、浅色 surface、紧凑按钮、状态色、字体与窄窗口规则均为本项目独立实现。
 
 ## 第三方边界

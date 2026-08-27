@@ -24,6 +24,6 @@ describe("Dashboard summary baseline", () => {
   it("renders an actionable offline state without a runtime credential", () => {
     const html = renderToStaticMarkup(DashboardOffline());
     expect(html).toContain("缺少本次启动凭据");
-    expect(html).toContain("不会编译进前端包");
+    expect(html).toContain("不会读取 Engine capability");
   });
 });

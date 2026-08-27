@@ -7,6 +7,8 @@ import {
   continuationJobResponseSchema,
   continuationPreviewResponseSchema,
   diagnosticsResponseSchema,
+  dashboardLaunchResponseSchema,
+  dashboardUiSessionResponseSchema,
   issuedConfirmationSchema,
   jobAcceptedResponseSchema,
   jobRefSchema,
@@ -34,6 +36,7 @@ import {
   type JobRef,
   type IssuedConfirmation,
   type DashboardOverview,
+  type DashboardLaunchInfo,
   type MaintenanceSettings,
   type MaintenanceSettingsPatch,
   type Page,
@@ -59,18 +62,56 @@ export interface MaintenanceClientOptions {
   readonly fetchImpl?: typeof fetch;
 }
 
+export interface DashboardClientOptions {
+  readonly origin: string;
+  readonly fetchImpl?: typeof fetch;
+}
+
+interface ClientTransport {
+  readonly secret: string;
+  decorate(init: RequestInit): RequestInit;
+}
+
+interface ApiClientOptions {
+  readonly origin: string;
+  readonly transport: ClientTransport;
+  readonly fetchImpl?: typeof fetch;
+}
+
+function bearerTransport(token: string): ClientTransport {
+  return {
+    secret: token,
+    decorate: (init) => {
+      const headers = new Headers(init.headers);
+      headers.set("authorization", `Bearer ${token}`);
+      return { ...init, headers };
+    },
+  };
+}
+
+function dashboardTransport(csrfToken: string): ClientTransport {
+  return {
+    secret: csrfToken,
+    decorate: (init) => {
+      const headers = new Headers(init.headers);
+      headers.set("x-dsh-csrf", csrfToken);
+      return { ...init, headers, credentials: "same-origin" };
+    },
+  };
+}
+
 const diffResponseSchema = z.strictObject({ diff: sessionDiffSchema });
 const jobResponseSchema = z.strictObject({ job: jobRefSchema, result: z.unknown().optional() });
 const confirmationResponseSchema = z.strictObject({ confirmation: issuedConfirmationSchema });
 
-export class MaintenanceClient {
+class ApiClient {
   private readonly origin: string;
-  private readonly token: string;
+  private readonly transport: ClientTransport;
   private readonly fetchImpl: typeof fetch;
 
-  constructor(options: MaintenanceClientOptions) {
+  constructor(options: ApiClientOptions) {
     this.origin = options.origin.replace(/\/$/u, "");
-    this.token = options.token;
+    this.transport = options.transport;
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -299,15 +340,14 @@ export class MaintenanceClient {
 
   async *subscribe(id: string, options: { readonly after?: number; readonly signal?: AbortSignal } = {}): AsyncIterable<JobEvent> {
     const after = options.after === undefined ? "" : `?after=${options.after}`;
-    const response = await this.fetchImpl(`${this.origin}/v1/jobs/${encodeURIComponent(id)}/events${after}`, {
-      headers: { authorization: `Bearer ${this.token}` },
+    const response = await this.fetchImpl(`${this.origin}/v1/jobs/${encodeURIComponent(id)}/events${after}`, this.transport.decorate({
       ...(options.signal === undefined ? {} : { signal: options.signal }),
-    });
+    }));
     if (!response.ok || response.body === null) await this.throwResponse(response);
     for await (const event of decodeJobEventStream(response.body!)) yield event;
   }
 
-  private jsonPost(value: unknown): RequestInit {
+  protected jsonPost(value: unknown): RequestInit {
     return { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
   }
 
@@ -315,14 +355,11 @@ export class MaintenanceClient {
     return { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
   }
 
-  private async request<T>(path: string, init: RequestInit, schema: ZodType<T>, signal?: AbortSignal): Promise<T> {
-    const headers = new Headers(init.headers);
-    headers.set("authorization", `Bearer ${this.token}`);
-    const response = await this.fetchImpl(`${this.origin}${path}`, {
+  protected async request<T>(path: string, init: RequestInit, schema: ZodType<T>, signal?: AbortSignal): Promise<T> {
+    const response = await this.fetchImpl(`${this.origin}${path}`, this.transport.decorate({
       ...init,
-      headers,
       ...(signal === undefined ? {} : { signal }),
-    });
+    }));
     if (!response.ok) await this.throwResponse(response);
     return schema.parse(await response.json());
   }
@@ -335,6 +372,50 @@ export class MaintenanceClient {
     } catch {
       // Keep the bounded status-only message; never include response bodies or the token.
     }
-    throw new Error(message.replaceAll(this.token, "[REDACTED]"));
+    throw new Error(message.replaceAll(this.transport.secret, "[REDACTED]"));
+  }
+}
+
+export class MaintenanceClient extends ApiClient {
+  constructor(options: MaintenanceClientOptions) {
+    super({
+      origin: options.origin,
+      transport: bearerTransport(options.token),
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    });
+  }
+
+  async createDashboardLaunchCode(signal?: AbortSignal): Promise<DashboardLaunchInfo> {
+    return (await this.request(
+      "/v1/ui/launch-code",
+      this.jsonPost({}),
+      dashboardLaunchResponseSchema,
+      signal,
+    )).launch as DashboardLaunchInfo;
+  }
+}
+
+export class DashboardClient extends ApiClient {
+  private constructor(options: DashboardClientOptions & { readonly csrfToken: string }) {
+    super({
+      origin: options.origin,
+      transport: dashboardTransport(options.csrfToken),
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    });
+  }
+
+  static async connect(options: DashboardClientOptions, signal?: AbortSignal): Promise<DashboardClient> {
+    const fetchImpl = options.fetchImpl ?? fetch;
+    const response = await fetchImpl(`${options.origin.replace(/\/$/u, "")}/v1/ui/session`, {
+      credentials: "same-origin",
+      ...(signal === undefined ? {} : { signal }),
+    });
+    if (!response.ok) throw new Error(`Dashboard session bootstrap failed with HTTP ${response.status}`);
+    const parsed = dashboardUiSessionResponseSchema.parse(await response.json());
+    return new DashboardClient({
+      origin: options.origin,
+      csrfToken: parsed.session.csrfToken,
+      ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
+    });
   }
 }

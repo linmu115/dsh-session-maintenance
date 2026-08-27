@@ -33,6 +33,7 @@ import type { JobStore } from "../jobs/job-store.js";
 import { allowedOrigin, authorized } from "./auth.js";
 import { HttpBodyError, readJsonBody } from "./body.js";
 import { streamJobEvents } from "./sse.js";
+import { hasUiSessionCookie, type UiSessionManager } from "./ui-session.js";
 
 export interface RouteContext {
   readonly engine: SessionMaintenanceEngine;
@@ -40,6 +41,7 @@ export interface RouteContext {
   readonly jobStore: JobStore;
   readonly token: string;
   readonly origin: string;
+  readonly uiSessions: UiSessionManager;
 }
 
 function send(response: ServerResponse, status: number, value: unknown): void {
@@ -69,17 +71,68 @@ export async function routeRequest(
 ): Promise<void> {
   response.setHeader("cache-control", "no-store");
   response.setHeader("x-content-type-options", "nosniff");
+  response.setHeader("referrer-policy", "no-referrer");
   response.setHeader("content-security-policy", "default-src 'none'; frame-ancestors 'none'");
   const url = new URL(request.url ?? "/", context.origin);
   if (request.method === "GET" && url.pathname === "/v1/health") {
     send(response, 200, { status: await context.engine.status() });
     return;
   }
-  if (!authorized(request, context.token)) {
-    send(response, 401, errorBody("UNAUTHORIZED", "Bearer authentication required"));
+  if (request.method === "GET" && url.pathname === "/ui/claim") {
+    const keys = [...url.searchParams.keys()];
+    const code = url.searchParams.get("code");
+    const claimed = keys.length === 1 && keys[0] === "code" && code !== null
+      ? context.uiSessions.claim(code)
+      : undefined;
+    if (claimed === undefined) {
+      send(response, 410, errorBody("LAUNCH_CODE_INVALID", "Dashboard launch code is invalid or expired"));
+      return;
+    }
+    response.statusCode = 303;
+    response.setHeader("set-cookie", claimed.cookie);
+    response.setHeader("location", "/dashboard/");
+    response.end();
     return;
   }
-  if (!allowedOrigin(request, context.origin)) {
+  const bearer = authorized(request, context.token);
+  if (request.method === "POST" && url.pathname === "/v1/ui/launch-code") {
+    if (!bearer) {
+      send(response, 401, errorBody("UNAUTHORIZED", "Trusted Engine authentication required"));
+      return;
+    }
+    if (!allowedOrigin(request, context.origin)) {
+      send(response, 403, errorBody("ORIGIN_FORBIDDEN", "Origin is not the loopback server origin"));
+      return;
+    }
+    try {
+      emptyRequestSchema.parse(await readJsonBody(request));
+      const launch = context.uiSessions.issue(context.origin);
+      send(response, 201, { launch: { url: launch.url, expiresAt: launch.expiresAt } });
+    } catch (error) {
+      if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
+      else if (error instanceof ZodError) send(response, 400, errorBody("INVALID_REQUEST", "Request does not match the API schema"));
+      else send(response, 500, errorBody("INTERNAL_ERROR", "Unable to issue Dashboard launch code"));
+    }
+    return;
+  }
+  if (request.method === "GET" && url.pathname === "/v1/ui/session") {
+    const session = context.uiSessions.session(request, context.origin);
+    if (session === undefined) {
+      send(response, 403, errorBody("UI_SESSION_FORBIDDEN", "Dashboard session or exact Origin is missing"));
+      return;
+    }
+    send(response, 200, { session: { csrfToken: session.csrfToken, expiresAt: new Date(session.expiresAt).toISOString() } });
+    return;
+  }
+  const uiAuthorized = !bearer && context.uiSessions.authorized(request, context.origin);
+  if (!bearer && !uiAuthorized) {
+    send(response, hasUiSessionCookie(request) ? 403 : 401, errorBody(
+      hasUiSessionCookie(request) ? "UI_SESSION_FORBIDDEN" : "UNAUTHORIZED",
+      hasUiSessionCookie(request) ? "Dashboard session, exact Origin and CSRF are required" : "Authentication required",
+    ));
+    return;
+  }
+  if (bearer && !allowedOrigin(request, context.origin)) {
     send(response, 403, errorBody("ORIGIN_FORBIDDEN", "Origin is not the loopback server origin"));
     return;
   }

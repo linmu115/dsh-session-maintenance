@@ -140,7 +140,7 @@ export function DashboardOffline() {
     <Surface><EmptyState
       kind="offline"
       title="缺少本次启动凭据"
-      description="请从 Maintenance 启动入口打开看板。凭据只在运行时传入，不会编译进前端包。"
+      description="请从 Maintenance 启动入口打开看板。浏览器只使用短期 HttpOnly 会话，不会读取 Engine capability。"
     /></Surface>
   </DashboardShell>;
 }

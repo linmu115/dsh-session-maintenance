@@ -82,3 +82,13 @@ export interface DashboardOverview {
   readonly unresolvedTransactions: number;
   readonly instances: readonly InstanceStatus[];
 }
+
+export interface DashboardLaunchInfo {
+  readonly url: string;
+  readonly expiresAt: string;
+}
+
+export interface DashboardUiSession {
+  readonly csrfToken: string;
+  readonly expiresAt: string;
+}
