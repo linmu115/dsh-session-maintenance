@@ -9,6 +9,7 @@
 - 新增两层隔离验收：合成 fixture 负责快速契约/卸载/状态保留，真实验收通过官方命令把 tgz 安装到临时 `DSH_HOME`，启动本机官方 DSH `0.1.1-rc.2` 最小 Web 栈。
 - clean-checkout 纠错：Phase 2 集成验收会在专用临时目录自行打包并清理，不再依赖工作树中预先存在的 `.artifacts`；clean gate 也改为真正执行双构建可复现检查。发布 tar 对文本行尾规范化，避免 LF/CRLF checkout 产生不同 tgz。
 - 打包器的内部构建固定为 production，避免在 Vitest 的 `NODE_ENV=test` 中生成带源码绝对路径的 Dashboard；官方隔离验收分别等待 Web 首页和插件 host proxy 就绪，避免把异步插件注册误判为加载失败。
+- Dashboard 在 Vite 解析 `index.html` 前统一 LF，修复 Windows `core.autocrlf` clean clone 多生成一个空行、使 Engine tgz 跨 checkout 漂移的问题；原工作树与全新 clone 的 Engine/插件 SHA-256 需逐字节相同。
 - 真实验收确认 client graph、client bundle route、host proxy、Core materialization 和 loader diagnostics；进程、profile 和状态都在已标记临时目录，正式 DSH home 未被写入。
 - README 与安装、升级、卸载、恢复文档已更新；正式 `web` profile 只生成替换预览，没有执行安装或卸载。
 
