@@ -23,6 +23,7 @@ import {
 import {
   bindingIdFor,
   canonicalJson,
+  PlanningService,
   validateExecutableDshPlan,
 } from "@linmu/dsh-session-domain";
 import {
@@ -140,11 +141,60 @@ export class WriteService {
     return this.checkpoints.create(request);
   }
 
-  createCheckpointRestorePlan(_request: CheckpointRestoreRequest): Promise<SyncPlan> {
-    throw new SessionMaintenanceError(
-      "CAPABILITY_NOT_AVAILABLE",
-      "Checkpoint branch creation is outside the P16 fast-forward gate",
-    );
+  async createCheckpointRestorePlan(request: CheckpointRestoreRequest): Promise<SyncPlan> {
+    const checkpoint = await this.repository.getCheckpoint(request.checkpointId);
+    if (checkpoint === undefined) {
+      throw new SessionMaintenanceError("OBJECT_CORRUPT", `Checkpoint is missing: ${request.checkpointId}`);
+    }
+    const target = this.instances.get(request.targetInstanceId);
+    if (target === undefined || target.platform !== "dsh") {
+      throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `Registered DSH target is missing: ${request.targetInstanceId}`);
+    }
+    const refs = Object.entries(checkpoint.refs);
+    const sessionRefs = refs.filter(([name]) => name.startsWith("session:"));
+    const selected = sessionRefs.length === 1 ? sessionRefs[0] : refs.length === 1 ? refs[0] : undefined;
+    if (selected === undefined) {
+      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Checkpoint restore preview requires exactly one session ref");
+    }
+    const version = await this.repository.getVersion(selected[1]);
+    if (version === undefined) {
+      throw new SessionMaintenanceError("OBJECT_CORRUPT", `Checkpoint version is missing: ${selected[1]}`);
+    }
+    if (selected[0].startsWith("session:") && selected[0].slice("session:".length) !== version.logicalSessionId) {
+      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Checkpoint session ref does not match its version");
+    }
+    const binding = await this.repository.findBinding(version.source);
+    if (binding === undefined || binding.logicalSessionId !== version.logicalSessionId) {
+      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Checkpoint source binding is unavailable");
+    }
+    const source = await this.loadVersionBody(version.id);
+    const head = await this.repository.getObservedHead(binding.id);
+    const writeProbe = await this.probe(target);
+    if (writeProbe.status !== "compatible") {
+      throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `DSH target is not writable: ${target.id}`);
+    }
+    return new PlanningService(this.repository).create({
+      createdAt: request.createdAt,
+      logicalSessionId: version.logicalSessionId,
+      base: { events: source.events, metadata: { title: source.title, archived: source.archived } },
+      source: {
+        snapshot: {
+          bindingId: binding.id,
+          key: binding.key,
+          versionId: version.id,
+          fingerprints: head?.versionId === version.id ? [head.fingerprint] : [],
+        },
+        events: source.events,
+        metadata: { title: source.title, archived: source.archived },
+      },
+      target: {
+        kind: "missing",
+        key: { platform: "dsh", instanceId: target.id, sessionId: `checkpoint-${checkpoint.id}` },
+        targetInstanceId: target.id,
+        previouslyObserved: false,
+      },
+      adapterContracts: [binding.adapterContract, writeProbe.contract],
+    });
   }
 
   probe(instance: RegisteredInstance): Promise<WriteProbe> {

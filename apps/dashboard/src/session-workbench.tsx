@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type {
   Checkpoint,
+  CheckpointRestoreRequest,
   CreateCheckpointRequest,
   JobRef,
   PlanRequest,
@@ -40,6 +41,7 @@ export interface WorkbenchApi extends DashboardSummaryApi {
   createCheckpoint(input: CreateCheckpointRequest, signal?: AbortSignal): Promise<Checkpoint>;
   listPlans(query?: PlanQuery, signal?: AbortSignal): Promise<Page<PlanSummary>>;
   getPlan(id: string, signal?: AbortSignal): Promise<SyncPlan>;
+  createCheckpointRestorePlan(input: CheckpointRestoreRequest, signal?: AbortSignal): Promise<SyncPlan>;
 }
 
 export interface WorkbenchInitial {

@@ -66,3 +66,4 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - P18 Dashboard/session-ui：2 文件、3 个聚焦测试通过；两个新包 typecheck、Vite production build 与凭据/路径/未许可依赖 bundle 扫描通过。
 - P18 浏览器认证纠错：一次性 launch code → HttpOnly SameSite=Strict UI cookie → per-session CSRF 已闭环；Dashboard bundle 不含 bearer/launch-code 代码路径。
 - P19 GitGraph/workbench/plan list：5 文件、8 个聚焦测试和 6 个包 typecheck 通过；production build 将正文/Markdown/计划目录按需分块。
+- P19 纠错：1000 节点版本树改为真实 viewport 虚拟化并补齐键盘导航；Checkpoint 恢复独立生成“新 DSH 分支”计划预览且相同选择不重复提交。

@@ -206,6 +206,28 @@ describe("verified DSH fast-forward", () => {
     const reader = new FixtureDshReader(observedTarget, () => JSON.stringify(host.domainDigests(targetKey.sessionId)));
     const service = new WriteService({ repository, objectStore: store, executor, instances: new Map([[instance.id, instance]]), dshReader: reader });
 
+    const checkpoint = await service.createCheckpoint({
+      name: "Known Codex history",
+      description: "Create a new DSH branch; do not overwrite the current one.",
+      refs: { [`session:${logicalSessionId}`]: sourceManifest.id },
+      backupTransactionIds: [],
+      createdBy: "fixture",
+      createdAt: "2026-08-27T00:00:02.000Z",
+    });
+    const restorePreview = await service.createCheckpointRestorePlan({
+      checkpointId: checkpoint.id,
+      targetInstanceId: instance.id,
+      createdAt: "2026-08-27T00:00:02.500Z",
+    });
+    expect(restorePreview).toMatchObject({
+      logicalSessionId,
+      source: { versionId: sourceManifest.id },
+      operations: [{ type: "create-target-session", targetInstanceId: instance.id }],
+      risk: "safe",
+    });
+    expect(restorePreview.target).toBeUndefined();
+    expect((await repository.getPlan(restorePreview.id))?.hash).toBe(restorePreview.hash);
+
     const first = await service.applyPlan({ planId: plan.id });
     const writesAfterFirst = [...host.writes];
     expect(first).toEqual({ id: "tx-p16", status: "completed" });
