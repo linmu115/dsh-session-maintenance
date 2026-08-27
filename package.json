@@ -14,6 +14,7 @@
     "test": "vitest run",
     "test:phase1": "vitest run tests/integration/phase-1-acceptance.test.ts tests/integration/phase-1-large-catalog.test.ts",
     "test:phase3": "vitest run packages/handoff-context/test/handoff.test.ts packages/adapter-codex-continuation/test/contract.test.ts apps/engine/test/continuation-entries.test.ts tests/integration/phase-3-continuation.test.ts",
+    "accept:phase3-live": "node scripts/accept-phase3-live.mjs",
     "test:phase2": "vitest run --maxWorkers=1 --testTimeout=15000 packages/transaction-engine/test packages/dsh-core-extension/test packages/dsh-host-gateway/test packages/adapter-dsh-write/test tests/integration/dsh-safe-fast-forward.test.ts apps/engine/test/phase2-api.test.ts apps/engine/test/job-runner.test.ts apps/engine/test/ui-session.test.ts apps/engine/test/dashboard-static.test.ts apps/engine/test/writable-composition.test.ts apps/dashboard/test packages/session-ui/test plugins/dsh-session-maintenance/test tests/contract/phase-2-boundaries.test.ts tests/integration/phase-2-acceptance.test.ts tests/e2e/phase-2-dashboard.test.ts",
     "test:phase2-ui": "vitest run --maxWorkers=1 --testTimeout=15000 apps/dashboard/test packages/session-ui/test plugins/dsh-session-maintenance/test",
     "bootstrap:phase2": "node scripts/bootstrap-phase2.mjs",
