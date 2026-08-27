@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
-import { writeFile } from "node:fs/promises";
+import { rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -16,15 +16,22 @@ import { UiSessionManager } from "./ui-session.js";
 
 const execFileAsync = promisify(execFile);
 
-export function windowsAclArgv(path: string, account: string): readonly string[] {
-  return [path, "/inheritance:r", "/grant:r", `${account}:(F)`];
+export function windowsIdentitySid(output: string): string {
+  const sid = /\bS-\d-\d+(?:-\d+)+\b/u.exec(output)?.[0];
+  if (sid === undefined) throw new Error("Unable to resolve the current Windows SID");
+  return sid;
+}
+
+export function windowsAclArgv(path: string, sid: string): readonly string[] {
+  if (!/^S-\d-\d+(?:-\d+)+$/u.test(sid)) throw new TypeError("Invalid Windows SID");
+  return [path, "/inheritance:r", "/grant:r", `*${sid}:(F)`];
 }
 
 async function secureConnectionFile(path: string): Promise<void> {
   if (process.platform !== "win32") return;
-  const identity = await execFileAsync("whoami.exe", [], { shell: false, windowsHide: true });
-  const account = identity.stdout.trim();
-  await execFileAsync("icacls.exe", [...windowsAclArgv(path, account)], { shell: false, windowsHide: true });
+  const identity = await execFileAsync("whoami.exe", ["/user", "/fo", "csv", "/nh"], { shell: false, windowsHide: true });
+  const sid = windowsIdentitySid(identity.stdout);
+  await execFileAsync("icacls.exe", [...windowsAclArgv(path, sid)], { shell: false, windowsHide: true });
 }
 
 export interface MaintenanceServer {
@@ -68,8 +75,14 @@ export async function startMaintenanceServer(input: {
   if (address === null || typeof address === "string") throw new Error("Loopback server did not expose a TCP address");
   origin = `http://${host}:${address.port}`;
   const connectionPath = join(input.stateRoot, "connection.json");
-  await writeFile(connectionPath, `${JSON.stringify({ schemaVersion: 1, host, port: address.port, token })}\n`, { mode: 0o600 });
-  if (input.skipAcl !== true) await secureConnectionFile(connectionPath);
+  try {
+    await writeFile(connectionPath, `${JSON.stringify({ schemaVersion: 1, host, port: address.port, token })}\n`, { mode: 0o600 });
+    if (input.skipAcl !== true) await secureConnectionFile(connectionPath);
+  } catch (error) {
+    await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    await rm(connectionPath, { force: true });
+    throw error;
+  }
   jobs.start();
   return {
     origin,
