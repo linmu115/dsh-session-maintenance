@@ -96,7 +96,7 @@ export async function createEngineFixture(name: string, input: {
   return {
     ...fixture,
     engine,
-    startServer: async (input: { readonly host?: string; readonly port?: number } = {}) => {
+    startServer: async (input: { readonly host?: string; readonly port?: number; readonly dashboardRoot?: string } = {}) => {
       const server = await startMaintenanceServer({ engine, stateRoot: fixture.stateRoot, ...input, skipAcl: true });
       servers.push(server);
       return server;

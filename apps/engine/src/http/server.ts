@@ -11,6 +11,7 @@ import type { SessionMaintenanceEngine } from "../engine.js";
 import { JobRunner } from "../jobs/job-runner.js";
 import { JobStore } from "../jobs/job-store.js";
 import { routeRequest } from "./routes.js";
+import { serveDashboardAsset } from "./dashboard.js";
 import { UiSessionManager } from "./ui-session.js";
 
 const execFileAsync = promisify(execFile);
@@ -41,6 +42,7 @@ export async function startMaintenanceServer(input: {
   readonly host?: string;
   readonly port?: number;
   readonly skipAcl?: boolean;
+  readonly dashboardRoot?: string;
 }): Promise<MaintenanceServer> {
   const host = input.host ?? "127.0.0.1";
   if (host !== "127.0.0.1") throw new SessionMaintenanceError("LOOPBACK_ONLY", `Refusing non-loopback host: ${host}`);
@@ -50,7 +52,13 @@ export async function startMaintenanceServer(input: {
   const uiSessions = new UiSessionManager();
   let origin = "";
   const server: Server = createServer((request, response) => {
-    void routeRequest(request, response, { engine: input.engine, jobs, jobStore, token, origin, uiSessions });
+    void (async () => {
+      if (input.dashboardRoot !== undefined && await serveDashboardAsset(request, response, input.dashboardRoot)) return;
+      await routeRequest(request, response, { engine: input.engine, jobs, jobStore, token, origin, uiSessions });
+    })().catch(() => {
+      if (!response.headersSent) response.writeHead(500, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      if (!response.writableEnded) response.end(JSON.stringify({ error: { code: "INTERNAL_ERROR" } }));
+    });
   });
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

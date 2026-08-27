@@ -316,15 +316,22 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     .option("--host <host>", "loopback host", "127.0.0.1")
     .option("--port <port>", "TCP port", "0")
     .option("--dsh-gateway <instance=origin>", "trusted rc.2 DSH Core endpoint; repeatable", collect, [])
+    .option("--dashboard-root <path>", "trusted built Dashboard directory")
     .option("--json")
-    .action(async (value: { host: string; port: string; dshGateway: readonly string[] }) => {
+    .action(async (value: { host: string; port: string; dshGateway: readonly string[]; dashboardRoot?: string }) => {
       const port = Number.parseInt(value.port, 10);
       if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) throw new TypeError(`Invalid port: ${value.port}`);
       const targets = gatewayTargets(value.dshGateway);
       const engine = targets.length === 0
         ? await createReadOnlyComposition(compositionOptions())
         : await createDshWritableComposition({ ...compositionOptions(), dshGatewayTargets: targets });
-      const server = await startMaintenanceServer({ engine, stateRoot: compositionOptions().stateRoot, host: value.host, port });
+      const server = await startMaintenanceServer({
+        engine,
+        stateRoot: compositionOptions().stateRoot,
+        host: value.host,
+        port,
+        ...(value.dashboardRoot === undefined ? {} : { dashboardRoot: resolve(value.dashboardRoot) }),
+      });
       output(stdout, { origin: server.origin, connectionFile: "connection.json" });
       await new Promise<void>((resolveSignal) => {
         process.once("SIGINT", resolveSignal);

@@ -99,19 +99,19 @@ Write `...021.md`, update progress, and commit `feat: add DSH session maintenanc
 **Interfaces:**
 - Produces: repeatable Engine/Dashboard/plugin artifacts, installer inputs, clean-clone CI entry, formal acceptance record.
 
-- [ ] **Step 1: Write the failing clean-clone and boundary tests**
+- [x] **Step 1: Write the failing clean-clone and boundary tests**
 
 From a clean temporary clone, run pinned bootstrap, build, unit/integration/UI tests and packaging twice. Assert second bootstrap leaves lockfile unchanged and artifacts are reproducible except explicitly documented timestamps.
 
 Scan production dependency graph and built artifacts for `dsh-codex-session-sync`, `/codex-sync`, old broker, EAC, Maintenance runtime, local `file:D:/...`, credentials and account-specific absolute paths; expected: no match. UI vendor files must match recorded source/SHA/license decision.
 
-- [ ] **Step 2: Implement package and portable installer inputs**
+- [x] **Step 2: Implement package and portable installer inputs**
 
 Produce separate versioned artifacts for Engine+Dashboard and DSH plugin, plus a manifest containing version, Git commit, supported DSH contract, SHA-256 and dependency list. Installation registers Engine state root/instances through trusted CLI and installs the plugin into a caller-selected official profile; it never assumes `web-desktop` or EAC.
 
 Document prerequisites, install, first scan, daily use, update, rollback and uninstall. Do not delete old plugin data automatically.
 
-- [ ] **Step 3: Run an isolated profile acceptance**
+- [x] **Step 3: Run an isolated profile acceptance**
 
 Create a marked temporary DSH `0.1.1-rc.2` profile, install the packaged plugin, start the minimal official DSH stack, and verify:
 
@@ -123,11 +123,11 @@ Create a marked temporary DSH `0.1.1-rc.2` profile, install the packaged plugin,
 - injected verification failure restores;
 - uninstall removes plugin registration but preserves Engine repository and platform sessions.
 
-- [ ] **Step 4: Run final automated phase-two gates**
+- [x] **Step 4: Run final automated phase-two gates**
 
 Add scripts `test:phase2`, `test:phase2-ui`, `package:phase2`, `verify:phase2-clean`. Run Node `22.19.0` and `24.x` clean bootstrap where available, phase-one regressions, all phase-two tests, portability scan and `git diff --check`.
 
-- [ ] **Step 5: Stop for formal-profile approval**
+- [x] **Step 5: Stop for formal-profile approval**
 
 Generate a preview containing exact official profile ID, current/new plugin package versions, package/lock/bundle changes, Engine instance mapping, backup/rollback locations and the old `dsh-codex-session-sync` entries proposed for removal.
 
@@ -141,7 +141,7 @@ Only after the new baseline passes, uninstall `dsh-codex-session-sync` from pack
 
 Failure restores the exact pre-change profile files/package graph and verifies official DSH starts again. It does not leave both sync plugins enabled.
 
-- [ ] **Step 7: Record acceptance and commit P22**
+- [x] **Step 7: Record acceptance and commit P22**
 
 Write `phase-2-acceptance.md` with commands, versions, hashes, test counts, formal transaction ID and any disabled capabilities. Write `...022.md`, update progress, and commit `feat: package and validate phase two`.
 

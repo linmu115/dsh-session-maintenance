@@ -4,6 +4,7 @@ export * from "./config.js";
 export * from "./dsh-gateway-connection.js";
 export * from "./engine.js";
 export * from "./http/server.js";
+export * from "./http/dashboard.js";
 export * from "./jobs/job-runner.js";
 export * from "./jobs/job-store.js";
 export * from "./write-service.js";

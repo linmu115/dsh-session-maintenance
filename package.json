@@ -14,12 +14,22 @@
     "test": "vitest run",
     "test:phase1": "vitest run tests/integration/phase-1-acceptance.test.ts tests/integration/phase-1-large-catalog.test.ts",
     "test:phase3": "vitest run packages/handoff-context/test/handoff.test.ts packages/adapter-codex-continuation/test/contract.test.ts apps/engine/test/continuation-entries.test.ts tests/integration/phase-3-continuation.test.ts",
+    "test:phase2": "vitest run --maxWorkers=1 --testTimeout=15000 packages/transaction-engine/test packages/dsh-core-extension/test packages/dsh-host-gateway/test packages/adapter-dsh-write/test tests/integration/dsh-safe-fast-forward.test.ts apps/engine/test/phase2-api.test.ts apps/engine/test/job-runner.test.ts apps/engine/test/ui-session.test.ts apps/engine/test/dashboard-static.test.ts apps/engine/test/writable-composition.test.ts apps/dashboard/test packages/session-ui/test plugins/dsh-session-maintenance/test tests/contract/phase-2-boundaries.test.ts tests/integration/phase-2-acceptance.test.ts tests/e2e/phase-2-dashboard.test.ts",
+    "test:phase2-ui": "vitest run --maxWorkers=1 --testTimeout=15000 apps/dashboard/test packages/session-ui/test plugins/dsh-session-maintenance/test",
+    "bootstrap:phase2": "node scripts/bootstrap-phase2.mjs",
+    "package:phase2": "node scripts/package-phase2.mjs",
+    "verify:phase2-package": "node scripts/verify-phase2-package.mjs",
+    "assert:phase2-portable": "node scripts/assert-phase2-portable.mjs",
+    "accept:phase2-isolated": "node scripts/accept-phase2-isolated.mjs",
+    "accept:phase2-official": "node scripts/accept-phase2-official-profile.mjs",
+    "verify:phase2-clean": "node scripts/verify-phase2-clean.mjs",
     "assert:portable": "node scripts/assert-portable.mjs",
     "check": "pnpm typecheck && pnpm build && pnpm test",
     "verify:clean": "pnpm bootstrap && pnpm check"
   },
   "devDependencies": {
     "@types/node": "24.3.0",
+    "esbuild": "0.25.12",
     "typescript": "5.9.2",
     "vitest": "3.2.4"
   }

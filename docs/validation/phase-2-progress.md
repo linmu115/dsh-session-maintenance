@@ -7,7 +7,10 @@
 - P16 Codex → DSH 安全快进与分支保留：路线 A 的严格门禁、验证后原子 ref 推进、幂等 apply 与分叉零写入已完成。
 - P17 类型化 operation API 与持久作业：完成。
 - P18 DSH 风格 Dashboard 基线：完成。
-- P19 会话 GitGraph、三方差异、计划预览和 Checkpoint：完成；P20 恢复/诊断/设置待施工。
+- P19 会话 GitGraph、三方差异、计划预览和 Checkpoint：完成。
+- P20 恢复、适配器诊断与 ID-only 设置：完成。
+- P21 官方 DSH `0.1.1-rc.2` 入口插件和真实 Core gateway：完成。
+- P22 可复现打包、便携性门禁、合成快测和真实官方 runtime 隔离 profile 验收：完成。正式 `web` profile 替换预览已生成，实际替换仍等待用户明确批准。
 
 ## P14 已验证能力
 
@@ -68,3 +71,6 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - P19 GitGraph/workbench/plan list：5 文件、8 个聚焦测试和 6 个包 typecheck 通过；production build 将正文/Markdown/计划目录按需分块。
 - P19 纠错：1000 节点版本树改为真实 viewport 虚拟化并补齐键盘导航；Checkpoint 恢复独立生成“新 DSH 分支”计划预览且相同选择不重复提交。
 - P20 恢复/诊断/设置：一次性作用域确认、中断 recovery 作业、服务端恢复决策、适配器契约诊断和 ID-only 设置已完成；全工作区串行 50 文件 / 111 tests 通过。
+- P21 官方入口：Core HMAC scope、nonce 重放拒绝、service/materialization drift、Engine capability 轮换和 unload 清理均通过；全工作区串行 58 文件 / 127 tests 通过。
+- P22 打包：Engine+Dashboard 与插件 tgz 均可重复构建；插件 client 产物使用官方 `window.__ModuleLoader__.load` factory 协议，不是普通 ESM。
+- P22 真实隔离验收：官方安装命令把 tgz 安装到带标记的临时 `DSH_HOME`，本机官方 rc.2 最小 `base + web-app + plugin` 栈成功启动；client graph、bundle route、host proxy、Core materialization 与 loader diagnostics 全部通过，正式 home 未被修改。
