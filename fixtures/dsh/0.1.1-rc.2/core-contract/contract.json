@@ -1,0 +1,33 @@
+{
+  "platformVersion": "0.1.1-rc.2",
+  "sessionFormatVersion": 0,
+  "workspaceDomainVersion": 2,
+  "projectionDomainVersion": 3,
+  "querySchemaVersion": 8,
+  "packages": {
+    "@deepseek-ai/dsh-session-persistence": {
+      "version": "0.1.1-rc.2",
+      "integrity": "sha512-dxdYxRfmK5jWtiFFabqRNb/jGGjkXyF2djI7O8IIKmDVjhQiv170zpvhbAhRUuqClEdseCtbQpLBrRm2blzt3g=="
+    },
+    "@deepseek-ai/dsh-workspace": {
+      "version": "0.1.1-rc.2",
+      "integrity": "sha512-jBUob4H5TZAiExq9YNVCglKAFmAKMtd1UbyqFfnZZ1Owm+3c3NbAXY947MHiD6NwCwFEW1y7FjrFj66UQvG90A=="
+    }
+  },
+  "implementationHashes": {
+    "session": "sha256:c0bb646e5dc33ab770fc14531bc60ce6660a4ac07b47c0c180c909f51e9ffc8d",
+    "sessionPersistence": "sha256:d08210e95ae22c7cb22a6208f0ebc02d38898f01aabf4f82924ee2bffcbc2cad",
+    "jsonlPersistence": "sha256:8b6ebc4509a3e969ab3ad6e0dfb553ae4861e5b101831afed23e593d148d97f3",
+    "workspace": "sha256:d53e71d931937066ff20440afcff911ced09cefb8a0f3d024348b0e5248d4c74",
+    "projectionCache": "sha256:4610b2c2405b0e059caf651a9c35babcee3badedb7225d4d242a7388b2f9b1d1",
+    "querySqlite": "sha256:d35c13881eeb9d393fa3a21acaafa6277692e77f90e579ea62a95d6ea0cf370a"
+  },
+  "methods": {
+    "sessionPersistence": ["append", "create", "inspect", "list", "locate"],
+    "persistenceCoordinator": ["preparations.invalidate", "serialize", "states"],
+    "workspaceRegistry": ["archiveSession", "enqueueOperation", "get", "list", "replaceHeaderIndex", "setState"],
+    "workspaceEntity": ["attachSession", "detachSession", "insertSessionBefore"],
+    "projectionTable": ["delete", "get", "put"],
+    "sessionQuery": ["_ensureReady", "_reconcile", "_serialized"]
+  }
+}

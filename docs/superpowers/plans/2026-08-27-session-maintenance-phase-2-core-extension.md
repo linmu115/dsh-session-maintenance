@@ -39,15 +39,15 @@
 - Consumes: exact rc.2 host facts recorded in the design specification.
 - Produces: `DshCoreExtension.probe/capture/apply/restore`; `DshCoreHost`; `DshCoreSnapshot`; `Rc2CoreContractObservation`.
 
-- [ ] **Step 1: Write the contract and fault-recovery test**
+- [x] **Step 1: Write the contract and fault-recovery test**
 
 Create one test file with two cases: exact fixture contract enables all six phase-two capabilities, while one source-hash drift returns `ADAPTER_INCOMPATIBLE` and zero host writes; a fault after session mutation followed by `restore` must reproduce the captured digest for session, workspace, projection, coordinator, and query domains.
 
-- [ ] **Step 2: Run the focused test and confirm red state**
+- [x] **Step 2: Run the focused test and confirm red state**
 
 Run `pnpm vitest run packages/dsh-core-extension/test/core-extension.test.ts`; expect module-resolution failure because the package does not exist.
 
-- [ ] **Step 3: Implement the deep Module and fixture host**
+- [x] **Step 3: Implement the deep Module and fixture host**
 
 Implement exactly:
 
@@ -62,7 +62,7 @@ interface DshCoreExtension {
 
 `LockedRc2CoreExtension` validates contract/session identity, rejects live targets, delegates host mutations in the spec order, and compares post-restore digest. `Rc2CoreHost` is the only file allowed to know locked private field/method names. The synthetic host records writes and supports one named fault point.
 
-- [ ] **Step 4: Verify, report, and commit P15A**
+- [x] **Step 4: Verify, report, and commit P15A**
 
 Run the focused test, affected-package typecheck/build, `git diff --check`, write `...016.md`, update progress, and commit `feat: add locked DSH rc2 core extension`.
 

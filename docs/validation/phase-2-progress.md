@@ -3,7 +3,7 @@
 ## 当前状态
 
 - P14 可恢复写事务：完成。
-- P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：在契约门禁停止；官方服务缺少会话 mutation 的逆操作。
+- P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：路线 A 已完成版本锁定 Core 扩展 P15A；P15B Gateway/Adapter 待接入。
 - P16 Codex → DSH 安全快进与分支保留：待开始。
 - P17 以后 Dashboard 与用户工作流：尚未开始。
 
@@ -33,6 +33,16 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - 本机 runtime 的 `dsh-workspace/lib/index.js` 带有非官方 `dsh-desktop patch`，与 npm 包哈希不同；Maintenance 不依赖该补丁。
 - 按已确认计划，P15 在 Step 1 停止，没有实现 host gateway 或 raw-file fallback，P16 暂不能开始。
 
+## 路线 A：版本锁定 Core 扩展
+
+- 新增独立 `@linmu/dsh-core-extension` 深模块；外部只有 `probe/capture/apply/restore` 四个操作。
+- 契约同时锁定官方包版本与 integrity、被调用的方法集合、session/workspace/projection/query domain 版本，以及六个内部实现文件的 SHA-256；任一漂移都在 capture/mutation 前失败关闭。
+- forward mutation 仍调用官方 session/workspace 服务；物理 artifact 恢复、coordinator 清理、workspace 逆操作、projection 恢复与 query reconcile 只存在于 rc.2 host adapter 内部。
+- 每个 session 的 apply/restore 在 Core 扩展内串行；live session、snapshot hash 漂移、identity 漂移、非连续 event 和物理 revision 变化均拒绝写入。
+- snapshot 保存会话原始字节、workspace 位置/archive、projection row 与 runtime 语义摘要。恢复比较内容与各 domain 的稳定语义；mtime/revision 和 query generation 只用于写前 stale 门禁，不被误当作恢复后的业务差异。
+- P15A 只使用合成 fixture；故障注入发生在 session artifact mutation 后，恢复后 session、workspace、projection、coordinator、query 五个 domain digest 与写前一致。
+- 本机带 `dsh-desktop patch` 的旧 runtime 仍会因 workspace source hash 漂移被拒绝；P15A 未修改、安装或启动正式 DSH profile。
+
 ## 验证记录
 
 - transaction-engine：7 个测试文件、19 个测试通过。
@@ -42,3 +52,4 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - portability gate：通过。
 - `git diff --check`：通过。
 - P15 write-contract：3 个测试通过；全 workspace typecheck/build 与 portability gate 通过。
+- P15A Core extension：2 个精简测试通过；新增包与 test-support typecheck 通过，全 workspace typecheck/build 通过，`git diff --check` 通过。
