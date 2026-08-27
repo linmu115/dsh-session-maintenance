@@ -1,0 +1,23 @@
+{
+  "name": "@linmu/dsh-session-maintenance-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@linmu/dsh-session-contracts": "workspace:*",
+    "@linmu/dsh-session-maintenance-client": "workspace:*",
+    "@linmu/dsh-session-ui": "workspace:*",
+    "lucide-react": "0.542.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "vite": "7.1.3"
+  }
+}

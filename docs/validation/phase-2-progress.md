@@ -5,7 +5,8 @@
 - P14 可恢复写事务：完成。
 - P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：路线 A 的 Core、Gateway、Adapter 与 P14 自动恢复链均完成。
 - P16 Codex → DSH 安全快进与分支保留：路线 A 的严格门禁、验证后原子 ref 推进、幂等 apply 与分叉零写入已完成。
-- P17 类型化 operation API 与持久作业：完成；P18 以后 Dashboard 与用户工作流待施工。
+- P17 类型化 operation API 与持久作业：完成。
+- P18 DSH 风格 Dashboard 基线：完成；P19 以后版本工作台与恢复工作流待施工。
 
 ## P14 已验证能力
 
@@ -61,3 +62,4 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - P16 只在只读 DSH Adapter 稳定复核后，用单一 SQLite transaction 推进目标 head、两侧 last-common 与 canonical；重复 apply 不增加 host writes，分叉 plan 在 host mutation 前拒绝。
 - P17 operation API：8 个文件、15 个聚焦测试通过；contracts、session-store、local-api-client、engine 定向 typecheck 通过。
 - P17 覆盖摘要优先/正文懒加载、100 项分页上限、持久 apply/restore 作业、SSE 续读、严格路径与字段拒绝；restore token 不落盘。
+- P18 Dashboard/session-ui：2 文件、3 个聚焦测试通过；两个新包 typecheck、Vite production build 与凭据/路径/未许可依赖 bundle 扫描通过。
