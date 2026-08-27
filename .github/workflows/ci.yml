@@ -7,9 +7,6 @@ on:
 jobs:
   verify:
     runs-on: windows-latest
-    env:
-      TEMP: ${{ runner.temp }}
-      TMP: ${{ runner.temp }}
     strategy:
       fail-fast: false
       matrix:
@@ -24,6 +21,11 @@ jobs:
         with:
           node-version: ${{ matrix.node }}
           cache: pnpm
+      - name: Use canonical temporary root
+        shell: pwsh
+        run: |
+          "TEMP=${{ runner.temp }}" >> $env:GITHUB_ENV
+          "TMP=${{ runner.temp }}" >> $env:GITHUB_ENV
       - run: pnpm bootstrap
       - run: pnpm check
       - run: pnpm test:phase1
