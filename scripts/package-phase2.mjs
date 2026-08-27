@@ -113,7 +113,9 @@ const engineBundle = await build({
   target: "node22",
   conditions: ["development"],
   legalComments: "none",
-  banner: { js: "#!/usr/bin/env node" },
+  banner: {
+    js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
+  },
   metafile: true,
 });
 await cp(join(root, "apps", "dashboard", "dist"), join(engine, "dashboard"), { recursive: true });

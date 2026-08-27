@@ -1,4 +1,6 @@
-import { readFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
 import { RC2_CORE_HOST_MATERIALIZATION } from "../packages/dsh-core-extension/dist/materialization.js";
@@ -32,7 +34,31 @@ if (plugin !== undefined) {
 if (engine !== undefined) {
   const index = engine.get("dsh-session-maintenance/dashboard/index.html")?.toString("utf8") ?? "";
   if (!index.includes("/dashboard/assets/")) failures.push("Dashboard asset base is not /dashboard/");
-  if (!engine.has("dsh-session-maintenance/engine/dsh-session-maint.mjs")) failures.push("Engine bundle is missing");
+  const engineBundle = engine.get("dsh-session-maintenance/engine/dsh-session-maint.mjs")?.toString("utf8");
+  if (engineBundle === undefined) failures.push("Engine bundle is missing");
+  else {
+    const hashbang = "#!/usr/bin/env node\n";
+    if (!engineBundle.startsWith(hashbang) || engineBundle.slice(hashbang.length).startsWith("#!")) {
+      failures.push("Engine bundle must contain exactly one leading Node hashbang");
+    } else {
+      const smokeRoot = await mkdtemp(join(tmpdir(), "dsh-session-maintenance-engine-smoke-"));
+      const smokeEntry = join(smokeRoot, "dsh-session-maint.mjs");
+      try {
+        await writeFile(smokeEntry, engineBundle);
+        const result = spawnSync(process.execPath, [smokeEntry, "--help"], {
+          encoding: "utf8",
+          shell: false,
+          windowsHide: true,
+          timeout: 15_000,
+        });
+        if (result.error !== undefined || result.status !== 0) {
+          failures.push(`Packaged Engine is not executable: ${result.error?.message ?? result.stderr.trim().split(/\r?\n/u)[0] ?? `exit ${String(result.status)}`}`);
+        }
+      } finally {
+        await rm(smokeRoot, { recursive: true, force: true });
+      }
+    }
+  }
 }
 const forbidden = [
   /dsh-codex-session-sync/iu,
