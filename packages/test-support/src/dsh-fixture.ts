@@ -33,15 +33,41 @@ export async function writeDshFixtureHome(root: string): Promise<void> {
   await writeFile(
     join(storages, "workspace.json"),
     `${JSON.stringify({
-      schemaVersion: 1,
-      workspaces: [{ id: "workspace-fixture", projectId: "project-fixture", root: "C:\\fixture\\workspace" }],
+      unit: { name: "workspace", version: 2 },
+      global: {
+        initialized: true,
+        workspaceIds: ["workspace-fixture"],
+        archivedSessionIds: [],
+      },
+      tables: {
+        workspaces: {
+          "workspace-fixture": {
+            path: "C:\\fixture\\workspace",
+            title: "Fixture workspace",
+            sessionIds: ["dsh-session-1"],
+            createdAt: "2026-08-27T00:00:00.000Z",
+            updatedAt: "2026-08-27T00:00:00.000Z",
+          },
+        },
+      },
     })}\n`,
   );
   await writeFile(
     join(storages, "session_projcache.json"),
     `${JSON.stringify({
-      schemaVersion: 1,
-      sessions: [{ id: "dsh-session-1", projectId: "project-fixture", archived: false, title: "Fixture conversation" }],
+      unit: { name: "session_projcache", version: 3 },
+      global: null,
+      tables: {
+        sessions: {
+          "dsh-session-1": {
+            identity: { createdAt: 1, cwd: "C:\\fixture\\workspace" },
+            rows: {
+              title: { ver: 1, seq: 2, val: "Fixture conversation" },
+              sessionListMetadata: { ver: 1, seq: 2, val: { blank: false, lastPromptAt: 2 } },
+            },
+          },
+        },
+      },
     })}\n`,
   );
 }

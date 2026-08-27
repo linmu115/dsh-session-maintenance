@@ -6,8 +6,10 @@ import { iterateDshCatalog, type DshReadHooks } from "./reader.js";
 export const DSH_SUPPORTED_VERSION = "0.1.1-rc.2";
 const schemaHex = sha256Canonical({
   header: ["createdAt", "cwd", "delegationDepth", "id", "type", "version"],
+  projection: { name: "session_projcache", version: 3, table: "sessions", title: "rows.title.val" },
   type: "session",
   version: 0,
+  workspace: { name: "workspace", version: 2, archive: "global.archivedSessionIds", table: "workspaces" },
 });
 export const DSH_SCHEMA_FINGERPRINT = `dsh-read/0.1.1-rc.2/session-v0:${schemaHex}`;
 

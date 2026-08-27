@@ -73,6 +73,11 @@ describe("DshReadAdapter", () => {
     adapter.resetDebugCounters();
     const [summary] = await collect(adapter.list(instance));
     expect(adapter.debugCounters()).toMatchObject({ headerFrameReads: 1, fullArtifactReads: 0 });
+    expect(summary).toMatchObject({
+      title: "Fixture conversation",
+      archived: false,
+      workspaceId: "workspace-fixture",
+    });
     const observation = stable(await adapter.observe(instance, summary!.key, summary!.hint));
     const normalized = await adapter.normalize(observation);
     expect(normalized.events.map((event) => event.role)).toEqual(["user", "assistant", "tool"]);

@@ -37,6 +37,18 @@ interface ProjectionEntry {
   readonly title: string;
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function requiredRecord(value: unknown, message: string): Record<string, unknown> {
+  const parsed = record(value);
+  if (parsed === undefined) throw new Error(message);
+  return parsed;
+}
+
 export interface DshCatalogEntry {
   readonly key: PlatformSessionKey;
   readonly projectId: string;
@@ -96,34 +108,57 @@ async function readHeader(path: string, hooks: DshReadHooks): Promise<DshSession
 }
 
 async function loadProjection(root: string): Promise<ReadonlyMap<string, ProjectionEntry>> {
-  const path = await assertContained(root, join(root, "storages", "session_projcache.json"));
-  const parsed: unknown = JSON.parse(await readFile(path, "utf8"));
-  if (
-    typeof parsed !== "object" ||
-    parsed === null ||
-    Array.isArray(parsed) ||
-    !Array.isArray((parsed as { readonly sessions?: unknown }).sessions)
-  ) {
-    throw new Error("DSH projection storage is malformed");
+  const projectionPath = await assertContained(root, join(root, "storages", "session_projcache.json"));
+  const workspacePath = await assertContained(root, join(root, "storages", "workspace.json"));
+  const projection = requiredRecord(JSON.parse(await readFile(projectionPath, "utf8")), "DSH projection storage is malformed");
+  const projectionUnit = requiredRecord(projection.unit, "DSH projection unit is malformed");
+  if (projectionUnit.name !== "session_projcache" || projectionUnit.version !== 3) {
+    throw new Error("Unsupported DSH projection storage contract");
   }
+  const projectionTables = requiredRecord(projection.tables, "DSH projection tables are malformed");
+  const sessions = requiredRecord(projectionTables.sessions, "DSH projection sessions table is malformed");
+
+  const workspace = requiredRecord(JSON.parse(await readFile(workspacePath, "utf8")), "DSH workspace storage is malformed");
+  const workspaceUnit = requiredRecord(workspace.unit, "DSH workspace unit is malformed");
+  if (workspaceUnit.name !== "workspace" || workspaceUnit.version !== 2) {
+    throw new Error("Unsupported DSH workspace storage contract");
+  }
+  const workspaceGlobal = requiredRecord(workspace.global, "DSH workspace global state is malformed");
+  if (!Array.isArray(workspaceGlobal.archivedSessionIds) || workspaceGlobal.archivedSessionIds.some((id) => typeof id !== "string")) {
+    throw new Error("DSH archived session state is malformed");
+  }
+  const archived = new Set(workspaceGlobal.archivedSessionIds as string[]);
+  const workspaceTables = requiredRecord(workspace.tables, "DSH workspace tables are malformed");
+  const workspaces = requiredRecord(workspaceTables.workspaces, "DSH workspace table is malformed");
+  const projectBySession = new Map<string, string>();
+  for (const [projectId, value] of Object.entries(workspaces)) {
+    const item = requiredRecord(value, "DSH workspace entry is malformed");
+    if (!Array.isArray(item.sessionIds) || item.sessionIds.some((id) => typeof id !== "string")) {
+      throw new Error("DSH workspace session IDs are malformed");
+    }
+    for (const sessionId of item.sessionIds as string[]) {
+      if (projectBySession.has(sessionId)) {
+        throw new SessionMaintenanceError("IDENTITY_CONFLICT", `DSH session belongs to multiple workspaces: ${sessionId}`);
+      }
+      projectBySession.set(sessionId, projectId);
+    }
+  }
+
   const result = new Map<string, ProjectionEntry>();
-  for (const value of (parsed as { readonly sessions: unknown[] }).sessions) {
-    if (
-      typeof value !== "object" ||
-      value === null ||
-      Array.isArray(value) ||
-      typeof (value as { readonly id?: unknown }).id !== "string" ||
-      typeof (value as { readonly projectId?: unknown }).projectId !== "string" ||
-      typeof (value as { readonly archived?: unknown }).archived !== "boolean" ||
-      typeof (value as { readonly title?: unknown }).title !== "string"
-    ) {
-      throw new Error("DSH projection entry is malformed");
-    }
-    const entry = value as ProjectionEntry;
-    if (result.has(entry.id)) {
-      throw new SessionMaintenanceError("IDENTITY_CONFLICT", `Duplicate DSH projection ID: ${entry.id}`);
-    }
-    result.set(entry.id, entry);
+  const allSessionIds = new Set([...Object.keys(sessions), ...projectBySession.keys(), ...archived]);
+  for (const id of allSessionIds) {
+    const value = sessions[id];
+    const entry = value === undefined ? undefined : requiredRecord(value, "DSH projection entry is malformed");
+    const rows = entry === undefined ? undefined : requiredRecord(entry.rows, "DSH projection rows are malformed");
+    const titleRow = rows?.title === undefined ? undefined : requiredRecord(rows.title, "DSH title projection is malformed");
+    const title = titleRow?.val;
+    if (title !== undefined && typeof title !== "string") throw new Error("DSH title projection value is malformed");
+    result.set(id, {
+      id,
+      projectId: projectBySession.get(id) ?? "ungrouped",
+      archived: archived.has(id),
+      title: title ?? id,
+    });
   }
   return result;
 }
@@ -200,7 +235,7 @@ export async function* iterateDshCatalog(
       if (catalogIndex >= start) {
         yield {
           key: { platform: "dsh", instanceId: instance.id, sessionId: header.id },
-          projectId: project.name,
+          projectId: metadata?.projectId ?? project.name,
           artifactPath,
           header,
           title: metadata?.title ?? header.id,
