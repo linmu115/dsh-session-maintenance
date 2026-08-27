@@ -2,7 +2,7 @@
 
 一个以不可变版本图管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。
 
-当前已完成只读版本图、通用事务基础和 Phase 3 Codex 延续任务：可以从精确的 DSH 版本创建可追溯、可恢复的原生 Codex 新任务，也可以用显式双父解析处理分叉。DSH 会话写回仍保持关闭，直到版本锁定的 Core 扩展通过第二阶段验收；原生双向镜像和 Dashboard 尚未开放。
+当前已完成只读版本图、通用事务基础和 Phase 3 Codex 延续任务：可以从精确的 DSH 版本创建可追溯、可恢复的原生 Codex 新任务，也可以用显式双父解析处理分叉。版本锁定的 DSH Core 写入链已通过 P16 合成环境验收，但默认 composition 和正式 profile 尚未附着该 Gateway，所以日常运行仍保持写入关闭；原生双向镜像和 Dashboard 也尚未开放。
 
 ## 支持范围
 
@@ -81,7 +81,7 @@ dsh-session-maint serve --host 127.0.0.1 --port 0 --json
 - `instance add` 和管理员使用的 `codex-target add` 是仅有的路径登记入口；平台根、cwd 和 workspace roots 都会解析 realpath。普通 API/MCP 只接受 ID。
 - `scan` 只读取平台数据；结果中的 `platformWrites` 固定为 0。
 - 标题相同不会自动合并会话，只生成低置信候选。
-- DSH `apply` 和 `restore` 在 Core 扩展验收前固定返回 `CAPABILITY_NOT_AVAILABLE`。
+- DSH `apply` 和 `restore` 在未显式附着已验收 Core Gateway 的默认 composition 中返回 `CAPABILITY_NOT_AVAILABLE`。
 - Codex 延续只调用 app-server 创建新任务，不修改 Codex rollout、索引或 SQLite。
 - 不要把 `connection.json` 提交到 Git 或发给其他人。
 
