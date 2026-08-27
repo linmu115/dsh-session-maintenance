@@ -13,6 +13,7 @@
     "typecheck": "pnpm -r --if-present typecheck",
     "test": "vitest run",
     "test:phase1": "vitest run tests/integration/phase-1-acceptance.test.ts tests/integration/phase-1-large-catalog.test.ts",
+    "test:phase3": "vitest run packages/handoff-context/test/handoff.test.ts packages/adapter-codex-continuation/test/contract.test.ts apps/engine/test/continuation-entries.test.ts tests/integration/phase-3-continuation.test.ts",
     "assert:portable": "node scripts/assert-portable.mjs",
     "check": "pnpm typecheck && pnpm build && pnpm test",
     "verify:clean": "pnpm bootstrap && pnpm check"

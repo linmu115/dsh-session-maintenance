@@ -1,4 +1,6 @@
 import { execFile, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { access } from "node:fs/promises";
+import { dirname, isAbsolute, join } from "node:path";
 import { createInterface } from "node:readline";
 import { promisify } from "node:util";
 
@@ -19,6 +21,11 @@ interface NotificationWaiter {
   readonly timer: NodeJS.Timeout;
 }
 
+interface LaunchSpec {
+  readonly command: string;
+  readonly prefix: readonly string[];
+}
+
 function defaultCommand(): string {
   return process.platform === "win32" ? "codex.cmd" : "codex";
 }
@@ -35,14 +42,15 @@ export class StdioAppServerTransport implements AppServerTransport {
   private readonly waiters = new Set<NotificationWaiter>();
   private readonly buffered = new Map<string, unknown[]>();
   private terminalError: Error | undefined;
+  private launchSpec: LaunchSpec | undefined;
 
   constructor(target: CodexContinuationTarget) {
     this.target = target;
   }
 
   async version(): Promise<string> {
-    const command = this.target.command ?? defaultCommand();
-    const { stdout } = await execFileAsync(command, ["--version"], {
+    const launch = await this.resolveLaunchSpec();
+    const { stdout } = await execFileAsync(launch.command, [...launch.prefix, "--version"], {
       windowsHide: true,
       env: this.environment(),
       timeout: 10_000,
@@ -125,8 +133,9 @@ export class StdioAppServerTransport implements AppServerTransport {
 
   private ensureStarted(): ChildProcessWithoutNullStreams {
     if (this.process !== undefined) return this.process;
-    const command = this.target.command ?? defaultCommand();
-    const child = spawn(command, ["app-server", "--listen", "stdio://"], {
+    const launch = this.launchSpec;
+    if (launch === undefined) throw new Error("Codex launch command has not been probed");
+    const child = spawn(launch.command, [...launch.prefix, "app-server", "--listen", "stdio://"], {
       windowsHide: true,
       env: this.environment(),
       stdio: ["pipe", "pipe", "pipe"],
@@ -144,6 +153,30 @@ export class StdioAppServerTransport implements AppServerTransport {
       this.failAll(new Error(`Codex app-server exited (${code ?? signal ?? "unknown"}): ${stderr.trim()}`));
     });
     return child;
+  }
+
+  private async resolveLaunchSpec(): Promise<LaunchSpec> {
+    if (this.launchSpec !== undefined) return this.launchSpec;
+    const command = this.target.command ?? defaultCommand();
+    if (process.platform !== "win32" || !/\.(?:cmd|bat)$/iu.test(command)) {
+      this.launchSpec = { command, prefix: [] };
+      return this.launchSpec;
+    }
+    const shim = isAbsolute(command)
+      ? command
+      : (await execFileAsync("where.exe", [command], { windowsHide: true, timeout: 10_000 })).stdout
+        .split(/\r?\n/u)
+        .map((line) => line.trim())
+        .find((line) => line.length > 0);
+    if (shim === undefined) throw new Error(`Unable to resolve Codex npm shim: ${command}`);
+    const entry = join(dirname(shim), "node_modules", "@openai", "codex", "bin", "codex.js");
+    try {
+      await access(entry);
+    } catch (error) {
+      throw new Error(`Unsupported Codex command shim; expected official npm entry at ${entry}`, { cause: error });
+    }
+    this.launchSpec = { command: process.execPath, prefix: [entry] };
+    return this.launchSpec;
   }
 
   private acceptLine(line: string): void {

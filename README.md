@@ -2,7 +2,7 @@
 
 一个以不可变版本图管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。
 
-当前 Phase 1 是严格只读版本：可以登记实例、扫描会话、查看版本图和差异、生成 dry-run 计划，并通过认证的本地 API 使用这些能力。它不会写入 Codex/DSH 会话，也不提供 apply、restore、双向镜像或 Dashboard。
+当前已完成只读版本图、通用事务基础和 Phase 3 Codex 延续任务：可以从精确的 DSH 版本创建可追溯、可恢复的原生 Codex 新任务，也可以用显式双父解析处理分叉。DSH 会话写回仍保持关闭，直到版本锁定的 Core 扩展通过第二阶段验收；原生双向镜像和 Dashboard 尚未开放。
 
 ## 支持范围
 
@@ -38,6 +38,29 @@ pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint scan 
 pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint status --json
 ```
 
+登记一个只接受 ID 引用的 Codex 目标预设：
+
+```powershell
+dsh-session-maint codex-target add `
+  --id codex-default --codex-instance codex-main `
+  --cwd "D:\工作区" --workspace-root "D:\工作区" `
+  --context-window 120000 --input-budget-ratio 0.2 --json
+```
+
+先预览预算，再明确创建延续任务：
+
+```powershell
+dsh-session-maint continuation preview `
+  --logical-session <id> --source-version <version-id> `
+  --target codex-default --mode full --json
+
+dsh-session-maint continuation create `
+  --logical-session <id> --source-version <version-id> `
+  --target codex-default --mode full --json
+```
+
+`checkpoint` 和 `structured-summary` 是完整模式超出预算时的显式替代；系统不会静默截断。分叉会话使用 `continuation resolution-preview` 和 `continuation resolution-create`，并必须提供左右版本及合并说明。
+
 先通过会话列表或本地 API 获取 logical session 与 binding ID，再运行：
 
 ```powershell
@@ -55,10 +78,11 @@ dsh-session-maint serve --host 127.0.0.1 --port 0 --json
 
 ## 安全边界
 
-- `instance add` 是唯一接受平台路径的入口，登记前会解析 realpath 并验证版本契约。
+- `instance add` 和管理员使用的 `codex-target add` 是仅有的路径登记入口；平台根、cwd 和 workspace roots 都会解析 realpath。普通 API/MCP 只接受 ID。
 - `scan` 只读取平台数据；结果中的 `platformWrites` 固定为 0。
 - 标题相同不会自动合并会话，只生成低置信候选。
-- `apply` 和 `restore` 在 Phase 1 固定返回 `CAPABILITY_NOT_AVAILABLE`。
+- DSH `apply` 和 `restore` 在 Core 扩展验收前固定返回 `CAPABILITY_NOT_AVAILABLE`。
+- Codex 延续只调用 app-server 创建新任务，不修改 Codex rollout、索引或 SQLite。
 - 不要把 `connection.json` 提交到 Git 或发给其他人。
 
 ## 验证
@@ -66,7 +90,8 @@ dsh-session-maint serve --host 127.0.0.1 --port 0 --json
 ```powershell
 pnpm verify:clean
 pnpm test:phase1
+pnpm test:phase3
 pnpm assert:portable
 ```
 
-详细证据见 `docs/validation/phase-1-validation.md`。
+详细证据见 `docs/validation/phase-1-validation.md` 和 `docs/validation/phase-3-validation.md`。
