@@ -1,4 +1,4 @@
-import type { JsonValue } from "@linmu/dsh-session-contracts";
+import { SessionMaintenanceError, type JsonValue } from "@linmu/dsh-session-contracts";
 
 export const MAX_CODEX_ROLLOUT_BYTES = 64 * 1024 * 1024;
 export const MAX_CODEX_LINE_BYTES = 8 * 1024 * 1024;
@@ -33,7 +33,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 export function parseCodexJsonl(bytes: Uint8Array): readonly CodexEnvelope[] {
   if (bytes.byteLength > MAX_CODEX_ROLLOUT_BYTES) {
-    throw new Error(`Codex rollout exceeds ${MAX_CODEX_ROLLOUT_BYTES} bytes`);
+    throw new SessionMaintenanceError(
+      "CONTENT_TOO_LARGE",
+      `Codex rollout exceeds ${MAX_CODEX_ROLLOUT_BYTES} bytes`,
+    );
   }
   const text = Buffer.from(bytes).toString("utf8");
   const lines = text.split(/\r?\n/u);
@@ -45,7 +48,10 @@ export function parseCodexJsonl(bytes: Uint8Array): readonly CodexEnvelope[] {
       continue;
     }
     if (Buffer.byteLength(line, "utf8") > MAX_CODEX_LINE_BYTES) {
-      throw new Error(`Codex JSONL line ${index + 1} exceeds the line limit`);
+      throw new SessionMaintenanceError(
+        "CONTENT_TOO_LARGE",
+        `Codex JSONL line ${index + 1} exceeds the line limit`,
+      );
     }
 
     let parsed: unknown;

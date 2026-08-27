@@ -31,6 +31,7 @@ describe("discovery idempotence", () => {
       createdBindings: 0,
       createdVersions: 0,
       createdCandidates: 0,
+      skippedSessions: 0,
       platformWrites: 0,
     });
     expect(await system.repository.counts()).toEqual(counts);

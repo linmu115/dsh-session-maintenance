@@ -19,6 +19,7 @@ import type {
   StableObservation,
   VerificationResult,
 } from "@linmu/dsh-session-contracts";
+import { SessionMaintenanceError } from "../../packages/contracts/src/index.js";
 import { DiscoveryService, sha256Canonical } from "../../packages/session-domain/src/index.js";
 import { SqliteSessionRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "../../packages/session-store/src/index.js";
 
@@ -38,7 +39,7 @@ class CatalogAdapter implements SessionReadAdapter {
   observes = 0;
   active = 0;
   maxActive = 0;
-  constructor(readonly count: number) {}
+  constructor(readonly count: number, readonly oversizedIndex?: number) {}
   probe(): Promise<AdapterProbe> {
     return Promise.resolve({
       status: "compatible",
@@ -61,6 +62,9 @@ class CatalogAdapter implements SessionReadAdapter {
     }
   }
   async observe(_instance: RegisteredInstance, key: PlatformSessionKey): Promise<StableObservation> {
+    if (key.sessionId === `session-${this.oversizedIndex}`) {
+      throw new SessionMaintenanceError("CONTENT_TOO_LARGE", "fixture rollout is too large");
+    }
     this.observes += 1;
     this.active += 1;
     this.maxActive = Math.max(this.maxActive, this.active);
@@ -99,6 +103,21 @@ class CatalogAdapter implements SessionReadAdapter {
 }
 
 describe("large catalog lazy-read contract", () => {
+  it("skips one oversized rollout without failing the remaining catalog", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dsh-sm-large-skip-"));
+    roots.push(root);
+    const store = new CountingStore(new ZstdContentObjectStore(root));
+    const repository = new SqliteSessionRepository(openMaintenanceDatabase(join(root, "metadata.sqlite")), store);
+    const discovery = new DiscoveryService({
+      instances: [{ id: "catalog", platform: "codex", displayName: "Catalog", root, platformVersion: "fixture" }],
+      adapters: [new CatalogAdapter(3, 1)],
+      repository,
+      objectStore: store,
+    });
+    expect(await discovery.scanAll()).toMatchObject({ createdVersions: 2, skippedSessions: 1, platformWrites: 0 });
+    repository.close();
+  });
+
   it("bounds observations to four workers and skips all unchanged bodies", async () => {
     const root = await mkdtemp(join(tmpdir(), "dsh-sm-large-"));
     roots.push(root);

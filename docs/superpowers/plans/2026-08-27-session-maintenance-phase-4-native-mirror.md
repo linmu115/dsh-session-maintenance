@@ -77,8 +77,8 @@
 pnpm typecheck
 pnpm build
 pnpm exec vitest run --maxWorkers=1 --testTimeout=15000
-pnpm test:portability
-pnpm package:all
+pnpm assert:portable
+pnpm verify:phase2-package
 ```
 
 ## 完成定义

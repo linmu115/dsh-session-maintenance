@@ -120,12 +120,13 @@ function sameKey(left: PlatformSessionKey, right: PlatformSessionKey): boolean {
   return left.platform === right.platform && left.instanceId === right.instanceId && left.sessionId === right.sessionId;
 }
 
-function addResult(left: DiscoveryResult, right: RepositoryWriteResult): DiscoveryResult {
+function addResult(left: DiscoveryResult, right: RepositoryWriteResult | DiscoveryResult): DiscoveryResult {
   return {
     createdLogicalSessions: left.createdLogicalSessions + right.createdLogicalSessions,
     createdBindings: left.createdBindings + right.createdBindings,
     createdVersions: left.createdVersions + right.createdVersions,
     createdCandidates: left.createdCandidates + right.createdCandidates,
+    skippedSessions: left.skippedSessions + ("skippedSessions" in right ? right.skippedSessions : 0),
     platformWrites: 0,
   };
 }
@@ -135,6 +136,7 @@ const EMPTY_RESULT: DiscoveryResult = {
   createdBindings: 0,
   createdVersions: 0,
   createdCandidates: 0,
+  skippedSessions: 0,
   platformWrites: 0,
 };
 
@@ -188,6 +190,7 @@ export class DiscoveryService {
     const summaries: PlatformSessionSummary[] = [];
     for await (const summary of adapter.list(instance)) summaries.push(summary);
     const results: RepositoryWriteResult[] = new Array(summaries.length);
+    let skippedSessions = 0;
     let nextIndex = 0;
     const worker = async (): Promise<void> => {
       while (true) {
@@ -195,11 +198,23 @@ export class DiscoveryService {
         nextIndex += 1;
         const summary = summaries[index];
         if (summary === undefined) return;
-        results[index] = await this.scanSummary(instance, adapter, probe.contract, summary);
+        try {
+          results[index] = await this.scanSummary(instance, adapter, probe.contract, summary);
+        } catch (error) {
+          if (error instanceof SessionMaintenanceError && error.code === "CONTENT_TOO_LARGE") {
+            skippedSessions += 1;
+            results[index] = { createdLogicalSessions: 0, createdBindings: 0, createdVersions: 0, createdCandidates: 0 };
+            continue;
+          }
+          throw error;
+        }
       }
     };
     await Promise.all(Array.from({ length: Math.min(this.concurrency, summaries.length) }, worker));
-    return results.reduce<DiscoveryResult>((result, item) => addResult(result, item), EMPTY_RESULT);
+    return {
+      ...results.reduce<DiscoveryResult>((result, item) => addResult(result, item), EMPTY_RESULT),
+      skippedSessions,
+    };
   }
 
   private async scanSummary(

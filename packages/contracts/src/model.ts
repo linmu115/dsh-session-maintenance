@@ -323,6 +323,7 @@ export interface DiscoveryResult {
   readonly createdBindings: number;
   readonly createdVersions: number;
   readonly createdCandidates: number;
+  readonly skippedSessions: number;
   readonly platformWrites: 0;
 }
 

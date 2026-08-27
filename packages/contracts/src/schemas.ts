@@ -436,6 +436,7 @@ export const discoveryResultSchema = z.strictObject({
   createdBindings: nonNegativeIntegerSchema,
   createdVersions: nonNegativeIntegerSchema,
   createdCandidates: nonNegativeIntegerSchema,
+  skippedSessions: nonNegativeIntegerSchema,
   platformWrites: z.literal(0),
 });
 

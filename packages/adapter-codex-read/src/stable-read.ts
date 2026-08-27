@@ -87,7 +87,10 @@ export async function observeCodexSession(
   const path = await resolveContainedRollout(instance.root, thread.rollout_path);
   const before = await stat(path, { bigint: true });
   if (before.size > BigInt(MAX_CODEX_ROLLOUT_BYTES)) {
-    throw new Error(`Codex rollout exceeds ${MAX_CODEX_ROLLOUT_BYTES} bytes`);
+    throw new SessionMaintenanceError(
+      "CONTENT_TOO_LARGE",
+      `Codex rollout exceeds ${MAX_CODEX_ROLLOUT_BYTES} bytes`,
+    );
   }
   if (
     (hint?.size !== undefined && BigInt(hint.size) !== before.size) ||
