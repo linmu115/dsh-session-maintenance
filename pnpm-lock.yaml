@@ -35,6 +35,9 @@ importers:
       '@linmu/dsh-session-store':
         specifier: workspace:*
         version: link:../../packages/session-store
+      '@linmu/dsh-session-transaction-engine':
+        specifier: workspace:*
+        version: link:../../packages/transaction-engine
       commander:
         specifier: 14.0.0
         version: 14.0.0

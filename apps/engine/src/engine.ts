@@ -21,9 +21,19 @@ import {
   type SyncPlan,
   type VersionGraphPage,
   type ContentObjectStore,
+  type ApplyPlanRequest,
+  type Checkpoint,
+  type CheckpointRestoreRequest,
+  type CreateCheckpointRequest,
+  type RestoreTransactionRequest,
+  type TransactionRecord,
+  type TransactionRef,
+  type WriteEngine,
 } from "@linmu/dsh-session-contracts";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
 import type { SqliteSessionRepository } from "@linmu/dsh-session-store";
+
+import type { WriteService } from "./write-service.js";
 
 function semanticEvents(events: readonly NormalizedEvent[]): readonly string[] {
   return events.map((event) => JSON.stringify({
@@ -38,7 +48,7 @@ function prefix(left: readonly string[], right: readonly string[]): boolean {
   return left.length <= right.length && left.every((value, index) => value === right[index]);
 }
 
-export class SessionMaintenanceEngine implements ReadOnlyEngine {
+export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly instances: readonly RegisteredInstance[];
   readonly adapters: readonly SessionReadAdapter[];
   readonly repository: SqliteSessionRepository;
@@ -46,6 +56,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
   private readonly clock: () => string;
+  private readonly writeService: WriteService | undefined;
 
   constructor(input: {
     readonly instances: readonly RegisteredInstance[];
@@ -53,6 +64,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
     readonly repository: SqliteSessionRepository;
     readonly objectStore: ContentObjectStore;
     readonly clock?: () => string;
+    readonly writeService?: WriteService;
   }) {
     this.instances = input.instances;
     this.adapters = input.adapters;
@@ -60,6 +72,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
     this.objectStore = input.objectStore;
     this.clock = input.clock ?? (() => new Date().toISOString());
     this.discovery = new DiscoveryService(input);
+    this.writeService = input.writeService;
   }
 
   async listInstances(): Promise<readonly InstanceStatus[]> {
@@ -133,6 +146,26 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
     return this.repository.getPlan(id);
   }
 
+  applyPlan(request: ApplyPlanRequest): Promise<TransactionRef> {
+    return this.writer().applyPlan(request);
+  }
+
+  getTransaction(id: string): Promise<TransactionRecord | undefined> {
+    return this.writer().getTransaction(id);
+  }
+
+  restoreTransaction(request: RestoreTransactionRequest): Promise<TransactionRef> {
+    return this.writer().restoreTransaction(request);
+  }
+
+  createCheckpoint(request: CreateCheckpointRequest): Promise<Checkpoint> {
+    return this.writer().createCheckpoint(request);
+  }
+
+  createCheckpointRestorePlan(request: CheckpointRestoreRequest): Promise<SyncPlan> {
+    return this.writer().createCheckpointRestorePlan(request);
+  }
+
   status(): Promise<EngineStatus> {
     return Promise.resolve({
       ready: true,
@@ -159,6 +192,16 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
     const targetHead = await this.repository.getObservedHead(target.id);
     if (sourceHead === undefined || targetHead === undefined) throw new SessionMaintenanceError("OBJECT_CORRUPT", "Binding head is missing");
     return { source, target, sourceHead, targetHead };
+  }
+
+  private writer(): WriteService {
+    if (this.writeService === undefined) {
+      throw new SessionMaintenanceError(
+        "CAPABILITY_NOT_AVAILABLE",
+        "This composition is read-only; no DSH Core gateway is attached",
+      );
+    }
+    return this.writeService;
   }
 
   private async loadSession(logicalSessionId: string, versionId: string): Promise<NormalizedSession> {

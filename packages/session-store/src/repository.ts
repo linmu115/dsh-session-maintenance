@@ -40,6 +40,7 @@ import {
   type TransactionTransition,
   type VersionGraphData,
   type VersionGraphPage,
+  type VerifiedRefAdvance,
 } from "@linmu/dsh-session-contracts";
 import {
   canonicalJson,
@@ -445,6 +446,148 @@ export class SqliteSessionRepository {
       input.parents.forEach((parent, ordinal) => insertParent.run(id, ordinal, parent));
       this.database.exec("COMMIT");
       return manifest;
+    } catch (error) {
+      try {
+        this.database.exec("ROLLBACK");
+      } catch {
+        // Preserve the original transaction failure.
+      }
+      throw error;
+    }
+  }
+
+  async getVersion(id: string): Promise<SessionVersionManifest | undefined> {
+    const row = this.database
+      .prepare("SELECT manifest_json FROM session_versions WHERE id = ?")
+      .get(id) as ManifestRow | undefined;
+    return row === undefined ? undefined : parseManifest(row.manifest_json, id);
+  }
+
+  async advanceVerifiedRefs(input: VerifiedRefAdvance): Promise<void> {
+    if (
+      input.targetBinding.logicalSessionId !== input.logicalSessionId ||
+      input.verifiedHead.bindingId !== input.targetBinding.id ||
+      input.verifiedHead.fingerprint.platform !== "dsh" ||
+      input.verifiedHead.fingerprint.instanceId !== input.targetBinding.key.instanceId ||
+      input.verifiedHead.fingerprint.sessionId !== input.targetBinding.key.sessionId
+    ) {
+      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Verified ref transition contains inconsistent identities");
+    }
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const source = this.database
+        .prepare(
+          `SELECT pb.logical_session_id, pr.version_id
+           FROM platform_bindings pb
+           JOIN platform_refs pr ON pr.binding_id = pb.id
+           WHERE pb.id = ?`,
+        )
+        .get(input.sourceBindingId) as
+        | { readonly logical_session_id: string; readonly version_id: string }
+        | undefined;
+      if (
+        source?.logical_session_id !== input.logicalSessionId ||
+        source.version_id !== input.expectedSourceVersionId
+      ) {
+        throw new SessionMaintenanceError("PLAN_STALE", "Source ref changed before verified ref advance");
+      }
+
+      const version = this.database
+        .prepare("SELECT logical_session_id FROM session_versions WHERE id = ?")
+        .get(input.verifiedHead.versionId) as { readonly logical_session_id: string } | undefined;
+      if (version?.logical_session_id !== input.logicalSessionId) {
+        throw new SessionMaintenanceError("OBJECT_CORRUPT", "Verified version is missing from the logical session");
+      }
+
+      const existing = this.database
+        .prepare(
+          `SELECT id, logical_session_id, platform, instance_id, session_id,
+                  adapter_contract_json, last_common_version_id, status
+           FROM platform_bindings WHERE id = ?`,
+        )
+        .get(input.targetBinding.id) as BindingRow | undefined;
+      if (existing === undefined) {
+        const occupied = this.database
+          .prepare(
+            `SELECT id FROM platform_bindings
+             WHERE platform = ? AND instance_id = ? AND session_id = ?`,
+          )
+          .get(
+            input.targetBinding.key.platform,
+            input.targetBinding.key.instanceId,
+            input.targetBinding.key.sessionId,
+          );
+        if (occupied !== undefined || input.expectedTargetVersionId !== undefined) {
+          throw new SessionMaintenanceError("PLAN_STALE", "DSH target binding changed before verified ref advance");
+        }
+        this.database
+          .prepare(
+            `INSERT INTO platform_bindings
+              (id, logical_session_id, platform, instance_id, session_id, adapter_contract_json,
+               last_common_version_id, status)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .run(
+            input.targetBinding.id,
+            input.targetBinding.logicalSessionId,
+            input.targetBinding.key.platform,
+            input.targetBinding.key.instanceId,
+            input.targetBinding.key.sessionId,
+            canonicalJson(input.targetBinding.adapterContract as unknown as JsonValue),
+            input.targetBinding.lastCommonVersionId,
+            input.targetBinding.status,
+          );
+      } else {
+        const binding = bindingJson(existing);
+        if (
+          binding.logicalSessionId !== input.logicalSessionId ||
+          binding.key.platform !== input.targetBinding.key.platform ||
+          binding.key.instanceId !== input.targetBinding.key.instanceId ||
+          binding.key.sessionId !== input.targetBinding.key.sessionId
+        ) {
+          throw new SessionMaintenanceError("IDENTITY_CONFLICT", "DSH target binding identity changed");
+        }
+        const head = this.database
+          .prepare("SELECT version_id FROM platform_refs WHERE binding_id = ?")
+          .get(binding.id) as { readonly version_id: string } | undefined;
+        const expected = input.expectedTargetVersionId;
+        if (head?.version_id !== expected && head?.version_id !== input.verifiedHead.versionId) {
+          throw new SessionMaintenanceError("PLAN_STALE", "DSH target ref changed before verified ref advance");
+        }
+      }
+
+      this.database
+        .prepare(
+          `INSERT INTO platform_refs (binding_id, version_id, observed_at, fingerprint_json)
+           VALUES (?, ?, ?, ?)
+           ON CONFLICT(binding_id) DO UPDATE SET
+             version_id = excluded.version_id,
+             observed_at = excluded.observed_at,
+             fingerprint_json = excluded.fingerprint_json`,
+        )
+        .run(
+          input.verifiedHead.bindingId,
+          input.verifiedHead.versionId,
+          input.verifiedHead.observedAt,
+          canonicalJson(input.verifiedHead.fingerprint as unknown as JsonValue),
+        );
+      this.database
+        .prepare("UPDATE platform_bindings SET last_common_version_id = ? WHERE id IN (?, ?)")
+        .run(input.verifiedHead.versionId, input.sourceBindingId, input.targetBinding.id);
+      this.database
+        .prepare(
+          `UPDATE logical_sessions
+           SET canonical_version_id = ?, display_title = ?, archived = ?
+           WHERE id = ?`,
+        )
+        .run(
+          input.verifiedHead.versionId,
+          input.displayTitle,
+          input.archived ? 1 : 0,
+          input.logicalSessionId,
+        );
+      this.database.exec("COMMIT");
     } catch (error) {
       try {
         this.database.exec("ROLLBACK");

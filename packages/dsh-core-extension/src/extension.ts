@@ -146,6 +146,7 @@ export class LockedRc2CoreExtension implements DshCoreExtension {
     this.assertCapturedRevision(current, request.snapshot);
 
     const sessionId = request.snapshot.sessionId;
+    let mutated = false;
     if (request.header !== undefined) {
       if (request.header.id !== sessionId || request.header.version !== 0) {
         throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Prepared DSH header identity is invalid");
@@ -154,6 +155,7 @@ export class LockedRc2CoreExtension implements DshCoreExtension {
         throw new SessionMaintenanceError("PLAN_STALE", `DSH session already exists: ${sessionId}`);
       }
       await this.host.createSession(request.header);
+      mutated = true;
     } else if (!request.snapshot.session.exists && request.events.length > 0) {
       throw new SessionMaintenanceError(
         "WRITE_CAPABILITY_UNAVAILABLE",
@@ -162,22 +164,27 @@ export class LockedRc2CoreExtension implements DshCoreExtension {
     }
 
     this.assertContiguousEvents(request);
-    if (request.events.length > 0) await this.host.appendEvents(sessionId, request.events);
+    if (request.events.length > 0) {
+      await this.host.appendEvents(sessionId, request.events);
+      mutated = true;
+    }
 
     const workspaceId = request.workspaceId ?? request.snapshot.workspace.workspaceId;
     if (workspaceId !== null && workspaceId !== undefined && request.snapshot.workspace.memberIndex === null) {
       await this.host.attachWorkspace(sessionId, workspaceId);
+      mutated = true;
     }
     if (
       request.archived !== undefined &&
       request.archived !== request.snapshot.workspace.archived
     ) {
       await this.host.setArchive(sessionId, request.archived);
+      mutated = true;
     }
     if (request.events.length > 0 || request.header !== undefined) {
       await this.host.invalidateProjection(sessionId);
     }
-    await this.host.reconcileRuntime(sessionId);
+    if (mutated) await this.host.reconcileRuntime(sessionId);
     return this.observeState(request.snapshot.instanceId, sessionId, workspaceId);
   }
 

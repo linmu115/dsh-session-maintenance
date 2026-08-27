@@ -4,7 +4,7 @@
 
 - P14 可恢复写事务：完成。
 - P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：路线 A 的 Core、Gateway、Adapter 与 P14 自动恢复链均完成。
-- P16 Codex → DSH 安全快进与分支保留：待开始。
+- P16 Codex → DSH 安全快进与分支保留：路线 A 的严格门禁、验证后原子 ref 推进、幂等 apply 与分叉零写入已完成。
 - P17 以后 Dashboard 与用户工作流：尚未开始。
 
 ## P14 已验证能力
@@ -56,3 +56,6 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - P15B Gateway/Adapter：Adapter/Core 契约与恢复 4 个测试通过；连同 transaction-engine 回归共 10 个文件、23 个测试通过。
 - Core host build gate 同时验证锁定 source hash 与 `dist/rc2-host.js` hash；实际 `pnpm pack` 产物包含完整 host/materialization 文件，解包后 runtime probe 返回 `compatible`。
 - 全 workspace typecheck/build 与 `git diff --check` 通过；正式 DSH profile 仍未被读取、修改或启动。
+- P16 planner + integration：2 个文件、3 个测试通过；Core/Adapter/transaction/P16 聚焦回归共 12 个文件、26 个测试通过。
+- Phase 1 回归 2 个文件、3 个测试通过；全 workspace typecheck/build、194 文件 portability gate 与 `git diff --check` 通过。
+- P16 只在只读 DSH Adapter 稳定复核后，用单一 SQLite transaction 推进目标 head、两侧 last-common 与 canonical；重复 apply 不增加 host writes，分叉 plan 在 host mutation 前拒绝。

@@ -119,18 +119,18 @@ Run Adapter/Core/transaction focused tests, affected-package typecheck/build, `g
 - Consumes: P14 `TransactionExecutor`, P15B `DshWriteAdapter`, existing discovery and object store.
 - Produces: `WriteService.applyPlan/getTransaction/restoreTransaction/createCheckpoint/createCheckpointRestorePlan`; `SessionRepository.advanceVerifiedRefs`.
 
-- [ ] **Step 1: Write the planner and one end-to-end fixture test**
+- [x] **Step 1: Write the planner and one end-to-end fixture test**
 
 Cover safe strict-prefix append plus one-sided title/archive, repeated apply returning the same transaction, and a divergent pair producing a review plan with zero fixture-host writes. After a completed apply, assert the observed DSH head, both `lastCommonVersionId` refs, and canonical ref point to the verified version.
 
-- [ ] **Step 2: Run the focused tests and confirm red state**
+- [x] **Step 2: Run the focused tests and confirm red state**
 
 Run `pnpm vitest run packages/session-domain/test/planner-write.test.ts tests/integration/dsh-safe-fast-forward.test.ts`; expect missing write service/ref transition.
 
-- [ ] **Step 3: Implement safe shape validation and WriteService**
+- [x] **Step 3: Implement safe shape validation and WriteService**
 
 Allow only the spec's create, append, title, archive, and no-op shapes. `WriteService` loads immutable source bodies, delegates once to `TransactionExecutor`, rescans the target after `completed`, and calls one SQLite transaction `advanceVerifiedRefs`. Restored or unresolved transactions move no refs.
 
-- [ ] **Step 4: Close Batch A, report, and commit P16**
+- [x] **Step 4: Close Batch A, report, and commit P16**
 
 Run the two focused tests, Adapter/Core/transaction focused tests, `pnpm test:phase1`, full typecheck/build, portability gate, and `git diff --check`. Write `...018.md`, update progress, and commit `feat: apply verified Codex to DSH fast forwards`. Stop before P17.
