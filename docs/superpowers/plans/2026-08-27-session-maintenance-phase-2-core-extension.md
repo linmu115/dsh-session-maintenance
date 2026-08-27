@@ -84,19 +84,19 @@ Run the focused test, affected-package typecheck/build, `git diff --check`, writ
 - Consumes: `DshCoreExtension` from P15A, `PlatformWriteAdapter`, `TransactionBackupStore`.
 - Produces: `DshWriteAdapter implements PlatformWriteAdapter`; `DshGatewayClient`; transaction-scoped `DshGatewayToken`.
 
-- [ ] **Step 1: Write one Adapter recovery test**
+- [x] **Step 1: Write one Adapter recovery test**
 
 Build a simple normalized user/assistant strict-prefix plan. Assert `prepare` emits contiguous balanced DSH events, `backup` stores one `dsh-core-snapshot`, a post-artifact gateway fault causes P14 restore, and the fixture Core digest equals its original value.
 
-- [ ] **Step 2: Run the focused test and confirm red state**
+- [x] **Step 2: Run the focused test and confirm red state**
 
 Run `pnpm vitest run packages/adapter-dsh-write/test`; expect missing Adapter/gateway exports.
 
-- [ ] **Step 3: Implement event translation, prepared persistence, auth, and Adapter methods**
+- [x] **Step 3: Implement event translation, prepared persistence, auth, and Adapter methods**
 
 Reject non-message/tool-import/attachment input before capture. Persist canonical prepared JSON under `transactions/<id>/dsh-prepared.json`. Bind gateway tokens to transaction, plan, instance, and session. Store/retrieve the snapshot only through `TransactionBackupStore`. Map Core state mismatches to stable Maintenance errors.
 
-- [ ] **Step 4: Verify, report, and commit P15B**
+- [x] **Step 4: Verify, report, and commit P15B**
 
 Run Adapter/Core/transaction focused tests, affected-package typecheck/build, `git diff --check`, write `...017.md`, update progress, and commit `feat: write DSH through recoverable core gateway`.
 

@@ -16,7 +16,14 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@linmu/dsh-core-extension": "workspace:*",
+    "@linmu/dsh-host-gateway": "workspace:*",
     "@linmu/dsh-session-contracts": "workspace:*",
-    "@linmu/dsh-session-domain": "workspace:*"
+    "@linmu/dsh-session-domain": "workspace:*",
+    "@linmu/dsh-session-transaction-engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@linmu/dsh-session-store": "workspace:*",
+    "@linmu/dsh-session-test-support": "workspace:*"
   }
 }

@@ -3,7 +3,7 @@
 ## 当前状态
 
 - P14 可恢复写事务：完成。
-- P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：路线 A 已完成版本锁定 Core 扩展 P15A；P15B Gateway/Adapter 待接入。
+- P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：路线 A 的 Core、Gateway、Adapter 与 P14 自动恢复链均完成。
 - P16 Codex → DSH 安全快进与分支保留：待开始。
 - P17 以后 Dashboard 与用户工作流：尚未开始。
 
@@ -53,3 +53,6 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - `git diff --check`：通过。
 - P15 write-contract：3 个测试通过；全 workspace typecheck/build 与 portability gate 通过。
 - P15A Core extension：2 个精简测试通过；新增包与 test-support typecheck 通过，全 workspace typecheck/build 通过，`git diff --check` 通过。
+- P15B Gateway/Adapter：Adapter/Core 契约与恢复 4 个测试通过；连同 transaction-engine 回归共 10 个文件、23 个测试通过。
+- Core host build gate 同时验证锁定 source hash 与 `dist/rc2-host.js` hash；实际 `pnpm pack` 产物包含完整 host/materialization 文件，解包后 runtime probe 返回 `compatible`。
+- 全 workspace typecheck/build 与 `git diff --check` 通过；正式 DSH profile 仍未被读取、修改或启动。

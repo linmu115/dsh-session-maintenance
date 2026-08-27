@@ -73,12 +73,28 @@ importers:
 
   packages/adapter-dsh-write:
     dependencies:
+      '@linmu/dsh-core-extension':
+        specifier: workspace:*
+        version: link:../dsh-core-extension
+      '@linmu/dsh-host-gateway':
+        specifier: workspace:*
+        version: link:../dsh-host-gateway
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts
       '@linmu/dsh-session-domain':
         specifier: workspace:*
         version: link:../session-domain
+      '@linmu/dsh-session-transaction-engine':
+        specifier: workspace:*
+        version: link:../transaction-engine
+    devDependencies:
+      '@linmu/dsh-session-store':
+        specifier: workspace:*
+        version: link:../session-store
+      '@linmu/dsh-session-test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
   packages/contracts:
     dependencies:
@@ -98,6 +114,18 @@ importers:
       '@linmu/dsh-session-test-support':
         specifier: workspace:*
         version: link:../test-support
+
+  packages/dsh-host-gateway:
+    dependencies:
+      '@linmu/dsh-core-extension':
+        specifier: workspace:*
+        version: link:../dsh-core-extension
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-domain':
+        specifier: workspace:*
+        version: link:../session-domain
 
   packages/local-api-client:
     dependencies:

@@ -58,7 +58,7 @@ export interface DshNativeEvent {
   readonly data: JsonValue;
   readonly surfaceOp?: JsonValue;
   readonly sourceEventSeqs?: readonly number[];
-  readonly optional?: true;
+  readonly ignorable?: true;
 }
 
 export type DshSessionArtifactCapture =

@@ -1,5 +1,5 @@
 {
-  "name": "@linmu/dsh-core-extension",
+  "name": "@linmu/dsh-host-gateway",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -12,14 +12,12 @@
   },
   "files": ["dist"],
   "scripts": {
-    "build": "tsc -p tsconfig.json && node scripts/verify-materialization.mjs",
+    "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@linmu/dsh-core-extension": "workspace:*",
     "@linmu/dsh-session-contracts": "workspace:*",
     "@linmu/dsh-session-domain": "workspace:*"
-  },
-  "devDependencies": {
-    "@linmu/dsh-session-test-support": "workspace:*"
   }
 }
