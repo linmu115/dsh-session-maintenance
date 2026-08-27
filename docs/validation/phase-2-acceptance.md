@@ -47,8 +47,8 @@ Phase 2 工程门禁通过。版本锁定 Core 扩展、远程 Gateway、可恢�
 | --- | --- |
 | 全工作区 typecheck / build | 通过 |
 | Phase 1 回归 | 2 files / 3 tests 通过 |
-| Phase 2 聚焦套件 | 31 files / 57 tests 通过 |
-| 全工作区串行测试 | 62 files / 131 tests 通过 |
+| Phase 2 聚焦套件 | 31 files / 58 tests 通过 |
+| 全工作区串行测试 | 62 files / 132 tests 通过 |
 | 两次可复现打包 | 通过 |
 | 19 个发布文件便携性/敏感信息扫描 | 通过 |
 | 合成隔离验收 | 通过 |

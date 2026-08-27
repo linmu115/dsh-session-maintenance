@@ -59,11 +59,18 @@ async function filesUnder(root) {
   return files;
 }
 
+function canonicalArtifactBytes(name, bytes) {
+  if (!/(?:^|\/)(?:README\.md|LICENSE)$/u.test(name) && !/\.(?:css|d\.ts|html|js|json|md|mjs|ts|tsx|yml|yaml)$/u.test(name)) {
+    return bytes;
+  }
+  return Buffer.from(bytes.toString("utf8").replaceAll("\r\n", "\n").replaceAll("\r", "\n"));
+}
+
 export async function deterministicTarGz(root, prefix) {
   const chunks = [];
   for (const path of await filesUnder(root)) {
     const name = `${prefix}/${relative(root, path).replaceAll("\\", "/")}`;
-    const bytes = await readFile(path);
+    const bytes = canonicalArtifactBytes(name, await readFile(path));
     chunks.push(header(name, bytes.byteLength, name.endsWith(".cmd") ? 0o755 : 0o644), bytes);
     const padding = (512 - (bytes.byteLength % 512)) % 512;
     if (padding > 0) chunks.push(Buffer.alloc(padding));

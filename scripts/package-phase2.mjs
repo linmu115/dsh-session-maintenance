@@ -17,7 +17,12 @@ const version = "0.1.0";
 function runPnpm(...argv) {
   const entry = process.env.npm_execpath;
   if (entry === undefined) throw new Error("Run package:phase2 through pinned pnpm");
-  const result = spawnSync(process.execPath, [entry, ...argv], { cwd: root, env: process.env, stdio: "inherit", shell: false });
+  const result = spawnSync(process.execPath, [entry, ...argv], {
+    cwd: root,
+    env: { ...process.env, NODE_ENV: "production" },
+    stdio: "inherit",
+    shell: false,
+  });
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

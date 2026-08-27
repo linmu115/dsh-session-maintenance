@@ -7,6 +7,8 @@
 - Engine 直接提供 `/dashboard/` 静态页面；固定 CSP、asset 路径和无 traversal 路由。浏览器仍只使用 HttpOnly UI session 与 CSRF。
 - 修复发布前被真实 loader 验收发现的 client 产物格式：从普通 ESM 改为官方 `window.__ModuleLoader__.load` CJS factory。合成快测也改为验证 factory 注册，不再用 Node `import()` 冒充浏览器 loader。
 - 新增两层隔离验收：合成 fixture 负责快速契约/卸载/状态保留，真实验收通过官方命令把 tgz 安装到临时 `DSH_HOME`，启动本机官方 DSH `0.1.1-rc.2` 最小 Web 栈。
+- clean-checkout 纠错：Phase 2 集成验收会在专用临时目录自行打包并清理，不再依赖工作树中预先存在的 `.artifacts`；clean gate 也改为真正执行双构建可复现检查。发布 tar 对文本行尾规范化，避免 LF/CRLF checkout 产生不同 tgz。
+- 打包器的内部构建固定为 production，避免在 Vitest 的 `NODE_ENV=test` 中生成带源码绝对路径的 Dashboard；官方隔离验收分别等待 Web 首页和插件 host proxy 就绪，避免把异步插件注册误判为加载失败。
 - 真实验收确认 client graph、client bundle route、host proxy、Core materialization 和 loader diagnostics；进程、profile 和状态都在已标记临时目录，正式 DSH home 未被写入。
 - README 与安装、升级、卸载、恢复文档已更新；正式 `web` profile 只生成替换预览，没有执行安装或卸载。
 
@@ -21,5 +23,5 @@
 
 - `pnpm package:phase2`、`pnpm verify:phase2-package`、`pnpm assert:phase2-portable` 通过。
 - `pnpm accept:phase2-isolated` 与 `pnpm accept:phase2-official` 通过。
-- Phase 1 为 2 files / 3 tests，Phase 2 聚焦为 31 files / 57 tests，全工作区串行为 62 files / 131 tests；typecheck、build、通用 portability 和 `git diff --check` 均通过。
+- Phase 1 为 2 files / 3 tests，Phase 2 聚焦为 31 files / 58 tests，全工作区串行为 62 files / 132 tests；typecheck、build、通用 portability 和 `git diff --check` 均通过。
 - 详细版本、hash 和正式 profile 未执行边界见 `docs/validation/phase-2-acceptance.md`。

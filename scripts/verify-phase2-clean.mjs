@@ -6,7 +6,7 @@ for (const argv of [
   ["bootstrap:phase2"],
   ["typecheck"],
   ["build"],
-  ["package:phase2"],
+  ["verify:phase2-package"],
   ["test:phase1", "--", "--maxWorkers=1", "--testTimeout=15000"],
   ["test:phase2"],
   ["assert:phase2-portable"],

@@ -88,6 +88,33 @@ async function waitForHttp(origin, process, timeoutMs = 45_000) {
   throw new Error(`Official DSH did not become ready: ${String(lastError)}`);
 }
 
+async function waitForHostProxy(origin, process, timeoutMs = 10_000) {
+  const deadline = Date.now() + timeoutMs;
+  let last = { status: 0, text: "not attempted" };
+  while (Date.now() < deadline) {
+    if (process.exitCode !== null || process.signalCode !== null) {
+      throw new Error(`Official DSH exited before host proxy readiness with code ${String(process.exitCode ?? process.signalCode)}`);
+    }
+    try {
+      const response = await fetch(`${origin}/dsh-session-maintenance/api`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
+        body: JSON.stringify({ operation: "status" }),
+        signal: AbortSignal.timeout(1_500),
+      });
+      const text = await response.text();
+      last = { status: response.status, text };
+      let body;
+      try { body = JSON.parse(text); } catch { body = undefined; }
+      if (response.ok && body?.ok === true) return;
+    } catch (error) {
+      last = { status: 0, text: String(error) };
+    }
+    await new Promise((resolveWait) => setTimeout(resolveWait, 250));
+  }
+  throw new Error(`Official host proxy did not become ready (HTTP ${last.status}: ${last.text.slice(0, 300)})`);
+}
+
 async function stopProcess(process) {
   if (process === undefined || process.exitCode !== null || process.signalCode !== null) return;
   const exited = new Promise((resolveExit) => process.once("exit", resolveExit));
@@ -161,12 +188,7 @@ try {
   if (!clientBundle.ok || !clientBody.includes('__ModuleLoader__.load({ id: "dsh-session-maintenance"')) {
     throw new Error("Official client-module route did not serve the packaged factory");
   }
-  const proxy = await fetch(`${origin}/dsh-session-maintenance/api`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "sec-fetch-site": "same-origin" },
-    body: JSON.stringify({ operation: "status" }),
-  });
-  if (!proxy.ok || !((await proxy.json()).ok)) throw new Error("Official host proxy did not reach the isolated Engine fixture");
+  await waitForHostProxy(origin, dshProcess);
   const scope = { transactionId: "official-probe", planHash: "official-probe", instanceId: "dsh-web", sessionId: "official-probe" };
   const core = await fetch(`${origin}/dsh-session-maintenance/core`, {
     method: "POST",
