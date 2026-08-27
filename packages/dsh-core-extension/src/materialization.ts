@@ -17,6 +17,10 @@ function sha256(bytes: Uint8Array): string {
   return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 }
 
+function normalizedTextHash(bytes: Uint8Array): string {
+  return sha256(Buffer.from(Buffer.from(bytes).toString("utf8").replaceAll("\r\n", "\n"), "utf8"));
+}
+
 export async function probeBuiltRc2CoreHost(): Promise<CoreHostMaterializationProbe> {
   try {
     let artifact: Uint8Array | undefined;
@@ -46,7 +50,7 @@ export async function probeBuiltRc2CoreHost(): Promise<CoreHostMaterializationPr
           ),
         )
       : RC2_CORE_HOST_MATERIALIZATION.sourceHash;
-    const artifactHash = sha256(artifact);
+    const artifactHash = normalizedTextHash(artifact);
     if (
       sourceHash !== RC2_CORE_HOST_MATERIALIZATION.sourceHash ||
       artifactHash !== RC2_CORE_HOST_MATERIALIZATION.artifactHash

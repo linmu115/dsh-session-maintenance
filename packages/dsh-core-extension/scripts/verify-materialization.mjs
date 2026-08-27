@@ -9,7 +9,10 @@ function sha256(bytes) {
 
 const source = await readFile(new URL("../src/rc2-host.ts", import.meta.url), "utf8");
 const normalizedSource = Buffer.from(source.replaceAll("\r\n", "\n"), "utf8");
-const artifact = await readFile(new URL("../dist/rc2-host.js", import.meta.url));
+const artifact = Buffer.from(
+  (await readFile(new URL("../dist/rc2-host.js", import.meta.url), "utf8")).replaceAll("\r\n", "\n"),
+  "utf8",
+);
 const observed = {
   sourceHash: sha256(normalizedSource),
   artifactHash: sha256(artifact),
