@@ -108,9 +108,12 @@ export async function observeCodexSession(
   }
 
   const envelopes = parseCodexJsonl(bytes);
-  const sessionMetas = envelopes.filter((envelope) => envelope.type === "session_meta");
-  if (sessionMetas.length === 0 || sessionMetas.some((item) => item.payload.id !== key.sessionId)) {
-    throw new Error(`Codex session_meta ID does not match catalog ID: ${key.sessionId}`);
+  const rootMeta = envelopes[0];
+  if (rootMeta?.type !== "session_meta" || rootMeta.payload.id !== key.sessionId) {
+    throw new SessionMaintenanceError(
+      "IDENTITY_CONFLICT",
+      `Codex root session_meta ID does not match catalog ID: ${key.sessionId}`,
+    );
   }
   return {
     kind: "stable",

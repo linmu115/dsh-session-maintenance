@@ -52,7 +52,7 @@ describe("Codex adapter schema boundaries", () => {
     expect(adapter.debugCounters().rolloutProbeReads).toBe(0);
   });
 
-  it("rejects truncated JSONL, escaped paths and conflicting session metadata", async () => {
+  it("rejects truncated JSONL, escaped paths and conflicting root metadata while accepting embedded lineage", async () => {
     const sandbox = await createFixtureSandbox("codex-corruption");
     cleanups.push(sandbox.cleanup);
     await writeCodexFixtureHome(sandbox.codexHome);
@@ -69,7 +69,13 @@ describe("Codex adapter schema boundaries", () => {
       rollout,
       `${original}${JSON.stringify({ type: "session_meta", payload: { id: "another-thread" } })}\n`,
     );
-    await expect(adapter.observe(registered, summary!.key)).rejects.toThrow(/does not match catalog ID/iu);
+    await expect(adapter.observe(registered, summary!.key)).resolves.toMatchObject({ kind: "stable" });
+
+    const [rootLine, ...remainingLines] = original.trimEnd().split(/\r?\n/u);
+    const rootEnvelope = JSON.parse(rootLine!) as { type: string; payload: { id: string } };
+    rootEnvelope.payload.id = "another-thread";
+    await writeFile(rollout, `${[JSON.stringify(rootEnvelope), ...remainingLines].join("\n")}\n`);
+    await expect(adapter.observe(registered, summary!.key)).rejects.toMatchObject({ code: "IDENTITY_CONFLICT" });
 
     const outside = join(sandbox.root, "outside-rollout.jsonl");
     await writeFile(outside, original);
