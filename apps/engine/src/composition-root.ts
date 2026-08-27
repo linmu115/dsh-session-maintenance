@@ -4,14 +4,21 @@ import { join } from "node:path";
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
+import { DshWriteAdapter } from "@linmu/dsh-adapter-dsh-write";
+import { RemoteDshHostGateway } from "@linmu/dsh-host-gateway";
 import {
   SessionMaintenanceError,
+  normalizedSessionSchema,
   type CodexContinuationPort,
+  type NormalizedSession,
   type RegisteredInstance,
   type SessionReadAdapter,
+  type StateFingerprint,
+  type SyncPlan,
 } from "@linmu/dsh-session-contracts";
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { SqliteSessionRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
   addInstance,
@@ -22,12 +29,21 @@ import {
   updateSettings,
 } from "./config.js";
 import { SessionMaintenanceEngine } from "./engine.js";
+import {
+  EngineDescriptorDshGatewayConnections,
+  type DshGatewayTarget,
+} from "./dsh-gateway-connection.js";
+import { WriteService } from "./write-service.js";
 
 export interface CompositionOptions {
   readonly stateRoot: string;
   readonly clock?: () => string;
   readonly fixturePolicy?: (root: string) => void;
   readonly continuationAdapter?: CodexContinuationPort;
+}
+
+export interface DshWritableCompositionOptions extends CompositionOptions {
+  readonly dshGatewayTargets: readonly DshGatewayTarget[];
 }
 
 function adapters(fixturePolicy?: (root: string) => void): readonly SessionReadAdapter[] {
@@ -52,7 +68,44 @@ export async function probeAndAddInstance(
   });
 }
 
-export async function createReadOnlyComposition(options: CompositionOptions): Promise<SessionMaintenanceEngine> {
+async function loadVersionBody(
+  repository: SqliteSessionRepository,
+  objectStore: ZstdContentObjectStore,
+  plan: SyncPlan,
+): Promise<NormalizedSession> {
+  const version = await repository.getVersion(plan.source.versionId);
+  if (version?.logicalSessionId !== plan.logicalSessionId) {
+    throw new SessionMaintenanceError("OBJECT_CORRUPT", `Plan source version is missing: ${plan.source.versionId}`);
+  }
+  return normalizedSessionSchema.parse(
+    JSON.parse(Buffer.from(await objectStore.get(version.bodyObject)).toString("utf8")),
+  ) as unknown as NormalizedSession;
+}
+
+async function currentFingerprints(input: {
+  readonly plan: SyncPlan;
+  readonly instances: ReadonlyMap<string, RegisteredInstance>;
+  readonly adapters: readonly SessionReadAdapter[];
+}): Promise<readonly StateFingerprint[]> {
+  const byPlatform = new Map(input.adapters.map((adapter) => [adapter.platform, adapter]));
+  return Promise.all(input.plan.preconditions.map(async (fingerprint) => {
+    const instance = input.instances.get(fingerprint.instanceId);
+    const adapter = byPlatform.get(fingerprint.platform);
+    if (instance === undefined || instance.platform !== fingerprint.platform || adapter === undefined) {
+      throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `Plan instance is no longer registered: ${fingerprint.instanceId}`);
+    }
+    const observation = await adapter.observe(instance, fingerprint);
+    if (observation.kind === "unstable") {
+      throw new SessionMaintenanceError("UNSTABLE_READ", observation.reason);
+    }
+    return observation.fingerprint;
+  }));
+}
+
+async function createComposition(
+  options: CompositionOptions,
+  dshGatewayTargets: readonly DshGatewayTarget[],
+): Promise<SessionMaintenanceEngine> {
   await initializeStateRoot(options.stateRoot);
   await mkdir(join(options.stateRoot, "objects"), { recursive: true });
   const config = await loadConfig(options.stateRoot);
@@ -61,6 +114,8 @@ export async function createReadOnlyComposition(options: CompositionOptions): Pr
     openMaintenanceDatabase(join(options.stateRoot, "metadata.sqlite")),
     objectStore,
   );
+  const instances = registeredInstances(config);
+  const readAdapters = adapters(options.fixturePolicy);
   const continuations = new ContinuationService({
     repository,
     objectStore,
@@ -68,9 +123,40 @@ export async function createReadOnlyComposition(options: CompositionOptions): Pr
     targets: registeredCodexTargets(config),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
+  let writeService: WriteService | undefined;
+  if (dshGatewayTargets.length > 0) {
+    const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
+    for (const target of dshGatewayTargets) {
+      const instance = instanceMap.get(target.instanceId);
+      if (instance?.platform !== "dsh" || instance.platformVersion !== "0.1.1-rc.2") {
+        throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `Writable DSH target is not registered as 0.1.1-rc.2: ${target.instanceId}`);
+      }
+    }
+    const gateway = new RemoteDshHostGateway({
+      connections: new EngineDescriptorDshGatewayConnections(options.stateRoot, dshGatewayTargets),
+    });
+    const dshReader = readAdapters.find((adapter) => adapter.platform === "dsh");
+    if (dshReader === undefined) throw new TypeError("DSH read Adapter is unavailable");
+    const writer = new DshWriteAdapter({
+      stateRoot: options.stateRoot,
+      gateway,
+      loadSource: (plan) => loadVersionBody(repository, objectStore, plan),
+      ...(options.clock === undefined ? {} : { now: () => new Date(options.clock!()) }),
+    });
+    const executor = new TransactionExecutor({
+      stateRoot: options.stateRoot,
+      repository,
+      adapters: new Map([["dsh", writer]]),
+      instances: instanceMap,
+      readFingerprints: (plan) => currentFingerprints({ plan, instances: instanceMap, adapters: readAdapters }),
+      confirmationService: new ConfirmationService(repository),
+      ...(options.clock === undefined ? {} : { now: () => new Date(options.clock!()) }),
+    });
+    writeService = new WriteService({ repository, objectStore, executor, instances: instanceMap, dshReader });
+  }
   return new SessionMaintenanceEngine({
-    instances: registeredInstances(config),
-    adapters: adapters(options.fixturePolicy),
+    instances,
+    adapters: readAdapters,
     repository,
     objectStore,
     continuations,
@@ -78,6 +164,16 @@ export async function createReadOnlyComposition(options: CompositionOptions): Pr
       get: async () => (await loadConfig(options.stateRoot)).settings,
       patch: (input) => updateSettings(options.stateRoot, input),
     },
+    ...(writeService === undefined ? {} : { writeService }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
+}
+
+export function createReadOnlyComposition(options: CompositionOptions): Promise<SessionMaintenanceEngine> {
+  return createComposition(options, []);
+}
+
+export function createDshWritableComposition(options: DshWritableCompositionOptions): Promise<SessionMaintenanceEngine> {
+  if (options.dshGatewayTargets.length === 0) throw new TypeError("Writable composition requires at least one DSH Core gateway target");
+  return createComposition(options, options.dshGatewayTargets);
 }

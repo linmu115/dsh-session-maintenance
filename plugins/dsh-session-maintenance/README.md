@@ -1,0 +1,30 @@
+# DSH Session Maintenance
+
+这是官方 DeepSeek Harness `0.1.1-rc.2` 的会话维护入口。它把会话右键菜单和一个轻量操作面板接到独立的 Session Maintenance Engine；版本图、差异、同步计划、Checkpoint 和恢复仍由独立看板完成。
+
+## 使用前准备
+
+- 官方 DSH `0.1.1-rc.2`，使用 `web` profile；
+- 已安装并启动本项目打包的 Maintenance Engine；
+- 使用本项目的可信安装器登记 Engine 连接。安装器只给 DSH host 一个连接描述符位置，浏览器不会读取 Engine capability；
+- `dsh-better-sidebar` 是可选增强，不安装也能使用全部核心入口。
+
+## 安装
+
+使用本项目生成的插件 tgz，向目标官方 profile 添加 `dsh-session-maintenance`，再应用随包提供的 `cordis.patch.yml` 并重启该 profile。不要手工把 Engine token 写进插件设置；Engine 每次重启都会轮换 token，插件 host 会重新读取受 ACL 保护的连接描述符。
+
+安装完成后，会话列表右键出现维护操作，页面右下角出现“会话维护”按钮。若 DSH 客户端结构不再符合 `0.1.1-rc.2` 契约，菜单会安全停用，不会猜测会话身份。
+
+## 日常使用
+
+1. 首次使用先点“扫描当前会话”。
+2. 右键会话可打开版本图、比较 Codex、建立 Checkpoint 或生成同步计划。
+3. 只有无需确认的安全计划能从入口提交；需要复核的计划会留在独立看板。
+4. “删除”仅打开候选说明，阶段二不会从右键菜单直接删除平台会话。
+5. 参数面板只保存实例 ID、映射 ID 和同步策略；DSH/Codex 根目录仍由可信安装器或 CLI 登记。
+
+## 更新与卸载
+
+更新前先在独立看板建立 Checkpoint，然后通过项目安装器替换插件包。卸载只移除 DSH 入口，不删除 Engine 数据库、对象、平台会话或旧插件数据。
+
+详细部署、恢复与验收记录见项目根目录的 `docs/deployment/` 和 `docs/validation/`。

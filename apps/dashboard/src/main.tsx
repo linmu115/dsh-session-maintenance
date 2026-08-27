@@ -11,6 +11,9 @@ const element = document.getElementById("root");
 if (element === null) throw new TypeError("Dashboard root is missing");
 const root = createRoot(element);
 void DashboardClient.connect({ origin: window.location.origin }).then(
-  (client) => root.render(<StrictMode><DashboardApp api={client} /></StrictMode>),
+  (client) => root.render(<StrictMode><DashboardApp
+    api={client}
+    {...(client.initialLogicalSessionId === undefined ? {} : { initialLogicalSessionId: client.initialLogicalSessionId })}
+  /></StrictMode>),
   () => root.render(<StrictMode><DashboardOffline /></StrictMode>),
 );

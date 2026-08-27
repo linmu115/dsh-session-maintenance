@@ -1,6 +1,7 @@
 export * from "./cli.js";
 export * from "./composition-root.js";
 export * from "./config.js";
+export * from "./dsh-gateway-connection.js";
 export * from "./engine.js";
 export * from "./http/server.js";
 export * from "./jobs/job-runner.js";

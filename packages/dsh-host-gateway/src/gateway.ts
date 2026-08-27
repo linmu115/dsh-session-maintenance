@@ -10,6 +10,8 @@ import { canonicalJson } from "@linmu/dsh-session-domain";
 
 import { DshGatewayTokenService } from "./auth.js";
 import type {
+  DshGatewayClientPort,
+  DshGatewayPort,
   DshGatewayRequest,
   DshGatewayScope,
   MaterializationProbe,
@@ -22,7 +24,7 @@ export interface DshHostGatewayOptions {
   readonly maxPayloadBytes?: number;
 }
 
-export class DshHostGateway {
+export class DshHostGateway implements DshGatewayPort {
   readonly extensions: ReadonlyMap<string, DshCoreExtension>;
   readonly tokens: DshGatewayTokenService;
   readonly materializationProbe: MaterializationProbe;
@@ -105,7 +107,7 @@ export class DshHostGateway {
   }
 }
 
-export class DshGatewayClient {
+export class DshGatewayClient implements DshGatewayClientPort {
   readonly gateway: DshHostGateway;
   readonly scope: DshGatewayScope;
 

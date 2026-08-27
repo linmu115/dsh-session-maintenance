@@ -1,7 +1,7 @@
 import { resolve, join } from "node:path";
 
 import type { DshCoreSnapshot, DshCoreState } from "@linmu/dsh-core-extension";
-import type { DshHostGateway } from "@linmu/dsh-host-gateway";
+import type { DshGatewayPort } from "@linmu/dsh-host-gateway";
 import {
   SessionMaintenanceError,
   type BackupManifest,
@@ -32,7 +32,7 @@ import {
 
 export interface DshWriteAdapterOptions {
   readonly stateRoot: string;
-  readonly gateway: DshHostGateway;
+  readonly gateway: DshGatewayPort;
   readonly loadSource: (plan: SyncPlan) => Promise<NormalizedSession>;
   readonly now?: () => Date;
 }
@@ -100,7 +100,7 @@ function snapshotFrom(bytes: Uint8Array): DshCoreSnapshot {
 export class DshWriteAdapter implements PlatformWriteAdapter {
   readonly platform = "dsh" as const;
   readonly stateRoot: string;
-  readonly gateway: DshHostGateway;
+  readonly gateway: DshGatewayPort;
   readonly loadSource: DshWriteAdapterOptions["loadSource"];
   readonly now: () => Date;
   readonly preparedStore: PreparedDshWriteStore;

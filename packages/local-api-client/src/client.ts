@@ -9,6 +9,7 @@ import {
   diagnosticsResponseSchema,
   dashboardLaunchResponseSchema,
   dashboardUiSessionResponseSchema,
+  platformSessionResolutionResponseSchema,
   issuedConfirmationSchema,
   jobAcceptedResponseSchema,
   jobRefSchema,
@@ -44,6 +45,7 @@ import {
   type PlanRequest,
   type PlanQuery,
   type PlanSummary,
+  type PlatformSessionResolution,
   type ResolutionContinuationRequest,
   type SessionDiff,
   type SessionQuery,
@@ -419,10 +421,19 @@ export class MaintenanceClient extends ApiClient {
     });
   }
 
-  async createDashboardLaunchCode(signal?: AbortSignal): Promise<DashboardLaunchInfo> {
+  async resolveDshSession(instanceId: string, sessionId: string, signal?: AbortSignal): Promise<PlatformSessionResolution> {
+    return (await this.request(
+      "/v1/session-resolution",
+      this.jsonPost({ platform: "dsh", instanceId, sessionId }),
+      platformSessionResolutionResponseSchema,
+      signal,
+    )).resolution as PlatformSessionResolution;
+  }
+
+  async createDashboardLaunchCode(logicalSessionId?: string, signal?: AbortSignal): Promise<DashboardLaunchInfo> {
     return (await this.request(
       "/v1/ui/launch-code",
-      this.jsonPost({}),
+      this.jsonPost(logicalSessionId === undefined ? {} : { logicalSessionId }),
       dashboardLaunchResponseSchema,
       signal,
     )).launch as DashboardLaunchInfo;
@@ -430,12 +441,15 @@ export class MaintenanceClient extends ApiClient {
 }
 
 export class DashboardClient extends ApiClient {
-  private constructor(options: DashboardClientOptions & { readonly csrfToken: string }) {
+  readonly initialLogicalSessionId: string | undefined;
+
+  private constructor(options: DashboardClientOptions & { readonly csrfToken: string; readonly initialLogicalSessionId?: string }) {
     super({
       origin: options.origin,
       transport: dashboardTransport(options.csrfToken),
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
     });
+    this.initialLogicalSessionId = options.initialLogicalSessionId;
   }
 
   static async connect(options: DashboardClientOptions, signal?: AbortSignal): Promise<DashboardClient> {
@@ -449,6 +463,7 @@ export class DashboardClient extends ApiClient {
     return new DashboardClient({
       origin: options.origin,
       csrfToken: parsed.session.csrfToken,
+      ...(parsed.session.initialLogicalSessionId === undefined ? {} : { initialLogicalSessionId: parsed.session.initialLogicalSessionId }),
       ...(options.fetchImpl === undefined ? {} : { fetchImpl: options.fetchImpl }),
     });
   }

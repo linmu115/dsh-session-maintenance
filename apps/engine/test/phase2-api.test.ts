@@ -25,6 +25,14 @@ describe("phase 2 operation API", () => {
     const logicalSessionId = sessions.items[0]!.logicalSessionId;
     const graph = await fixture.engine.getGraph(logicalSessionId);
     const versionId = graph.nodes[0]!.id;
+    await fixture.engine.repository.bindPlatformSession({
+      id: "binding-dsh-resolution-fixture",
+      logicalSessionId,
+      key: { platform: "dsh", instanceId: "dsh-fixture", sessionId: "dsh-session-fixture" },
+      adapterContract: { adapter: "dsh-read-fixture", platformVersion: "0.1.1-rc.2", schemaFingerprint: "fixture-read-v1" },
+      lastCommonVersionId: null,
+      status: "read-only",
+    });
     const checkpoint: Checkpoint = {
       id: "checkpoint-fixture",
       name: "Known good fixture",
@@ -91,6 +99,7 @@ describe("phase 2 operation API", () => {
 
     const server = await fixture.startServer();
     const client = new MaintenanceClient({ origin: server.origin, token: server.token });
+    expect((await client.resolveDshSession("dsh-fixture", "dsh-session-fixture")).logicalSessionId).toBe(logicalSessionId);
     expect((await client.overview()).sessions).toBe(1);
     expect((await client.getSession(logicalSessionId)).summary.logicalSessionId).toBe(logicalSessionId);
     expect((await client.getVersion(logicalSessionId, versionId)).manifest.id).toBe(versionId);

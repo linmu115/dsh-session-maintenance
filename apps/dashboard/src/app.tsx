@@ -100,12 +100,12 @@ function DashboardContent(props: {
   </>;
 }
 
-export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi }) {
+export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi; readonly initialLogicalSessionId?: string }) {
   const [view, setView] = useState<View>("overview");
   const [request, setRequest] = useState(0);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [loadingNext, setLoadingNext] = useState(false);
-  const [selectedSessionId, setSelectedSessionId] = useState<string>();
+  const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(props.initialLogicalSessionId);
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });

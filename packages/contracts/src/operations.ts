@@ -116,4 +116,12 @@ export interface DashboardLaunchInfo {
 export interface DashboardUiSession {
   readonly csrfToken: string;
   readonly expiresAt: string;
+  readonly initialLogicalSessionId?: string;
+}
+
+export interface PlatformSessionResolution {
+  readonly logicalSessionId: string;
+  readonly bindingId: string;
+  readonly title: string;
+  readonly status: SessionSummary["status"];
 }

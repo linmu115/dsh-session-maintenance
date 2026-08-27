@@ -24,7 +24,7 @@ describe("MaintenanceClient", () => {
       calls.push({ url, ...(init === undefined ? {} : { init }) });
       if (url.endsWith("/v1/ui/session")) {
         return new Response(JSON.stringify({
-          session: { csrfToken: "csrf-session-fixture", expiresAt: "2026-08-27T00:15:00.000Z" },
+          session: { csrfToken: "csrf-session-fixture", expiresAt: "2026-08-27T00:15:00.000Z", initialLogicalSessionId: "logical-fixture" },
         }), { status: 200, headers: { "content-type": "application/json" } });
       }
       return new Response(JSON.stringify({
@@ -32,6 +32,7 @@ describe("MaintenanceClient", () => {
       }), { status: 200, headers: { "content-type": "application/json" } });
     };
     const client = await DashboardClient.connect({ origin: "http://127.0.0.1:43123", fetchImpl });
+    expect(client.initialLogicalSessionId).toBe("logical-fixture");
     await client.overview();
     expect(calls).toHaveLength(2);
     expect(calls[0]?.init?.credentials).toBe("same-origin");

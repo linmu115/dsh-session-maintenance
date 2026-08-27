@@ -6,7 +6,7 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["apps/*/test/**/*.test.{ts,tsx}", "packages/*/test/**/*.test.{ts,tsx}", "tests/**/*.test.ts"],
+    include: ["apps/*/test/**/*.test.{ts,tsx}", "packages/*/test/**/*.test.{ts,tsx}", "plugins/*/test/**/*.test.{ts,tsx}", "tests/**/*.test.ts"],
     passWithNoTests: false,
   },
 });

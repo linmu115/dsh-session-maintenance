@@ -13,7 +13,7 @@ describe("Dashboard UI session boundary", () => {
     const server = await fixture.startServer();
     const trusted = new MaintenanceClient({ origin: server.origin, token: server.token });
 
-    const launch = await trusted.createDashboardLaunchCode();
+    const launch = await trusted.createDashboardLaunchCode("logical-session-fixture");
     expect(launch.url.startsWith(`${server.origin}/ui/claim?code=`)).toBe(true);
     const claim = await fetch(launch.url, { redirect: "manual" });
     expect(claim.status).toBe(303);
@@ -32,8 +32,9 @@ describe("Dashboard UI session boundary", () => {
       headers: { cookie, origin: server.origin },
     });
     expect(bootstrap.status).toBe(200);
-    const session = await bootstrap.json() as { readonly session: { readonly csrfToken: string } };
+    const session = await bootstrap.json() as { readonly session: { readonly csrfToken: string; readonly initialLogicalSessionId?: string } };
     expect(session.session.csrfToken.length).toBeGreaterThanOrEqual(32);
+    expect(session.session.initialLogicalSessionId).toBe("logical-session-fixture");
     expect(JSON.stringify(session)).not.toContain(server.token);
 
     expect((await fetch(`${server.origin}/v1/overview`, {

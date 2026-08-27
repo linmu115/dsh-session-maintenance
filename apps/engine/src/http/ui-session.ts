@@ -3,8 +3,8 @@ import type { IncomingMessage } from "node:http";
 
 const COOKIE_NAME = "dsh_maintenance_ui";
 
-interface LaunchEntry { readonly expiresAt: number }
-interface SessionEntry { readonly csrfToken: string; readonly expiresAt: number }
+interface LaunchEntry { readonly expiresAt: number; readonly logicalSessionId?: string }
+interface SessionEntry { readonly csrfToken: string; readonly expiresAt: number; readonly initialLogicalSessionId?: string }
 
 export interface DashboardLaunch {
   readonly code: string;
@@ -59,11 +59,11 @@ export class UiSessionManager {
     private readonly sessionTtlMs = 15 * 60_000,
   ) {}
 
-  issue(origin: string): DashboardLaunch {
+  issue(origin: string, logicalSessionId?: string): DashboardLaunch {
     this.prune();
     const code = randomBytes(32).toString("base64url");
     const expiresAt = this.now() + this.launchTtlMs;
-    this.launches.set(digest(code), { expiresAt });
+    this.launches.set(digest(code), { expiresAt, ...(logicalSessionId === undefined ? {} : { logicalSessionId }) });
     return {
       code,
       url: `${origin}/ui/claim?code=${encodeURIComponent(code)}`,
@@ -79,7 +79,11 @@ export class UiSessionManager {
     if (launch === undefined || launch.expiresAt <= this.now()) return undefined;
     const id = randomBytes(32).toString("base64url");
     const expiresAt = this.now() + this.sessionTtlMs;
-    this.sessions.set(digest(id), { csrfToken: randomBytes(32).toString("base64url"), expiresAt });
+    this.sessions.set(digest(id), {
+      csrfToken: randomBytes(32).toString("base64url"),
+      expiresAt,
+      ...(launch.logicalSessionId === undefined ? {} : { initialLogicalSessionId: launch.logicalSessionId }),
+    });
     return {
       cookie: `${COOKIE_NAME}=${id}; HttpOnly; SameSite=Strict; Path=/; Max-Age=${Math.floor(this.sessionTtlMs / 1000)}`,
       expiresAt: new Date(expiresAt).toISOString(),

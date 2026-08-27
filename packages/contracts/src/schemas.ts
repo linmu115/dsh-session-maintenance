@@ -695,9 +695,28 @@ export const diagnosticsResponseSchema = z.strictObject({ diagnostics: z.array(a
 export const settingsResponseSchema = z.strictObject({ settings: maintenanceSettingsSchema });
 export const overviewResponseSchema = z.strictObject({ overview: dashboardOverviewSchema });
 export const dashboardLaunchInfoSchema = z.strictObject({ url: z.string().url(), expiresAt: timestampSchema });
-export const dashboardUiSessionSchema = z.strictObject({ csrfToken: idSchema, expiresAt: timestampSchema });
+export const dashboardLaunchRequestSchema = z.strictObject({
+  logicalSessionId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u).optional(),
+});
+export const dashboardUiSessionSchema = z.strictObject({
+  csrfToken: idSchema,
+  expiresAt: timestampSchema,
+  initialLogicalSessionId: idSchema.optional(),
+});
+export const platformSessionResolutionRequestSchema = z.strictObject({
+  platform: z.literal("dsh"),
+  instanceId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u),
+  sessionId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u),
+});
+export const platformSessionResolutionSchema = z.strictObject({
+  logicalSessionId: idSchema,
+  bindingId: idSchema,
+  title: z.string(),
+  status: sessionStatusSchema,
+});
 export const dashboardLaunchResponseSchema = z.strictObject({ launch: dashboardLaunchInfoSchema });
 export const dashboardUiSessionResponseSchema = z.strictObject({ session: dashboardUiSessionSchema });
+export const platformSessionResolutionResponseSchema = z.strictObject({ resolution: platformSessionResolutionSchema });
 
 export const continuationModeSchema = z.enum(["full", "checkpoint", "structured-summary"]);
 export const continuationJobStatusSchema = z.enum([

@@ -10,7 +10,13 @@ import {
   type ResolutionContinuationRequest,
 } from "@linmu/dsh-session-contracts";
 
-import { createReadOnlyComposition, probeAndAddInstance, type CompositionOptions } from "./composition-root.js";
+import {
+  createDshWritableComposition,
+  createReadOnlyComposition,
+  probeAndAddInstance,
+  type CompositionOptions,
+} from "./composition-root.js";
+import type { DshGatewayTarget } from "./dsh-gateway-connection.js";
 import {
   addCodexTarget,
   initializeStateRoot,
@@ -33,6 +39,16 @@ function output(write: (text: string) => void, value: unknown): void {
 
 function collect(value: string, previous: readonly string[]): readonly string[] {
   return [...previous, value];
+}
+
+function gatewayTargets(values: readonly string[]): readonly DshGatewayTarget[] {
+  return values.map((value) => {
+    const separator = value.indexOf("=");
+    if (separator <= 0 || separator === value.length - 1) {
+      throw new TypeError(`Invalid DSH gateway target; expected instanceId=http://127.0.0.1:port: ${value}`);
+    }
+    return { instanceId: value.slice(0, separator), origin: value.slice(separator + 1) };
+  });
 }
 
 function continuationInput(value: {
@@ -299,11 +315,15 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
   program.command("serve")
     .option("--host <host>", "loopback host", "127.0.0.1")
     .option("--port <port>", "TCP port", "0")
+    .option("--dsh-gateway <instance=origin>", "trusted rc.2 DSH Core endpoint; repeatable", collect, [])
     .option("--json")
-    .action(async (value: { host: string; port: string }) => {
+    .action(async (value: { host: string; port: string; dshGateway: readonly string[] }) => {
       const port = Number.parseInt(value.port, 10);
       if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) throw new TypeError(`Invalid port: ${value.port}`);
-      const engine = await createReadOnlyComposition(compositionOptions());
+      const targets = gatewayTargets(value.dshGateway);
+      const engine = targets.length === 0
+        ? await createReadOnlyComposition(compositionOptions())
+        : await createDshWritableComposition({ ...compositionOptions(), dshGatewayTargets: targets });
       const server = await startMaintenanceServer({ engine, stateRoot: compositionOptions().stateRoot, host: value.host, port });
       output(stdout, { origin: server.origin, connectionFile: "connection.json" });
       await new Promise<void>((resolveSignal) => {

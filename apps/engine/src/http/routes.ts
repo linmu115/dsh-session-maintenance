@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 
 import {
   SessionMaintenanceError,
+  dashboardLaunchRequestSchema,
   continuationPreviewRequestSchema,
   resolutionContinuationRequestSchema,
   diffRequestSchema,
@@ -12,6 +13,7 @@ import {
   planQuerySchema,
   planRequestSchema,
   restoreOperationRequestSchema,
+  platformSessionResolutionRequestSchema,
   scanRequestSchema,
   sessionQuerySchema,
   transactionQuerySchema,
@@ -107,8 +109,8 @@ export async function routeRequest(
       return;
     }
     try {
-      emptyRequestSchema.parse(await readJsonBody(request));
-      const launch = context.uiSessions.issue(context.origin);
+      const body = dashboardLaunchRequestSchema.parse(await readJsonBody(request));
+      const launch = context.uiSessions.issue(context.origin, body.logicalSessionId);
       send(response, 201, { launch: { url: launch.url, expiresAt: launch.expiresAt } });
     } catch (error) {
       if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
@@ -123,7 +125,11 @@ export async function routeRequest(
       send(response, 403, errorBody("UI_SESSION_FORBIDDEN", "Dashboard session or exact Origin is missing"));
       return;
     }
-    send(response, 200, { session: { csrfToken: session.csrfToken, expiresAt: new Date(session.expiresAt).toISOString() } });
+    send(response, 200, { session: {
+      csrfToken: session.csrfToken,
+      expiresAt: new Date(session.expiresAt).toISOString(),
+      ...(session.initialLogicalSessionId === undefined ? {} : { initialLogicalSessionId: session.initialLogicalSessionId }),
+    } });
     return;
   }
   const uiAuthorized = !bearer && context.uiSessions.authorized(request, context.origin);
@@ -142,6 +148,13 @@ export async function routeRequest(
   try {
     if (request.method === "GET" && url.pathname === "/v1/instances") {
       send(response, 200, { instances: await context.engine.listInstances() });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/session-resolution") {
+      const key = platformSessionResolutionRequestSchema.parse(await readJsonBody(request));
+      const resolution = await context.engine.resolvePlatformSession(key);
+      if (resolution === undefined) { send(response, 404, errorBody("SESSION_NOT_MAPPED", "Platform session is not mapped")); return; }
+      send(response, 200, { resolution });
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/overview") {

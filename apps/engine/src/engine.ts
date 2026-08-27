@@ -49,6 +49,8 @@ import {
   type IssuedConfirmation,
   type PlanQuery,
   type PlanSummary,
+  type PlatformSessionKey,
+  type PlatformSessionResolution,
 } from "@linmu/dsh-session-contracts";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
@@ -256,6 +258,19 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   getSettings(): Promise<MaintenanceSettings> { return this.settingsPort.get(); }
   patchSettings(input: MaintenanceSettingsPatch): Promise<MaintenanceSettings> { return this.settingsPort.patch(input); }
 
+  async resolvePlatformSession(key: PlatformSessionKey): Promise<PlatformSessionResolution | undefined> {
+    const binding = await this.repository.findBinding(key);
+    if (binding === undefined) return undefined;
+    const summary = await this.repository.getSessionSummary(binding.logicalSessionId);
+    if (summary === undefined) return undefined;
+    return {
+      logicalSessionId: binding.logicalSessionId,
+      bindingId: binding.id,
+      title: summary.title,
+      status: summary.status,
+    };
+  }
+
   async overview(): Promise<DashboardOverview> {
     const page = await this.repository.listSessions({ limit: 100 });
     const unresolved = (await this.repository.listTransactions({ limit: 100 })).items.filter((item) =>
@@ -320,6 +335,12 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     const target = await this.loadSession(request.logicalSessionId, pair.targetHead.versionId);
     const sourceSnapshot = { bindingId: pair.source.id, key: pair.source.key, versionId: pair.sourceHead.versionId, fingerprints: [pair.sourceHead.fingerprint] };
     const targetSnapshot = { bindingId: pair.target.id, key: pair.target.key, versionId: pair.targetHead.versionId, fingerprints: [pair.targetHead.fingerprint] };
+    const adapterContracts = [pair.source.adapterContract, pair.target.adapterContract];
+    if (pair.target.key.platform === "dsh" && this.writeService !== undefined) {
+      const instance = this.instances.find((item) => item.id === pair.target.key.instanceId);
+      if (instance === undefined) throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", "Plan target instance is unavailable");
+      adapterContracts.push((await this.writeService.probe(instance)).contract);
+    }
     return new PlanningService(this.repository).create({
       createdAt: request.createdAt,
       logicalSessionId: request.logicalSessionId,
@@ -327,7 +348,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       base: { events: target.events, metadata: { title: target.title, archived: target.archived } },
       source: { snapshot: sourceSnapshot, events: source.events, metadata: { title: source.title, archived: source.archived } },
       target: { kind: "present", head: { snapshot: targetSnapshot, events: target.events, metadata: { title: target.title, archived: target.archived } } },
-      adapterContracts: [pair.source.adapterContract, pair.target.adapterContract],
+      adapterContracts,
     });
   }
 

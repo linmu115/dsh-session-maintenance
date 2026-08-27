@@ -1,0 +1,7 @@
+- insert:
+    - id: session-maintenance
+      name: dsh-session-maintenance
+      config:
+        connectionId: primary
+        dshInstanceId: dsh-web
+        profileId: web

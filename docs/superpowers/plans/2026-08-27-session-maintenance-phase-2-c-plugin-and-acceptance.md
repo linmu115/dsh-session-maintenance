@@ -32,19 +32,19 @@
 - Produces: npm package `dsh-session-maintenance`; host gateway/proxy; `SessionMaintenanceActions` client service.
 - Peer contracts: exact compatible `@deepseek-ai/*@0.1.1-rc.2`, Cordis `4.0.1`; optional Dashboard tab Adapter may integrate with `dsh-better-sidebar` but core actions must work without it.
 
-- [ ] **Step 1: Capture the supported DSH client/settings contract**
+- [x] **Step 1: Capture the supported DSH client/settings contract**
 
 Record synthetic DOM/service fixtures for session rows, stable session IDs, current-session resolution, settings registration and action feedback. Compute one client fingerprint. The Adapter may use DSH services where available; any DOM fallback is isolated in `session-locator.ts` and may not leak selectors into menu/business components.
 
 Add red tests proving the supported fixture enables actions and one changed selector/service fingerprint produces `UI_CONTRACT_INCOMPATIBLE`, no menu injection and no uncaught plugin-load error.
 
-- [ ] **Step 2: Implement the host composition and restricted Engine proxy**
+- [x] **Step 2: Implement the host composition and restricted Engine proxy**
 
 Host composes P15 `dsh-host-gateway` and a fixed-operation proxy to Engine. The proxy reads the Engine connection capability only on the host side, allows only current-session scan/plan/apply/status and Dashboard link resolution, strips path-shaped fields and applies request/response limits.
 
 If Engine is offline, buttons return a short actionable error. The plugin does not start, stop or patch Engine, DSH, EAC or a desktop shell.
 
-- [ ] **Step 3: Implement session context-menu actions**
+- [x] **Step 3: Implement session context-menu actions**
 
 Phase-two enabled actions:
 
@@ -64,7 +64,7 @@ Phase-two enabled actions:
 
 点击同步先生成/读取计划：safe plan 才允许应用；review plan 打开 Dashboard；阶段二不支持的平台删除只打开候选说明。菜单本身不执行平台写入。
 
-- [ ] **Step 4: Implement the lightweight parameter/action panel**
+- [x] **Step 4: Implement the lightweight parameter/action panel**
 
 Parameters: registered Codex instance、official DSH instance/profile、workspace mapping、single-sided title sync、scan scope、backup retention、allow batch safe apply。实际 root/path registration remains CLI/installer-only.
 
@@ -72,11 +72,11 @@ Buttons: `扫描当前会话`, `同步当前会话`, `打开会话维护看板`.
 
 Panel only shows the most recent action’s short feedback and plan/job ID. It must not render compatibility cards, transaction lists, pending counters or long-lived status dashboards.
 
-- [ ] **Step 5: Implement Dashboard entry without a hard sidebar dependency**
+- [x] **Step 5: Implement Dashboard entry without a hard sidebar dependency**
 
 Primary action opens the standalone Dashboard deep link for the selected logical session. If a compatible `dsh-better-sidebar` exists, register one optional tab that embeds the same Dashboard URL; otherwise use ordinary browser navigation. Business behavior and gateway do not depend on sidebar availability.
 
-- [ ] **Step 6: Verify, document, and commit P21**
+- [x] **Step 6: Verify, document, and commit P21**
 
 Test supported/unsupported client fingerprints, missing current session, Engine offline, review plan, duplicate click, proxy path rejection, optional sidebar absent and plugin unload cleanup. Build the tgz and inspect contents/peer versions. README explains prerequisites, install, use and update behavior in user language; technical recovery details link to docs rather than dominating README.
 

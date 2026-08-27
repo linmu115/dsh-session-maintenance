@@ -34,6 +34,7 @@ export class DshGatewayTokenService {
   readonly secret: Buffer;
   readonly now: () => Date;
   readonly ttlMs: number;
+  private readonly consumedNonces = new Map<string, number>();
 
   constructor(options: DshGatewayTokenServiceOptions) {
     if (options.secret.byteLength < 32) throw new TypeError("Gateway secret must be at least 32 bytes");
@@ -71,10 +72,18 @@ export class DshGatewayTokenService {
       payload.schemaVersion !== 1 ||
       !scopeEqual(payload, expected) ||
       !Number.isSafeInteger(payload.expiresAt) ||
-      payload.expiresAt < this.now().getTime()
+      payload.expiresAt < this.now().getTime() ||
+      typeof payload.nonce !== "string" ||
+      !/^[a-f0-9]{32}$/u.test(payload.nonce)
     ) {
       this.reject();
     }
+    const now = this.now().getTime();
+    for (const [nonce, expiresAt] of this.consumedNonces) {
+      if (expiresAt < now) this.consumedNonces.delete(nonce);
+    }
+    if (this.consumedNonces.has(payload.nonce)) this.reject();
+    this.consumedNonces.set(payload.nonce, payload.expiresAt);
   }
 
   private sign(body: string): Buffer {
