@@ -217,7 +217,7 @@ async function main() {
     inspection = new StdioAppServerTransport(target);
     await initializeTransport(inspection);
     await inspection.request("thread/name/set", { threadId: created.codexThreadId, name: TASK_NAME });
-    const read = await inspection.request("thread/read", { threadId: created.codexThreadId, includeTurns: true });
+    const read = await inspection.request("thread/read", { threadId: created.codexThreadId, includeTurns: false });
     const resumed = await inspection.request("thread/resume", { threadId: created.codexThreadId });
     const listed = await inspection.request("thread/list", {
       limit: 100,
@@ -225,10 +225,12 @@ async function main() {
       sortDirection: "desc",
       useStateDbOnly: true,
     });
-    if (read?.thread?.id !== created.codexThreadId || !Array.isArray(read.thread.turns) || read.thread.turns.length === 0) {
-      fail("thread/read did not return the persisted initial turn");
+    if (read?.thread?.id !== created.codexThreadId || read.thread.historyMode !== "paginated" || read.thread.ephemeral) {
+      fail("thread/read did not return persistent paginated task metadata");
     }
-    if (resumed?.thread?.id !== created.codexThreadId) fail("thread/resume did not reopen the created task");
+    if (resumed?.thread?.id !== created.codexThreadId || !Array.isArray(resumed.thread.turns) || resumed.thread.turns.length === 0) {
+      fail("thread/resume did not reopen the persisted initial turn");
+    }
     if (!findThread(listed, created.codexThreadId)) fail("thread/list did not discover the created task");
 
     server = await startMaintenanceServer({ engine, stateRoot, host: "127.0.0.1", port: 0 });

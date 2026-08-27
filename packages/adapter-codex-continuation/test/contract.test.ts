@@ -46,6 +46,15 @@ function successfulTransport(): ScriptedAppServerTransport {
           cwd: "D:\\workspace",
           ephemeral: false,
           historyMode: "paginated",
+          turns: [],
+        },
+      },
+      "thread/resume": {
+        thread: {
+          id: "019-thread",
+          cwd: "D:\\workspace",
+          ephemeral: false,
+          historyMode: "paginated",
           turns: [{ id: "turn-1", status: "completed" }],
         },
       },
@@ -68,7 +77,7 @@ describe("Codex continuation contract", () => {
 
     const probe = await adapter.probe(target);
     expect(probe.status).toBe("compatible");
-    expect(probe.capabilities).toEqual(["create-thread", "start-turn", "read-thread"]);
+    expect(probe.capabilities).toEqual(["create-thread", "start-turn", "read-thread", "resume-thread"]);
 
     const created = await adapter.create({ prompt: "Continue from DSH", target });
     expect(created).toMatchObject({ threadId: "019-thread", turnId: "turn-1", status: "turn-completed" });
@@ -78,6 +87,7 @@ describe("Codex continuation contract", () => {
       "thread/start",
       "turn/start",
       "thread/read",
+      "thread/resume",
     ]);
   });
 

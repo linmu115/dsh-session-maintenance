@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 const contract = {
   platformVersion: "0.146.0",
   protocol: "app-server-v2",
-  requiredRequests: ["initialize", "thread/start", "turn/start", "thread/read"],
+  requiredRequests: ["initialize", "thread/start", "turn/start", "thread/read", "thread/resume"],
   requiredNotifications: ["turn/completed"],
   historyMode: "paginated",
 } as const;

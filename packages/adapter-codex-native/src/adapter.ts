@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
+import { execFile } from "node:child_process";
 import {
   copyFile,
   mkdir,
@@ -12,6 +13,7 @@ import {
 } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { promisify } from "node:util";
 
 import {
   CODEX_SCHEMA_FINGERPRINT,
@@ -43,6 +45,7 @@ import { TransactionBackupStore } from "@linmu/dsh-session-transaction-engine";
 import { mapDshEventsToCodex } from "./mapping.js";
 
 const EXTRA_SPACE_BYTES = 16 * 1024 * 1024;
+const execFileAsync = promisify(execFile);
 
 interface NativeDescriptor {
   readonly schemaVersion: 1;
@@ -71,6 +74,26 @@ export interface CodexNativeAdapterOptions {
   readonly faultAt?: "after-rollout" | "after-index" | "after-database";
   readonly now?: () => Date;
   readonly registeredRoots?: ReadonlyMap<string, string>;
+  readonly codexProcessRunning?: () => Promise<boolean>;
+}
+
+async function defaultCodexProcessRunning(): Promise<boolean> {
+  try {
+    if (process.platform === "win32") {
+      const { stdout } = await execFileAsync(
+        "tasklist.exe",
+        ["/FI", "IMAGENAME eq codex.exe", "/FO", "CSV", "/NH"],
+        { windowsHide: true },
+      );
+      return /"codex\.exe"/iu.test(stdout);
+    }
+    const { stdout } = await execFileAsync("ps", ["-A", "-o", "comm="]);
+    return stdout.split(/\r?\n/u).some((name) => /(^|\/)codex$/iu.test(name.trim()));
+  } catch {
+    // Native storage maintenance must not guess that an unknown process state
+    // is safe. A failed process probe is therefore treated as busy.
+    return true;
+  }
 }
 
 function hash(bytes: Uint8Array | string): string {
@@ -327,6 +350,12 @@ export class CodexNativeWriteAdapter implements PlatformWriteAdapter {
   }
 
   private async assertQuiescent(root: string): Promise<void> {
+    const codexRunning = this.options.codexProcessRunning === undefined
+      ? this.options.fixtureGuard === undefined && await defaultCodexProcessRunning()
+      : await this.options.codexProcessRunning();
+    if (codexRunning) {
+      throw new SessionMaintenanceError("CODEX_BUSY", "Codex must be fully closed before native storage maintenance");
+    }
     if ((await optionalBytes(join(root, ".dsh-session-maintenance-busy"))) !== undefined) {
       throw new SessionMaintenanceError("CODEX_BUSY", "Codex fixture is marked busy");
     }

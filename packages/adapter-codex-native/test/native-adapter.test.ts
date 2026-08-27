@@ -95,6 +95,14 @@ describe("CodexNativeWriteAdapter", () => {
     });
 
     expect((await adapter.probeWrite(instance(sandbox, "0.147.0"))).status).toBe("unsupported");
+    const runningAdapter = new CodexNativeWriteAdapter({
+      stateRoot,
+      loadSource: async () => source(),
+      fixtureGuard: assertFixtureSandbox,
+      quietDelayMs: 1,
+      codexProcessRunning: async () => true,
+    });
+    expect((await runningAdapter.probeWrite(instance(sandbox))).status).toBe("degraded");
     await writeFile(join(sandbox.codexHome, ".dsh-session-maintenance-busy"), "busy\n");
     expect((await adapter.probeWrite(instance(sandbox))).status).toBe("degraded");
     await import("node:fs/promises").then(({ unlink }) => unlink(join(sandbox.codexHome, ".dsh-session-maintenance-busy")));

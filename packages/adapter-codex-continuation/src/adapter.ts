@@ -84,7 +84,7 @@ export class CodexContinuationAdapter {
         status: "compatible",
         platformVersion: actualVersion,
         schemaFingerprint: CODEX_CONTINUATION_SCHEMA_FINGERPRINT,
-        capabilities: ["create-thread", "start-turn", "read-thread"],
+        capabilities: ["create-thread", "start-turn", "read-thread", "resume-thread"],
         issues: [],
       };
     } catch (error) {
@@ -146,15 +146,28 @@ export class CodexContinuationAdapter {
     try {
       const response = await transport.request<ThreadReadResponse>("thread/read", {
         threadId: created.threadId,
-        includeTurns: true,
+        includeTurns: false,
       });
-      const thread = response.thread;
+      const metadata = response.thread;
+      if (
+        metadata.id !== created.threadId ||
+        metadata.ephemeral ||
+        metadata.historyMode !== CODEX_CONTINUATION_CONTRACT.historyMode
+      ) {
+        throw new Error("Codex returned a non-persistent or mismatched thread");
+      }
+      // Codex 0.146.0 rejects thread/read(includeTurns=true) for paginated
+      // history. Resuming is the supported way to materialize its turns.
+      const resumed = await transport.request<ThreadReadResponse>("thread/resume", {
+        threadId: created.threadId,
+      });
+      const thread = resumed.thread;
       if (
         thread.id !== created.threadId ||
         thread.ephemeral ||
         thread.historyMode !== CODEX_CONTINUATION_CONTRACT.historyMode
       ) {
-        throw new Error("Codex returned a non-persistent or mismatched thread");
+        throw new Error("Codex resumed a non-persistent or mismatched thread");
       }
       if (thread.turns === undefined || thread.turns.length === 0) {
         throw new Error("Codex continuation has no persisted initial turn");

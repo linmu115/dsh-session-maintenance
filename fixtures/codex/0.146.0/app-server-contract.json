@@ -5,7 +5,8 @@
     "initialize",
     "thread/start",
     "turn/start",
-    "thread/read"
+    "thread/read",
+    "thread/resume"
   ],
   "requiredNotifications": [
     "turn/completed"

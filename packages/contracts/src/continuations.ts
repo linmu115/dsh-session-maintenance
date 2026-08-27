@@ -93,7 +93,7 @@ export interface ContinuationProbe {
   readonly status: "compatible" | "unsupported";
   readonly platformVersion: string;
   readonly schemaFingerprint: string;
-  readonly capabilities: readonly ("create-thread" | "start-turn" | "read-thread")[];
+  readonly capabilities: readonly ("create-thread" | "start-turn" | "read-thread" | "resume-thread")[];
   readonly issues: readonly { readonly code: string; readonly message: string }[];
 }
 
