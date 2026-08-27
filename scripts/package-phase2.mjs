@@ -12,7 +12,10 @@ const args = process.argv.slice(2);
 const outFlag = args.indexOf("--out");
 const out = resolve(outFlag >= 0 ? args[outFlag + 1] : join(root, ".artifacts", "phase2"));
 const skipBuild = args.includes("--skip-build");
-const version = "0.1.0";
+const sourcePluginManifest = JSON.parse(await readFile(join(root, "plugins", "dsh-session-maintenance", "package.json"), "utf8"));
+const sourceEngineManifest = JSON.parse(await readFile(join(root, "apps", "engine", "package.json"), "utf8"));
+const version = sourcePluginManifest.version;
+const engineVersion = sourceEngineManifest.version;
 
 function runPnpm(...argv) {
   const entry = process.env.npm_execpath;
@@ -91,12 +94,12 @@ await copyFile(join(root, "packages", "dsh-core-extension", "dist", "rc2-host.js
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "cordis.patch.yml"), join(plugin, "cordis.patch.yml"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "README.md"), join(plugin, "README.md"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "LICENSE"), join(plugin, "LICENSE"));
+await cp(join(root, "plugins", "dsh-session-maintenance", "dsh-management"), join(plugin, "dsh-management"), { recursive: true });
 await writeFile(join(plugin, "lib", "index.d.ts"), "export declare const name = \"dsh-session-maintenance\";\nexport declare function apply(ctx: unknown, config: unknown): void;\n");
 await writeFile(join(plugin, "lib", "client", "index.d.ts"), "export declare function apply(ctx: unknown): void;\n");
-const sourcePluginManifest = JSON.parse(await readFile(join(root, "plugins", "dsh-session-maintenance", "package.json"), "utf8"));
 const packagedPluginManifest = {
   ...sourcePluginManifest,
-  files: ["lib", "cordis.patch.yml", "README.md", "LICENSE"],
+  files: ["lib", "dsh-management", "cordis.patch.yml", "README.md", "LICENSE"],
   dependencies: {},
 };
 delete packagedPluginManifest.devDependencies;
@@ -140,7 +143,7 @@ await writeFile(join(engine, "INSTALL-INPUTS.json"), `${stableJson({
 const pluginBytes = await deterministicTarGz(plugin, "package");
 const engineBytes = await deterministicTarGz(engine, "dsh-session-maintenance");
 const pluginName = `dsh-session-maintenance-${version}.tgz`;
-const engineName = `dsh-session-maintenance-engine-${version}.tgz`;
+const engineName = `dsh-session-maintenance-engine-${engineVersion}.tgz`;
 await writeFile(join(out, pluginName), pluginBytes);
 await writeFile(join(out, engineName), engineBytes);
 const sourceCommit = await git("rev-parse", "HEAD");

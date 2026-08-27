@@ -1,0 +1,19 @@
+contractVersion: 2
+
+sections: []
+
+actions:
+  - id: dashboard.open
+    label: 打开会话维护看板
+    description: 在默认浏览器打开完整的会话版本、差异、同步计划、Checkpoint 与恢复看板
+    style: primary
+
+  - id: engine.check
+    label: 检查维护引擎
+    description: 验证本机 Maintenance Engine 与当前官方 DSH profile 的连接
+    style: secondary
+
+  - id: sessions.scan
+    label: 扫描已登记会话
+    description: 让 Maintenance Engine 按稳定会话 ID 增量扫描当前 DSH 实例
+    style: secondary
