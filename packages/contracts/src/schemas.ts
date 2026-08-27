@@ -274,6 +274,19 @@ export const gcReportSchema = z.strictObject({
   retainedObjects: nonNegativeIntegerSchema,
   deletedObjects: nonNegativeIntegerSchema,
   deletedBytes: nonNegativeIntegerSchema,
+  items: z.array(
+    z.strictObject({
+      objectId: idSchema,
+      disposition: z.enum(["retained", "deletable", "deleted"]),
+      reason: z.enum(["reachable", "retention-window", "unreachable"]),
+      bytes: nonNegativeIntegerSchema,
+    }),
+  ),
+});
+
+export const backupProtectionSchema = z.strictObject({
+  transactionId: idSchema,
+  reasons: z.array(z.enum(["checkpoint", "unresolved-transaction"])).min(1),
 });
 
 export const bindingSnapshotSchema = z.strictObject({
@@ -423,6 +436,154 @@ export const engineStatusSchema = z.strictObject({
   lastScanAt: timestampSchema.optional(),
 });
 
+export const writeCapabilitySchema = z.enum([
+  "create-session",
+  "append-events",
+  "update-title",
+  "update-archive",
+  "verify",
+  "restore",
+]);
+
+export const writeProbeSchema = z.strictObject({
+  status: compatibilityStatusSchema,
+  contract: adapterContractRefSchema,
+  capabilities: z.array(writeCapabilitySchema),
+  issues: z.array(compatibilityIssueSchema),
+});
+
+export const transactionStatusSchema = z.enum([
+  "prepared",
+  "backing-up",
+  "applying",
+  "verifying",
+  "completed",
+  "restoring",
+  "restored",
+  "restore-failed",
+  "manual-review",
+]);
+
+export const transactionContextSchema = z.strictObject({
+  id: idSchema,
+  planId: idSchema,
+  planHash: idSchema,
+  startedAt: timestampSchema,
+});
+
+export const preparedWriteSchema = z.strictObject({
+  id: idSchema,
+  planId: idSchema,
+  planHash: idSchema,
+  platform: z.literal("dsh"),
+  instanceId: idSchema,
+  rootIdentity: idSchema,
+  targetKey: platformSessionKeySchema.optional(),
+  expected: expectedPlatformStateSchema,
+  payload: jsonValueSchema,
+});
+
+export const backupManifestEntrySchema = z.strictObject({
+  logicalName: idSchema,
+  objectId: idSchema,
+  size: nonNegativeIntegerSchema,
+  sha256: idSchema,
+  required: z.boolean(),
+});
+
+export const backupManifestSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  transactionId: idSchema,
+  entries: z.array(backupManifestEntrySchema),
+  createdAt: timestampSchema,
+  hash: idSchema,
+});
+
+export const writeReceiptSchema = z.strictObject({
+  transactionId: idSchema,
+  platform: z.literal("dsh"),
+  instanceId: idSchema,
+  targetKey: platformSessionKeySchema.optional(),
+  fingerprints: z.array(stateFingerprintSchema),
+  details: jsonValueSchema,
+});
+
+export const restoreReceiptSchema = z.strictObject({
+  transactionId: idSchema,
+  restored: z.boolean(),
+  fingerprints: z.array(stateFingerprintSchema),
+  issues: z.array(compatibilityIssueSchema),
+});
+
+export const transactionRecordSchema = z.strictObject({
+  id: idSchema,
+  planId: idSchema,
+  planHash: idSchema,
+  platform: z.literal("dsh"),
+  instanceId: idSchema,
+  rootIdentity: idSchema,
+  adapterContract: adapterContractRefSchema,
+  status: transactionStatusSchema,
+  result: jsonValueSchema.optional(),
+  errorCode: z.string().optional(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const transactionRefSchema = z.strictObject({
+  id: idSchema,
+  status: transactionStatusSchema,
+});
+
+export const transactionStepSchema = z.strictObject({
+  transactionId: idSchema,
+  sequence: nonNegativeIntegerSchema,
+  status: transactionStatusSchema,
+  step: idSchema,
+  data: jsonValueSchema,
+  previousHash: z.string().nullable(),
+  entryHash: idSchema,
+  at: timestampSchema,
+});
+
+export const storedConfirmationSchema = z.strictObject({
+  tokenHash: idSchema,
+  operation: idSchema,
+  resourceId: idSchema,
+  operationHash: idSchema,
+  expiresAt: timestampSchema,
+  createdAt: timestampSchema,
+  consumedAt: timestampSchema.nullable(),
+});
+
+export const applyPlanRequestSchema = z.strictObject({ planId: idSchema });
+export const restoreTransactionRequestSchema = z.strictObject({
+  transactionId: idSchema,
+  confirmationToken: idSchema,
+});
+export const createCheckpointRequestSchema = z.strictObject({
+  name: z.string().min(1),
+  description: z.string(),
+  refs: z.record(z.string(), idSchema),
+  backupTransactionIds: z.array(idSchema),
+  createdBy: z.string().min(1),
+  createdAt: timestampSchema,
+});
+export const checkpointRestoreRequestSchema = z.strictObject({
+  checkpointId: idSchema,
+  targetInstanceId: idSchema,
+  createdAt: timestampSchema,
+});
+export const confirmationScopeSchema = z.strictObject({
+  operation: idSchema,
+  resourceId: idSchema,
+  operationHash: idSchema,
+});
+export const issuedConfirmationSchema = confirmationScopeSchema.extend({
+  token: idSchema,
+  expiresAt: timestampSchema,
+});
+
 export const apiErrorBodySchema = z.strictObject({ code: idSchema, message: z.string() });
 export const apiErrorResponseSchema = z.strictObject({ error: apiErrorBodySchema });
 export const engineStatusResponseSchema = z.strictObject({ status: engineStatusSchema });
@@ -430,3 +591,5 @@ export const sessionListResponseSchema = z.strictObject({ page: pageSchema(sessi
 export const versionGraphResponseSchema = z.strictObject({ graph: versionGraphPageSchema });
 export const planResponseSchema = z.strictObject({ plan: syncPlanSchema });
 export const jobAcceptedResponseSchema = z.strictObject({ job: jobRefSchema });
+export const transactionResponseSchema = z.strictObject({ transaction: transactionRecordSchema });
+export const checkpointResponseSchema = z.strictObject({ checkpoint: checkpointSchema });

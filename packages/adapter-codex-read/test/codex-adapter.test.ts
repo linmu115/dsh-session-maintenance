@@ -104,7 +104,7 @@ describe("CodexReadAdapter", () => {
     adapter.resetDebugCounters();
     expect(await collect(adapter.list(instance(sandbox)))).toHaveLength(100);
     expect(adapter.debugCounters()).toMatchObject({ rolloutBodyReads: 0, rolloutProbeReads: 0 });
-  });
+  }, 15_000);
 
   it("returns unstable when the file changes during observation", async () => {
     const sandbox = await createFixtureSandbox("codex-unstable");

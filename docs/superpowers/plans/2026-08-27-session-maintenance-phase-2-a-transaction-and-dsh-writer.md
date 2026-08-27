@@ -35,7 +35,7 @@
 - Produces: parent-plan `PlatformWriteAdapter` and `WriteEngine` DTOs; `TransactionExecutor.apply/restore/recover`; `TransactionRepository`; `ConfirmationService`; `CheckpointRepository`.
 - Transaction status: `prepared | backing-up | applying | verifying | completed | restoring | restored | restore-failed | manual-review`.
 
-- [ ] **Step 1: Write failing state-machine and crash-recovery tests**
+- [x] **Step 1: Write failing state-machine and crash-recovery tests**
 
 Use `FakeWriteAdapter` with fault points `before-backup`, `after-backup`, `after-first-write`, `before-verify`, `verify-false`, `during-restore`. Assert:
 
@@ -48,25 +48,25 @@ Use `FakeWriteAdapter` with fault points `before-backup`, `after-backup`, `after
 
 Run `pnpm vitest run packages/transaction-engine/test`; expected: FAIL because the package and contracts are absent.
 
-- [ ] **Step 2: Add migration 003 and repository operations**
+- [x] **Step 2: Add migration 003 and repository operations**
 
 Add strict tables for `transactions`, `transaction_steps`, `backup_manifests`, `confirmation_nonces`, and checkpoint lookup indexes. Store transaction IDs, plan ID/hash, Adapter contract, state, target instance root identity, timestamps and result codes; never store full message bodies in transaction rows.
 
 Repository operations must update transaction state and append the matching step inside one SQLite transaction. Reopening a database at schema 2 applies migration 003 once; a newer schema still fails closed.
 
-- [ ] **Step 3: Implement append-only journal and content-addressed backups**
+- [x] **Step 3: Implement append-only journal and content-addressed backups**
 
 Transaction directory is `transactions/<id>/`. Write `plan.json` before state `backing-up`; backup bytes are stored below `backups/sha256/` with manifest entries `{logicalName,size,sha256,required}`. A backup is usable only if every required object exists and rehashes correctly.
 
 Use same-directory temp files, flush file content, atomic rename, then flush the parent directory where supported. Journal lines contain no conversation text and form a hash chain. A truncated final line is ignored only when every earlier line and SQLite step agree; other disagreement becomes `manual-review`.
 
-- [ ] **Step 4: Implement exclusive root locks and confirmations**
+- [x] **Step 4: Implement exclusive root locks and confirmations**
 
 `RootWriteLockManager` serializes by registered instance ID plus canonical root identity. It writes an owner record with PID/start token but never steals a lock merely because PID is missing; stale recovery requires journal inspection.
 
 Confirmation nonces are random, single-use, expire after five minutes, and bind `{operation,resourceId,operationHash}`. Safe fast-forward does not require a nonce. Restore, reset and deletion do. API DTOs never expose nonce storage paths.
 
-- [ ] **Step 5: Implement executor and restart recovery**
+- [x] **Step 5: Implement executor and restart recovery**
 
 Executor order is fixed:
 
@@ -78,13 +78,13 @@ load plan -> re-probe Adapter -> re-read fingerprints -> acquire root lock
 
 If commit may have started but completion is unknown, recovery first calls Adapter verify. Matching expected state completes; matching backup state records restored; any third state requires explicit restore or manual review. It never replays commit based only on an incomplete journal.
 
-- [ ] **Step 6: Implement named checkpoints and protected collection**
+- [x] **Step 6: Implement named checkpoints and protected collection**
 
 Checkpoint creation records explicit logical/platform/canonical refs plus referenced completed transaction backups. It creates no automatic per-apply checkpoint. Checkpoint restore produces a new immutable plan and requires confirmation at apply time. In phase two, that plan creates a new DSH session from the selected version and preserves the current DSH session as another branch; it never rewrites the old log in place.
 
 Extend reachability so unresolved transactions, checkpoint refs, checkpoint backup IDs and current refs protect content and backups. GC returns a dry-run reason per retained/deletable item.
 
-- [ ] **Step 7: Verify, report, and commit P14**
+- [x] **Step 7: Verify, report, and commit P14**
 
 Cover corrupted backup, journal/database disagreement, two concurrent writes to one root, parallel writes to different roots, expired/replayed/wrong-scope nonce, checkpoint reopen and GC protection. Run P14 target/affected-package validation, write `...014.md`, update `phase-2-progress.md`, and commit `feat: add recoverable write transactions`.
 

@@ -252,6 +252,14 @@ export interface GcReport {
   readonly retainedObjects: number;
   readonly deletedObjects: number;
   readonly deletedBytes: number;
+  readonly items: readonly GcItem[];
+}
+
+export interface GcItem {
+  readonly objectId: string;
+  readonly disposition: "retained" | "deletable" | "deleted";
+  readonly reason: "reachable" | "retention-window" | "unreachable";
+  readonly bytes: number;
 }
 
 export interface Page<T> {
@@ -307,4 +315,127 @@ export interface EngineStatus {
   readonly ready: boolean;
   readonly instanceCount: number;
   readonly lastScanAt?: string;
+}
+
+export type WriteCapability =
+  | "create-session"
+  | "append-events"
+  | "update-title"
+  | "update-archive"
+  | "verify"
+  | "restore";
+
+export interface WriteProbe {
+  readonly status: CompatibilityStatus;
+  readonly contract: AdapterContractRef;
+  readonly capabilities: readonly WriteCapability[];
+  readonly issues: readonly CompatibilityIssue[];
+}
+
+export type TransactionStatus =
+  | "prepared"
+  | "backing-up"
+  | "applying"
+  | "verifying"
+  | "completed"
+  | "restoring"
+  | "restored"
+  | "restore-failed"
+  | "manual-review";
+
+export interface TransactionContext {
+  readonly id: string;
+  readonly planId: string;
+  readonly planHash: string;
+  readonly startedAt: string;
+}
+
+export interface PreparedWrite {
+  readonly id: string;
+  readonly planId: string;
+  readonly planHash: string;
+  readonly platform: "dsh";
+  readonly instanceId: string;
+  readonly rootIdentity: string;
+  readonly targetKey?: PlatformSessionKey;
+  readonly expected: ExpectedPlatformState;
+  readonly payload: JsonValue;
+}
+
+export interface BackupManifestEntry {
+  readonly logicalName: string;
+  readonly objectId: string;
+  readonly size: number;
+  readonly sha256: string;
+  readonly required: boolean;
+}
+
+export interface BackupManifest {
+  readonly schemaVersion: 1;
+  readonly transactionId: string;
+  readonly entries: readonly BackupManifestEntry[];
+  readonly createdAt: string;
+  readonly hash: string;
+}
+
+export interface WriteReceipt {
+  readonly transactionId: string;
+  readonly platform: "dsh";
+  readonly instanceId: string;
+  readonly targetKey?: PlatformSessionKey;
+  readonly fingerprints: readonly StateFingerprint[];
+  readonly details: JsonValue;
+}
+
+export interface RestoreReceipt {
+  readonly transactionId: string;
+  readonly restored: boolean;
+  readonly fingerprints: readonly StateFingerprint[];
+  readonly issues: readonly CompatibilityIssue[];
+}
+
+export interface TransactionRecord {
+  readonly id: string;
+  readonly planId: string;
+  readonly planHash: string;
+  readonly platform: "dsh";
+  readonly instanceId: string;
+  readonly rootIdentity: string;
+  readonly adapterContract: AdapterContractRef;
+  readonly status: TransactionStatus;
+  readonly result?: JsonValue;
+  readonly errorCode?: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface TransactionRef {
+  readonly id: string;
+  readonly status: TransactionStatus;
+}
+
+export interface TransactionStep {
+  readonly transactionId: string;
+  readonly sequence: number;
+  readonly status: TransactionStatus;
+  readonly step: string;
+  readonly data: JsonValue;
+  readonly previousHash: string | null;
+  readonly entryHash: string;
+  readonly at: string;
+}
+
+export interface StoredConfirmation {
+  readonly tokenHash: string;
+  readonly operation: string;
+  readonly resourceId: string;
+  readonly operationHash: string;
+  readonly expiresAt: string;
+  readonly createdAt: string;
+  readonly consumedAt: string | null;
+}
+
+export interface BackupProtection {
+  readonly transactionId: string;
+  readonly reasons: readonly ("checkpoint" | "unresolved-transaction")[];
 }

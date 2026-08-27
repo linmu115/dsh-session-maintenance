@@ -1,0 +1,33 @@
+# 第二阶段进度
+
+## 当前状态
+
+- P14 可恢复写事务：完成。
+- P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：待开始。
+- P16 Codex → DSH 安全快进与分支保留：待开始。
+- P17 以后 Dashboard 与用户工作流：尚未开始。
+
+## P14 已验证能力
+
+- schema 2 数据库一次性升级到 schema 3；更高版本继续失败关闭。
+- 事务计划、SQLite 状态与 fsync JSONL 哈希链共同保存；日志/数据库分歧进入 `manual-review`。
+- required backup 缺失或内容哈希变化时拒绝使用。
+- 同一 DSH 根串行写入，不同根可并行；跨进程 owner lock 不会被普通写入窃取。
+- 同一 plan/hash 重复 apply 返回原事务，不再次提交。
+- plan 指纹过期、Adapter 契约漂移、同一根存在未解决事务时，在平台 mutation 前失败。
+- commit/verify 故障触发一次 restore；restore 自身失败不会再次调用 restore。
+- 显式 restore 需要五分钟、单次、操作范围绑定的 confirmation nonce。
+- named checkpoint 可重开，并保护其完成事务 backup；content GC dry-run 返回每项保留或可删除原因。
+
+## 数据边界
+
+P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改本机正式 Codex/DSH home。平台实际写入仍保持禁用，直到 P15 能从官方 DSH 服务证明可恢复的版本锁定写入契约。
+
+## 验证记录
+
+- transaction-engine：7 个测试文件、19 个测试通过。
+- 全 workspace typecheck：通过。
+- 全 workspace build：通过。
+- 全仓测试首次并行运行暴露既有 Codex 100-session catalog 用例的 5 秒预算不足；该压力用例改用 15 秒独立预算后，限制四个 test worker 的全仓验证为 32 个文件、82 个测试全部通过。
+- portability gate：通过。
+- `git diff --check`：通过。

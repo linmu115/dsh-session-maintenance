@@ -62,3 +62,38 @@ export interface SyncPlan {
   readonly confirmations: readonly ConfirmationRequirement[];
   readonly preconditions: readonly StateFingerprint[];
 }
+
+export interface ApplyPlanRequest {
+  readonly planId: string;
+}
+
+export interface RestoreTransactionRequest {
+  readonly transactionId: string;
+  readonly confirmationToken: string;
+}
+
+export interface CreateCheckpointRequest {
+  readonly name: string;
+  readonly description: string;
+  readonly refs: Readonly<Record<string, string>>;
+  readonly backupTransactionIds: readonly string[];
+  readonly createdBy: string;
+  readonly createdAt: string;
+}
+
+export interface CheckpointRestoreRequest {
+  readonly checkpointId: string;
+  readonly targetInstanceId: string;
+  readonly createdAt: string;
+}
+
+export interface ConfirmationScope {
+  readonly operation: string;
+  readonly resourceId: string;
+  readonly operationHash: string;
+}
+
+export interface IssuedConfirmation extends ConfirmationScope {
+  readonly token: string;
+  readonly expiresAt: string;
+}

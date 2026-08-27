@@ -1,4 +1,11 @@
-import type { EngineStatus, Page, SessionSummary, VersionGraphPage } from "./model.js";
+import type {
+  Checkpoint,
+  EngineStatus,
+  Page,
+  SessionSummary,
+  TransactionRecord,
+  VersionGraphPage,
+} from "./model.js";
 import type { JobRef } from "./jobs.js";
 import type { SyncPlan } from "./plans.js";
 
@@ -29,4 +36,12 @@ export interface PlanResponse {
 
 export interface JobAcceptedResponse {
   readonly job: JobRef;
+}
+
+export interface TransactionResponse {
+  readonly transaction: TransactionRecord;
+}
+
+export interface CheckpointResponse {
+  readonly checkpoint: Checkpoint;
 }

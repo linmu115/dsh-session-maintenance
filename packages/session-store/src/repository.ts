@@ -3,11 +3,19 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   CONTRACT_SCHEMA_VERSION,
   SessionMaintenanceError,
+  backupManifestSchema,
+  checkpointSchema,
   matchCandidateSchema,
   observedHeadSchema,
   platformBindingSchema,
   sessionVersionManifestSchema,
+  storedConfirmationSchema,
   syncPlanSchema,
+  transactionRecordSchema,
+  transactionStepSchema,
+  type BackupManifest,
+  type BackupProtection,
+  type Checkpoint,
   type ContentObjectStore,
   type JsonValue,
   type LogicalSession,
@@ -26,6 +34,10 @@ import {
   type SessionSummary,
   type SessionVersionManifest,
   type SyncPlan,
+  type StoredConfirmation,
+  type TransactionRecord,
+  type TransactionStep,
+  type TransactionTransition,
   type VersionGraphData,
   type VersionGraphPage,
 } from "@linmu/dsh-session-contracts";
@@ -100,6 +112,57 @@ interface SessionRow {
   readonly head_count: number;
   readonly distinct_heads: number;
   readonly updated_at: string | null;
+}
+
+interface TransactionRow {
+  readonly id: string;
+  readonly plan_id: string;
+  readonly plan_hash: string;
+  readonly platform: "dsh";
+  readonly instance_id: string;
+  readonly root_identity: string;
+  readonly adapter_contract_json: string;
+  readonly status: TransactionRecord["status"];
+  readonly result_json: string | null;
+  readonly error_code: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+interface BackupManifestRow {
+  readonly manifest_hash: string;
+  readonly manifest_json: string;
+}
+
+interface CheckpointRow {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string;
+  readonly refs_json: string;
+  readonly backup_transaction_ids_json: string;
+  readonly created_by: string;
+  readonly created_at: string;
+}
+
+interface ConfirmationRow {
+  readonly token_hash: string;
+  readonly operation: string;
+  readonly resource_id: string;
+  readonly operation_hash: string;
+  readonly expires_at: string;
+  readonly created_at: string;
+  readonly consumed_at: string | null;
+}
+
+interface TransactionStepRow {
+  readonly transaction_id: string;
+  readonly sequence: number;
+  readonly status: TransactionStep["status"];
+  readonly step: string;
+  readonly data_json: string;
+  readonly previous_hash: string | null;
+  readonly entry_hash: string;
+  readonly created_at: string;
 }
 
 type JsonObject = { readonly [key: string]: JsonValue };
@@ -205,6 +268,47 @@ function parseManifest(serialized: string, id: string): SessionVersionManifest {
       cause: error,
     });
   }
+}
+
+function transactionJson(row: TransactionRow): TransactionRecord {
+  return transactionRecordSchema.parse({
+    id: row.id,
+    planId: row.plan_id,
+    planHash: row.plan_hash,
+    platform: row.platform,
+    instanceId: row.instance_id,
+    rootIdentity: row.root_identity,
+    adapterContract: JSON.parse(row.adapter_contract_json) as unknown,
+    status: row.status,
+    ...(row.result_json === null ? {} : { result: JSON.parse(row.result_json) as unknown }),
+    ...(row.error_code === null ? {} : { errorCode: row.error_code }),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }) as TransactionRecord;
+}
+
+function checkpointJson(row: CheckpointRow): Checkpoint {
+  return checkpointSchema.parse({
+    id: row.id,
+    name: row.name,
+    description: row.description,
+    refs: JSON.parse(row.refs_json) as unknown,
+    backupTransactionIds: JSON.parse(row.backup_transaction_ids_json) as unknown,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
+  }) as Checkpoint;
+}
+
+function confirmationJson(row: ConfirmationRow): StoredConfirmation {
+  return storedConfirmationSchema.parse({
+    tokenHash: row.token_hash,
+    operation: row.operation,
+    resourceId: row.resource_id,
+    operationHash: row.operation_hash,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    consumedAt: row.consumed_at,
+  }) as StoredConfirmation;
 }
 
 export class SqliteSessionRepository {
@@ -863,6 +967,425 @@ export class SqliteSessionRepository {
         cause: error,
       });
     }
+  }
+
+  async createTransaction(input: TransactionRecord): Promise<TransactionRecord> {
+    transactionRecordSchema.parse(input);
+    const existingByPlan = await this.findTransactionByPlan(input.planId, input.planHash);
+    if (existingByPlan !== undefined) return existingByPlan;
+
+    const existingById = await this.getTransaction(input.id);
+    if (existingById !== undefined) {
+      if (canonicalJson(existingById as unknown as JsonValue) !== canonicalJson(input as unknown as JsonValue)) {
+        throw new SessionMaintenanceError(
+          "IDENTITY_CONFLICT",
+          `Transaction ID has different content: ${input.id}`,
+        );
+      }
+      return existingById;
+    }
+
+    this.database
+      .prepare(
+        `INSERT INTO transactions
+          (id, plan_id, plan_hash, platform, instance_id, root_identity,
+           adapter_contract_json, status, result_json, error_code, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.planId,
+        input.planHash,
+        input.platform,
+        input.instanceId,
+        input.rootIdentity,
+        canonicalJson(input.adapterContract as unknown as JsonValue),
+        input.status,
+        input.result === undefined ? null : canonicalJson(input.result),
+        input.errorCode ?? null,
+        input.createdAt,
+        input.updatedAt,
+      );
+    return input;
+  }
+
+  async getTransaction(id: string): Promise<TransactionRecord | undefined> {
+    const row = this.database
+      .prepare(
+        `SELECT id, plan_id, plan_hash, platform, instance_id, root_identity,
+                adapter_contract_json, status, result_json, error_code, created_at, updated_at
+         FROM transactions WHERE id = ?`,
+      )
+      .get(id) as TransactionRow | undefined;
+    if (row === undefined) return undefined;
+    try {
+      return transactionJson(row);
+    } catch (error) {
+      throw new SessionMaintenanceError("OBJECT_CORRUPT", `Stored transaction is corrupt: ${id}`, {
+        cause: error,
+      });
+    }
+  }
+
+  async findTransactionByPlan(
+    planId: string,
+    planHash: string,
+  ): Promise<TransactionRecord | undefined> {
+    const row = this.database
+      .prepare(
+        `SELECT id, plan_id, plan_hash, platform, instance_id, root_identity,
+                adapter_contract_json, status, result_json, error_code, created_at, updated_at
+         FROM transactions WHERE plan_id = ? AND plan_hash = ?`,
+      )
+      .get(planId, planHash) as TransactionRow | undefined;
+    return row === undefined ? undefined : transactionJson(row);
+  }
+
+  async listRecoverableTransactions(): Promise<readonly TransactionRecord[]> {
+    const rows = this.database
+      .prepare(
+        `SELECT id, plan_id, plan_hash, platform, instance_id, root_identity,
+                adapter_contract_json, status, result_json, error_code, created_at, updated_at
+         FROM transactions
+         WHERE status IN ('prepared', 'backing-up', 'applying', 'verifying', 'restoring')
+         ORDER BY created_at, id`,
+      )
+      .all() as unknown as TransactionRow[];
+    return rows.map(transactionJson);
+  }
+
+  async nextTransactionSequence(transactionId: string): Promise<number> {
+    const transaction = await this.getTransaction(transactionId);
+    if (transaction === undefined) {
+      throw new SessionMaintenanceError(
+        "TRANSACTION_NOT_FOUND",
+        `Transaction not found: ${transactionId}`,
+      );
+    }
+    const row = this.database
+      .prepare(
+        "SELECT COALESCE(MAX(sequence), -1) + 1 AS sequence FROM transaction_steps WHERE transaction_id = ?",
+      )
+      .get(transactionId) as { readonly sequence: number };
+    return row.sequence;
+  }
+
+  async listTransactionSteps(transactionId: string): Promise<readonly TransactionStep[]> {
+    const rows = this.database
+      .prepare(
+        `SELECT transaction_id, sequence, status, step, data_json, previous_hash, entry_hash, created_at
+         FROM transaction_steps WHERE transaction_id = ? ORDER BY sequence`,
+      )
+      .all(transactionId) as unknown as TransactionStepRow[];
+    return rows.map((row) =>
+      transactionStepSchema.parse({
+        transactionId: row.transaction_id,
+        sequence: row.sequence,
+        status: row.status,
+        step: row.step,
+        data: JSON.parse(row.data_json) as unknown,
+        previousHash: row.previous_hash,
+        entryHash: row.entry_hash,
+        at: row.created_at,
+      }) as TransactionStep,
+    );
+  }
+
+  async recordTransactionStep(input: TransactionTransition): Promise<TransactionRecord> {
+    transactionStepSchema.parse(input.step);
+    if (input.step.transactionId === "") throw new TypeError("Transaction step requires an ID");
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const current = this.database
+        .prepare(
+          `SELECT id, plan_id, plan_hash, platform, instance_id, root_identity,
+                  adapter_contract_json, status, result_json, error_code, created_at, updated_at
+           FROM transactions WHERE id = ?`,
+        )
+        .get(input.step.transactionId) as TransactionRow | undefined;
+      if (current === undefined) {
+        throw new SessionMaintenanceError(
+          "TRANSACTION_NOT_FOUND",
+          `Transaction not found: ${input.step.transactionId}`,
+        );
+      }
+      const last = this.database
+        .prepare(
+          `SELECT sequence, entry_hash FROM transaction_steps
+           WHERE transaction_id = ? ORDER BY sequence DESC LIMIT 1`,
+        )
+        .get(input.step.transactionId) as
+        | { readonly sequence: number; readonly entry_hash: string }
+        | undefined;
+      const expectedSequence = (last?.sequence ?? -1) + 1;
+      const expectedPrevious = last?.entry_hash ?? null;
+      if (
+        input.step.sequence !== expectedSequence ||
+        input.step.previousHash !== expectedPrevious
+      ) {
+        throw new SessionMaintenanceError(
+          "OBJECT_CORRUPT",
+          `Transaction journal/database sequence mismatch: ${input.step.transactionId}`,
+        );
+      }
+      this.database
+        .prepare(
+          `INSERT INTO transaction_steps
+            (transaction_id, sequence, status, step, data_json, previous_hash, entry_hash, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.step.transactionId,
+          input.step.sequence,
+          input.step.status,
+          input.step.step,
+          canonicalJson(input.step.data),
+          input.step.previousHash,
+          input.step.entryHash,
+          input.step.at,
+        );
+      this.database
+        .prepare(
+          `UPDATE transactions
+           SET status = ?, result_json = COALESCE(?, result_json),
+               error_code = COALESCE(?, error_code), updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          input.step.status,
+          input.result === undefined ? null : canonicalJson(input.result),
+          input.errorCode ?? null,
+          input.step.at,
+          input.step.transactionId,
+        );
+      this.database.exec("COMMIT");
+      return {
+        ...transactionJson(current),
+        status: input.step.status,
+        ...(input.result === undefined ? {} : { result: input.result }),
+        ...(input.errorCode === undefined ? {} : { errorCode: input.errorCode }),
+        updatedAt: input.step.at,
+      };
+    } catch (error) {
+      try {
+        this.database.exec("ROLLBACK");
+      } catch {
+        // Preserve the original transition failure.
+      }
+      throw error;
+    }
+  }
+
+  async markTransactionManualReview(
+    transactionId: string,
+    updatedAt: string,
+    errorCode: string,
+  ): Promise<TransactionRecord> {
+    const result = this.database
+      .prepare(
+        `UPDATE transactions
+         SET status = 'manual-review', error_code = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .run(errorCode, updatedAt, transactionId);
+    if (Number(result.changes) !== 1) {
+      throw new SessionMaintenanceError(
+        "TRANSACTION_NOT_FOUND",
+        `Transaction not found: ${transactionId}`,
+      );
+    }
+    return (await this.getTransaction(transactionId))!;
+  }
+
+  async saveBackupManifest(manifest: BackupManifest): Promise<void> {
+    backupManifestSchema.parse(manifest);
+    const serialized = canonicalJson(manifest as unknown as JsonValue);
+    const existing = this.database
+      .prepare("SELECT manifest_hash, manifest_json FROM backup_manifests WHERE transaction_id = ?")
+      .get(manifest.transactionId) as BackupManifestRow | undefined;
+    if (existing !== undefined) {
+      if (existing.manifest_hash !== manifest.hash || existing.manifest_json !== serialized) {
+        throw new SessionMaintenanceError(
+          "BACKUP_CORRUPT",
+          `Backup manifest changed for transaction: ${manifest.transactionId}`,
+        );
+      }
+      return;
+    }
+    this.database
+      .prepare(
+        `INSERT INTO backup_manifests (transaction_id, manifest_hash, manifest_json, created_at)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(manifest.transactionId, manifest.hash, serialized, manifest.createdAt);
+  }
+
+  async getBackupManifest(transactionId: string): Promise<BackupManifest | undefined> {
+    const row = this.database
+      .prepare("SELECT manifest_hash, manifest_json FROM backup_manifests WHERE transaction_id = ?")
+      .get(transactionId) as BackupManifestRow | undefined;
+    if (row === undefined) return undefined;
+    try {
+      const parsed = backupManifestSchema.parse(JSON.parse(row.manifest_json) as unknown) as BackupManifest;
+      if (parsed.hash !== row.manifest_hash || parsed.transactionId !== transactionId) {
+        throw new Error("Backup manifest identity mismatch");
+      }
+      return parsed;
+    } catch (error) {
+      throw new SessionMaintenanceError(
+        "BACKUP_CORRUPT",
+        `Stored backup manifest is corrupt: ${transactionId}`,
+        { cause: error },
+      );
+    }
+  }
+
+  async listBackupProtections(): Promise<readonly BackupProtection[]> {
+    const rows = this.database
+      .prepare(
+        `SELECT t.id AS transaction_id,
+                CASE WHEN ct.transaction_id IS NULL THEN 0 ELSE 1 END AS checkpoint_protected,
+                CASE WHEN t.status IN ('completed', 'restored') THEN 0 ELSE 1 END AS unresolved
+         FROM transactions t
+         LEFT JOIN (
+           SELECT DISTINCT transaction_id FROM checkpoint_transactions
+         ) ct ON ct.transaction_id = t.id
+         WHERE ct.transaction_id IS NOT NULL
+            OR t.status NOT IN ('completed', 'restored')
+         ORDER BY t.id`,
+      )
+      .all() as unknown as Array<{
+        readonly transaction_id: string;
+        readonly checkpoint_protected: number;
+        readonly unresolved: number;
+      }>;
+    return rows.map((row) => ({
+      transactionId: row.transaction_id,
+      reasons: [
+        ...(row.checkpoint_protected === 1 ? (["checkpoint"] as const) : []),
+        ...(row.unresolved === 1 ? (["unresolved-transaction"] as const) : []),
+      ],
+    }));
+  }
+
+  async saveCheckpoint(checkpoint: Checkpoint): Promise<void> {
+    checkpointSchema.parse(checkpoint);
+    const existing = await this.getCheckpoint(checkpoint.id);
+    if (existing !== undefined) {
+      if (canonicalJson(existing as unknown as JsonValue) !== canonicalJson(checkpoint as unknown as JsonValue)) {
+        throw new SessionMaintenanceError(
+          "IDENTITY_CONFLICT",
+          `Checkpoint ID has different content: ${checkpoint.id}`,
+        );
+      }
+      return;
+    }
+    for (const transactionId of checkpoint.backupTransactionIds) {
+      const transaction = await this.getTransaction(transactionId);
+      const backup = await this.getBackupManifest(transactionId);
+      if (
+        transaction === undefined ||
+        !["completed", "restored"].includes(transaction.status) ||
+        backup === undefined
+      ) {
+        throw new SessionMaintenanceError(
+          "BACKUP_INCOMPLETE",
+          `Checkpoint references an unusable transaction backup: ${transactionId}`,
+        );
+      }
+    }
+
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database
+        .prepare(
+          `INSERT INTO checkpoints
+            (id, name, description, refs_json, backup_transaction_ids_json, created_by, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          checkpoint.id,
+          checkpoint.name,
+          checkpoint.description,
+          canonicalJson(checkpoint.refs as unknown as JsonValue),
+          canonicalJson([...checkpoint.backupTransactionIds]),
+          checkpoint.createdBy,
+          checkpoint.createdAt,
+        );
+      const insert = this.database.prepare(
+        "INSERT INTO checkpoint_transactions (checkpoint_id, transaction_id) VALUES (?, ?)",
+      );
+      for (const transactionId of checkpoint.backupTransactionIds) {
+        insert.run(checkpoint.id, transactionId);
+      }
+      this.database.exec("COMMIT");
+    } catch (error) {
+      try {
+        this.database.exec("ROLLBACK");
+      } catch {
+        // Preserve the checkpoint failure.
+      }
+      throw error;
+    }
+  }
+
+  async getCheckpoint(id: string): Promise<Checkpoint | undefined> {
+    const row = this.database
+      .prepare(
+        `SELECT id, name, description, refs_json, backup_transaction_ids_json, created_by, created_at
+         FROM checkpoints WHERE id = ?`,
+      )
+      .get(id) as CheckpointRow | undefined;
+    return row === undefined ? undefined : checkpointJson(row);
+  }
+
+  async listCheckpoints(): Promise<readonly Checkpoint[]> {
+    const rows = this.database
+      .prepare(
+        `SELECT id, name, description, refs_json, backup_transaction_ids_json, created_by, created_at
+         FROM checkpoints ORDER BY created_at, id`,
+      )
+      .all() as unknown as CheckpointRow[];
+    return rows.map(checkpointJson);
+  }
+
+  async saveConfirmation(input: StoredConfirmation): Promise<void> {
+    storedConfirmationSchema.parse(input);
+    this.database
+      .prepare(
+        `INSERT INTO confirmation_nonces
+          (token_hash, operation, resource_id, operation_hash, expires_at, created_at, consumed_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.tokenHash,
+        input.operation,
+        input.resourceId,
+        input.operationHash,
+        input.expiresAt,
+        input.createdAt,
+        input.consumedAt,
+      );
+  }
+
+  async getConfirmation(tokenHash: string): Promise<StoredConfirmation | undefined> {
+    const row = this.database
+      .prepare(
+        `SELECT token_hash, operation, resource_id, operation_hash, expires_at, created_at, consumed_at
+         FROM confirmation_nonces WHERE token_hash = ?`,
+      )
+      .get(tokenHash) as ConfirmationRow | undefined;
+    return row === undefined ? undefined : confirmationJson(row);
+  }
+
+  async consumeConfirmation(tokenHash: string, consumedAt: string): Promise<boolean> {
+    const result = this.database
+      .prepare(
+        `UPDATE confirmation_nonces SET consumed_at = ?
+         WHERE token_hash = ? AND consumed_at IS NULL`,
+      )
+      .run(consumedAt, tokenHash);
+    return Number(result.changes) === 1;
   }
 
   close(): void {

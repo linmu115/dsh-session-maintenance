@@ -1,6 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -23,6 +24,36 @@ afterEach(async () => {
 });
 
 describe("SqliteSessionRepository", () => {
+  it("upgrades a schema-2 database to schema 3 exactly once", async () => {
+    const root = await temporaryRoot();
+    const dbPath = join(root, "metadata.sqlite");
+    openMaintenanceDatabase(dbPath).close();
+    const schemaTwo = new DatabaseSync(dbPath);
+    schemaTwo.exec(`
+      DROP TABLE checkpoint_transactions;
+      DROP TABLE confirmation_nonces;
+      DROP TABLE backup_manifests;
+      DROP TABLE transaction_steps;
+      DROP TABLE transactions;
+      DELETE FROM schema_migrations WHERE version = 3;
+    `);
+    schemaTwo.close();
+
+    let upgraded = openMaintenanceDatabase(dbPath);
+    expect(
+      upgraded.prepare("SELECT version FROM schema_migrations ORDER BY version").all(),
+    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }]);
+    expect(
+      upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transactions'").get(),
+    ).toEqual({ name: "transactions" });
+    upgraded.close();
+    upgraded = openMaintenanceDatabase(dbPath);
+    expect(
+      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 3").get(),
+    ).toEqual({ count: 1 });
+    upgraded.close();
+  });
+
   it("persists immutable versions and observed refs across reopen", async () => {
     const root = await temporaryRoot();
     const store = new ZstdContentObjectStore(root);
@@ -113,7 +144,7 @@ describe("SqliteSessionRepository", () => {
     const database = openMaintenanceDatabase(dbPath);
     database
       .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-      .run(3, "2026-08-26T00:00:00.000Z");
+      .run(4, "2026-08-26T00:00:00.000Z");
     database.close();
     expect(() => openMaintenanceDatabase(dbPath)).toThrow(/newer schema/iu);
 

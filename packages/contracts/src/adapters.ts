@@ -12,14 +12,30 @@ import type {
   SessionQuery,
   SessionSummary,
   StableObservation,
+  BackupManifest,
+  PreparedWrite,
+  RestoreReceipt,
+  TransactionContext,
   UnstableRead,
   VerificationResult,
   VersionGraphPage,
+  WriteProbe,
+  WriteReceipt,
   InstanceStatus,
   DiscoveryResult,
   EngineStatus,
 } from "./model.js";
-import type { DiffRequest, PlanRequest, ScanRequest, SyncPlan } from "./plans.js";
+import type {
+  ApplyPlanRequest,
+  CreateCheckpointRequest,
+  CheckpointRestoreRequest,
+  DiffRequest,
+  PlanRequest,
+  RestoreTransactionRequest,
+  ScanRequest,
+  SyncPlan,
+} from "./plans.js";
+import type { Checkpoint, TransactionRecord, TransactionRef } from "./model.js";
 
 export interface SessionReadAdapter {
   readonly platform: "codex" | "dsh";
@@ -41,6 +57,25 @@ export interface SessionReadAdapter {
   ): Promise<VerificationResult>;
 }
 
+export interface PrepareWriteRequest {
+  readonly plan: SyncPlan;
+  readonly instance: RegisteredInstance;
+  readonly transaction: TransactionContext;
+}
+
+export interface PlatformWriteAdapter {
+  readonly platform: "dsh";
+  probeWrite(instance: RegisteredInstance): Promise<WriteProbe>;
+  prepare(request: PrepareWriteRequest): Promise<PreparedWrite>;
+  backup(prepared: PreparedWrite, transaction: TransactionContext): Promise<BackupManifest>;
+  commit(prepared: PreparedWrite, transaction: TransactionContext): Promise<WriteReceipt>;
+  verify(
+    receipt: WriteReceipt,
+    expected: ExpectedPlatformState,
+  ): Promise<VerificationResult>;
+  restore(backup: BackupManifest, transaction: TransactionContext): Promise<RestoreReceipt>;
+}
+
 export interface ReadOnlyEngine {
   listInstances(): Promise<readonly InstanceStatus[]>;
   listSessions(query: SessionQuery): Promise<Page<SessionSummary>>;
@@ -50,4 +85,12 @@ export interface ReadOnlyEngine {
   createPlan(request: PlanRequest): Promise<SyncPlan>;
   getPlan(id: string): Promise<SyncPlan | undefined>;
   status(): Promise<EngineStatus>;
+}
+
+export interface WriteEngine extends ReadOnlyEngine {
+  applyPlan(request: ApplyPlanRequest): Promise<TransactionRef>;
+  getTransaction(id: string): Promise<TransactionRecord | undefined>;
+  restoreTransaction(request: RestoreTransactionRequest): Promise<TransactionRef>;
+  createCheckpoint(request: CreateCheckpointRequest): Promise<Checkpoint>;
+  createCheckpointRestorePlan(request: CheckpointRestoreRequest): Promise<SyncPlan>;
 }

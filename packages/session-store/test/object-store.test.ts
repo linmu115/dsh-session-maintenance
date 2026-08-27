@@ -53,6 +53,12 @@ describe("ZstdContentObjectStore", () => {
       retainedObjects: 1,
       deletedObjects: 1,
     });
+    expect(report.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ objectId: reachable, reason: "reachable" }),
+        expect.objectContaining({ objectId: candidate, disposition: "deletable" }),
+      ]),
+    );
     expect((await readFile(objectPath(root, candidate))).byteLength).toBeGreaterThan(0);
 
     await writeFile(objectPath(root, candidate), Buffer.from([0x28, 0xb5, 0x2f]));

@@ -129,13 +129,14 @@ export class ZstdContentObjectStore implements ContentObjectStore {
     let retainedObjects = 0;
     let deletedObjects = 0;
     let deletedBytes = 0;
+    const items: GcReport["items"][number][] = [];
     const base = join(this.root, "objects", "sha256");
     let prefixes;
     try {
       prefixes = await readdir(base, { withFileTypes: true });
     } catch (error) {
       if (isNotFound(error)) {
-        return { reachableObjects, retainedObjects, deletedObjects, deletedBytes };
+        return { reachableObjects, retainedObjects, deletedObjects, deletedBytes, items };
       }
       throw error;
     }
@@ -155,22 +156,35 @@ export class ZstdContentObjectStore implements ContentObjectStore {
         if (reachable.has(id)) {
           reachableObjects += 1;
           retainedObjects += 1;
+          items.push({ objectId: id, disposition: "retained", reason: "reachable", bytes: info.size });
           continue;
         }
         if (cutoff !== undefined && info.mtimeMs >= cutoff) {
           retainedObjects += 1;
+          items.push({
+            objectId: id,
+            disposition: "retained",
+            reason: "retention-window",
+            bytes: info.size,
+          });
           continue;
         }
 
         deletedObjects += 1;
         deletedBytes += info.size;
+        items.push({
+          objectId: id,
+          disposition: policy.dryRun ? "deletable" : "deleted",
+          reason: "unreachable",
+          bytes: info.size,
+        });
         if (!policy.dryRun) {
           await unlink(path);
         }
       }
     }
 
-    return { reachableObjects, retainedObjects, deletedObjects, deletedBytes };
+    return { reachableObjects, retainedObjects, deletedObjects, deletedBytes, items };
   }
 
   private pathForHex(hex: string): string {
