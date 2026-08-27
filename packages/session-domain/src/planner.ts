@@ -309,6 +309,46 @@ export function validatePlanPreconditions(
   }
 }
 
+export interface ExecutableDshPlanShape {
+  readonly kind: "mutation" | "no-op";
+  readonly targetInstanceId: string;
+}
+
+/**
+ * The final fail-closed gate between planning and the recoverable DSH writer.
+ * Planning may describe review/destructive outcomes, but this function admits
+ * only the narrow Codex -> DSH shapes implemented by the locked rc.2 adapter.
+ */
+export function validateExecutableDshPlan(plan: SyncPlan): ExecutableDshPlanShape {
+  const operationTypes = plan.operations.map((operation) => operation.type);
+  const allowed = new Set(["create-target-session", "append-events", "update-title", "update-archive"]);
+  const create = plan.operations.find((operation) => operation.type === "create-target-session");
+  const append = plan.operations.find((operation) => operation.type === "append-events");
+  const targetInstanceId = plan.target?.key.instanceId ??
+    (create?.type === "create-target-session" ? create.targetInstanceId : undefined);
+  const invalid =
+    plan.risk !== "safe" ||
+    plan.confirmations.length !== 0 ||
+    plan.source.key.platform !== "codex" ||
+    targetInstanceId === undefined ||
+    operationTypes.some((type) => !allowed.has(type)) ||
+    new Set(operationTypes).size !== operationTypes.length ||
+    (plan.target === undefined) !== (create?.type === "create-target-session") ||
+    (plan.target !== undefined && plan.target.key.platform !== "dsh") ||
+    (append?.type === "append-events" &&
+      (plan.target === undefined || append.fromIndex < 0 || append.eventIds.length === 0));
+  if (invalid) {
+    throw new SessionMaintenanceError(
+      "WRITE_CAPABILITY_UNAVAILABLE",
+      `Plan is not an executable Codex-to-DSH fast-forward: ${plan.id}`,
+    );
+  }
+  return {
+    kind: plan.operations.length === 0 ? "no-op" : "mutation",
+    targetInstanceId,
+  };
+}
+
 export class PlanningService {
   readonly repository: PlanRepository;
 

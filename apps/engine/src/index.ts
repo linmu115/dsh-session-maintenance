@@ -5,3 +5,4 @@ export * from "./engine.js";
 export * from "./http/server.js";
 export * from "./jobs/job-runner.js";
 export * from "./jobs/job-store.js";
+export * from "./write-service.js";

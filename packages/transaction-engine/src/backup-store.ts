@@ -160,6 +160,22 @@ export class TransactionBackupStore {
     return manifest;
   }
 
+  async get(entry: BackupManifestEntry): Promise<Uint8Array> {
+    try {
+      const bytes = await readFile(this.pathFor(entry.objectId));
+      if (bytes.byteLength !== entry.size || sha256(bytes) !== entry.sha256) {
+        throw new Error("backup bytes mismatch");
+      }
+      return bytes;
+    } catch (error) {
+      throw new SessionMaintenanceError(
+        isNotFound(error) ? "BACKUP_INCOMPLETE" : "BACKUP_CORRUPT",
+        `Backup object failed retrieval: ${entry.logicalName}`,
+        { cause: error },
+      );
+    }
+  }
+
   pathFor(objectId: string): string {
     const match = OBJECT_ID.exec(objectId);
     if (match === null || match[1] === undefined) {

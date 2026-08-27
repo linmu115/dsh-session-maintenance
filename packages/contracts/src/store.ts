@@ -27,12 +27,25 @@ import type {
 import type { ContinuationJob, ContinuationTransition } from "./continuations.js";
 import type { SyncPlan } from "./plans.js";
 
+export interface VerifiedRefAdvance {
+  readonly logicalSessionId: string;
+  readonly sourceBindingId: string;
+  readonly expectedSourceVersionId: string;
+  readonly targetBinding: PlatformBinding;
+  readonly expectedTargetVersionId?: string;
+  readonly verifiedHead: ObservedHead;
+  readonly displayTitle: string;
+  readonly archived: boolean;
+}
+
 export interface SessionRepository {
   createLogicalSession(input: LogicalSession): Promise<boolean>;
   findBinding(key: PlatformSessionKey): Promise<PlatformBinding | undefined>;
   bindPlatformSession(input: PlatformBinding): Promise<boolean>;
   getObservedHead(bindingId: string): Promise<ObservedHead | undefined>;
   putVersion(input: NewVersion): Promise<SessionVersionManifest>;
+  getVersion(id: string): Promise<SessionVersionManifest | undefined>;
+  advanceVerifiedRefs(input: VerifiedRefAdvance): Promise<void>;
   recordObservation(input: ObservedHead): Promise<void>;
   recordObservedVersion(input: ObservationRecord): Promise<RepositoryWriteResult>;
   upsertMatchCandidate(input: MatchCandidate): Promise<boolean>;

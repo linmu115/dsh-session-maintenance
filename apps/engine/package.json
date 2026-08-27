@@ -26,6 +26,7 @@
     "@linmu/dsh-session-domain": "workspace:*",
     "@linmu/dsh-session-continuation-engine": "workspace:*",
     "@linmu/dsh-session-store": "workspace:*",
+    "@linmu/dsh-session-transaction-engine": "workspace:*",
     "commander": "14.0.0",
     "yaml": "2.8.1",
     "zod": "4.1.5"

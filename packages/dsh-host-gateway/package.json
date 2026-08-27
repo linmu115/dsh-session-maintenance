@@ -1,5 +1,5 @@
 {
-  "name": "@linmu/dsh-adapter-dsh-write",
+  "name": "@linmu/dsh-host-gateway",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -17,13 +17,7 @@
   },
   "dependencies": {
     "@linmu/dsh-core-extension": "workspace:*",
-    "@linmu/dsh-host-gateway": "workspace:*",
     "@linmu/dsh-session-contracts": "workspace:*",
-    "@linmu/dsh-session-domain": "workspace:*",
-    "@linmu/dsh-session-transaction-engine": "workspace:*"
-  },
-  "devDependencies": {
-    "@linmu/dsh-session-store": "workspace:*",
-    "@linmu/dsh-session-test-support": "workspace:*"
+    "@linmu/dsh-session-domain": "workspace:*"
   }
 }

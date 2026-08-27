@@ -41,6 +41,9 @@ importers:
       '@linmu/dsh-session-store':
         specifier: workspace:*
         version: link:../../packages/session-store
+      '@linmu/dsh-session-transaction-engine':
+        specifier: workspace:*
+        version: link:../../packages/transaction-engine
       commander:
         specifier: 14.0.0
         version: 14.0.0
@@ -85,12 +88,28 @@ importers:
 
   packages/adapter-dsh-write:
     dependencies:
+      '@linmu/dsh-core-extension':
+        specifier: workspace:*
+        version: link:../dsh-core-extension
+      '@linmu/dsh-host-gateway':
+        specifier: workspace:*
+        version: link:../dsh-host-gateway
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts
       '@linmu/dsh-session-domain':
         specifier: workspace:*
         version: link:../session-domain
+      '@linmu/dsh-session-transaction-engine':
+        specifier: workspace:*
+        version: link:../transaction-engine
+    devDependencies:
+      '@linmu/dsh-session-store':
+        specifier: workspace:*
+        version: link:../session-store
+      '@linmu/dsh-session-test-support':
+        specifier: workspace:*
+        version: link:../test-support
 
   packages/continuation-engine:
     dependencies:
@@ -109,6 +128,31 @@ importers:
       zod:
         specifier: 4.1.5
         version: 4.1.5
+
+  packages/dsh-core-extension:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-domain':
+        specifier: workspace:*
+        version: link:../session-domain
+    devDependencies:
+      '@linmu/dsh-session-test-support':
+        specifier: workspace:*
+        version: link:../test-support
+
+  packages/dsh-host-gateway:
+    dependencies:
+      '@linmu/dsh-core-extension':
+        specifier: workspace:*
+        version: link:../dsh-core-extension
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-domain':
+        specifier: workspace:*
+        version: link:../session-domain
 
   packages/handoff-context:
     dependencies:
