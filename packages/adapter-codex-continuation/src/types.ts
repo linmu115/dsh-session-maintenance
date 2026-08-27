@@ -19,39 +19,19 @@ export class ContinuationAdapterError extends Error {
   }
 }
 
-export interface CodexContinuationTarget {
-  readonly id: string;
-  readonly platformVersion: string;
-  readonly cwd: string;
-  readonly runtimeWorkspaceRoots: readonly string[];
-  readonly contextWindowTokens: number;
-  readonly model?: string;
-  readonly permissions?: string;
-  readonly codexHome?: string;
-  readonly command?: string;
-}
+import type {
+  CodexContinuationTarget,
+  ContinuationProbe,
+  ContinuationVerification,
+  CreatedCodexThread,
+} from "@linmu/dsh-session-contracts";
 
-export interface ContinuationProbe {
-  readonly status: "compatible" | "unsupported";
-  readonly platformVersion: string;
-  readonly schemaFingerprint: string;
-  readonly capabilities: readonly ("create-thread" | "start-turn" | "read-thread")[];
-  readonly issues: readonly { readonly code: string; readonly message: string }[];
-}
-
-export interface CreatedCodexThread {
-  readonly threadId: string;
-  readonly turnId: string;
-  readonly status: "turn-completed";
-  readonly cwd: string;
-}
-
-export interface ContinuationVerification {
-  readonly ok: true;
-  readonly threadId: string;
-  readonly cwd: string;
-  readonly historyMode: "paginated";
-}
+export type {
+  CodexContinuationTarget,
+  ContinuationProbe,
+  ContinuationVerification,
+  CreatedCodexThread,
+} from "@linmu/dsh-session-contracts";
 
 export interface AppServerTransport {
   version(): Promise<string>;

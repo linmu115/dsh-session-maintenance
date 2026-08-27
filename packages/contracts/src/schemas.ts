@@ -593,3 +593,96 @@ export const planResponseSchema = z.strictObject({ plan: syncPlanSchema });
 export const jobAcceptedResponseSchema = z.strictObject({ job: jobRefSchema });
 export const transactionResponseSchema = z.strictObject({ transaction: transactionRecordSchema });
 export const checkpointResponseSchema = z.strictObject({ checkpoint: checkpointSchema });
+
+export const continuationModeSchema = z.enum(["full", "checkpoint", "structured-summary"]);
+export const continuationJobStatusSchema = z.enum([
+  "prepared",
+  "creating",
+  "started",
+  "verifying",
+  "completed",
+  "failed",
+  "manual-review",
+]);
+
+export const codexContinuationTargetSchema = z.strictObject({
+  id: idSchema,
+  codexInstanceId: idSchema,
+  platformVersion: idSchema,
+  cwd: z.string().min(1),
+  runtimeWorkspaceRoots: z.array(z.string().min(1)),
+  contextWindowTokens: z.number().int().positive(),
+  inputBudgetRatio: z.number().positive().max(1),
+  model: z.string().min(1).optional(),
+  permissions: z.string().min(1).optional(),
+  codexHome: z.string().min(1).optional(),
+  command: z.string().min(1).optional(),
+});
+
+export const continuationPreviewRequestSchema = z.strictObject({
+  logicalSessionId: idSchema,
+  sourceVersionId: idSchema,
+  targetPresetId: idSchema,
+  mode: continuationModeSchema,
+  checkpointStartSequence: nonNegativeIntegerSchema.optional(),
+});
+
+export const resolutionContinuationRequestSchema = z.strictObject({
+  logicalSessionId: idSchema,
+  leftVersionId: idSchema,
+  rightVersionId: idSchema,
+  commonAncestorVersionId: idSchema.optional(),
+  mergeNote: z.string().min(1),
+  targetPresetId: idSchema,
+  mode: continuationModeSchema,
+  checkpointStartSequence: nonNegativeIntegerSchema.optional(),
+});
+
+export const continuationRequestSchema = z.union([
+  continuationPreviewRequestSchema,
+  resolutionContinuationRequestSchema,
+]);
+
+export const continuationPreviewSchema = z.strictObject({
+  mode: continuationModeSchema,
+  allowed: z.boolean(),
+  estimatedTokens: nonNegativeIntegerSchema,
+  tokenBudget: z.number().int().positive(),
+  sourceVersionIds: z.array(idSchema).min(1).max(2),
+  archiveObjectIds: z.array(idSchema).min(1).max(2),
+  omissions: z.array(z.strictObject({
+    sourceVersionId: idSchema,
+    reason: z.enum(["checkpoint", "structured-summary"]),
+    eventCount: nonNegativeIntegerSchema,
+    characterCount: nonNegativeIntegerSchema,
+  })),
+  reason: z.string().optional(),
+});
+
+export const continuationJobSchema = z.strictObject({
+  id: idSchema,
+  requestHash: idSchema,
+  request: continuationRequestSchema,
+  logicalSessionId: idSchema,
+  sourceVersionIds: z.array(idSchema).min(1).max(2),
+  targetPresetId: idSchema,
+  mode: continuationModeSchema,
+  handoffObjectId: idSchema,
+  status: continuationJobStatusSchema,
+  codexThreadId: idSchema.optional(),
+  codexTurnId: idSchema.optional(),
+  errorCode: idSchema.optional(),
+  verification: jsonValueSchema.optional(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const continuationTransitionSchema = z.strictObject({
+  expected: z.array(continuationJobStatusSchema).min(1),
+  status: continuationJobStatusSchema,
+  updatedAt: timestampSchema,
+  codexThreadId: idSchema.optional(),
+  codexTurnId: idSchema.optional(),
+  errorCode: idSchema.optional(),
+  verification: jsonValueSchema.optional(),
+});

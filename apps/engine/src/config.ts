@@ -2,7 +2,11 @@ import { open } from "node:fs/promises";
 import { mkdir, readFile, realpath, rename } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { PlatformKind, RegisteredInstance } from "@linmu/dsh-session-contracts";
+import type {
+  CodexContinuationTarget,
+  PlatformKind,
+  RegisteredInstance,
+} from "@linmu/dsh-session-contracts";
 import { parse, stringify } from "yaml";
 
 export interface EngineConfig {
@@ -13,9 +17,19 @@ export interface EngineConfig {
     readonly root: string;
     readonly platformVersion: string;
   }>>;
+  readonly codexTargets: Readonly<Record<string, {
+    readonly codexInstanceId: string;
+    readonly cwd: string;
+    readonly runtimeWorkspaceRoots: readonly string[];
+    readonly contextWindowTokens: number;
+    readonly inputBudgetRatio: number;
+    readonly model?: string;
+    readonly permissions?: string;
+    readonly command?: string;
+  }>>;
 }
 
-const EMPTY_CONFIG: EngineConfig = { schemaVersion: 1, instances: {} };
+const EMPTY_CONFIG: EngineConfig = { schemaVersion: 1, instances: {}, codexTargets: {} };
 
 export function configPathFor(stateRoot: string): string {
   return join(stateRoot, "config.yaml");
@@ -44,7 +58,41 @@ function validateConfig(value: unknown): EngineConfig {
       platformVersion: record.platformVersion,
     };
   }
-  return { schemaVersion: 1, instances };
+  const targetsValue = root.codexTargets ?? {};
+  if (typeof targetsValue !== "object" || targetsValue === null || Array.isArray(targetsValue)) {
+    throw new TypeError("Invalid Codex target presets");
+  }
+  const codexTargets: Record<string, EngineConfig["codexTargets"][string]> = {};
+  for (const [id, item] of Object.entries(targetsValue as Record<string, unknown>)) {
+    if (typeof item !== "object" || item === null || Array.isArray(item)) throw new TypeError(`Invalid Codex target: ${id}`);
+    const record = item as Record<string, unknown>;
+    if (
+      typeof record.codexInstanceId !== "string" ||
+      typeof record.cwd !== "string" ||
+      !Array.isArray(record.runtimeWorkspaceRoots) ||
+      !record.runtimeWorkspaceRoots.every((path) => typeof path === "string") ||
+      typeof record.contextWindowTokens !== "number" ||
+      !Number.isSafeInteger(record.contextWindowTokens) ||
+      record.contextWindowTokens <= 0 ||
+      typeof record.inputBudgetRatio !== "number" ||
+      record.inputBudgetRatio <= 0 ||
+      record.inputBudgetRatio > 1 ||
+      (record.model !== undefined && typeof record.model !== "string") ||
+      (record.permissions !== undefined && typeof record.permissions !== "string") ||
+      (record.command !== undefined && typeof record.command !== "string")
+    ) throw new TypeError(`Invalid Codex target: ${id}`);
+    codexTargets[id] = {
+      codexInstanceId: record.codexInstanceId,
+      cwd: record.cwd,
+      runtimeWorkspaceRoots: record.runtimeWorkspaceRoots as string[],
+      contextWindowTokens: record.contextWindowTokens,
+      inputBudgetRatio: record.inputBudgetRatio,
+      ...(record.model === undefined ? {} : { model: record.model as string }),
+      ...(record.permissions === undefined ? {} : { permissions: record.permissions as string }),
+      ...(record.command === undefined ? {} : { command: record.command as string }),
+    };
+  }
+  return { schemaVersion: 1, instances, codexTargets };
 }
 
 async function atomicWrite(path: string, content: string): Promise<void> {
@@ -80,6 +128,21 @@ export function registeredInstances(config: EngineConfig): readonly RegisteredIn
   return Object.entries(config.instances).map(([id, instance]) => ({ id, ...instance }));
 }
 
+export function registeredCodexTargets(config: EngineConfig): readonly CodexContinuationTarget[] {
+  return Object.entries(config.codexTargets).map(([id, target]) => {
+    const instance = config.instances[target.codexInstanceId];
+    if (instance === undefined || instance.platform !== "codex") {
+      throw new TypeError(`Codex target ${id} refers to a missing Codex instance: ${target.codexInstanceId}`);
+    }
+    return {
+      id,
+      ...target,
+      platformVersion: instance.platformVersion,
+      codexHome: instance.root,
+    };
+  });
+}
+
 export async function addInstance(
   stateRoot: string,
   input: RegisteredInstance,
@@ -95,6 +158,6 @@ export async function addInstance(
     root: resolved.root,
     platformVersion: resolved.platformVersion,
   } };
-  await atomicWrite(configPathFor(stateRoot), stringify({ schemaVersion: 1, instances }));
+  await atomicWrite(configPathFor(stateRoot), stringify({ schemaVersion: 1, instances, codexTargets: config.codexTargets }));
   return resolved;
 }

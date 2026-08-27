@@ -18,6 +18,7 @@ interface ThreadShape {
   readonly cwd: string;
   readonly ephemeral: boolean;
   readonly historyMode: string;
+  readonly turns?: readonly { readonly id: string; readonly status?: string }[];
 }
 
 interface ThreadStartResponse {
@@ -94,6 +95,7 @@ export class CodexContinuationAdapter {
   async create(input: {
     readonly prompt: string;
     readonly target: CodexContinuationTarget;
+    readonly onThreadStarted?: (threadId: string) => Promise<void>;
   }): Promise<CreatedCodexThread> {
     if (input.prompt.trim().length === 0) {
       throw new ContinuationAdapterError("CONTINUATION_CREATE_FAILED", "Continuation prompt is empty");
@@ -111,6 +113,7 @@ export class CodexContinuationAdapter {
         sessionStartSource: "startup",
       });
       threadId = started.thread.id;
+      await input.onThreadStarted?.(threadId);
       const turn = await transport.request<TurnStartResponse>("turn/start", {
         threadId,
         input: [{ type: "text", text: input.prompt, text_elements: [] }],
@@ -136,7 +139,7 @@ export class CodexContinuationAdapter {
   }
 
   async verify(
-    created: CreatedCodexThread,
+    created: Pick<CreatedCodexThread, "threadId">,
     target: CodexContinuationTarget,
   ): Promise<ContinuationVerification> {
     const transport = await this.requireCompatible(target);
@@ -152,6 +155,9 @@ export class CodexContinuationAdapter {
         thread.historyMode !== CODEX_CONTINUATION_CONTRACT.historyMode
       ) {
         throw new Error("Codex returned a non-persistent or mismatched thread");
+      }
+      if (thread.turns === undefined || thread.turns.length === 0) {
+        throw new Error("Codex continuation has no persisted initial turn");
       }
       return {
         ok: true,

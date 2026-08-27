@@ -2,17 +2,31 @@ import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
+import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
-import { SessionMaintenanceError, type RegisteredInstance, type SessionReadAdapter } from "@linmu/dsh-session-contracts";
+import {
+  SessionMaintenanceError,
+  type CodexContinuationPort,
+  type RegisteredInstance,
+  type SessionReadAdapter,
+} from "@linmu/dsh-session-contracts";
+import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { SqliteSessionRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 
-import { addInstance, initializeStateRoot, loadConfig, registeredInstances } from "./config.js";
+import {
+  addInstance,
+  initializeStateRoot,
+  loadConfig,
+  registeredCodexTargets,
+  registeredInstances,
+} from "./config.js";
 import { SessionMaintenanceEngine } from "./engine.js";
 
 export interface CompositionOptions {
   readonly stateRoot: string;
   readonly clock?: () => string;
   readonly fixturePolicy?: (root: string) => void;
+  readonly continuationAdapter?: CodexContinuationPort;
 }
 
 function adapters(fixturePolicy?: (root: string) => void): readonly SessionReadAdapter[] {
@@ -46,11 +60,19 @@ export async function createReadOnlyComposition(options: CompositionOptions): Pr
     openMaintenanceDatabase(join(options.stateRoot, "metadata.sqlite")),
     objectStore,
   );
+  const continuations = new ContinuationService({
+    repository,
+    objectStore,
+    adapter: options.continuationAdapter ?? new CodexContinuationAdapter(),
+    targets: registeredCodexTargets(config),
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+  });
   return new SessionMaintenanceEngine({
     instances: registeredInstances(config),
     adapters: adapters(options.fixturePolicy),
     repository,
     objectStore,
+    continuations,
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
 }

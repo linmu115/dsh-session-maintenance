@@ -52,6 +52,10 @@ export class ScriptedAppServerTransport implements AppServerTransport {
     this.failures.set(method, error);
   }
 
+  clearRequestFailure(method: string): void {
+    this.failures.delete(method);
+  }
+
   requestedMethods(): readonly string[] {
     return [...this.methods];
   }

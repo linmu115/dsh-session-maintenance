@@ -20,12 +20,18 @@ importers:
 
   apps/engine:
     dependencies:
+      '@linmu/dsh-adapter-codex-continuation':
+        specifier: workspace:*
+        version: link:../../packages/adapter-codex-continuation
       '@linmu/dsh-adapter-codex-read':
         specifier: workspace:*
         version: link:../../packages/adapter-codex-read
       '@linmu/dsh-adapter-dsh':
         specifier: workspace:*
         version: link:../../packages/adapter-dsh
+      '@linmu/dsh-session-continuation-engine':
+        specifier: workspace:*
+        version: link:../../packages/continuation-engine
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
@@ -85,6 +91,18 @@ importers:
       '@linmu/dsh-session-domain':
         specifier: workspace:*
         version: link:../session-domain
+
+  packages/continuation-engine:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-domain':
+        specifier: workspace:*
+        version: link:../session-domain
+      '@linmu/dsh-session-handoff-context':
+        specifier: workspace:*
+        version: link:../handoff-context
 
   packages/contracts:
     dependencies:

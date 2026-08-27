@@ -12,10 +12,12 @@ import { ScriptedAppServerTransport } from "../src/testing.js";
 
 const target: CodexContinuationTarget = {
   id: "codex-default",
+  codexInstanceId: "codex-fixture",
   platformVersion: "0.146.0",
   cwd: "D:\\workspace",
   runtimeWorkspaceRoots: ["D:\\workspace"],
   contextWindowTokens: 120_000,
+  inputBudgetRatio: 0.8,
 };
 
 function successfulTransport(): ScriptedAppServerTransport {
@@ -34,6 +36,7 @@ function successfulTransport(): ScriptedAppServerTransport {
           cwd: "D:\\workspace",
           ephemeral: false,
           historyMode: "paginated",
+          turns: [{ id: "turn-1", status: "completed" }],
         },
       },
       "turn/start": { turn: { id: "turn-1", status: "inProgress" } },
@@ -43,6 +46,7 @@ function successfulTransport(): ScriptedAppServerTransport {
           cwd: "D:\\workspace",
           ephemeral: false,
           historyMode: "paginated",
+          turns: [{ id: "turn-1", status: "completed" }],
         },
       },
     },

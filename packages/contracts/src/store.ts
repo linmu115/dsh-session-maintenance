@@ -24,6 +24,7 @@ import type {
   TransactionRecord,
   TransactionStep,
 } from "./model.js";
+import type { ContinuationJob, ContinuationTransition } from "./continuations.js";
 import type { SyncPlan } from "./plans.js";
 
 export interface SessionRepository {
@@ -87,4 +88,12 @@ export interface ConfirmationRepository {
   saveConfirmation(input: StoredConfirmation): Promise<void>;
   getConfirmation(tokenHash: string): Promise<StoredConfirmation | undefined>;
   consumeConfirmation(tokenHash: string, consumedAt: string): Promise<boolean>;
+}
+
+export interface ContinuationRepository {
+  createContinuationJob(input: ContinuationJob): Promise<ContinuationJob>;
+  getContinuationJob(id: string): Promise<ContinuationJob | undefined>;
+  findContinuationByRequestHash(requestHash: string): Promise<ContinuationJob | undefined>;
+  transitionContinuationJob(id: string, transition: ContinuationTransition): Promise<ContinuationJob>;
+  listRecoverableContinuations(): Promise<readonly ContinuationJob[]>;
 }

@@ -21,7 +21,12 @@ import {
   type SyncPlan,
   type VersionGraphPage,
   type ContentObjectStore,
+  type ContinuationJob,
+  type ContinuationPreview,
+  type ContinuationPreviewRequest,
+  type CreateContinuationRequest,
 } from "@linmu/dsh-session-contracts";
+import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
 import type { SqliteSessionRepository } from "@linmu/dsh-session-store";
 
@@ -46,18 +51,21 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
   private readonly clock: () => string;
+  private readonly continuations: ContinuationService;
 
   constructor(input: {
     readonly instances: readonly RegisteredInstance[];
     readonly adapters: readonly SessionReadAdapter[];
     readonly repository: SqliteSessionRepository;
     readonly objectStore: ContentObjectStore;
+    readonly continuations: ContinuationService;
     readonly clock?: () => string;
   }) {
     this.instances = input.instances;
     this.adapters = input.adapters;
     this.repository = input.repository;
     this.objectStore = input.objectStore;
+    this.continuations = input.continuations;
     this.clock = input.clock ?? (() => new Date().toISOString());
     this.discovery = new DiscoveryService(input);
   }
@@ -141,7 +149,24 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine {
     });
   }
 
+  previewContinuation(request: ContinuationPreviewRequest): Promise<ContinuationPreview> {
+    return this.continuations.preview(request);
+  }
+
+  createContinuation(request: CreateContinuationRequest): Promise<ContinuationJob> {
+    return this.continuations.create(request);
+  }
+
+  getContinuation(id: string): Promise<ContinuationJob | undefined> {
+    return this.continuations.get(id);
+  }
+
+  recoverContinuation(id: string): Promise<ContinuationJob> {
+    return this.continuations.recover(id);
+  }
+
   close(): void {
+    void this.continuations.close();
     const close = this.repository as SessionRepository & { readonly close?: () => void };
     close.close?.();
   }

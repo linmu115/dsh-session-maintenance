@@ -5,6 +5,8 @@ import {
   SessionMaintenanceError,
   backupManifestSchema,
   checkpointSchema,
+  continuationJobSchema,
+  continuationTransitionSchema,
   matchCandidateSchema,
   observedHeadSchema,
   platformBindingSchema,
@@ -16,6 +18,8 @@ import {
   type BackupManifest,
   type BackupProtection,
   type Checkpoint,
+  type ContinuationJob,
+  type ContinuationTransition,
   type ContentObjectStore,
   type JsonValue,
   type LogicalSession,
@@ -68,6 +72,24 @@ interface PlanRow {
   readonly id: string;
   readonly hash: string;
   readonly plan_json: string;
+}
+
+interface ContinuationJobRow {
+  readonly id: string;
+  readonly request_hash: string;
+  readonly request_json: string;
+  readonly logical_session_id: string;
+  readonly source_version_ids_json: string;
+  readonly target_preset_id: string;
+  readonly mode: ContinuationJob["mode"];
+  readonly handoff_object_id: string;
+  readonly status: ContinuationJob["status"];
+  readonly codex_thread_id: string | null;
+  readonly codex_turn_id: string | null;
+  readonly error_code: string | null;
+  readonly verification_json: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
 }
 
 interface BindingRow {
@@ -285,6 +307,26 @@ function transactionJson(row: TransactionRow): TransactionRecord {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }) as TransactionRecord;
+}
+
+function continuationJobJson(row: ContinuationJobRow): ContinuationJob {
+  return continuationJobSchema.parse({
+    id: row.id,
+    requestHash: row.request_hash,
+    request: JSON.parse(row.request_json) as unknown,
+    logicalSessionId: row.logical_session_id,
+    sourceVersionIds: JSON.parse(row.source_version_ids_json) as unknown,
+    targetPresetId: row.target_preset_id,
+    mode: row.mode,
+    handoffObjectId: row.handoff_object_id,
+    status: row.status,
+    ...(row.codex_thread_id === null ? {} : { codexThreadId: row.codex_thread_id }),
+    ...(row.codex_turn_id === null ? {} : { codexTurnId: row.codex_turn_id }),
+    ...(row.error_code === null ? {} : { errorCode: row.error_code }),
+    ...(row.verification_json === null ? {} : { verification: JSON.parse(row.verification_json) as unknown }),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  }) as ContinuationJob;
 }
 
 function checkpointJson(row: CheckpointRow): Checkpoint {
@@ -893,7 +935,10 @@ export class SqliteSessionRepository {
          ORDER BY sv.body_object`,
       )
       .all() as unknown as ObjectRow[];
-    return rows.map((row) => row.body_object);
+    const continuationRows = this.database
+      .prepare("SELECT DISTINCT handoff_object_id AS body_object FROM continuation_jobs ORDER BY handoff_object_id")
+      .all() as unknown as ObjectRow[];
+    return [...new Set([...rows, ...continuationRows].map((row) => row.body_object))].sort();
   }
 
   async savePlan(plan: SyncPlan): Promise<void> {
@@ -1386,6 +1431,146 @@ export class SqliteSessionRepository {
       )
       .run(consumedAt, tokenHash);
     return Number(result.changes) === 1;
+  }
+
+  async createContinuationJob(input: ContinuationJob): Promise<ContinuationJob> {
+    continuationJobSchema.parse(input);
+    const byHash = await this.findContinuationByRequestHash(input.requestHash);
+    if (byHash !== undefined) return byHash;
+    const byId = await this.getContinuationJob(input.id);
+    if (byId !== undefined) {
+      if (canonicalJson(byId as unknown as JsonValue) !== canonicalJson(input as unknown as JsonValue)) {
+        throw new SessionMaintenanceError(
+          "IDENTITY_CONFLICT",
+          `Continuation job ID has different content: ${input.id}`,
+        );
+      }
+      return byId;
+    }
+    this.database
+      .prepare(
+        `INSERT INTO continuation_jobs
+          (id, request_hash, request_json, logical_session_id, source_version_ids_json,
+           target_preset_id, mode, handoff_object_id, status, codex_thread_id,
+           codex_turn_id, error_code, verification_json, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.id,
+        input.requestHash,
+        canonicalJson(input.request as unknown as JsonValue),
+        input.logicalSessionId,
+        canonicalJson([...input.sourceVersionIds]),
+        input.targetPresetId,
+        input.mode,
+        input.handoffObjectId,
+        input.status,
+        input.codexThreadId ?? null,
+        input.codexTurnId ?? null,
+        input.errorCode ?? null,
+        input.verification === undefined ? null : canonicalJson(input.verification),
+        input.createdAt,
+        input.updatedAt,
+      );
+    return input;
+  }
+
+  async getContinuationJob(id: string): Promise<ContinuationJob | undefined> {
+    const row = this.database
+      .prepare(
+        `SELECT id, request_hash, request_json, logical_session_id, source_version_ids_json,
+                target_preset_id, mode, handoff_object_id, status, codex_thread_id,
+                codex_turn_id, error_code, verification_json, created_at, updated_at
+         FROM continuation_jobs WHERE id = ?`,
+      )
+      .get(id) as ContinuationJobRow | undefined;
+    if (row === undefined) return undefined;
+    try {
+      return continuationJobJson(row);
+    } catch (error) {
+      throw new SessionMaintenanceError("OBJECT_CORRUPT", `Stored continuation job is corrupt: ${id}`, {
+        cause: error,
+      });
+    }
+  }
+
+  async findContinuationByRequestHash(requestHash: string): Promise<ContinuationJob | undefined> {
+    const row = this.database
+      .prepare(
+        `SELECT id, request_hash, request_json, logical_session_id, source_version_ids_json,
+                target_preset_id, mode, handoff_object_id, status, codex_thread_id,
+                codex_turn_id, error_code, verification_json, created_at, updated_at
+         FROM continuation_jobs WHERE request_hash = ?`,
+      )
+      .get(requestHash) as ContinuationJobRow | undefined;
+    return row === undefined ? undefined : continuationJobJson(row);
+  }
+
+  async transitionContinuationJob(
+    id: string,
+    transition: ContinuationTransition,
+  ): Promise<ContinuationJob> {
+    continuationTransitionSchema.parse(transition);
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      const current = await this.getContinuationJob(id);
+      if (current === undefined) {
+        throw new SessionMaintenanceError("CONTINUATION_NOT_FOUND", `Continuation job not found: ${id}`);
+      }
+      if (!transition.expected.includes(current.status)) {
+        if (current.status === transition.status) {
+          this.database.exec("COMMIT");
+          return current;
+        }
+        throw new SessionMaintenanceError(
+          "CONTINUATION_RECOVERY_REQUIRED",
+          `Continuation ${id} is ${current.status}; expected ${transition.expected.join(", ")}`,
+        );
+      }
+      this.database
+        .prepare(
+          `UPDATE continuation_jobs
+           SET status = ?,
+               codex_thread_id = COALESCE(?, codex_thread_id),
+               codex_turn_id = COALESCE(?, codex_turn_id),
+               error_code = ?,
+               verification_json = COALESCE(?, verification_json),
+               updated_at = ?
+           WHERE id = ?`,
+        )
+        .run(
+          transition.status,
+          transition.codexThreadId ?? null,
+          transition.codexTurnId ?? null,
+          transition.errorCode ?? null,
+          transition.verification === undefined ? null : canonicalJson(transition.verification),
+          transition.updatedAt,
+          id,
+        );
+      this.database.exec("COMMIT");
+      return (await this.getContinuationJob(id))!;
+    } catch (error) {
+      try {
+        this.database.exec("ROLLBACK");
+      } catch {
+        // Preserve the transition failure.
+      }
+      throw error;
+    }
+  }
+
+  async listRecoverableContinuations(): Promise<readonly ContinuationJob[]> {
+    const rows = this.database
+      .prepare(
+        `SELECT id, request_hash, request_json, logical_session_id, source_version_ids_json,
+                target_preset_id, mode, handoff_object_id, status, codex_thread_id,
+                codex_turn_id, error_code, verification_json, created_at, updated_at
+         FROM continuation_jobs
+         WHERE status IN ('creating', 'started', 'verifying', 'manual-review')
+         ORDER BY created_at, id`,
+      )
+      .all() as unknown as ContinuationJobRow[];
+    return rows.map(continuationJobJson);
   }
 
   close(): void {
