@@ -7,6 +7,9 @@ on:
 jobs:
   verify:
     runs-on: windows-latest
+    env:
+      TEMP: ${{ runner.temp }}
+      TMP: ${{ runner.temp }}
     strategy:
       fail-fast: false
       matrix:

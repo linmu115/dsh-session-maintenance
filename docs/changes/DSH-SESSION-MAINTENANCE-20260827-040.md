@@ -13,6 +13,7 @@
 - 打开看板动作只接受 Engine 签发的 `127.0.0.1` HTTP 地址，并在 Manager HTTP 回执完成后调用系统默认浏览器。
 - 自定义 Phase 2 打包器现在把 `dsh-management/panel.yaml` 纳入插件 tgz，并从组件 manifest 读取版本，避免再次遗漏。
 - 插件的标准 `pnpm pack` 也会生成相同边界的自包含 Host/Client bundle，不再把本地 `@linmu/*` workspace 包误写成运行时依赖；因此 Maintenance 可以从精确 Git commit 构建、预览和部署该插件。
+- GitHub Windows CI 明确把 `TEMP/TMP` 指向 `runner.temp`，避免系统短路径别名让合成 fixture 安全边界误判；生产安全守卫本身没有放宽。
 
 ## 位置
 
