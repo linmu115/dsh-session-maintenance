@@ -618,7 +618,7 @@ export class SqliteSessionRepository {
     if (
       input.targetBinding.logicalSessionId !== input.logicalSessionId ||
       input.verifiedHead.bindingId !== input.targetBinding.id ||
-      input.verifiedHead.fingerprint.platform !== "dsh" ||
+      input.verifiedHead.fingerprint.platform !== input.targetBinding.key.platform ||
       input.verifiedHead.fingerprint.instanceId !== input.targetBinding.key.instanceId ||
       input.verifiedHead.fingerprint.sessionId !== input.targetBinding.key.sessionId
     ) {
@@ -670,7 +670,7 @@ export class SqliteSessionRepository {
             input.targetBinding.key.sessionId,
           );
         if (occupied !== undefined || input.expectedTargetVersionId !== undefined) {
-          throw new SessionMaintenanceError("PLAN_STALE", "DSH target binding changed before verified ref advance");
+          throw new SessionMaintenanceError("PLAN_STALE", "Platform target binding changed before verified ref advance");
         }
         this.database
           .prepare(
@@ -697,14 +697,14 @@ export class SqliteSessionRepository {
           binding.key.instanceId !== input.targetBinding.key.instanceId ||
           binding.key.sessionId !== input.targetBinding.key.sessionId
         ) {
-          throw new SessionMaintenanceError("IDENTITY_CONFLICT", "DSH target binding identity changed");
+          throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Platform target binding identity changed");
         }
         const head = this.database
           .prepare("SELECT version_id FROM platform_refs WHERE binding_id = ?")
           .get(binding.id) as { readonly version_id: string } | undefined;
         const expected = input.expectedTargetVersionId;
         if (head?.version_id !== expected && head?.version_id !== input.verifiedHead.versionId) {
-          throw new SessionMaintenanceError("PLAN_STALE", "DSH target ref changed before verified ref advance");
+          throw new SessionMaintenanceError("PLAN_STALE", "Platform target ref changed before verified ref advance");
         }
       }
 

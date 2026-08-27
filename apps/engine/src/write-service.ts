@@ -70,7 +70,7 @@ function assertSemanticTarget(source: NormalizedSession, target: NormalizedSessi
   ) {
     throw new SessionMaintenanceError(
       "VERIFICATION_FAILED",
-      "DSH normal reader did not observe the planned Codex history and metadata",
+      "Platform reader did not observe the planned source history and metadata",
     );
   }
 }
@@ -238,7 +238,7 @@ export class WriteService {
     if (reader === undefined) throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `No ${targetKey.platform} read Adapter is attached`);
     const probe = await reader.probe(instance);
     if (probe.status !== "compatible") {
-      throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", "DSH read contract drifted after commit");
+      throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `${targetKey.platform} read contract drifted after commit`);
     }
     const observation = await reader.observe(instance, targetKey);
     if (observation.kind === "unstable") {
@@ -248,7 +248,7 @@ export class WriteService {
       fingerprints: [observation.fingerprint],
     });
     if (!stable.ok) {
-      throw new SessionMaintenanceError("PLAN_STALE", "DSH target changed during post-commit verification");
+      throw new SessionMaintenanceError("PLAN_STALE", `${targetKey.platform} target changed during post-commit verification`);
     }
     const target = await reader.normalize(observation);
     const source = await this.loadVersionBody(plan.source.versionId);
@@ -279,7 +279,7 @@ export class WriteService {
       targetBinding.id !== (plan.target?.bindingId ?? targetBinding.id) ||
       targetBinding.logicalSessionId !== plan.logicalSessionId
     ) {
-      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Verified DSH target belongs to another binding");
+      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Verified platform target belongs to another binding");
     }
     await this.repository.advanceVerifiedRefs({
       logicalSessionId: plan.logicalSessionId,
