@@ -34,5 +34,6 @@ DSH 能成功向 Maintenance Engine 申请一次性看板入口，浏览器也�
 ## 验证
 
 - 单元测试覆盖无 Referer 的真实浏览器启动头，以及跨站拒绝路径。
+- Windows Node 22 上的便携性子进程门禁保留全部检查，仅把不合理的 5 秒进程时限放宽到 15 秒，避免慢 runner 把完整成功的审计误报为超时。
 - 重新构建 Engine 与 Dashboard 发布产物后，在官方 DSH `web` profile 冷启动。
 - 从 DSH 请求新的入口，确认 claim、Cookie、session bootstrap 和看板 API 全链路成功。
