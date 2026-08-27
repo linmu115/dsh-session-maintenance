@@ -123,6 +123,22 @@ button { color: inherit; }
 .dsm-markdown pre { overflow: auto; padding: 14px; border: 1px solid var(--dsm-border); border-radius: 8px; background: #f6f8fa; }
 .dsm-markdown pre code { padding: 0; background: transparent; }
 .dsm-markdown a { color: var(--dsm-link); }
+.dsm-markdown table { width: 100%; border-collapse: collapse; }
+.dsm-markdown th, .dsm-markdown td { padding: 6px 8px; border: 1px solid var(--dsm-border); text-align: left; }
+.dsm-markdown .task-list-item { list-style: none; }
+.dsm-markdown .task-list-item input { margin-right: 7px; }
+.dsm-local-tabs { display: flex; gap: 3px; overflow-x: auto; padding: 7px 10px; border-bottom: 1px solid var(--dsm-border); background: var(--dsm-soft-surface); }
+.dsm-local-tabs button { min-height: 32px; padding: 0 11px; border: 0; border-radius: 7px; color: var(--dsm-muted); background: transparent; cursor: pointer; white-space: nowrap; }
+.dsm-local-tabs button[aria-selected="true"] { color: var(--dsm-primary); background: #fff; box-shadow: 0 1px 3px rgb(20 35 48 / 10%); }
+.dsm-gitgraph { position: relative; min-width: 0; }
+.dsm-gitgraph-lines { position: absolute; top: 0; left: 0; pointer-events: none; }
+.dsm-gitgraph-rows { position: relative; padding-left: var(--dsm-graph-width); }
+.dsm-gitgraph-row { position: relative; display: block; width: 100%; height: 52px; overflow: hidden; padding: 7px 8px; border: 0; border-bottom: 1px solid var(--dsm-border); text-align: left; background: transparent; cursor: pointer; }
+.dsm-gitgraph-row:hover, .dsm-gitgraph-row[data-selected="true"] { background: #eef7f3; }
+.dsm-gitgraph-row strong, .dsm-gitgraph-row span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dsm-gitgraph-row strong { font: 12px/1.4 var(--dsm-mono); }
+.dsm-gitgraph-row span { color: var(--dsm-muted); font-size: 10px; }
+.dsm-gitgraph-row small { position: absolute; top: 6px; right: 6px; padding: 2px 5px; border-radius: 5px; color: #285d9c; background: #e8f0fb; font-size: 9px; }
 
 @media (max-width: 760px) {
   .dsm-topbar { min-height: 60px; }

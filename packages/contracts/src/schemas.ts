@@ -627,6 +627,21 @@ export const transactionSummarySchema = z.strictObject({
   updatedAt: timestampSchema,
 });
 
+export const planQuerySchema = z.strictObject({
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  risk: z.enum(["safe", "review", "destructive"]).optional(),
+});
+
+export const planSummarySchema = z.strictObject({
+  id: idSchema,
+  logicalSessionId: idSchema,
+  createdAt: timestampSchema,
+  risk: z.enum(["safe", "review", "destructive"]),
+  operationCount: nonNegativeIntegerSchema,
+  confirmationCount: nonNegativeIntegerSchema,
+});
+
 export const transactionDetailSchema = z.strictObject({
   transaction: transactionRecordSchema,
   steps: z.array(transactionStepSchema),
@@ -666,6 +681,7 @@ export const dashboardOverviewSchema = z.strictObject({
 export const sessionDetailResponseSchema = z.strictObject({ session: sessionDetailSchema });
 export const versionContentResponseSchema = z.strictObject({ version: versionContentSchema });
 export const transactionListResponseSchema = z.strictObject({ page: pageSchema(transactionSummarySchema) });
+export const planListResponseSchema = z.strictObject({ page: pageSchema(planSummarySchema) });
 export const transactionDetailResponseSchema = z.strictObject({ detail: transactionDetailSchema });
 export const checkpointListResponseSchema = z.strictObject({ checkpoints: z.array(checkpointSchema) });
 export const diagnosticsResponseSchema = z.strictObject({ diagnostics: z.array(adapterDiagnosticSchema) });

@@ -44,6 +44,8 @@ import {
   type TransactionSummary,
   type VersionContent,
   type IssuedConfirmation,
+  type PlanQuery,
+  type PlanSummary,
 } from "@linmu/dsh-session-contracts";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
@@ -277,6 +279,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
 
   getPlan(id: string): Promise<SyncPlan | undefined> {
     return this.repository.getPlan(id);
+  }
+
+  listPlans(query: PlanQuery): Promise<Page<PlanSummary>> {
+    return this.repository.listPlans(query);
   }
 
   applyPlan(request: ApplyPlanRequest): Promise<TransactionRef> {

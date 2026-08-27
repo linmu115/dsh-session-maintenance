@@ -9,6 +9,7 @@ import {
   checkpointRestoreBodySchema,
   createCheckpointRequestSchema,
   maintenanceSettingsPatchSchema,
+  planQuerySchema,
   planRequestSchema,
   restoreOperationRequestSchema,
   scanRequestSchema,
@@ -25,6 +26,7 @@ import {
   type CreateCheckpointRequest,
   type MaintenanceSettingsPatch,
   type TransactionQuery,
+  type PlanQuery,
 } from "@linmu/dsh-session-contracts";
 
 import type { SessionMaintenanceEngine } from "../engine.js";
@@ -230,6 +232,15 @@ export async function routeRequest(
       const stored = context.jobStore.get(pathId(job[1]!));
       if (stored === undefined) { send(response, 404, errorBody("NOT_FOUND", "Job not found")); return; }
       send(response, 200, { job: stored.ref, ...(stored.result === undefined ? {} : { result: stored.result }) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/plans") {
+      const query = planQuerySchema.parse({
+        ...(url.searchParams.has("cursor") ? { cursor: url.searchParams.get("cursor") } : {}),
+        ...(url.searchParams.has("limit") ? { limit: Number(url.searchParams.get("limit")) } : {}),
+        ...(url.searchParams.has("risk") ? { risk: url.searchParams.get("risk") } : {}),
+      }) as unknown as PlanQuery;
+      send(response, 200, { page: await context.engine.listPlans(query) });
       return;
     }
     if (request.method === "POST" && url.pathname === "/v1/plans") {

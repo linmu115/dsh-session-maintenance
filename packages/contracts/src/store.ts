@@ -26,7 +26,7 @@ import type {
 } from "./model.js";
 import type { ContinuationJob, ContinuationTransition } from "./continuations.js";
 import type { SyncPlan } from "./plans.js";
-import type { TransactionQuery, TransactionSummary } from "./operations.js";
+import type { PlanQuery, PlanSummary, TransactionQuery, TransactionSummary } from "./operations.js";
 
 export interface VerifiedRefAdvance {
   readonly logicalSessionId: string;
@@ -60,6 +60,7 @@ export interface SessionRepository {
   listReachableObjectIds(): Promise<readonly string[]>;
   savePlan(plan: SyncPlan): Promise<void>;
   getPlan(id: string): Promise<SyncPlan | undefined>;
+  listPlans(query: PlanQuery): Promise<Page<PlanSummary>>;
 }
 
 export interface ContentObjectStore {

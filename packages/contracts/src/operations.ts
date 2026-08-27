@@ -14,6 +14,7 @@ import type {
   TransactionStep,
   TransactionStatus,
 } from "./model.js";
+import type { SyncPlan } from "./plans.js";
 
 export interface SessionDetail {
   readonly summary: SessionSummary;
@@ -41,6 +42,21 @@ export interface TransactionSummary {
   readonly errorCode?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface PlanQuery {
+  readonly cursor?: string;
+  readonly limit?: number;
+  readonly risk?: SyncPlan["risk"];
+}
+
+export interface PlanSummary {
+  readonly id: string;
+  readonly logicalSessionId: string;
+  readonly createdAt: string;
+  readonly risk: SyncPlan["risk"];
+  readonly operationCount: number;
+  readonly confirmationCount: number;
 }
 
 export interface TransactionDetail {

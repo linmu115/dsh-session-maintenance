@@ -15,6 +15,7 @@ import {
   overviewResponseSchema,
   pageSchema,
   planResponseSchema,
+  planListResponseSchema,
   sessionDetailResponseSchema,
   sessionDiffSchema,
   sessionSummarySchema,
@@ -41,6 +42,8 @@ import {
   type MaintenanceSettingsPatch,
   type Page,
   type PlanRequest,
+  type PlanQuery,
+  type PlanSummary,
   type ResolutionContinuationRequest,
   type SessionDiff,
   type SessionQuery,
@@ -228,6 +231,19 @@ class ApiClient {
 
   async getPlan(id: string, signal?: AbortSignal): Promise<SyncPlan> {
     return (await this.request(`/v1/plans/${encodeURIComponent(id)}`, {}, planResponseSchema, signal)).plan as unknown as SyncPlan;
+  }
+
+  async listPlans(query: PlanQuery = {}, signal?: AbortSignal): Promise<Page<PlanSummary>> {
+    const search = new URLSearchParams();
+    if (query.cursor !== undefined) search.set("cursor", query.cursor);
+    if (query.limit !== undefined) search.set("limit", String(query.limit));
+    if (query.risk !== undefined) search.set("risk", query.risk);
+    return (await this.request(
+      `/v1/plans${search.size === 0 ? "" : `?${search}`}`,
+      {},
+      planListResponseSchema,
+      signal,
+    )).page as unknown as Page<PlanSummary>;
   }
 
   async applyPlan(id: string, signal?: AbortSignal): Promise<JobRef> {

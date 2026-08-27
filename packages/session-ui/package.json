@@ -9,6 +9,11 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./markdown": {
+      "development": "./src/markdown.tsx",
+      "types": "./dist/markdown.d.ts",
+      "default": "./dist/markdown.js"
+    },
     "./styles.css": "./src/styles.css"
   },
   "scripts": {
@@ -18,9 +23,7 @@
   "dependencies": {
     "lucide-react": "0.542.0",
     "react": "19.1.1",
-    "react-dom": "19.1.1",
-    "react-markdown": "10.1.0",
-    "remark-gfm": "4.0.1"
+    "react-dom": "19.1.1"
   },
   "devDependencies": {
     "@types/react": "19.1.10",

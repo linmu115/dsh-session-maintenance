@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import { Activity, ListTree, RefreshCw } from "lucide-react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Activity, ArrowLeft, BookmarkCheck, GitPullRequest, ListTree, RefreshCw } from "lucide-react";
 
 import type { Page, SessionSummary } from "@linmu/dsh-session-contracts";
 import {
@@ -18,16 +18,20 @@ import {
   loadDashboardSummary,
   loadSessionPage,
   type DashboardSummary,
-  type DashboardSummaryApi,
 } from "./summary-loader.js";
+import type { WorkbenchApi } from "./session-workbench.js";
 
-type View = "overview" | "sessions";
+const SessionWorkbench = lazy(async () => ({ default: (await import("./session-workbench.js")).SessionWorkbench }));
+const PlansPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).PlansPage }));
+const CheckpointsPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).CheckpointsPage }));
+
+type View = "overview" | "sessions" | "plans" | "checkpoints";
 type LoadState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
   | { readonly kind: "ready"; readonly value: DashboardSummary };
 
-function SessionTable(props: { readonly page: Page<SessionSummary> }) {
+function SessionTable(props: { readonly page: Page<SessionSummary>; readonly onOpen: (id: string) => void }) {
   if (props.page.items.length === 0) {
     return <EmptyState title="还没有会话基线" description="运行一次扫描后，这里会显示逻辑会话摘要；正文和版本历史不会在此页面预加载。" />;
   }
@@ -35,7 +39,7 @@ function SessionTable(props: { readonly page: Page<SessionSummary> }) {
     <div className="session-row session-row-head" role="row">
       <span>会话</span><span>平台</span><span>状态</span><span>更新时间</span>
     </div>
-    {props.page.items.map((session) => <div className="session-row" role="row" key={session.logicalSessionId}>
+    {props.page.items.map((session) => <button className="session-row" role="row" type="button" key={session.logicalSessionId} onClick={() => props.onOpen(session.logicalSessionId)}>
       <div className="session-title">
         <strong>{session.title}</strong>
         <code>{session.logicalSessionId}</code>
@@ -43,16 +47,17 @@ function SessionTable(props: { readonly page: Page<SessionSummary> }) {
       <span>{session.platforms.map((platform) => <Badge key={platform}>{platform}</Badge>)}</span>
       <span><Badge tone={statusTone(session.status)}>{session.status}</Badge></span>
       <time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleString()}</time>
-    </div>)}
+    </button>)}
   </div>;
 }
 
 function DashboardContent(props: {
   readonly state: LoadState;
-  readonly view: View;
+  readonly view: "overview" | "sessions";
   readonly onRetry: () => void;
   readonly onLoadNext: () => void;
   readonly loadingNext: boolean;
+  readonly onOpenSession: (id: string) => void;
 }) {
   if (props.state.kind === "loading") return <Surface><LoadingState /></Surface>;
   if (props.state.kind === "error") return <Surface><EmptyState
@@ -69,7 +74,7 @@ function DashboardContent(props: {
       action={sessions.nextCursor === undefined ? null : <Button disabled={props.loadingNext} onClick={props.onLoadNext}>
         {props.loadingNext ? "正在加载…" : "加载下一页"}
       </Button>}
-    ><SessionTable page={sessions} /></Surface>
+    ><SessionTable page={sessions} onOpen={props.onOpenSession} /></Surface>
   </>;
   return <>
     <div className="dsm-page-heading"><div><h2>概览</h2><p>当前登记平台与需要人工关注的会话状态。</p></div></div>
@@ -91,11 +96,12 @@ function DashboardContent(props: {
   </>;
 }
 
-export function DashboardApp(props: { readonly api: DashboardSummaryApi }) {
+export function DashboardApp(props: { readonly api: WorkbenchApi }) {
   const [view, setView] = useState<View>("overview");
   const [request, setRequest] = useState(0);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [loadingNext, setLoadingNext] = useState(false);
+  const [selectedSessionId, setSelectedSessionId] = useState<string>();
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
@@ -109,9 +115,11 @@ export function DashboardApp(props: { readonly api: DashboardSummaryApi }) {
   }, [props.api, request]);
 
   const nav = useMemo(() => <>
-    <NavButton active={view === "overview"} icon={Activity} onClick={() => setView("overview")}>概览</NavButton>
-    <NavButton active={view === "sessions"} icon={ListTree} onClick={() => setView("sessions")}>会话</NavButton>
-  </>, [view]);
+    <NavButton active={view === "overview" && selectedSessionId === undefined} icon={Activity} onClick={() => { setSelectedSessionId(undefined); setView("overview"); }}>概览</NavButton>
+    <NavButton active={view === "sessions" || selectedSessionId !== undefined} icon={ListTree} onClick={() => { setSelectedSessionId(undefined); setView("sessions"); }}>会话</NavButton>
+    <NavButton active={view === "plans"} icon={GitPullRequest} onClick={() => { setSelectedSessionId(undefined); setView("plans"); }}>计划</NavButton>
+    <NavButton active={view === "checkpoints"} icon={BookmarkCheck} onClick={() => { setSelectedSessionId(undefined); setView("checkpoints"); }}>Checkpoints</NavButton>
+  </>, [selectedSessionId, view]);
 
   const loadNext = async () => {
     if (state.kind !== "ready" || state.value.sessions.nextCursor === undefined) return;
@@ -131,7 +139,14 @@ export function DashboardApp(props: { readonly api: DashboardSummaryApi }) {
     nav={nav}
     actions={<Button onClick={() => setRequest((value) => value + 1)}><RefreshCw size={14} /> 刷新</Button>}
   >
-    <DashboardContent state={state} view={view} onRetry={() => setRequest((value) => value + 1)} onLoadNext={() => void loadNext()} loadingNext={loadingNext} />
+    {selectedSessionId !== undefined ? <>
+        <div className="workbench-heading"><Button onClick={() => setSelectedSessionId(undefined)}><ArrowLeft size={14} /> 返回会话</Button><code>{selectedSessionId}</code></div>
+        <Suspense fallback={<Surface><LoadingState label="正在打开版本工作台…" /></Surface>}>
+          <SessionWorkbench api={props.api} logicalSessionId={selectedSessionId} />
+        </Suspense>
+      </> : view === "plans" ? <Suspense fallback={<Surface><LoadingState label="正在打开计划…" /></Surface>}><PlansPage api={props.api} /></Suspense>
+        : view === "checkpoints" ? <Suspense fallback={<Surface><LoadingState label="正在打开 Checkpoint…" /></Surface>}><CheckpointsPage api={props.api} /></Suspense>
+          : <DashboardContent state={state} view={view} onRetry={() => setRequest((value) => value + 1)} onLoadNext={() => void loadNext()} loadingNext={loadingNext} onOpenSession={setSelectedSessionId} />}
   </DashboardShell>;
 }
 

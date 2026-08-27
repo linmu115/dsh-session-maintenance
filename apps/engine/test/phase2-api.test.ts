@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MaintenanceClient } from "../../../packages/local-api-client/src/index.js";
+import { createSyncPlan } from "../../../packages/session-domain/src/index.js";
+import { appendOnlyPlanFixture } from "../../../packages/session-domain/test/plan-fixtures.js";
 import type {
   Checkpoint,
   IssuedConfirmation,
@@ -76,6 +78,8 @@ describe("phase 2 operation API", () => {
     vi.spyOn(fixture.engine, "issueRestoreConfirmation").mockResolvedValue(confirmation);
     vi.spyOn(fixture.engine, "applyPlan").mockResolvedValue({ id: transaction.transaction.id, status: "completed" });
     vi.spyOn(fixture.engine, "restoreTransaction").mockResolvedValue({ id: transaction.transaction.id, status: "restored" });
+    const listedPlan = createSyncPlan(appendOnlyPlanFixture(at));
+    await fixture.engine.repository.savePlan(listedPlan);
 
     const server = await fixture.startServer();
     const client = new MaintenanceClient({ origin: server.origin, token: server.token });
@@ -83,6 +87,7 @@ describe("phase 2 operation API", () => {
     expect((await client.getSession(logicalSessionId)).summary.logicalSessionId).toBe(logicalSessionId);
     expect((await client.getVersion(logicalSessionId, versionId)).manifest.id).toBe(versionId);
     expect((await client.listTransactions()).items[0]?.id).toBe(transaction.transaction.id);
+    expect((await client.listPlans({ limit: 1 })).items[0]?.id).toBe(listedPlan.id);
     expect((await client.getTransaction(transaction.transaction.id)).transaction.status).toBe("completed");
     expect((await client.listCheckpoints())[0]?.id).toBe(checkpoint.id);
     expect((await client.createCheckpoint({

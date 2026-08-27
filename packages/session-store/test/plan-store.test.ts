@@ -52,4 +52,19 @@ describe("sync plan persistence", () => {
     await expect(repository.savePlan(plan)).rejects.toMatchObject({ code: "VERSION_ID_COLLISION" });
     repository.close();
   });
+
+  it("lists bounded newest-first summaries with opaque offsets", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dsh-sm-plan-list-"));
+    roots.push(root);
+    const repository = new SqliteSessionRepository(openMaintenanceDatabase(join(root, "metadata.sqlite")), new ZstdContentObjectStore(root));
+    const older = createSyncPlan(appendOnlyPlanFixture("2026-08-26T00:00:00.000Z"));
+    const newer = createSyncPlan(appendOnlyPlanFixture("2026-08-27T00:00:00.000Z"));
+    await repository.savePlan(older);
+    await repository.savePlan(newer);
+    const first = await repository.listPlans({ limit: 1, risk: "safe" });
+    expect(first.items).toEqual([expect.objectContaining({ id: newer.id, risk: "safe", operationCount: 1 })]);
+    expect(first.nextCursor).toBe("1");
+    expect((await repository.listPlans({ limit: 1, cursor: first.nextCursor })).items[0]?.id).toBe(older.id);
+    repository.close();
+  });
 });

@@ -1,7 +1,7 @@
 import type { ComponentType, ReactNode } from "react";
 import { AlertTriangle, ArrowRight, CircleOff, LoaderCircle } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
+
+export * from "./gitgraph.js";
 
 export type Tone = "neutral" | "success" | "info" | "warning" | "danger";
 
@@ -67,6 +67,22 @@ export function Surface(props: { readonly title?: string; readonly action?: Reac
   </section>;
 }
 
+export function LocalTabs(props: {
+  readonly value: string;
+  readonly tabs: readonly { readonly id: string; readonly label: string }[];
+  readonly onChange: (value: string) => void;
+}) {
+  return <div className="dsm-local-tabs" role="tablist">
+    {props.tabs.map((tab) => <button
+      key={tab.id}
+      type="button"
+      role="tab"
+      aria-selected={props.value === tab.id}
+      onClick={() => props.onChange(tab.id)}
+    >{tab.label}</button>)}
+  </div>;
+}
+
 export function Metric(props: { readonly label: string; readonly value: number; readonly tone?: Tone }) {
   return <article className="dsm-metric" data-tone={props.tone ?? "neutral"}>
     <strong>{props.value.toLocaleString()}</strong>
@@ -97,35 +113,10 @@ export function LoadingState(props: { readonly label?: string }) {
   return <div className="dsm-loading" role="status"><LoaderCircle className="dsm-spin" size={18} />{props.label ?? "正在读取摘要…"}</div>;
 }
 
-function safeUrl(value: string): string {
-  if (value.startsWith("#") || value.startsWith("/")) return value;
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" || url.protocol === "http:" ? value : "";
-  } catch {
-    return "";
-  }
-}
-
-export function MarkdownView(props: { readonly children: string }) {
-  return <div className="dsm-markdown">
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      skipHtml
-      urlTransform={(url) => safeUrl(url)}
-      components={{
-        a: ({ href, children }) => href === undefined || href.length === 0
-          ? <span>{children}</span>
-          : <a href={href} rel="noreferrer" target="_blank">{children}</a>,
-      }}
-    >{props.children}</ReactMarkdown>
-  </div>;
-}
-
 export function statusTone(status: string): Tone {
-  if (["equal", "completed", "restored", "compatible"].includes(status)) return "success";
+  if (["equal", "completed", "restored", "compatible", "safe"].includes(status)) return "success";
   if (["source-ahead", "target-ahead", "prepared", "running"].includes(status)) return "info";
-  if (["diverged", "rewritten", "paused", "degraded"].includes(status)) return "warning";
-  if (["conflict", "restore-failed", "manual-review", "unsupported"].includes(status)) return "danger";
+  if (["diverged", "rewritten", "paused", "degraded", "review"].includes(status)) return "warning";
+  if (["conflict", "restore-failed", "manual-review", "unsupported", "destructive"].includes(status)) return "danger";
   return "neutral";
 }

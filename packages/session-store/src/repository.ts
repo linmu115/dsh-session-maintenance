@@ -44,6 +44,8 @@ import {
   type TransactionTransition,
   type TransactionQuery,
   type TransactionSummary,
+  type PlanQuery,
+  type PlanSummary,
   type VersionGraphData,
   type VersionGraphPage,
   type VerifiedRefAdvance,
@@ -1263,6 +1265,37 @@ export class SqliteSessionRepository {
       )
       .all() as unknown as TransactionRow[];
     return rows.map(transactionJson);
+  }
+
+  async listPlans(query: PlanQuery): Promise<Page<PlanSummary>> {
+    const limit = Math.min(query.limit ?? 50, 100);
+    const offset = query.cursor === undefined ? 0 : Number.parseInt(query.cursor, 10);
+    if (!Number.isSafeInteger(offset) || offset < 0) throw new SessionMaintenanceError("OBJECT_CORRUPT", "Invalid plan cursor");
+    const rows = this.database.prepare(
+      `SELECT id, hash, plan_json
+       FROM sync_plans
+       WHERE (? IS NULL OR json_extract(plan_json, '$.risk') = ?)
+       ORDER BY created_at DESC, id DESC
+       LIMIT ? OFFSET ?`,
+    ).all(query.risk ?? null, query.risk ?? null, limit + 1, offset) as unknown as PlanRow[];
+    const visible = rows.slice(0, limit);
+    const items = visible.map((row): PlanSummary => {
+      try {
+        const parsed = syncPlanSchema.parse(JSON.parse(row.plan_json)) as SyncPlan;
+        if (parsed.id !== row.id || parsed.hash !== row.hash || !verifySyncPlanIdentity(parsed)) throw new Error("Stored plan identity mismatch");
+        return {
+          id: parsed.id,
+          logicalSessionId: parsed.logicalSessionId,
+          createdAt: parsed.createdAt,
+          risk: parsed.risk,
+          operationCount: parsed.operations.length,
+          confirmationCount: parsed.confirmations.length,
+        };
+      } catch (error) {
+        throw new SessionMaintenanceError("OBJECT_CORRUPT", `Stored sync plan is corrupt: ${row.id}`, { cause: error });
+      }
+    });
+    return { items, ...(rows.length > limit ? { nextCursor: String(offset + limit) } : {}) };
   }
 
   async listTransactions(query: TransactionQuery): Promise<Page<TransactionSummary>> {
