@@ -29,13 +29,18 @@ describe("Dashboard UI session boundary", () => {
     });
     expect(malicious.status).toBe(403);
     const bootstrap = await fetch(`${server.origin}/v1/ui/session`, {
-      headers: { cookie, origin: server.origin },
+      headers: { cookie, "sec-fetch-site": "same-origin" },
     });
     expect(bootstrap.status).toBe(200);
     const session = await bootstrap.json() as { readonly session: { readonly csrfToken: string; readonly initialLogicalSessionId?: string } };
     expect(session.session.csrfToken.length).toBeGreaterThanOrEqual(32);
     expect(session.session.initialLogicalSessionId).toBe("logical-session-fixture");
     expect(JSON.stringify(session)).not.toContain(server.token);
+
+    const crossSiteWithoutOrigin = await fetch(`${server.origin}/v1/ui/session`, {
+      headers: { cookie, "sec-fetch-site": "cross-site" },
+    });
+    expect(crossSiteWithoutOrigin.status).toBe(403);
 
     expect((await fetch(`${server.origin}/v1/overview`, {
       headers: { cookie, origin: server.origin },
