@@ -723,6 +723,20 @@ export class SqliteSessionRepository {
           input.verifiedHead.observedAt,
           canonicalJson(input.verifiedHead.fingerprint as unknown as JsonValue),
         );
+      const sourceAdvance = this.database
+        .prepare(
+          `UPDATE platform_refs
+           SET version_id = ?
+           WHERE binding_id = ? AND version_id = ?`,
+        )
+        .run(
+          input.verifiedHead.versionId,
+          input.sourceBindingId,
+          input.expectedSourceVersionId,
+        );
+      if (Number(sourceAdvance.changes) !== 1) {
+        throw new SessionMaintenanceError("PLAN_STALE", "Source ref changed before common version advance");
+      }
       this.database
         .prepare("UPDATE platform_bindings SET last_common_version_id = ? WHERE id IN (?, ?)")
         .run(input.verifiedHead.versionId, input.sourceBindingId, input.targetBinding.id);
