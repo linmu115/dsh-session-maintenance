@@ -10,6 +10,7 @@ import {
   type NormalizedEvent,
   type NormalizedSession,
   type PlatformBinding,
+  type RecoverTransactionRequest,
   type RegisteredInstance,
   type RestoreTransactionRequest,
   type SessionReadAdapter,
@@ -29,6 +30,7 @@ import {
 import {
   CheckpointService,
   TransactionExecutor,
+  TransactionRecovery,
 } from "@linmu/dsh-session-transaction-engine";
 
 type WriteRepository = SessionRepository & TransactionRepository;
@@ -105,6 +107,7 @@ export class WriteService {
   readonly instances: ReadonlyMap<string, RegisteredInstance>;
   readonly dshReader: SessionReadAdapter;
   private readonly checkpoints: CheckpointService;
+  readonly recovery: TransactionRecovery;
 
   constructor(options: WriteServiceOptions) {
     this.repository = options.repository;
@@ -113,6 +116,14 @@ export class WriteService {
     this.instances = options.instances;
     this.dshReader = options.dshReader;
     this.checkpoints = new CheckpointService(options.repository);
+    this.recovery = new TransactionRecovery({
+      stateRoot: options.executor.stateRoot,
+      repository: options.repository,
+      adapters: options.executor.adapters,
+      now: options.executor.now,
+      lockManager: options.executor.lockManager,
+      ...(options.executor.confirmationService === undefined ? {} : { confirmationService: options.executor.confirmationService }),
+    });
   }
 
   async applyPlan(request: ApplyPlanRequest): Promise<TransactionRef> {
@@ -135,6 +146,14 @@ export class WriteService {
 
   restoreTransaction(request: RestoreTransactionRequest): Promise<TransactionRef> {
     return this.executor.restore(request);
+  }
+
+  recoveryScope(transactionId: string) {
+    return this.recovery.recoveryScope(transactionId);
+  }
+
+  recoverTransaction(request: RecoverTransactionRequest): Promise<TransactionRef> {
+    return this.recovery.recoverConfirmed(request);
   }
 
   createCheckpoint(request: CreateCheckpointRequest): Promise<Checkpoint> {

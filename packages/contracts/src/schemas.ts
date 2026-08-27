@@ -646,6 +646,13 @@ export const transactionDetailSchema = z.strictObject({
   transaction: transactionRecordSchema,
   steps: z.array(transactionStepSchema),
   backup: backupManifestSchema.optional(),
+  recovery: z.strictObject({
+    action: z.enum(["recover-interrupted", "restore-completed", "none"]),
+    allowed: z.boolean(),
+    confirmationRequired: z.boolean(),
+    reason: z.string().min(1),
+    backupHash: idSchema.optional(),
+  }),
 });
 
 export const adapterDiagnosticSchema = z.strictObject({
@@ -658,9 +665,9 @@ export const adapterDiagnosticSchema = z.strictObject({
 });
 
 export const maintenanceSettingsSchema = z.strictObject({
-  codexInstanceId: z.string().nullable(),
-  dshInstanceId: z.string().nullable(),
-  workspaceMappingId: z.string().nullable(),
+  codexInstanceId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u).nullable(),
+  dshInstanceId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u).nullable(),
+  workspaceMappingId: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u).nullable(),
   syncSingleSidedTitle: z.boolean(),
   syncArchive: z.boolean(),
   scanScope: z.enum(["current", "registered"]),

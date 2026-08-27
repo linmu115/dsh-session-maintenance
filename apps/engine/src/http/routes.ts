@@ -284,6 +284,21 @@ export async function routeRequest(
       }) });
       return;
     }
+    const recoveryConfirmation = url.pathname.match(/^\/v1\/transactions\/([^/]+)\/recovery-confirmation$/u);
+    if (request.method === "POST" && recoveryConfirmation !== null) {
+      emptyRequestSchema.parse(await readJsonBody(request));
+      send(response, 201, { confirmation: await context.engine.issueRecoveryConfirmation(pathId(recoveryConfirmation[1]!)) });
+      return;
+    }
+    const transactionRecover = url.pathname.match(/^\/v1\/transactions\/([^/]+)\/recover$/u);
+    if (request.method === "POST" && transactionRecover !== null) {
+      const body = restoreOperationRequestSchema.parse(await readJsonBody(request));
+      send(response, 202, { job: context.jobs.enqueueRecover({
+        transactionId: pathId(transactionRecover[1]!),
+        confirmationToken: body.confirmationToken,
+      }) });
+      return;
+    }
     const transaction = url.pathname.match(/^\/v1\/transactions\/([^/]+)$/u);
     if (request.method === "GET" && transaction !== null) {
       const detail = await context.engine.getTransactionDetail(pathId(transaction[1]!));

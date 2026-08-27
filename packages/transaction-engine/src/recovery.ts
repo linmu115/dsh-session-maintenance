@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 
 import {
   SessionMaintenanceError,
   type JsonValue,
+  type RecoverTransactionRequest,
   type PlatformKind,
   type PlatformWriteAdapter,
   type TransactionContext,
@@ -16,6 +18,7 @@ import { canonicalJson } from "@linmu/dsh-session-domain";
 import { recordTransition } from "./executor.js";
 import { AppendOnlyJournal } from "./journal.js";
 import { RootWriteLockManager } from "./lock-manager.js";
+import { ConfirmationService } from "./confirmation.js";
 
 export interface TransactionRecoveryDependencies {
   readonly stateRoot: string;
@@ -23,6 +26,7 @@ export interface TransactionRecoveryDependencies {
   readonly adapters: ReadonlyMap<PlatformKind, PlatformWriteAdapter>;
   readonly now?: () => Date;
   readonly lockManager?: RootWriteLockManager;
+  readonly confirmationService?: ConfirmationService;
 }
 
 function ref(record: TransactionRecord): TransactionRef {
@@ -39,6 +43,7 @@ export class TransactionRecovery {
   readonly adapters: ReadonlyMap<PlatformKind, PlatformWriteAdapter>;
   readonly now: () => Date;
   readonly lockManager: RootWriteLockManager;
+  readonly confirmationService: ConfirmationService | undefined;
 
   constructor(dependencies: TransactionRecoveryDependencies) {
     this.stateRoot = dependencies.stateRoot;
@@ -47,6 +52,40 @@ export class TransactionRecovery {
     this.now = dependencies.now ?? (() => new Date());
     this.lockManager =
       dependencies.lockManager ?? new RootWriteLockManager(join(this.stateRoot, "locks"));
+    this.confirmationService = dependencies.confirmationService;
+  }
+
+  async recoveryScope(transactionId: string): Promise<{
+    readonly operation: "recover";
+    readonly resourceId: string;
+    readonly operationHash: string;
+  }> {
+    const transaction = await this.repository.getTransaction(transactionId);
+    if (transaction === undefined || !["prepared", "backing-up", "applying", "verifying", "restoring"].includes(transaction.status)) {
+      throw new SessionMaintenanceError("TRANSACTION_NOT_RESTORABLE", `Transaction is not interrupted: ${transactionId}`);
+    }
+    const steps = await this.repository.listTransactionSteps(transactionId);
+    const backup = await this.repository.getBackupManifest(transactionId);
+    return {
+      operation: "recover",
+      resourceId: transactionId,
+      operationHash: `sha256:${createHash("sha256").update(canonicalJson({
+        transactionId,
+        status: transaction.status,
+        updatedAt: transaction.updatedAt,
+        lastStepHash: steps.at(-1)?.entryHash ?? null,
+        backupHash: backup?.hash ?? null,
+      })).digest("hex")}`,
+    };
+  }
+
+  async recoverConfirmed(request: RecoverTransactionRequest): Promise<TransactionRef> {
+    if (this.confirmationService === undefined) {
+      throw new SessionMaintenanceError("CONFIRMATION_REQUIRED", "No recovery confirmation service is configured");
+    }
+    const scope = await this.recoveryScope(request.transactionId);
+    await this.confirmationService.consumeToken(request.confirmationToken, scope);
+    return this.recover(request.transactionId);
   }
 
   async recover(transactionId: string): Promise<TransactionRef> {

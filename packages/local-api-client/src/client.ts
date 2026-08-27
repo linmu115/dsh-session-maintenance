@@ -299,6 +299,24 @@ class ApiClient {
     )).job;
   }
 
+  async requestRecoveryConfirmation(id: string, signal?: AbortSignal): Promise<IssuedConfirmation> {
+    return (await this.request(
+      `/v1/transactions/${encodeURIComponent(id)}/recovery-confirmation`,
+      this.jsonPost({}),
+      confirmationResponseSchema,
+      signal,
+    )).confirmation as IssuedConfirmation;
+  }
+
+  async recoverTransaction(id: string, confirmationToken: string, signal?: AbortSignal): Promise<JobRef> {
+    return (await this.request(
+      `/v1/transactions/${encodeURIComponent(id)}/recover`,
+      this.jsonPost({ confirmationToken }),
+      jobAcceptedResponseSchema,
+      signal,
+    )).job;
+  }
+
   async listCheckpoints(signal?: AbortSignal): Promise<readonly Checkpoint[]> {
     return (await this.request("/v1/checkpoints", {}, checkpointListResponseSchema, signal)).checkpoints as readonly Checkpoint[];
   }

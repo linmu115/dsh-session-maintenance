@@ -13,7 +13,7 @@ import { createSyncPlan } from "@linmu/dsh-session-domain";
 import { appendOnlyPlanFixture } from "../../session-domain/test/plan-fixtures.js";
 import { FakeWriteAdapter } from "@linmu/dsh-session-test-support";
 
-import { AppendOnlyJournal, TransactionRecovery } from "../src/index.js";
+import { AppendOnlyJournal, ConfirmationService, TransactionRecovery } from "../src/index.js";
 
 const roots: string[] = [];
 
@@ -44,14 +44,22 @@ describe("TransactionRecovery", () => {
       updatedAt: "2026-08-27T00:00:00.000Z",
     });
     const adapter = new FakeWriteAdapter();
+    const confirmation = new ConfirmationService(repository, {
+      now: () => new Date("2026-08-27T00:00:00.000Z"),
+      randomToken: () => "recovery-secret",
+    });
     const recovery = new TransactionRecovery({
       stateRoot: root,
       repository,
       adapters: new Map([["dsh", adapter]]),
+      confirmationService: confirmation,
     });
-    const result = await recovery.recover("tx-interrupted");
+    const issued = await confirmation.issue(await recovery.recoveryScope("tx-interrupted"));
+    const result = await recovery.recoverConfirmed({ transactionId: "tx-interrupted", confirmationToken: issued.token });
     expect(result.status).toBe("completed");
     expect(adapter.calls).toEqual(["verify"]);
+    await expect(recovery.recoverConfirmed({ transactionId: "tx-interrupted", confirmationToken: issued.token }))
+      .rejects.toMatchObject({ code: "TRANSACTION_NOT_RESTORABLE" });
     repository.close();
   });
 

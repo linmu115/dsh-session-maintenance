@@ -31,10 +31,12 @@ import {
   type CheckpointRestoreRequest,
   type CreateCheckpointRequest,
   type RestoreTransactionRequest,
+  type RecoverTransactionRequest,
   type TransactionRecord,
   type TransactionRef,
   type WriteEngine,
   type AdapterDiagnostic,
+  type CompatibilityIssue,
   type DashboardOverview,
   type MaintenanceSettings,
   type MaintenanceSettingsPatch,
@@ -42,6 +44,7 @@ import {
   type TransactionDetail,
   type TransactionQuery,
   type TransactionSummary,
+  type TransactionRecoveryDecision,
   type VersionContent,
   type IssuedConfirmation,
   type PlanQuery,
@@ -68,6 +71,46 @@ const DEFAULT_SETTINGS: MaintenanceSettings = {
   backupRetention: 20,
   allowBatchSafeApply: false,
 };
+
+function publicIssues(issues: readonly { readonly code: string }[]): readonly CompatibilityIssue[] {
+  return issues.map((issue) => ({
+    code: issue.code,
+    message: "适配器报告兼容性问题；本机路径与底层细节只保留在 Engine 日志中",
+  }));
+}
+
+export function transactionRecoveryDecision(
+  writeAttached: boolean,
+  transaction: TransactionRecord,
+  backupHash?: string,
+): TransactionRecoveryDecision {
+  if (!writeAttached) {
+    return { action: "none", allowed: false, confirmationRequired: false, reason: "当前引擎未连接版本锁定的 DSH 写入适配器" };
+  }
+  if (["prepared", "backing-up", "applying", "verifying", "restoring"].includes(transaction.status)) {
+    return {
+      action: "recover-interrupted",
+      allowed: true,
+      confirmationRequired: true,
+      reason: "按 journal 重新核对状态；只会验证、恢复备份或转入人工检查",
+      ...(backupHash === undefined ? {} : { backupHash }),
+    };
+  }
+  if (transaction.status === "completed" && backupHash !== undefined) {
+    return {
+      action: "restore-completed",
+      allowed: true,
+      confirmationRequired: true,
+      reason: "显式恢复到本事务写入前的已验证备份",
+      backupHash,
+    };
+  }
+  const reason = transaction.status === "restored" ? "事务已经恢复"
+    : transaction.status === "restore-failed" ? "上次恢复失败，只允许查看诊断并人工处理"
+      : transaction.status === "manual-review" ? "事务已进入人工检查，禁止自动继续"
+        : "事务没有可验证的恢复备份";
+  return { action: "none", allowed: false, confirmationRequired: false, reason, ...(backupHash === undefined ? {} : { backupHash }) };
+}
 
 function semanticEvents(events: readonly NormalizedEvent[]): readonly string[] {
   return events.map((event) => JSON.stringify({
@@ -175,6 +218,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       transaction,
       steps: await this.repository.listTransactionSteps(id),
       ...(backup === undefined ? {} : { backup }),
+      recovery: transactionRecoveryDecision(this.writeService !== undefined, transaction, backup?.hash),
     };
   }
 
@@ -192,10 +236,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
         id: instance.id,
         platform: instance.platform,
         displayName: instance.displayName,
-        compatibility: { status: readProbe.status, issues: readProbe.issues },
+        compatibility: { status: readProbe.status, issues: publicIssues(readProbe.issues) },
       };
       if (instance.platform !== "dsh" || this.writeService === undefined) {
-        return { instance: status, readContract: readProbe.contract, writeCapabilities: [], writeStatus: "unavailable", issues: readProbe.issues };
+        return { instance: status, readContract: readProbe.contract, writeCapabilities: [], writeStatus: "unavailable", issues: publicIssues(readProbe.issues) };
       }
       const write = await this.writeService.probe(instance);
       return {
@@ -204,7 +248,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
         writeContract: write.contract,
         writeCapabilities: write.capabilities,
         writeStatus: write.status,
-        issues: [...readProbe.issues, ...write.issues],
+        issues: publicIssues([...readProbe.issues, ...write.issues]),
       };
     }));
   }
@@ -222,7 +266,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       conflicts: page.items.filter((item) => ["diverged", "rewritten", "conflict"].includes(item.status)).length,
       unmapped: page.items.filter((item) => item.status === "unmapped").length,
       unresolvedTransactions: unresolved,
-      instances: await this.listInstances(),
+      instances: (await this.listInstances()).map((instance) => ({
+        ...instance,
+        compatibility: { ...instance.compatibility, issues: publicIssues(instance.compatibility.issues) },
+      })),
     };
   }
 
@@ -231,6 +278,13 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     const service = writer.executor.confirmationService;
     if (service === undefined) throw new SessionMaintenanceError("CONFIRMATION_REQUIRED", "Confirmation service is unavailable");
     return service.issue(await writer.executor.restoreScope(transactionId));
+  }
+
+  async issueRecoveryConfirmation(transactionId: string): Promise<IssuedConfirmation> {
+    const writer = this.writer();
+    const service = writer.executor.confirmationService;
+    if (service === undefined) throw new SessionMaintenanceError("CONFIRMATION_REQUIRED", "Confirmation service is unavailable");
+    return service.issue(await writer.recoveryScope(transactionId));
   }
 
   async scan(request: ScanRequest): Promise<DiscoveryResult> {
@@ -295,6 +349,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
 
   restoreTransaction(request: RestoreTransactionRequest): Promise<TransactionRef> {
     return this.writer().restoreTransaction(request);
+  }
+
+  recoverTransaction(request: RecoverTransactionRequest): Promise<TransactionRef> {
+    return this.writer().recoverTransaction(request);
   }
 
   createCheckpoint(request: CreateCheckpointRequest): Promise<Checkpoint> {
@@ -381,4 +439,5 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     } while (cursor !== undefined);
     throw new SessionMaintenanceError("OBJECT_CORRUPT", `Version is missing: ${versionId}`);
   }
+
 }

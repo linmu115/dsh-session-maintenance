@@ -31,6 +31,7 @@ import type {
   CheckpointRestoreRequest,
   DiffRequest,
   PlanRequest,
+  RecoverTransactionRequest,
   RestoreTransactionRequest,
   ScanRequest,
   SyncPlan,
@@ -91,6 +92,7 @@ export interface WriteEngine extends ReadOnlyEngine {
   applyPlan(request: ApplyPlanRequest): Promise<TransactionRef>;
   getTransaction(id: string): Promise<TransactionRecord | undefined>;
   restoreTransaction(request: RestoreTransactionRequest): Promise<TransactionRef>;
+  recoverTransaction(request: RecoverTransactionRequest): Promise<TransactionRef>;
   createCheckpoint(request: CreateCheckpointRequest): Promise<Checkpoint>;
   createCheckpointRestorePlan(request: CheckpointRestoreRequest): Promise<SyncPlan>;
 }

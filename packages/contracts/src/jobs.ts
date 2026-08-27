@@ -10,7 +10,8 @@ export interface JobRef {
 export type JobRequest =
   | { readonly kind: "scan"; readonly instanceIds: readonly string[] }
   | { readonly kind: "apply"; readonly planId: string }
-  | { readonly kind: "restore"; readonly transactionId: string };
+  | { readonly kind: "restore"; readonly transactionId: string }
+  | { readonly kind: "recover"; readonly transactionId: string };
 
 export interface JobEventBase {
   readonly jobId: string;

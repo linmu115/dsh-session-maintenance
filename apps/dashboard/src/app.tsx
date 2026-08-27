@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Activity, ArrowLeft, BookmarkCheck, GitPullRequest, ListTree, RefreshCw } from "lucide-react";
+import { Activity, ArrowLeft, BookmarkCheck, GitPullRequest, History, ListTree, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
 
 import type { Page, SessionSummary } from "@linmu/dsh-session-contracts";
 import {
@@ -20,12 +20,16 @@ import {
   type DashboardSummary,
 } from "./summary-loader.js";
 import type { WorkbenchApi } from "./session-workbench.js";
+import type { OperationsApi } from "./operations-pages.js";
 
 const SessionWorkbench = lazy(async () => ({ default: (await import("./session-workbench.js")).SessionWorkbench }));
 const PlansPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).PlansPage }));
 const CheckpointsPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).CheckpointsPage }));
+const TransactionsPage = lazy(async () => ({ default: (await import("./operations-pages.js")).TransactionsPage }));
+const DiagnosticsPage = lazy(async () => ({ default: (await import("./operations-pages.js")).DiagnosticsPage }));
+const SettingsPage = lazy(async () => ({ default: (await import("./operations-pages.js")).SettingsPage }));
 
-type View = "overview" | "sessions" | "plans" | "checkpoints";
+type View = "overview" | "sessions" | "plans" | "checkpoints" | "transactions" | "diagnostics" | "settings";
 type LoadState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
@@ -96,7 +100,7 @@ function DashboardContent(props: {
   </>;
 }
 
-export function DashboardApp(props: { readonly api: WorkbenchApi }) {
+export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi }) {
   const [view, setView] = useState<View>("overview");
   const [request, setRequest] = useState(0);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
@@ -119,6 +123,9 @@ export function DashboardApp(props: { readonly api: WorkbenchApi }) {
     <NavButton active={view === "sessions" || selectedSessionId !== undefined} icon={ListTree} onClick={() => { setSelectedSessionId(undefined); setView("sessions"); }}>会话</NavButton>
     <NavButton active={view === "plans"} icon={GitPullRequest} onClick={() => { setSelectedSessionId(undefined); setView("plans"); }}>计划</NavButton>
     <NavButton active={view === "checkpoints"} icon={BookmarkCheck} onClick={() => { setSelectedSessionId(undefined); setView("checkpoints"); }}>Checkpoints</NavButton>
+    <NavButton active={view === "transactions"} icon={History} onClick={() => { setSelectedSessionId(undefined); setView("transactions"); }}>事务与恢复</NavButton>
+    <NavButton active={view === "diagnostics"} icon={ShieldCheck} onClick={() => { setSelectedSessionId(undefined); setView("diagnostics"); }}>诊断</NavButton>
+    <NavButton active={view === "settings"} icon={Settings2} onClick={() => { setSelectedSessionId(undefined); setView("settings"); }}>设置</NavButton>
   </>, [selectedSessionId, view]);
 
   const loadNext = async () => {
@@ -146,6 +153,9 @@ export function DashboardApp(props: { readonly api: WorkbenchApi }) {
         </Suspense>
       </> : view === "plans" ? <Suspense fallback={<Surface><LoadingState label="正在打开计划…" /></Surface>}><PlansPage api={props.api} /></Suspense>
         : view === "checkpoints" ? <Suspense fallback={<Surface><LoadingState label="正在打开 Checkpoint…" /></Surface>}><CheckpointsPage api={props.api} /></Suspense>
+          : view === "transactions" ? <Suspense fallback={<Surface><LoadingState label="正在打开事务…" /></Surface>}><TransactionsPage api={props.api} /></Suspense>
+            : view === "diagnostics" ? <Suspense fallback={<Surface><LoadingState label="正在打开诊断…" /></Surface>}><DiagnosticsPage api={props.api} /></Suspense>
+              : view === "settings" ? <Suspense fallback={<Surface><LoadingState label="正在打开设置…" /></Surface>}><SettingsPage api={props.api} /></Suspense>
           : <DashboardContent state={state} view={view} onRetry={() => setRequest((value) => value + 1)} onLoadNext={() => void loadNext()} loadingNext={loadingNext} onOpenSession={setSelectedSessionId} />}
   </DashboardShell>;
 }

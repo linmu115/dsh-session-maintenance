@@ -63,6 +63,15 @@ export interface TransactionDetail {
   readonly transaction: TransactionRecord;
   readonly steps: readonly TransactionStep[];
   readonly backup?: BackupManifest;
+  readonly recovery: TransactionRecoveryDecision;
+}
+
+export interface TransactionRecoveryDecision {
+  readonly action: "recover-interrupted" | "restore-completed" | "none";
+  readonly allowed: boolean;
+  readonly confirmationRequired: boolean;
+  readonly reason: string;
+  readonly backupHash?: string;
 }
 
 export interface CheckpointListResponse {

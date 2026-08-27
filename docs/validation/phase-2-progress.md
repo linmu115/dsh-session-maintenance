@@ -67,3 +67,4 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - P18 浏览器认证纠错：一次性 launch code → HttpOnly SameSite=Strict UI cookie → per-session CSRF 已闭环；Dashboard bundle 不含 bearer/launch-code 代码路径。
 - P19 GitGraph/workbench/plan list：5 文件、8 个聚焦测试和 6 个包 typecheck 通过；production build 将正文/Markdown/计划目录按需分块。
 - P19 纠错：1000 节点版本树改为真实 viewport 虚拟化并补齐键盘导航；Checkpoint 恢复独立生成“新 DSH 分支”计划预览且相同选择不重复提交。
+- P20 恢复/诊断/设置：一次性作用域确认、中断 recovery 作业、服务端恢复决策、适配器契约诊断和 ID-only 设置已完成；全工作区串行 50 文件 / 111 tests 通过。

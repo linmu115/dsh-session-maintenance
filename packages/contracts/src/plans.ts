@@ -72,6 +72,11 @@ export interface RestoreTransactionRequest {
   readonly confirmationToken: string;
 }
 
+export interface RecoverTransactionRequest {
+  readonly transactionId: string;
+  readonly confirmationToken: string;
+}
+
 export interface CreateCheckpointRequest {
   readonly name: string;
   readonly description: string;

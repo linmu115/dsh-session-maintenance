@@ -52,6 +52,12 @@ describe("phase 2 operation API", () => {
         updatedAt: at,
       },
       steps: [],
+      recovery: {
+        action: "restore-completed",
+        allowed: true,
+        confirmationRequired: true,
+        reason: "fixture backup is restorable",
+      },
     };
     const confirmation: IssuedConfirmation = {
       operation: "restore-transaction",
@@ -76,8 +82,10 @@ describe("phase 2 operation API", () => {
     vi.spyOn(fixture.engine, "listCheckpoints").mockResolvedValue([checkpoint]);
     vi.spyOn(fixture.engine, "createCheckpoint").mockResolvedValue(checkpoint);
     vi.spyOn(fixture.engine, "issueRestoreConfirmation").mockResolvedValue(confirmation);
+    vi.spyOn(fixture.engine, "issueRecoveryConfirmation").mockResolvedValue({ ...confirmation, operation: "recover" });
     vi.spyOn(fixture.engine, "applyPlan").mockResolvedValue({ id: transaction.transaction.id, status: "completed" });
     vi.spyOn(fixture.engine, "restoreTransaction").mockResolvedValue({ id: transaction.transaction.id, status: "restored" });
+    vi.spyOn(fixture.engine, "recoverTransaction").mockResolvedValue({ id: transaction.transaction.id, status: "restored" });
     const listedPlan = createSyncPlan(appendOnlyPlanFixture(at));
     await fixture.engine.repository.savePlan(listedPlan);
 
@@ -98,7 +106,9 @@ describe("phase 2 operation API", () => {
       createdBy: checkpoint.createdBy,
       createdAt: checkpoint.createdAt,
     })).id).toBe(checkpoint.id);
-    expect((await client.diagnostics())[0]?.instance.id).toBe("codex-fixture");
+    const diagnostics = await client.diagnostics();
+    expect(diagnostics[0]?.instance.id).toBe("codex-fixture");
+    expect(JSON.stringify(diagnostics)).not.toContain(fixture.root);
     expect((await client.patchSettings({ backupRetention: 30 })).backupRetention).toBe(30);
     expect((await client.getSettings()).backupRetention).toBe(30);
 
@@ -113,6 +123,13 @@ describe("phase 2 operation API", () => {
       kind: "restore",
       transactionId: transaction.transaction.id,
     });
+    const recoveryConfirmation = await client.requestRecoveryConfirmation(transaction.transaction.id);
+    expect(recoveryConfirmation.operation).toBe("recover");
+    const recovery = await client.recoverTransaction(transaction.transaction.id, recoveryConfirmation.token);
+    expect(server.jobStore.get(recovery.id)?.request).toEqual({
+      kind: "recover",
+      transactionId: transaction.transaction.id,
+    });
 
     const rejectedField = await fetch(`${server.origin}/v1/plans/plan-fixture/apply`, {
       method: "POST",
@@ -124,5 +141,11 @@ describe("phase 2 operation API", () => {
       headers: { authorization: `Bearer ${server.token}` },
     });
     expect(rejectedPath.status).toBe(400);
+    const rejectedSettingsPath = await fetch(`${server.origin}/v1/settings`, {
+      method: "PATCH",
+      headers: { authorization: `Bearer ${server.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ dshInstanceId: "D:/not-an-instance-id" }),
+    });
+    expect(rejectedSettingsPath.status).toBe(400);
   });
 });

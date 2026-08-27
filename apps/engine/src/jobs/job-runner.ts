@@ -2,6 +2,7 @@ import {
   SessionMaintenanceError,
   type JobRef,
   type JsonValue,
+  type RecoverTransactionRequest,
   type ReadOnlyEngine,
   type RestoreTransactionRequest,
   type WriteEngine,
@@ -41,6 +42,12 @@ export class JobRunner {
     return job;
   }
 
+  enqueueRecover(request: RecoverTransactionRequest): JobRef {
+    const job = this.store.createRecover(request.transactionId);
+    this.scheduleRecover(job.id, request);
+    return job;
+  }
+
   private scheduleScan(id: string, instanceIds: readonly string[]): void {
     if (this.active.has(id)) return;
     this.active.add(id);
@@ -57,6 +64,12 @@ export class JobRunner {
     if (this.active.has(id)) return;
     this.active.add(id);
     queueMicrotask(() => void this.runRestore(id, request));
+  }
+
+  private scheduleRecover(id: string, request: RecoverTransactionRequest): void {
+    if (this.active.has(id)) return;
+    this.active.add(id);
+    queueMicrotask(() => void this.runRecover(id, request));
   }
 
   private async runScan(id: string, instanceIds: readonly string[]): Promise<void> {
@@ -80,6 +93,10 @@ export class JobRunner {
 
   private async runRestore(id: string, request: RestoreTransactionRequest): Promise<void> {
     await this.runOperation(id, "Restoring transaction", () => this.engine.restoreTransaction(request));
+  }
+
+  private async runRecover(id: string, request: RecoverTransactionRequest): Promise<void> {
+    await this.runOperation(id, "Recovering interrupted transaction", () => this.engine.recoverTransaction(request));
   }
 
   private async runOperation(id: string, message: string, operation: () => Promise<unknown>): Promise<void> {

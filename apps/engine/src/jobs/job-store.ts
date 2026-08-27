@@ -50,6 +50,10 @@ export class JobStore {
     return this.create({ kind: "restore", transactionId });
   }
 
+  createRecover(transactionId: string): JobRef {
+    return this.create({ kind: "recover", transactionId });
+  }
+
   private create(request: JobRequest): JobRef {
     const id = `job_${randomUUID().replaceAll("-", "")}`;
     const now = this.clock();
