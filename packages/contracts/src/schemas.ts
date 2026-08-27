@@ -677,6 +677,9 @@ export const continuationJobSchema = z.strictObject({
   updatedAt: timestampSchema,
 });
 
+export const continuationPreviewResponseSchema = z.strictObject({ preview: continuationPreviewSchema });
+export const continuationJobResponseSchema = z.strictObject({ continuation: continuationJobSchema });
+
 export const continuationTransitionSchema = z.strictObject({
   expected: z.array(continuationJobStatusSchema).min(1),
   status: continuationJobStatusSchema,

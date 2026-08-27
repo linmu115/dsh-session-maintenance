@@ -1,10 +1,22 @@
 import { resolve } from "node:path";
 
 import { Command, CommanderError, Option } from "commander";
-import { SessionMaintenanceError, type JsonValue, type PlatformKind } from "@linmu/dsh-session-contracts";
+import {
+  SessionMaintenanceError,
+  type ContinuationMode,
+  type ContinuationPreviewRequest,
+  type JsonValue,
+  type PlatformKind,
+} from "@linmu/dsh-session-contracts";
 
 import { createReadOnlyComposition, probeAndAddInstance, type CompositionOptions } from "./composition-root.js";
-import { initializeStateRoot, loadConfig, registeredInstances } from "./config.js";
+import {
+  addCodexTarget,
+  initializeStateRoot,
+  loadConfig,
+  registeredCodexTargets,
+  registeredInstances,
+} from "./config.js";
 import { startMaintenanceServer } from "./http/server.js";
 
 export interface CliOptions {
@@ -16,6 +28,32 @@ export interface CliOptions {
 
 function output(write: (text: string) => void, value: unknown): void {
   write(`${JSON.stringify(value)}\n`);
+}
+
+function collect(value: string, previous: readonly string[]): readonly string[] {
+  return [...previous, value];
+}
+
+function continuationInput(value: {
+  readonly logicalSession: string;
+  readonly sourceVersion: string;
+  readonly target: string;
+  readonly mode: string;
+  readonly checkpointStart?: string;
+}): ContinuationPreviewRequest {
+  const checkpointStartSequence = value.checkpointStart === undefined
+    ? undefined
+    : Number.parseInt(value.checkpointStart, 10);
+  if (checkpointStartSequence !== undefined && (!Number.isSafeInteger(checkpointStartSequence) || checkpointStartSequence < 0)) {
+    throw new TypeError(`Invalid checkpoint start sequence: ${value.checkpointStart}`);
+  }
+  return {
+    logicalSessionId: value.logicalSession,
+    sourceVersionId: value.sourceVersion,
+    targetPresetId: value.target,
+    mode: value.mode as ContinuationMode,
+    ...(checkpointStartSequence === undefined ? {} : { checkpointStartSequence }),
+  };
 }
 
 export async function runCli(argv: readonly string[], options: CliOptions = {}): Promise<number> {
@@ -57,6 +95,48 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     });
   instance.command("list").option("--json").action(async () => {
     output(stdout, { instances: registeredInstances(await loadConfig(compositionOptions().stateRoot)) });
+  });
+
+  const target = program.command("codex-target");
+  target.command("add")
+    .requiredOption("--id <id>")
+    .requiredOption("--codex-instance <id>")
+    .requiredOption("--cwd <path>")
+    .option("--workspace-root <path>", "allowed runtime workspace root; repeatable", collect, [])
+    .requiredOption("--context-window <tokens>")
+    .option("--input-budget-ratio <ratio>", "maximum handoff share of the context window", "0.2")
+    .option("--model <model>")
+    .option("--permissions <mode>")
+    .option("--command <path>")
+    .option("--json")
+    .action(async (value: {
+      id: string;
+      codexInstance: string;
+      cwd: string;
+      workspaceRoot: readonly string[];
+      contextWindow: string;
+      inputBudgetRatio: string;
+      model?: string;
+      permissions?: string;
+      command?: string;
+    }) => {
+      const contextWindowTokens = Number.parseInt(value.contextWindow, 10);
+      const inputBudgetRatio = Number.parseFloat(value.inputBudgetRatio);
+      const added = await addCodexTarget(compositionOptions().stateRoot, {
+        id: value.id,
+        codexInstanceId: value.codexInstance,
+        cwd: value.cwd,
+        runtimeWorkspaceRoots: value.workspaceRoot.length === 0 ? [value.cwd] : value.workspaceRoot,
+        contextWindowTokens,
+        inputBudgetRatio,
+        ...(value.model === undefined ? {} : { model: value.model }),
+        ...(value.permissions === undefined ? {} : { permissions: value.permissions }),
+        ...(value.command === undefined ? {} : { command: value.command }),
+      });
+      output(stdout, { target: added });
+    });
+  target.command("list").option("--json").action(async () => {
+    output(stdout, { targets: registeredCodexTargets(await loadConfig(compositionOptions().stateRoot)) });
   });
 
   program.command("scan")
@@ -108,6 +188,47 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
   program.command("status").option("--json").action(async () => {
     const engine = await createReadOnlyComposition(compositionOptions());
     try { output(stdout, { status: await engine.status() }); } finally { engine.close(); }
+  });
+
+  const continuation = program.command("continuation");
+  const addContinuationOptions = (command: Command): Command => command
+    .requiredOption("--logical-session <id>")
+    .requiredOption("--source-version <id>")
+    .requiredOption("--target <preset-id>")
+    .addOption(new Option("--mode <mode>").choices(["full", "checkpoint", "structured-summary"]).makeOptionMandatory())
+    .option("--checkpoint-start <sequence>")
+    .option("--json");
+  addContinuationOptions(continuation.command("preview")).action(async (value: {
+    logicalSession: string;
+    sourceVersion: string;
+    target: string;
+    mode: string;
+    checkpointStart?: string;
+  }) => {
+    const engine = await createReadOnlyComposition(compositionOptions());
+    try { output(stdout, { preview: await engine.previewContinuation(continuationInput(value)) }); } finally { engine.close(); }
+  });
+  addContinuationOptions(continuation.command("create")).action(async (value: {
+    logicalSession: string;
+    sourceVersion: string;
+    target: string;
+    mode: string;
+    checkpointStart?: string;
+  }) => {
+    const engine = await createReadOnlyComposition(compositionOptions());
+    try { output(stdout, { continuation: await engine.createContinuation(continuationInput(value)) }); } finally { engine.close(); }
+  });
+  continuation.command("status").requiredOption("--id <id>").option("--json").action(async (value: { id: string }) => {
+    const engine = await createReadOnlyComposition(compositionOptions());
+    try {
+      const job = await engine.getContinuation(value.id);
+      if (job === undefined) throw new SessionMaintenanceError("CONTINUATION_NOT_FOUND", `Continuation not found: ${value.id}`);
+      output(stdout, { continuation: job });
+    } finally { engine.close(); }
+  });
+  continuation.command("recover").requiredOption("--id <id>").option("--json").action(async (value: { id: string }) => {
+    const engine = await createReadOnlyComposition(compositionOptions());
+    try { output(stdout, { continuation: await engine.recoverContinuation(value.id) }); } finally { engine.close(); }
   });
 
   program.command("serve")

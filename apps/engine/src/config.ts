@@ -143,6 +143,57 @@ export function registeredCodexTargets(config: EngineConfig): readonly CodexCont
   });
 }
 
+export async function addCodexTarget(
+  stateRoot: string,
+  input: {
+    readonly id: string;
+    readonly codexInstanceId: string;
+    readonly cwd: string;
+    readonly runtimeWorkspaceRoots: readonly string[];
+    readonly contextWindowTokens: number;
+    readonly inputBudgetRatio: number;
+    readonly model?: string;
+    readonly permissions?: string;
+    readonly command?: string;
+  },
+): Promise<CodexContinuationTarget> {
+  const config = await initializeStateRoot(stateRoot);
+  if (config.codexTargets[input.id] !== undefined) throw new TypeError(`Codex target already exists: ${input.id}`);
+  const instance = config.instances[input.codexInstanceId];
+  if (instance === undefined || instance.platform !== "codex") {
+    throw new TypeError(`Codex target requires a registered Codex instance: ${input.codexInstanceId}`);
+  }
+  if (!Number.isSafeInteger(input.contextWindowTokens) || input.contextWindowTokens <= 0) {
+    throw new TypeError("contextWindowTokens must be a positive integer");
+  }
+  if (!(input.inputBudgetRatio > 0 && input.inputBudgetRatio <= 1)) {
+    throw new TypeError("inputBudgetRatio must be greater than zero and at most one");
+  }
+  const cwd = await realpath(input.cwd);
+  const runtimeWorkspaceRoots = await Promise.all(input.runtimeWorkspaceRoots.map((root) => realpath(root)));
+  const target = {
+    codexInstanceId: input.codexInstanceId,
+    cwd,
+    runtimeWorkspaceRoots,
+    contextWindowTokens: input.contextWindowTokens,
+    inputBudgetRatio: input.inputBudgetRatio,
+    ...(input.model === undefined ? {} : { model: input.model }),
+    ...(input.permissions === undefined ? {} : { permissions: input.permissions }),
+    ...(input.command === undefined ? {} : { command: input.command }),
+  };
+  await atomicWrite(configPathFor(stateRoot), stringify({
+    schemaVersion: 1,
+    instances: config.instances,
+    codexTargets: { ...config.codexTargets, [input.id]: target },
+  }));
+  return {
+    id: input.id,
+    ...target,
+    platformVersion: instance.platformVersion,
+    codexHome: instance.root,
+  };
+}
+
 export async function addInstance(
   stateRoot: string,
   input: RegisteredInstance,

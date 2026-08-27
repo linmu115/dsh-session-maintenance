@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "dsh_session_maintenance": {
+      "title": "DSH Session Maintenance",
+      "description": "Create and inspect traceable Codex continuations through the local maintenance engine.",
+      "cwd": ".",
+      "command": "node",
+      "args": ["./mcp/server.mjs", "--stdio"],
+      "env_vars": [
+        "DSH_SESSION_MAINTENANCE_STATE_ROOT",
+        "DSH_SESSION_MAINTENANCE_ORIGIN",
+        "DSH_SESSION_MAINTENANCE_TOKEN"
+      ],
+      "startup_timeout_sec": 10,
+      "tool_timeout_sec": 120
+    }
+  }
+}

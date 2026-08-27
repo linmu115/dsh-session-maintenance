@@ -2,6 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir } from "node:fs/promises";
 import { join, relative } from "node:path";
 
+import type { CodexContinuationPort } from "@linmu/dsh-session-contracts";
+
 import {
   assertFixtureSandbox,
   createFixtureSandbox,
@@ -10,6 +12,7 @@ import {
 } from "../../../packages/test-support/src/index.js";
 import { runCli as executeCli } from "../src/cli.js";
 import { createReadOnlyComposition, probeAndAddInstance } from "../src/composition-root.js";
+import { addCodexTarget } from "../src/config.js";
 import { startMaintenanceServer } from "../src/http/server.js";
 
 export async function hashTree(root: string): Promise<string> {
@@ -55,7 +58,10 @@ export async function runCli(argv: readonly string[], fixture: Awaited<ReturnTyp
   return { exitCode, stdout, stderr };
 }
 
-export async function createEngineFixture(name: string) {
+export async function createEngineFixture(name: string, input: {
+  readonly continuationAdapter?: CodexContinuationPort;
+  readonly withContinuationTarget?: boolean;
+} = {}) {
   const fixture = await createFixtureSystem(name);
   const options = { stateRoot: fixture.stateRoot, fixturePolicy: fixture.fixturePolicy };
   await probeAndAddInstance(options, {
@@ -65,7 +71,27 @@ export async function createEngineFixture(name: string) {
     root: fixture.codexHome,
     platformVersion: "0.146.0",
   });
-  const engine = await createReadOnlyComposition(options);
+  if (input.withContinuationTarget === true) {
+    await probeAndAddInstance(options, {
+      id: "dsh-fixture",
+      platform: "dsh",
+      displayName: "DSH fixture",
+      root: fixture.dshHome,
+      platformVersion: "0.1.1-rc.2",
+    });
+    await addCodexTarget(fixture.stateRoot, {
+      id: "codex-default",
+      codexInstanceId: "codex-fixture",
+      cwd: fixture.root,
+      runtimeWorkspaceRoots: [fixture.root],
+      contextWindowTokens: 120_000,
+      inputBudgetRatio: 0.8,
+    });
+  }
+  const engine = await createReadOnlyComposition({
+    ...options,
+    ...(input.continuationAdapter === undefined ? {} : { continuationAdapter: input.continuationAdapter }),
+  });
   const servers: Array<{ close: () => Promise<void> }> = [];
   return {
     ...fixture,

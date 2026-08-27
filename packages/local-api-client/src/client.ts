@@ -2,6 +2,8 @@ import { z, type ZodType } from "zod";
 
 import {
   apiErrorResponseSchema,
+  continuationJobResponseSchema,
+  continuationPreviewResponseSchema,
   jobAcceptedResponseSchema,
   jobRefSchema,
   pageSchema,
@@ -10,6 +12,10 @@ import {
   sessionSummarySchema,
   versionGraphResponseSchema,
   type DiffRequest,
+  type ContinuationJob,
+  type ContinuationPreview,
+  type ContinuationPreviewRequest,
+  type CreateContinuationRequest,
   type JobEvent,
   type JobRef,
   type Page,
@@ -64,6 +70,46 @@ export class MaintenanceClient {
 
   async createPlan(input: PlanRequest, signal?: AbortSignal): Promise<SyncPlan> {
     return (await this.request("/v1/plans", this.jsonPost(input), planResponseSchema, signal)).plan as unknown as SyncPlan;
+  }
+
+  async previewContinuation(input: ContinuationPreviewRequest, signal?: AbortSignal): Promise<ContinuationPreview> {
+    const response = await this.request(
+      "/v1/continuations/preview",
+      this.jsonPost(input),
+      continuationPreviewResponseSchema,
+      signal,
+    );
+    return response.preview as unknown as ContinuationPreview;
+  }
+
+  async createContinuation(input: CreateContinuationRequest, signal?: AbortSignal): Promise<ContinuationJob> {
+    const response = await this.request(
+      "/v1/continuations",
+      this.jsonPost(input),
+      continuationJobResponseSchema,
+      signal,
+    );
+    return response.continuation as unknown as ContinuationJob;
+  }
+
+  async getContinuation(id: string, signal?: AbortSignal): Promise<ContinuationJob> {
+    const response = await this.request(
+      `/v1/continuations/${encodeURIComponent(id)}`,
+      {},
+      continuationJobResponseSchema,
+      signal,
+    );
+    return response.continuation as unknown as ContinuationJob;
+  }
+
+  async recoverContinuation(id: string, signal?: AbortSignal): Promise<ContinuationJob> {
+    const response = await this.request(
+      `/v1/continuations/${encodeURIComponent(id)}/recover`,
+      this.jsonPost({}),
+      continuationJobResponseSchema,
+      signal,
+    );
+    return response.continuation as unknown as ContinuationJob;
   }
 
   async getPlan(id: string, signal?: AbortSignal): Promise<SyncPlan> {

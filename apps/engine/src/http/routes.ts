@@ -3,11 +3,14 @@ import { ZodError } from "zod";
 
 import {
   SessionMaintenanceError,
+  continuationPreviewRequestSchema,
   diffRequestSchema,
   planRequestSchema,
   scanRequestSchema,
   sessionQuerySchema,
   type DiffRequest,
+  type ContinuationPreviewRequest,
+  type CreateContinuationRequest,
   type JsonValue,
   type PlanRequest,
   type SessionQuery,
@@ -84,6 +87,28 @@ export async function routeRequest(
       send(response, 200, { diff: await context.engine.diff(diffRequestSchema.parse(await readJsonBody(request)) as unknown as DiffRequest) });
       return;
     }
+    if (request.method === "POST" && url.pathname === "/v1/continuations/preview") {
+      const body = continuationPreviewRequestSchema.parse(await readJsonBody(request)) as unknown as ContinuationPreviewRequest;
+      send(response, 200, { preview: await context.engine.previewContinuation(body) });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/continuations") {
+      const body = continuationPreviewRequestSchema.parse(await readJsonBody(request)) as unknown as CreateContinuationRequest;
+      send(response, 201, { continuation: await context.engine.createContinuation(body) });
+      return;
+    }
+    const continuationRecover = url.pathname.match(/^\/v1\/continuations\/([^/]+)\/recover$/u);
+    if (request.method === "POST" && continuationRecover !== null) {
+      send(response, 200, { continuation: await context.engine.recoverContinuation(decodeURIComponent(continuationRecover[1]!)) });
+      return;
+    }
+    const continuation = url.pathname.match(/^\/v1\/continuations\/([^/]+)$/u);
+    if (request.method === "GET" && continuation !== null) {
+      const stored = await context.engine.getContinuation(decodeURIComponent(continuation[1]!));
+      if (stored === undefined) { send(response, 404, errorBody("CONTINUATION_NOT_FOUND", "Continuation not found")); return; }
+      send(response, 200, { continuation: stored });
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/v1/jobs/scan") {
       const body = scanRequestSchema.parse(await readJsonBody(request));
       send(response, 202, { job: context.jobs.enqueueScan(body.instanceIds) });
@@ -127,7 +152,12 @@ export async function routeRequest(
     if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
     else if (error instanceof ZodError) send(response, 400, errorBody("INVALID_REQUEST", "Request does not match the API schema"));
     else if (error instanceof SessionMaintenanceError) {
-      send(response, error.code === "CAPABILITY_NOT_AVAILABLE" ? 501 : 409, errorBody(error.code, error.message));
+      const status = error.code === "CAPABILITY_NOT_AVAILABLE"
+        ? 501
+        : error.code === "CONTINUATION_NOT_FOUND"
+          ? 404
+          : 409;
+      send(response, status, errorBody(error.code, error.message));
     } else {
       const message = error instanceof Error ? error.message.replaceAll(context.token, "[REDACTED]") : "Unknown error";
       send(response, 500, errorBody("INTERNAL_ERROR", message));

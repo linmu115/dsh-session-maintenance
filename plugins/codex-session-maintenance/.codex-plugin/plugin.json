@@ -1,0 +1,23 @@
+{
+  "name": "dsh-session-maintenance",
+  "version": "0.1.0",
+  "description": "Create traceable Codex continuation tasks from versioned DSH sessions through the local maintenance engine.",
+  "author": {
+    "name": "linmu115"
+  },
+  "license": "MIT",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "DSH Session Maintenance",
+    "shortDescription": "Continue a versioned DSH session in Codex",
+    "longDescription": "Preview a bounded, traceable handoff from a selected DSH session version and create or inspect its native Codex continuation task through the loopback maintenance engine.",
+    "developerName": "linmu115",
+    "category": "Developer Tools",
+    "capabilities": ["Read", "Write"],
+    "defaultPrompt": [
+      "Preview a DSH session handoff before creating a Codex continuation",
+      "Show the status of a Codex continuation job"
+    ]
+  }
+}
