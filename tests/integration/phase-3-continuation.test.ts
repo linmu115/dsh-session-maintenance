@@ -42,6 +42,15 @@ describe("phase 3 continuation", () => {
               cwd: "D:\\fixture\\workspace",
               ephemeral: false,
               historyMode: "paginated",
+              turns: [],
+            },
+          },
+          "thread/resume": {
+            thread: {
+              id: "019-continuation",
+              cwd: "D:\\fixture\\workspace",
+              ephemeral: false,
+              historyMode: "paginated",
               turns: [{ id: "turn-continuation", status: "completed" }],
             },
           },
@@ -165,6 +174,15 @@ describe("phase 3 continuation", () => {
           },
           "turn/start": { turn: { id: "turn-resolution", status: "inProgress" } },
           "thread/read": {
+            thread: {
+              id: "019-resolution",
+              cwd: "D:\\fixture\\workspace",
+              ephemeral: false,
+              historyMode: "paginated",
+              turns: [],
+            },
+          },
+          "thread/resume": {
             thread: {
               id: "019-resolution",
               cwd: "D:\\fixture\\workspace",
