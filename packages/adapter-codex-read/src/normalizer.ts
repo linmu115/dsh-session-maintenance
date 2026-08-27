@@ -112,12 +112,12 @@ export function normalizeCodexObservation(observation: StableObservation): Norma
 
   return normalizeSession({
     key: observation.key,
-    title: payload.thread.title || payload.thread.name,
+    title: payload.thread.title || payload.thread.name || payload.thread.id,
     archived: Boolean(payload.thread.archived),
     workspaceId: `workspace_${sha256Canonical(payload.thread.cwd).slice(0, 24)}`,
     provenance: {
       ...observation.key,
-      observedAt: payload.thread.updated_at,
+      observedAt: new Date(payload.thread.updated_at_ms ?? payload.thread.updated_at * 1000).toISOString(),
       sourceVersion: "0.146.0",
     },
     compatibility: { status: issues.length === 0 ? "compatible" : "degraded", issues },

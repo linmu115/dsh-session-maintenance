@@ -8,6 +8,7 @@ import type {
   NormalizedSession,
   ObservedHead,
   PlatformBinding,
+  PlatformKind,
   SessionSummary,
   SessionVersionManifest,
   TransactionRecord,
@@ -36,7 +37,7 @@ export interface TransactionQuery {
 export interface TransactionSummary {
   readonly id: string;
   readonly planId: string;
-  readonly platform: "dsh";
+  readonly platform: PlatformKind;
   readonly instanceId: string;
   readonly status: TransactionStatus;
   readonly errorCode?: string;

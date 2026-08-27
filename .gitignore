@@ -3,6 +3,7 @@ dist/
 plugins/*/lib/
 .artifacts/
 coverage/
+*.tsbuildinfo
 .env
 .env.*
 !.env.example

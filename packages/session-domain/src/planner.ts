@@ -349,6 +349,40 @@ export function validateExecutableDshPlan(plan: SyncPlan): ExecutableDshPlanShap
   };
 }
 
+export interface ExecutableCodexPlanShape {
+  readonly kind: "mutation" | "no-op";
+  readonly targetInstanceId: string;
+}
+
+/**
+ * Codex native writes are deliberately narrower than continuation creation:
+ * only an existing, explicitly mapped Codex thread may receive an append-only
+ * DSH fast-forward plus single-sided title/archive metadata.
+ */
+export function validateExecutableCodexPlan(plan: SyncPlan): ExecutableCodexPlanShape {
+  const operationTypes = plan.operations.map((operation) => operation.type);
+  const allowed = new Set(["append-events", "update-title", "update-archive"]);
+  const append = plan.operations.find((operation) => operation.type === "append-events");
+  const invalid =
+    plan.risk !== "safe" ||
+    plan.confirmations.length !== 0 ||
+    plan.source.key.platform !== "dsh" ||
+    plan.target?.key.platform !== "codex" ||
+    operationTypes.some((type) => !allowed.has(type)) ||
+    new Set(operationTypes).size !== operationTypes.length ||
+    (append?.type === "append-events" && (append.fromIndex < 0 || append.eventIds.length === 0));
+  if (invalid) {
+    throw new SessionMaintenanceError(
+      "WRITE_CAPABILITY_UNAVAILABLE",
+      `Plan is not an executable DSH-to-Codex native fast-forward: ${plan.id}`,
+    );
+  }
+  return {
+    kind: plan.operations.length === 0 ? "no-op" : "mutation",
+    targetInstanceId: plan.target.key.instanceId,
+  };
+}
+
 export class PlanningService {
   readonly repository: PlanRepository;
 

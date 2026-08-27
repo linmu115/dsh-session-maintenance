@@ -145,7 +145,7 @@ interface TransactionRow {
   readonly id: string;
   readonly plan_id: string;
   readonly plan_hash: string;
-  readonly platform: "dsh";
+  readonly platform: PlatformKind;
   readonly instance_id: string;
   readonly root_identity: string;
   readonly adapter_contract_json: string;
@@ -1317,7 +1317,7 @@ export class SqliteSessionRepository {
     const items = rows.slice(0, limit).map((row): TransactionSummary => ({
       id: row.id,
       planId: row.plan_id,
-      platform: "dsh",
+      platform: row.platform,
       instanceId: row.instance_id,
       status: row.status,
       ...(row.error_code === null ? {} : { errorCode: row.error_code }),

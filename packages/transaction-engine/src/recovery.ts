@@ -165,7 +165,7 @@ export class TransactionRecovery {
 
     const receipt: WriteReceipt = {
       transactionId,
-      platform: "dsh",
+      platform: transaction.platform,
       instanceId: transaction.instanceId,
       ...(plan.target === undefined ? {} : { targetKey: plan.target.key }),
       fingerprints: plan.preconditions,

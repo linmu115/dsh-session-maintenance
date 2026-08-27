@@ -12,21 +12,33 @@ import { openCodexDatabase, resolveContainedRollout } from "./stable-read.js";
 
 export const CODEX_SUPPORTED_VERSION = "0.146.0";
 export const CODEX_REQUIRED_THREAD_COLUMNS = [
-  "archived",
-  "created_at",
-  "cwd",
-  "id",
-  "name",
-  "rollout_path",
-  "title",
-  "updated_at",
+  ["id", "TEXT", 0, 1], ["rollout_path", "TEXT", 1, 0],
+  ["created_at", "INTEGER", 1, 0], ["updated_at", "INTEGER", 1, 0],
+  ["source", "TEXT", 1, 0], ["model_provider", "TEXT", 1, 0],
+  ["cwd", "TEXT", 1, 0], ["title", "TEXT", 1, 0],
+  ["sandbox_policy", "TEXT", 1, 0], ["approval_mode", "TEXT", 1, 0],
+  ["tokens_used", "INTEGER", 1, 0], ["has_user_event", "INTEGER", 1, 0],
+  ["archived", "INTEGER", 1, 0], ["archived_at", "INTEGER", 0, 0],
+  ["git_sha", "TEXT", 0, 0], ["git_branch", "TEXT", 0, 0],
+  ["git_origin_url", "TEXT", 0, 0], ["cli_version", "TEXT", 1, 0],
+  ["first_user_message", "TEXT", 1, 0], ["agent_nickname", "TEXT", 0, 0],
+  ["agent_role", "TEXT", 0, 0], ["memory_mode", "TEXT", 1, 0],
+  ["model", "TEXT", 0, 0], ["reasoning_effort", "TEXT", 0, 0],
+  ["agent_path", "TEXT", 0, 0], ["created_at_ms", "INTEGER", 0, 0],
+  ["updated_at_ms", "INTEGER", 0, 0], ["thread_source", "TEXT", 0, 0],
+  ["preview", "TEXT", 1, 0], ["recency_at", "INTEGER", 1, 0],
+  ["recency_at_ms", "INTEGER", 1, 0], ["history_mode", "TEXT", 1, 0],
+  ["name", "TEXT", 0, 0], ["is_pinned", "INTEGER", 1, 0],
+  ["thread_section_id", "TEXT", 0, 0], ["section_position", "INTEGER", 0, 0],
+  ["section_entered_at_ms", "INTEGER", 0, 0], ["project_id", "TEXT", 0, 0],
 ] as const;
-const SUPPORTED_ENVELOPES = ["response_item", "session_meta"] as const;
+export const CODEX_SUPPORTED_ENVELOPES = ["response_item", "session_meta"] as const;
 const schemaHex = sha256Canonical({
-  tables: [{ name: "threads", columns: [...CODEX_REQUIRED_THREAD_COLUMNS] }],
-  envelopes: [...SUPPORTED_ENVELOPES],
+  tables: [{ name: "threads", columns: CODEX_REQUIRED_THREAD_COLUMNS }],
+  sessionIndex: ["id", "thread_name", "updated_at"],
+  envelopes: [...CODEX_SUPPORTED_ENVELOPES],
 });
-export const CODEX_SCHEMA_FINGERPRINT = `codex-read/0.146.0/schema-1:${schemaHex}`;
+export const CODEX_SCHEMA_FINGERPRINT = `codex-read/0.146.0/schema-2:${schemaHex}`;
 
 const contract = (version: string, fingerprint = CODEX_SCHEMA_FINGERPRINT): AdapterContractRef => ({
   adapter: "codex-read",
@@ -56,14 +68,17 @@ export async function probeCodexInstance(
 
   try {
     const database = openCodexDatabase(instance.root);
-    let columns: string[];
+    let columns: Array<readonly [string, string, number, number]>;
     let rolloutPath: string | undefined;
     try {
       columns = (
-        database.prepare("PRAGMA table_info(threads)").all() as unknown as Array<{ readonly name: string }>
-      )
-        .map((row) => row.name)
-        .sort();
+        database.prepare("PRAGMA table_info(threads)").all() as unknown as Array<{
+          readonly name: string;
+          readonly type: string;
+          readonly notnull: number;
+          readonly pk: number;
+        }>
+      ).map((row) => [row.name, row.type, row.notnull, row.pk] as const);
       rolloutPath = (
         database.prepare("SELECT rollout_path FROM threads ORDER BY id LIMIT 1").get() as
           | { readonly rollout_path: string }
@@ -78,7 +93,10 @@ export async function probeCodexInstance(
         status: "unsupported",
         contract: contract(instance.platformVersion, "unsupported-schema"),
         capabilities: [],
-        issues: [{ code: "ADAPTER_INCOMPATIBLE", message: "Codex threads schema fingerprint mismatch" }],
+        issues: [{
+          code: "ADAPTER_INCOMPATIBLE",
+          message: `Codex threads schema fingerprint mismatch: ${schemaHex.slice(0, 12)}:${sha256Canonical(columns).slice(0, 12)}`,
+        }],
       };
     }
     if (rolloutPath === undefined) {
@@ -90,7 +108,7 @@ export async function probeCodexInstance(
     }
     onProbeRead();
     const observedTypes = new Set(parseCodexJsonl(await readFile(resolved)).map((item) => item.type));
-    if (!SUPPORTED_ENVELOPES.every((type) => observedTypes.has(type))) {
+    if (!CODEX_SUPPORTED_ENVELOPES.every((type) => observedTypes.has(type))) {
       throw new Error("Codex probe sample is missing supported envelope names");
     }
 

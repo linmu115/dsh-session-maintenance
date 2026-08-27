@@ -36,24 +36,28 @@ describe("SqliteSessionRepository", () => {
       DROP TABLE backup_manifests;
       DROP TABLE transaction_steps;
       DROP TABLE transactions;
-      DELETE FROM schema_migrations WHERE version IN (3, 4);
+      DROP TABLE native_mirrors;
+      DELETE FROM schema_migrations WHERE version IN (3, 4, 5);
     `);
     schemaTwo.close();
 
     let upgraded = openMaintenanceDatabase(dbPath);
     expect(
       upgraded.prepare("SELECT version FROM schema_migrations ORDER BY version").all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
     expect(
       upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transactions'").get(),
     ).toEqual({ name: "transactions" });
     expect(
       upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'continuation_jobs'").get(),
     ).toEqual({ name: "continuation_jobs" });
+    expect(
+      upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'native_mirrors'").get(),
+    ).toEqual({ name: "native_mirrors" });
     upgraded.close();
     upgraded = openMaintenanceDatabase(dbPath);
     expect(
-      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 4").get(),
+      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 5").get(),
     ).toEqual({ count: 1 });
     upgraded.close();
   });
@@ -148,7 +152,7 @@ describe("SqliteSessionRepository", () => {
     const database = openMaintenanceDatabase(dbPath);
     database
       .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-      .run(5, "2026-08-26T00:00:00.000Z");
+      .run(6, "2026-08-26T00:00:00.000Z");
     database.close();
     expect(() => openMaintenanceDatabase(dbPath)).toThrow(/newer schema/iu);
 

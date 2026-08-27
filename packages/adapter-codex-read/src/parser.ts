@@ -13,10 +13,11 @@ export interface CodexThreadRow {
   readonly id: string;
   readonly rollout_path: string;
   readonly title: string;
-  readonly name: string;
+  readonly name: string | null;
   readonly cwd: string;
-  readonly created_at: string;
-  readonly updated_at: string;
+  readonly created_at: number;
+  readonly updated_at: number;
+  readonly updated_at_ms: number | null;
   readonly archived: number;
 }
 
@@ -37,7 +38,6 @@ export function parseCodexJsonl(bytes: Uint8Array): readonly CodexEnvelope[] {
   const text = Buffer.from(bytes).toString("utf8");
   const lines = text.split(/\r?\n/u);
   const envelopes: CodexEnvelope[] = [];
-  let sessionMetaCount = 0;
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index] ?? "";
@@ -57,13 +57,6 @@ export function parseCodexJsonl(bytes: Uint8Array): readonly CodexEnvelope[] {
     if (!isRecord(parsed) || typeof parsed.type !== "string" || !isRecord(parsed.payload)) {
       throw new Error(`Malformed Codex envelope at line ${index + 1}`);
     }
-    if (parsed.type === "session_meta") {
-      sessionMetaCount += 1;
-      if (sessionMetaCount > 1) {
-        throw new Error("Duplicate session_meta envelope in Codex rollout");
-      }
-    }
-
     envelopes.push(parsed as unknown as CodexEnvelope);
   }
 

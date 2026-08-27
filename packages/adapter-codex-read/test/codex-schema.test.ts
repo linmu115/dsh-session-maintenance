@@ -52,7 +52,7 @@ describe("Codex adapter schema boundaries", () => {
     expect(adapter.debugCounters().rolloutProbeReads).toBe(0);
   });
 
-  it("rejects truncated JSONL, escaped paths and duplicate session metadata", async () => {
+  it("rejects truncated JSONL, escaped paths and conflicting session metadata", async () => {
     const sandbox = await createFixtureSandbox("codex-corruption");
     cleanups.push(sandbox.cleanup);
     await writeCodexFixtureHome(sandbox.codexHome);
@@ -67,9 +67,9 @@ describe("Codex adapter schema boundaries", () => {
 
     await writeFile(
       rollout,
-      `${original}${original.split(/\r?\n/u)[0]}\n`,
+      `${original}${JSON.stringify({ type: "session_meta", payload: { id: "another-thread" } })}\n`,
     );
-    await expect(adapter.observe(registered, summary!.key)).rejects.toThrow(/duplicate session_meta/iu);
+    await expect(adapter.observe(registered, summary!.key)).rejects.toThrow(/does not match catalog ID/iu);
 
     const outside = join(sandbox.root, "outside-rollout.jsonl");
     await writeFile(outside, original);

@@ -4,6 +4,7 @@ import type {
   NormalizedSession,
   ObservationHint,
   Page,
+  PlatformKind,
   PlatformSessionKey,
   PlatformSessionSummary,
   RegisteredInstance,
@@ -65,7 +66,7 @@ export interface PrepareWriteRequest {
 }
 
 export interface PlatformWriteAdapter {
-  readonly platform: "dsh";
+  readonly platform: PlatformKind;
   probeWrite(instance: RegisteredInstance): Promise<WriteProbe>;
   prepare(request: PrepareWriteRequest): Promise<PreparedWrite>;
   backup(prepared: PreparedWrite, transaction: TransactionContext): Promise<BackupManifest>;

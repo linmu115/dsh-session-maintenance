@@ -56,8 +56,12 @@ function targetInstanceId(plan: SyncPlan): string {
   if (create?.type === "create-target-session") return create.targetInstanceId;
   throw new SessionMaintenanceError(
     "WRITE_CAPABILITY_UNAVAILABLE",
-    `Plan has no writable DSH target: ${plan.id}`,
+    `Plan has no writable platform target: ${plan.id}`,
   );
+}
+
+function targetPlatform(plan: SyncPlan): PlatformKind {
+  return plan.target?.key.platform ?? (plan.source.key.platform === "dsh" ? "codex" : "dsh");
 }
 
 async function persistPlanFile(path: string, plan: SyncPlan): Promise<void> {
@@ -146,18 +150,19 @@ export class TransactionExecutor {
     }
 
     const instanceId = targetInstanceId(plan);
+    const platform = targetPlatform(plan);
     const instance = this.instances.get(instanceId);
-    if (instance === undefined || instance.platform !== "dsh") {
+    if (instance === undefined || instance.platform !== platform) {
       throw new SessionMaintenanceError(
         "WRITE_CAPABILITY_UNAVAILABLE",
-        `Registered DSH instance not found: ${instanceId}`,
+        `Registered ${platform} instance not found: ${instanceId}`,
       );
     }
-    const adapter = this.adapters.get("dsh");
+    const adapter = this.adapters.get(platform);
     if (adapter === undefined) {
       throw new SessionMaintenanceError(
         "WRITE_CAPABILITY_UNAVAILABLE",
-        "No DSH write Adapter is registered",
+        `No ${platform} write Adapter is registered`,
       );
     }
     const probe = await adapter.probeWrite(instance);
@@ -172,7 +177,7 @@ export class TransactionExecutor {
     ) {
       throw new SessionMaintenanceError(
         "ADAPTER_INCOMPATIBLE",
-        `DSH write Adapter contract does not match plan: ${plan.id}`,
+        `${platform} write Adapter contract does not match plan: ${plan.id}`,
       );
     }
     validatePlanPreconditions(plan, await this.readFingerprints(plan));
@@ -191,7 +196,7 @@ export class TransactionExecutor {
         ) {
           throw new SessionMaintenanceError(
             "RECOVERY_REQUIRED",
-            `Unresolved transaction blocks this DSH root: ${unresolved.id}`,
+            `Unresolved transaction blocks this platform root: ${unresolved.id}`,
           );
         }
       }
@@ -304,7 +309,7 @@ export class TransactionExecutor {
       id: transaction.id,
       planId: plan.id,
       planHash: plan.hash,
-      platform: "dsh",
+      platform: instance.platform,
       instanceId: instance.id,
       rootIdentity,
       adapterContract,

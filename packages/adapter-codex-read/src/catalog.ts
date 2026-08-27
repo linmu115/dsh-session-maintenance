@@ -28,8 +28,8 @@ export async function* listCodexSessions(
   try {
     rows = database
       .prepare(
-        `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, archived
-         FROM threads ORDER BY updated_at DESC, id`,
+        `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived
+         FROM threads ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC, id`,
       )
       .all() as unknown as CodexThreadRow[];
   } finally {
@@ -55,10 +55,10 @@ export async function* listCodexSessions(
     const info = await stat(path, { bigint: true });
     yield {
       key: { platform: "codex", instanceId: instance.id, sessionId: row.id },
-      title: row.title || row.name,
+      title: row.title || row.name || row.id,
       archived: Boolean(row.archived),
       workspaceId: null,
-      updatedAt: row.updated_at,
+      updatedAt: new Date(row.updated_at_ms ?? row.updated_at * 1000).toISOString(),
       hint: { size: Number(info.size), mtimeNs: info.mtimeNs.toString() },
     };
   }

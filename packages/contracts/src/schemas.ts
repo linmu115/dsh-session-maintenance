@@ -475,7 +475,7 @@ export const preparedWriteSchema = z.strictObject({
   id: idSchema,
   planId: idSchema,
   planHash: idSchema,
-  platform: z.literal("dsh"),
+  platform: platformKindSchema,
   instanceId: idSchema,
   rootIdentity: idSchema,
   targetKey: platformSessionKeySchema.optional(),
@@ -501,7 +501,7 @@ export const backupManifestSchema = z.strictObject({
 
 export const writeReceiptSchema = z.strictObject({
   transactionId: idSchema,
-  platform: z.literal("dsh"),
+  platform: platformKindSchema,
   instanceId: idSchema,
   targetKey: platformSessionKeySchema.optional(),
   fingerprints: z.array(stateFingerprintSchema),
@@ -519,7 +519,7 @@ export const transactionRecordSchema = z.strictObject({
   id: idSchema,
   planId: idSchema,
   planHash: idSchema,
-  platform: z.literal("dsh"),
+  platform: platformKindSchema,
   instanceId: idSchema,
   rootIdentity: idSchema,
   adapterContract: adapterContractRefSchema,
@@ -619,7 +619,7 @@ export const transactionQuerySchema = z.strictObject({
 export const transactionSummarySchema = z.strictObject({
   id: idSchema,
   planId: idSchema,
-  platform: z.literal("dsh"),
+  platform: platformKindSchema,
   instanceId: idSchema,
   status: transactionStatusSchema,
   errorCode: z.string().optional(),

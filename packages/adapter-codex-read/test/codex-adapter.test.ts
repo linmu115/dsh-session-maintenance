@@ -54,7 +54,6 @@ describe("CodexReadAdapter", () => {
     await writeCodexFixtureHome(sandbox.codexHome);
     const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
     const registered = instance(sandbox);
-
     expect((await adapter.probe(registered)).status).toBe("compatible");
     adapter.resetDebugCounters();
     const summaries = await collect(adapter.list(registered));
@@ -83,19 +82,31 @@ describe("CodexReadAdapter", () => {
     const database = new DatabaseSync(join(sandbox.codexHome, "state_5.sqlite"));
     const insert = database.prepare(
       `INSERT INTO threads
-        (id, rollout_path, title, name, cwd, created_at, updated_at, archived)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, rollout_path, created_at, updated_at, source, model_provider, cwd, title,
+         sandbox_policy, approval_mode, cli_version, first_user_message, created_at_ms,
+         updated_at_ms, preview, recency_at, recency_at_ms, name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (let index = 2; index <= 100; index += 1) {
       insert.run(
         `thread-${index}`,
         "rollouts/thread-fixture.jsonl",
-        `Fixture ${index}`,
-        "fixture",
+        1787702400,
+        1787702402,
+        "vscode",
+        "openai",
         "C:\\fixture\\workspace",
-        "2026-08-26T00:00:00.000Z",
-        "2026-08-26T00:00:02.000Z",
-        0,
+        `Fixture ${index}`,
+        "workspace-write",
+        "never",
+        "0.146.0",
+        `Fixture ${index}`,
+        1787702400000,
+        1787702402000,
+        `Fixture ${index}`,
+        1787702402,
+        1787702402000,
+        "fixture",
       );
     }
     database.close();

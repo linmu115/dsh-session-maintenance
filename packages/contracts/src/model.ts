@@ -354,7 +354,7 @@ export interface PreparedWrite {
   readonly id: string;
   readonly planId: string;
   readonly planHash: string;
-  readonly platform: "dsh";
+  readonly platform: PlatformKind;
   readonly instanceId: string;
   readonly rootIdentity: string;
   readonly targetKey?: PlatformSessionKey;
@@ -380,7 +380,7 @@ export interface BackupManifest {
 
 export interface WriteReceipt {
   readonly transactionId: string;
-  readonly platform: "dsh";
+  readonly platform: PlatformKind;
   readonly instanceId: string;
   readonly targetKey?: PlatformSessionKey;
   readonly fingerprints: readonly StateFingerprint[];
@@ -398,7 +398,7 @@ export interface TransactionRecord {
   readonly id: string;
   readonly planId: string;
   readonly planHash: string;
-  readonly platform: "dsh";
+  readonly platform: PlatformKind;
   readonly instanceId: string;
   readonly rootIdentity: string;
   readonly adapterContract: AdapterContractRef;

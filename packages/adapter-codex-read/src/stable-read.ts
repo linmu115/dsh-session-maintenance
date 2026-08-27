@@ -49,7 +49,7 @@ export function openCodexDatabase(root: string): DatabaseSync {
 export function readThread(database: DatabaseSync, id: string): CodexThreadRow | undefined {
   return database
     .prepare(
-      `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, archived
+      `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived
        FROM threads WHERE id = ?`,
     )
     .get(id) as CodexThreadRow | undefined;
@@ -105,8 +105,8 @@ export async function observeCodexSession(
   }
 
   const envelopes = parseCodexJsonl(bytes);
-  const sessionMeta = envelopes.find((envelope) => envelope.type === "session_meta");
-  if (sessionMeta?.payload.id !== key.sessionId) {
+  const sessionMetas = envelopes.filter((envelope) => envelope.type === "session_meta");
+  if (sessionMetas.length === 0 || sessionMetas.some((item) => item.payload.id !== key.sessionId)) {
     throw new Error(`Codex session_meta ID does not match catalog ID: ${key.sessionId}`);
   }
   return {
