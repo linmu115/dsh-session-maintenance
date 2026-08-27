@@ -1,0 +1,36 @@
+{
+  "platformVersion": "0.1.1-rc.2",
+  "sessionFormatVersion": 0,
+  "packages": {
+    "@deepseek-ai/dsh-session-persistence": {
+      "version": "0.1.1-rc.2",
+      "integrity": "sha512-dxdYxRfmK5jWtiFFabqRNb/jGGjkXyF2djI7O8IIKmDVjhQiv170zpvhbAhRUuqClEdseCtbQpLBrRm2blzt3g=="
+    },
+    "@deepseek-ai/dsh-workspace": {
+      "version": "0.1.1-rc.2",
+      "integrity": "sha512-jBUob4H5TZAiExq9YNVCglKAFmAKMtd1UbyqFfnZZ1Owm+3c3NbAXY947MHiD6NwCwFEW1y7FjrFj66UQvG90A=="
+    }
+  },
+  "sessionPersistence": [
+    "append",
+    "create",
+    "inspect",
+    "list",
+    "listSnapshots",
+    "load",
+    "locate",
+    "prepare",
+    "readFrom",
+    "readRaw"
+  ],
+  "workspaceRegistry": [
+    "archiveSession",
+    "create",
+    "delete",
+    "get",
+    "insertBefore",
+    "list",
+    "resolveByPath"
+  ],
+  "sessionTitle": ["get", "refresh", "register", "rename"]
+}

@@ -108,13 +108,15 @@ Cover corrupted backup, journal/database disagreement, two concurrent writes to 
 - Produces: `DshWriteAdapter implements PlatformWriteAdapter`; `DshHostGateway.prepare/backup/commit/verify/restore`; contract `dsh-write/0.1.1-rc.2/<fingerprint>`.
 - DSH gateway capabilities are granular: `create-session`, `append-events`, `update-title`, `update-archive`, `verify`, `restore`.
 
-- [ ] **Step 1: Capture and lock the official write contract**
+- [x] **Step 1: Capture and lock the official write contract**
 
 From the installed official packages and the matching upstream release, record only public Interface facts required by the Adapter: `sessionPersistence`, `sessions`, `workspaceRegistry`, title/projection/storage services, session v0 header, event envelope and archive representation. Build synthetic fixtures; do not copy user sessions.
 
 Compute a deterministic fingerprint from package versions, exported method/type surface, session header version and relevant storage domain versions. Add a test proving `0.1.1-rc.2` matches and a one-field drift returns `ADAPTER_INCOMPATIBLE` with zero writes.
 
 If a required restore operation has no supportable public or version-locked Implementation, disable only that capability and stop P15; do not add a generic raw-file fallback.
+
+> **Gate result (2026-08-27): STOP P15.** Official `0.1.1-rc.2` exposes no session remove/forget/truncate/replace/restore surface and no official inverse for archive. All mutation capabilities are disabled; only read verification remains. Steps 2–7 are intentionally not executed.
 
 - [ ] **Step 2: Define a narrow authenticated host protocol**
 

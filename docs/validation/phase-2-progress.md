@@ -3,7 +3,7 @@
 ## 当前状态
 
 - P14 可恢复写事务：完成。
-- P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：待开始。
+- P15 官方 DSH `0.1.1-rc.2` 写入 Adapter：在契约门禁停止；官方服务缺少会话 mutation 的逆操作。
 - P16 Codex → DSH 安全快进与分支保留：待开始。
 - P17 以后 Dashboard 与用户工作流：尚未开始。
 
@@ -23,6 +23,16 @@
 
 P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改本机正式 Codex/DSH home。平台实际写入仍保持禁用，直到 P15 能从官方 DSH 服务证明可恢复的版本锁定写入契约。
 
+## P15 契约门禁结果
+
+- 官方 `@deepseek-ai/dsh-session-persistence@0.1.1-rc.2` 公开 `create` 与 `append`，但没有 `remove/forget/truncate/replace/restore`。
+- 官方 `@deepseek-ai/dsh-workspace@0.1.1-rc.2` 只有 `archiveSession`，没有官方逆操作。
+- title 修改是追加 `session/title` 事件，没有恢复旧 artifact 的逆操作。
+- 因此 `create-session`、`append-events`、`update-title`、`update-archive` 与 `restore` 全部禁用，只保留无写入的 `verify` 能力描述。
+- 契约已锁为 `dsh-write/0.1.1-rc.2/session-v0:2c1456d8a5a834badd6dfd603adce2cfbbae6afdd4e5413e898c78c5a0dcb8f0`；任何方法或 npm integrity 漂移都返回 `ADAPTER_INCOMPATIBLE`。
+- 本机 runtime 的 `dsh-workspace/lib/index.js` 带有非官方 `dsh-desktop patch`，与 npm 包哈希不同；Maintenance 不依赖该补丁。
+- 按已确认计划，P15 在 Step 1 停止，没有实现 host gateway 或 raw-file fallback，P16 暂不能开始。
+
 ## 验证记录
 
 - transaction-engine：7 个测试文件、19 个测试通过。
@@ -31,3 +41,4 @@ P14 只使用 fake write Adapter 和临时测试目录，没有读取或修改�
 - 全仓测试首次并行运行暴露既有 Codex 100-session catalog 用例的 5 秒预算不足；该压力用例改用 15 秒独立预算后，限制四个 test worker 的全仓验证为 32 个文件、82 个测试全部通过。
 - portability gate：通过。
 - `git diff --check`：通过。
+- P15 write-contract：3 个测试通过；全 workspace typecheck/build 与 portability gate 通过。

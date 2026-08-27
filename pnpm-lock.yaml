@@ -71,6 +71,15 @@ importers:
         specifier: workspace:*
         version: link:../test-support
 
+  packages/adapter-dsh-write:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-domain':
+        specifier: workspace:*
+        version: link:../session-domain
+
   packages/contracts:
     dependencies:
       zod:
