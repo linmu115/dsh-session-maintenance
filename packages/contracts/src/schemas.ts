@@ -385,7 +385,7 @@ export const jobEventSchema = z.discriminatedUnion("type", [
 
 export const sessionQuerySchema = z.strictObject({
   cursor: z.string().optional(),
-  limit: z.number().int().min(1).max(200).optional(),
+  limit: z.number().int().min(1).max(100).optional(),
   platform: platformKindSchema.optional(),
   status: sessionStatusSchema.optional(),
 });
@@ -561,6 +561,7 @@ export const restoreTransactionRequestSchema = z.strictObject({
   transactionId: idSchema,
   confirmationToken: idSchema,
 });
+export const restoreOperationRequestSchema = z.strictObject({ confirmationToken: idSchema });
 export const createCheckpointRequestSchema = z.strictObject({
   name: z.string().min(1),
   description: z.string(),
@@ -571,6 +572,10 @@ export const createCheckpointRequestSchema = z.strictObject({
 });
 export const checkpointRestoreRequestSchema = z.strictObject({
   checkpointId: idSchema,
+  targetInstanceId: idSchema,
+  createdAt: timestampSchema,
+});
+export const checkpointRestoreBodySchema = z.strictObject({
   targetInstanceId: idSchema,
   createdAt: timestampSchema,
 });
@@ -593,6 +598,79 @@ export const planResponseSchema = z.strictObject({ plan: syncPlanSchema });
 export const jobAcceptedResponseSchema = z.strictObject({ job: jobRefSchema });
 export const transactionResponseSchema = z.strictObject({ transaction: transactionRecordSchema });
 export const checkpointResponseSchema = z.strictObject({ checkpoint: checkpointSchema });
+
+export const sessionDetailSchema = z.strictObject({
+  summary: sessionSummarySchema,
+  bindings: z.array(platformBindingSchema),
+  heads: z.array(observedHeadSchema),
+});
+
+export const versionContentSchema = z.strictObject({
+  manifest: sessionVersionManifestSchema,
+  session: normalizedSessionSchema,
+});
+
+export const transactionQuerySchema = z.strictObject({
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  status: transactionStatusSchema.optional(),
+});
+
+export const transactionSummarySchema = z.strictObject({
+  id: idSchema,
+  planId: idSchema,
+  platform: z.literal("dsh"),
+  instanceId: idSchema,
+  status: transactionStatusSchema,
+  errorCode: z.string().optional(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+
+export const transactionDetailSchema = z.strictObject({
+  transaction: transactionRecordSchema,
+  steps: z.array(transactionStepSchema),
+  backup: backupManifestSchema.optional(),
+});
+
+export const adapterDiagnosticSchema = z.strictObject({
+  instance: instanceStatusSchema,
+  readContract: adapterContractRefSchema,
+  writeContract: adapterContractRefSchema.optional(),
+  writeCapabilities: z.array(z.string()),
+  writeStatus: z.union([compatibilityStatusSchema, z.literal("unavailable")]),
+  issues: z.array(compatibilityIssueSchema),
+});
+
+export const maintenanceSettingsSchema = z.strictObject({
+  codexInstanceId: z.string().nullable(),
+  dshInstanceId: z.string().nullable(),
+  workspaceMappingId: z.string().nullable(),
+  syncSingleSidedTitle: z.boolean(),
+  syncArchive: z.boolean(),
+  scanScope: z.enum(["current", "registered"]),
+  backupRetention: z.number().int().min(1).max(10_000),
+  allowBatchSafeApply: z.boolean(),
+});
+
+export const maintenanceSettingsPatchSchema = maintenanceSettingsSchema.partial().strict();
+
+export const dashboardOverviewSchema = z.strictObject({
+  sessions: nonNegativeIntegerSchema,
+  conflicts: nonNegativeIntegerSchema,
+  unmapped: nonNegativeIntegerSchema,
+  unresolvedTransactions: nonNegativeIntegerSchema,
+  instances: z.array(instanceStatusSchema),
+});
+
+export const sessionDetailResponseSchema = z.strictObject({ session: sessionDetailSchema });
+export const versionContentResponseSchema = z.strictObject({ version: versionContentSchema });
+export const transactionListResponseSchema = z.strictObject({ page: pageSchema(transactionSummarySchema) });
+export const transactionDetailResponseSchema = z.strictObject({ detail: transactionDetailSchema });
+export const checkpointListResponseSchema = z.strictObject({ checkpoints: z.array(checkpointSchema) });
+export const diagnosticsResponseSchema = z.strictObject({ diagnostics: z.array(adapterDiagnosticSchema) });
+export const settingsResponseSchema = z.strictObject({ settings: maintenanceSettingsSchema });
+export const overviewResponseSchema = z.strictObject({ overview: dashboardOverviewSchema });
 
 export const continuationModeSchema = z.enum(["full", "checkpoint", "structured-summary"]);
 export const continuationJobStatusSchema = z.enum([

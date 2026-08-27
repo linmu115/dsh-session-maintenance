@@ -19,6 +19,7 @@ import {
   loadConfig,
   registeredCodexTargets,
   registeredInstances,
+  updateSettings,
 } from "./config.js";
 import { SessionMaintenanceEngine } from "./engine.js";
 
@@ -73,6 +74,10 @@ export async function createReadOnlyComposition(options: CompositionOptions): Pr
     repository,
     objectStore,
     continuations,
+    settingsPort: {
+      get: async () => (await loadConfig(options.stateRoot)).settings,
+      patch: (input) => updateSettings(options.stateRoot, input),
+    },
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
 }

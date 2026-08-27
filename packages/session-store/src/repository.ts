@@ -42,6 +42,8 @@ import {
   type TransactionRecord,
   type TransactionStep,
   type TransactionTransition,
+  type TransactionQuery,
+  type TransactionSummary,
   type VersionGraphData,
   type VersionGraphPage,
   type VerifiedRefAdvance,
@@ -259,6 +261,24 @@ function headJson(row: HeadRow): ObservedHead {
     observedAt: row.observed_at,
     fingerprint: JSON.parse(row.fingerprint_json) as unknown,
   });
+}
+
+function sessionSummary(row: SessionRow): SessionSummary {
+  const platforms = (row.platforms?.split(",") ?? []).sort() as PlatformKind[];
+  const status: SessionStatus =
+    row.binding_count < 2 || row.head_count < 2
+      ? "unmapped"
+      : row.distinct_heads === 1
+        ? "equal"
+        : "diverged";
+  return {
+    logicalSessionId: row.id,
+    title: row.display_title,
+    archived: Boolean(row.archived),
+    platforms,
+    status,
+    updatedAt: row.updated_at ?? row.created_at,
+  };
 }
 
 function versionIdentity(manifest: SessionVersionManifest): JsonValue {
@@ -990,23 +1010,7 @@ export class SqliteSessionRepository {
          ORDER BY COALESCE(MAX(pr.observed_at), ls.created_at) DESC, ls.id`,
       )
       .all() as unknown as SessionRow[];
-    const summaries = rows.map((row): SessionSummary => {
-      const platforms = (row.platforms?.split(",") ?? []).sort() as PlatformKind[];
-      const status: SessionStatus =
-        row.binding_count < 2 || row.head_count < 2
-          ? "unmapped"
-          : row.distinct_heads === 1
-            ? "equal"
-            : "diverged";
-      return {
-        logicalSessionId: row.id,
-        title: row.display_title,
-        archived: Boolean(row.archived),
-        platforms,
-        status,
-        updatedAt: row.updated_at ?? row.created_at,
-      };
-    });
+    const summaries = rows.map(sessionSummary);
     const filtered = summaries.filter(
       (summary) =>
         (query.platform === undefined || summary.platforms.includes(query.platform)) &&
@@ -1017,6 +1021,25 @@ export class SqliteSessionRepository {
       items,
       ...(offset + limit < filtered.length ? { nextCursor: String(offset + limit) } : {}),
     };
+  }
+
+  async getSessionSummary(logicalSessionId: string): Promise<SessionSummary | undefined> {
+    const row = this.database
+      .prepare(
+        `SELECT ls.id, ls.display_title, ls.archived, ls.created_at,
+                GROUP_CONCAT(DISTINCT pb.platform) AS platforms,
+                COUNT(DISTINCT pb.id) AS binding_count,
+                COUNT(DISTINCT pr.binding_id) AS head_count,
+                COUNT(DISTINCT pr.version_id) AS distinct_heads,
+                MAX(pr.observed_at) AS updated_at
+         FROM logical_sessions ls
+         LEFT JOIN platform_bindings pb ON pb.logical_session_id = ls.id
+         LEFT JOIN platform_refs pr ON pr.binding_id = pb.id
+         WHERE ls.id = ?
+         GROUP BY ls.id`,
+      )
+      .get(logicalSessionId) as SessionRow | undefined;
+    return row === undefined ? undefined : sessionSummary(row);
   }
 
   async getGraphPage(logicalSessionId: string, cursor?: string): Promise<VersionGraphPage> {
@@ -1240,6 +1263,38 @@ export class SqliteSessionRepository {
       )
       .all() as unknown as TransactionRow[];
     return rows.map(transactionJson);
+  }
+
+  async listTransactions(query: TransactionQuery): Promise<Page<TransactionSummary>> {
+    const limit = Math.min(Math.max(query.limit ?? 50, 1), 100);
+    const offset = query.cursor === undefined ? 0 : Number.parseInt(query.cursor, 10);
+    if (!Number.isSafeInteger(offset) || offset < 0) {
+      throw new TypeError(`Invalid transaction cursor: ${query.cursor}`);
+    }
+    const rows = this.database
+      .prepare(
+        `SELECT id, plan_id, plan_hash, platform, instance_id, root_identity,
+                adapter_contract_json, status, result_json, error_code, created_at, updated_at
+         FROM transactions
+         WHERE (? IS NULL OR status = ?)
+         ORDER BY updated_at DESC, id
+         LIMIT ? OFFSET ?`,
+      )
+      .all(query.status ?? null, query.status ?? null, limit + 1, offset) as unknown as TransactionRow[];
+    const items = rows.slice(0, limit).map((row): TransactionSummary => ({
+      id: row.id,
+      planId: row.plan_id,
+      platform: "dsh",
+      instanceId: row.instance_id,
+      status: row.status,
+      ...(row.error_code === null ? {} : { errorCode: row.error_code }),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    }));
+    return {
+      items,
+      ...(rows.length > limit ? { nextCursor: String(offset + limit) } : {}),
+    };
   }
 
   async nextTransactionSequence(transactionId: string): Promise<number> {

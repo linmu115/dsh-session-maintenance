@@ -7,6 +7,7 @@ import {
   jobRefSchema,
   type JobEvent,
   type JobRef,
+  type JobRequest,
   type JsonValue,
 } from "@linmu/dsh-session-contracts";
 import { canonicalJson } from "@linmu/dsh-session-domain";
@@ -28,7 +29,7 @@ type JobEventInput =
 
 export interface StoredJob {
   readonly ref: JobRef;
-  readonly request: { readonly kind: string; readonly instanceIds?: readonly string[] };
+  readonly request: JobRequest;
   readonly result?: JsonValue;
 }
 
@@ -38,13 +39,25 @@ export class JobStore {
   constructor(readonly database: DatabaseSync, private readonly clock: () => string = () => new Date().toISOString()) {}
 
   createScan(instanceIds: readonly string[]): JobRef {
+    return this.create({ kind: "scan", instanceIds });
+  }
+
+  createApply(planId: string): JobRef {
+    return this.create({ kind: "apply", planId });
+  }
+
+  createRestore(transactionId: string): JobRef {
+    return this.create({ kind: "restore", transactionId });
+  }
+
+  private create(request: JobRequest): JobRef {
     const id = `job_${randomUUID().replaceAll("-", "")}`;
     const now = this.clock();
     this.database.exec("BEGIN IMMEDIATE");
     try {
       this.database.prepare(
         "INSERT INTO jobs (id, status, request_json, result_json, created_at, updated_at) VALUES (?, 'queued', ?, NULL, ?, ?)",
-      ).run(id, canonicalJson({ kind: "scan", instanceIds: [...instanceIds] }), now, now);
+      ).run(id, canonicalJson(request as unknown as JsonValue), now, now);
       this.insertEvent({ jobId: id, sequence: 0, at: now, type: "queued" });
       this.database.exec("COMMIT");
     } catch (error) {

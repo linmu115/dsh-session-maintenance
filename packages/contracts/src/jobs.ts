@@ -7,6 +7,11 @@ export interface JobRef {
   readonly status: JobStatus;
 }
 
+export type JobRequest =
+  | { readonly kind: "scan"; readonly instanceIds: readonly string[] }
+  | { readonly kind: "apply"; readonly planId: string }
+  | { readonly kind: "restore"; readonly transactionId: string };
+
 export interface JobEventBase {
   readonly jobId: string;
   readonly sequence: number;

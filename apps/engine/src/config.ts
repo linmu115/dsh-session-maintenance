@@ -4,9 +4,12 @@ import { join } from "node:path";
 
 import type {
   CodexContinuationTarget,
+  MaintenanceSettings,
+  MaintenanceSettingsPatch,
   PlatformKind,
   RegisteredInstance,
 } from "@linmu/dsh-session-contracts";
+import { maintenanceSettingsSchema, maintenanceSettingsPatchSchema } from "@linmu/dsh-session-contracts";
 import { parse, stringify } from "yaml";
 
 export interface EngineConfig {
@@ -27,9 +30,21 @@ export interface EngineConfig {
     readonly permissions?: string;
     readonly command?: string;
   }>>;
+  readonly settings: MaintenanceSettings;
 }
 
-const EMPTY_CONFIG: EngineConfig = { schemaVersion: 1, instances: {}, codexTargets: {} };
+const DEFAULT_SETTINGS: MaintenanceSettings = {
+  codexInstanceId: null,
+  dshInstanceId: null,
+  workspaceMappingId: null,
+  syncSingleSidedTitle: true,
+  syncArchive: false,
+  scanScope: "current",
+  backupRetention: 20,
+  allowBatchSafeApply: false,
+};
+
+const EMPTY_CONFIG: EngineConfig = { schemaVersion: 1, instances: {}, codexTargets: {}, settings: DEFAULT_SETTINGS };
 
 export function configPathFor(stateRoot: string): string {
   return join(stateRoot, "config.yaml");
@@ -92,7 +107,8 @@ function validateConfig(value: unknown): EngineConfig {
       ...(record.command === undefined ? {} : { command: record.command as string }),
     };
   }
-  return { schemaVersion: 1, instances, codexTargets };
+  const settings = maintenanceSettingsSchema.parse(root.settings ?? DEFAULT_SETTINGS) as MaintenanceSettings;
+  return { schemaVersion: 1, instances, codexTargets, settings };
 }
 
 async function atomicWrite(path: string, content: string): Promise<void> {
@@ -185,6 +201,7 @@ export async function addCodexTarget(
     schemaVersion: 1,
     instances: config.instances,
     codexTargets: { ...config.codexTargets, [input.id]: target },
+    settings: config.settings,
   }));
   return {
     id: input.id,
@@ -209,6 +226,25 @@ export async function addInstance(
     root: resolved.root,
     platformVersion: resolved.platformVersion,
   } };
-  await atomicWrite(configPathFor(stateRoot), stringify({ schemaVersion: 1, instances, codexTargets: config.codexTargets }));
+  await atomicWrite(configPathFor(stateRoot), stringify({ schemaVersion: 1, instances, codexTargets: config.codexTargets, settings: config.settings }));
   return resolved;
+}
+
+export async function updateSettings(
+  stateRoot: string,
+  input: MaintenanceSettingsPatch,
+): Promise<MaintenanceSettings> {
+  const patch = maintenanceSettingsPatchSchema.parse(input) as MaintenanceSettingsPatch;
+  const config = await initializeStateRoot(stateRoot);
+  const next = maintenanceSettingsSchema.parse({ ...config.settings, ...patch }) as MaintenanceSettings;
+  const codex = next.codexInstanceId === null ? undefined : config.instances[next.codexInstanceId];
+  const dsh = next.dshInstanceId === null ? undefined : config.instances[next.dshInstanceId];
+  if (next.codexInstanceId !== null && codex?.platform !== "codex") {
+    throw new TypeError(`Settings Codex instance is not registered: ${next.codexInstanceId}`);
+  }
+  if (next.dshInstanceId !== null && dsh?.platform !== "dsh") {
+    throw new TypeError(`Settings DSH instance is not registered: ${next.dshInstanceId}`);
+  }
+  await atomicWrite(configPathFor(stateRoot), stringify({ ...config, settings: next }));
+  return next;
 }

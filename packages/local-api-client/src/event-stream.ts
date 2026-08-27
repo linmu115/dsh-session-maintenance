@@ -10,13 +10,21 @@ export async function* decodeJobEventStream(
     while (true) {
       const item = await reader.read();
       buffer += decoder.decode(item.value, { stream: !item.done });
-      let boundary = buffer.indexOf("\n\n");
-      while (boundary >= 0) {
-        const block = buffer.slice(0, boundary);
-        buffer = buffer.slice(boundary + 2);
-        const data = block.split("\n").filter((line) => line.startsWith("data: ")).map((line) => line.slice(6)).join("\n");
-        if (data) yield jobEventSchema.parse(JSON.parse(data)) as JobEvent;
-        boundary = buffer.indexOf("\n\n");
+      let boundary = /\r?\n\r?\n/u.exec(buffer);
+      while (boundary !== null) {
+        const block = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary[0].length);
+        const lines = block.split(/\r?\n/u);
+        const data = lines.filter((line) => line.startsWith("data: ")).map((line) => line.slice(6)).join("\n");
+        if (data) {
+          const event = jobEventSchema.parse(JSON.parse(data)) as JobEvent;
+          const id = lines.find((line) => line.startsWith("id: "))?.slice(4);
+          if (id !== undefined && Number.parseInt(id, 10) !== event.sequence) {
+            throw new TypeError("SSE event id does not match its persisted sequence");
+          }
+          yield event;
+        }
+        boundary = /\r?\n\r?\n/u.exec(buffer);
       }
       if (item.done) return;
     }

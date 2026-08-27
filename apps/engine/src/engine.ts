@@ -34,12 +34,38 @@ import {
   type TransactionRecord,
   type TransactionRef,
   type WriteEngine,
+  type AdapterDiagnostic,
+  type DashboardOverview,
+  type MaintenanceSettings,
+  type MaintenanceSettingsPatch,
+  type SessionDetail,
+  type TransactionDetail,
+  type TransactionQuery,
+  type TransactionSummary,
+  type VersionContent,
+  type IssuedConfirmation,
 } from "@linmu/dsh-session-contracts";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
 import type { SqliteSessionRepository } from "@linmu/dsh-session-store";
 
 import type { WriteService } from "./write-service.js";
+
+export interface EngineSettingsPort {
+  get(): Promise<MaintenanceSettings>;
+  patch(input: MaintenanceSettingsPatch): Promise<MaintenanceSettings>;
+}
+
+const DEFAULT_SETTINGS: MaintenanceSettings = {
+  codexInstanceId: null,
+  dshInstanceId: null,
+  workspaceMappingId: null,
+  syncSingleSidedTitle: true,
+  syncArchive: false,
+  scanScope: "current",
+  backupRetention: 20,
+  allowBatchSafeApply: false,
+};
 
 function semanticEvents(events: readonly NormalizedEvent[]): readonly string[] {
   return events.map((event) => JSON.stringify({
@@ -64,6 +90,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   private readonly clock: () => string;
   private readonly continuations: ContinuationService;
   private readonly writeService: WriteService | undefined;
+  private readonly settingsPort: EngineSettingsPort;
 
   constructor(input: {
     readonly instances: readonly RegisteredInstance[];
@@ -73,6 +100,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly continuations: ContinuationService;
     readonly clock?: () => string;
     readonly writeService?: WriteService;
+    readonly settingsPort?: EngineSettingsPort;
   }) {
     this.instances = input.instances;
     this.adapters = input.adapters;
@@ -82,6 +110,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.clock = input.clock ?? (() => new Date().toISOString());
     this.discovery = new DiscoveryService(input);
     this.writeService = input.writeService;
+    this.settingsPort = input.settingsPort ?? {
+      get: async () => DEFAULT_SETTINGS,
+      patch: async (patch) => ({ ...DEFAULT_SETTINGS, ...patch }),
+    };
   }
 
   async listInstances(): Promise<readonly InstanceStatus[]> {
@@ -105,6 +137,98 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
 
   getGraph(id: string, cursor?: string): Promise<VersionGraphPage> {
     return this.repository.getGraphPage(id, cursor);
+  }
+
+  async getSessionDetail(id: string): Promise<SessionDetail> {
+    const summary = await this.repository.getSessionSummary(id);
+    if (summary === undefined) throw new SessionMaintenanceError("OBJECT_CORRUPT", `Session is missing: ${id}`);
+    const bindings = await this.repository.listBindings(id);
+    const heads = (await Promise.all(bindings.map((binding) => this.repository.getObservedHead(binding.id))))
+      .filter((head): head is NonNullable<typeof head> => head !== undefined);
+    return { summary, bindings, heads };
+  }
+
+  async getVersionContent(logicalSessionId: string, versionId: string, maxBytes = 4 * 1024 * 1024): Promise<VersionContent> {
+    const manifest = await this.repository.getVersion(versionId);
+    if (manifest?.logicalSessionId !== logicalSessionId) {
+      throw new SessionMaintenanceError("OBJECT_CORRUPT", `Version is missing: ${versionId}`);
+    }
+    const bytes = await this.objectStore.get(manifest.bodyObject);
+    if (bytes.byteLength > maxBytes) {
+      throw new SessionMaintenanceError("CONTENT_TOO_LARGE", `Version content exceeds ${maxBytes} bytes`);
+    }
+    const session = normalizedSessionSchema.parse(JSON.parse(Buffer.from(bytes).toString("utf8"))) as unknown as NormalizedSession;
+    return { manifest, session };
+  }
+
+  listTransactions(query: TransactionQuery) {
+    return this.repository.listTransactions(query);
+  }
+
+  async getTransactionDetail(id: string): Promise<TransactionDetail | undefined> {
+    const transaction = await this.repository.getTransaction(id);
+    if (transaction === undefined) return undefined;
+    const backup = await this.repository.getBackupManifest(id);
+    return {
+      transaction,
+      steps: await this.repository.listTransactionSteps(id),
+      ...(backup === undefined ? {} : { backup }),
+    };
+  }
+
+  listCheckpoints(): Promise<readonly Checkpoint[]> {
+    return this.repository.listCheckpoints();
+  }
+
+  async listAdapterDiagnostics(): Promise<readonly AdapterDiagnostic[]> {
+    const readByPlatform = new Map(this.adapters.map((adapter) => [adapter.platform, adapter]));
+    return Promise.all(this.instances.map(async (instance) => {
+      const read = readByPlatform.get(instance.platform);
+      if (read === undefined) throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `No read Adapter: ${instance.id}`);
+      const readProbe = await read.probe(instance);
+      const status: InstanceStatus = {
+        id: instance.id,
+        platform: instance.platform,
+        displayName: instance.displayName,
+        compatibility: { status: readProbe.status, issues: readProbe.issues },
+      };
+      if (instance.platform !== "dsh" || this.writeService === undefined) {
+        return { instance: status, readContract: readProbe.contract, writeCapabilities: [], writeStatus: "unavailable", issues: readProbe.issues };
+      }
+      const write = await this.writeService.probe(instance);
+      return {
+        instance: status,
+        readContract: readProbe.contract,
+        writeContract: write.contract,
+        writeCapabilities: write.capabilities,
+        writeStatus: write.status,
+        issues: [...readProbe.issues, ...write.issues],
+      };
+    }));
+  }
+
+  getSettings(): Promise<MaintenanceSettings> { return this.settingsPort.get(); }
+  patchSettings(input: MaintenanceSettingsPatch): Promise<MaintenanceSettings> { return this.settingsPort.patch(input); }
+
+  async overview(): Promise<DashboardOverview> {
+    const page = await this.repository.listSessions({ limit: 100 });
+    const unresolved = (await this.repository.listTransactions({ limit: 100 })).items.filter((item) =>
+      ["prepared", "backing-up", "applying", "verifying", "restoring", "restore-failed", "manual-review"].includes(item.status),
+    ).length;
+    return {
+      sessions: (await this.repository.counts()).logicalSessions,
+      conflicts: page.items.filter((item) => ["diverged", "rewritten", "conflict"].includes(item.status)).length,
+      unmapped: page.items.filter((item) => item.status === "unmapped").length,
+      unresolvedTransactions: unresolved,
+      instances: await this.listInstances(),
+    };
+  }
+
+  async issueRestoreConfirmation(transactionId: string): Promise<IssuedConfirmation> {
+    const writer = this.writer();
+    const service = writer.executor.confirmationService;
+    if (service === undefined) throw new SessionMaintenanceError("CONFIRMATION_REQUIRED", "Confirmation service is unavailable");
+    return service.issue(await writer.executor.restoreScope(transactionId));
   }
 
   async scan(request: ScanRequest): Promise<DiscoveryResult> {

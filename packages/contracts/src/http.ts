@@ -4,8 +4,19 @@ import type {
   Page,
   SessionSummary,
   TransactionRecord,
+  NormalizedSession,
+  PlatformBinding,
+  ObservedHead,
+  SessionVersionManifest,
   VersionGraphPage,
 } from "./model.js";
+import type {
+  AdapterDiagnostic,
+  DashboardOverview,
+  MaintenanceSettings,
+  TransactionDetail,
+  TransactionSummary,
+} from "./operations.js";
 import type { JobRef } from "./jobs.js";
 import type { SyncPlan } from "./plans.js";
 
@@ -45,3 +56,22 @@ export interface TransactionResponse {
 export interface CheckpointResponse {
   readonly checkpoint: Checkpoint;
 }
+
+export interface SessionDetailResponse {
+  readonly session: {
+    readonly summary: SessionSummary;
+    readonly bindings: readonly PlatformBinding[];
+    readonly heads: readonly ObservedHead[];
+  };
+}
+
+export interface VersionContentResponse {
+  readonly version: { readonly manifest: SessionVersionManifest; readonly session: NormalizedSession };
+}
+
+export interface TransactionListResponse { readonly page: Page<TransactionSummary> }
+export interface TransactionDetailResponse { readonly detail: TransactionDetail }
+export interface CheckpointListApiResponse { readonly checkpoints: readonly Checkpoint[] }
+export interface DiagnosticsResponse { readonly diagnostics: readonly AdapterDiagnostic[] }
+export interface SettingsResponse { readonly settings: MaintenanceSettings }
+export interface OverviewResponse { readonly overview: DashboardOverview }

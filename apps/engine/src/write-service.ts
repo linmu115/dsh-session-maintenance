@@ -18,6 +18,7 @@ import {
   type TransactionRecord,
   type TransactionRef,
   type TransactionRepository,
+  type WriteProbe,
 } from "@linmu/dsh-session-contracts";
 import {
   bindingIdFor,
@@ -144,6 +145,14 @@ export class WriteService {
       "CAPABILITY_NOT_AVAILABLE",
       "Checkpoint branch creation is outside the P16 fast-forward gate",
     );
+  }
+
+  probe(instance: RegisteredInstance): Promise<WriteProbe> {
+    const adapter = this.executor.adapters.get("dsh");
+    if (adapter === undefined) {
+      throw new SessionMaintenanceError("CAPABILITY_NOT_AVAILABLE", "No DSH write Adapter is attached");
+    }
+    return adapter.probeWrite(instance);
   }
 
   private async verifyAndAdvance(plan: SyncPlan, transaction: TransactionRecord): Promise<void> {

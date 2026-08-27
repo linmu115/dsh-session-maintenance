@@ -2,15 +2,29 @@ import { z, type ZodType } from "zod";
 
 import {
   apiErrorResponseSchema,
+  checkpointListResponseSchema,
+  checkpointResponseSchema,
   continuationJobResponseSchema,
   continuationPreviewResponseSchema,
+  diagnosticsResponseSchema,
+  issuedConfirmationSchema,
   jobAcceptedResponseSchema,
   jobRefSchema,
+  overviewResponseSchema,
   pageSchema,
   planResponseSchema,
+  sessionDetailResponseSchema,
   sessionDiffSchema,
   sessionSummarySchema,
+  settingsResponseSchema,
+  transactionDetailResponseSchema,
+  transactionListResponseSchema,
+  versionContentResponseSchema,
   versionGraphResponseSchema,
+  type AdapterDiagnostic,
+  type Checkpoint,
+  type CheckpointRestoreRequest,
+  type CreateCheckpointRequest,
   type DiffRequest,
   type ContinuationJob,
   type ContinuationPreview,
@@ -18,13 +32,22 @@ import {
   type CreateContinuationRequest,
   type JobEvent,
   type JobRef,
+  type IssuedConfirmation,
+  type DashboardOverview,
+  type MaintenanceSettings,
+  type MaintenanceSettingsPatch,
   type Page,
   type PlanRequest,
   type ResolutionContinuationRequest,
   type SessionDiff,
   type SessionQuery,
   type SessionSummary,
+  type SessionDetail,
   type SyncPlan,
+  type TransactionDetail,
+  type TransactionQuery,
+  type TransactionSummary,
+  type VersionContent,
   type VersionGraphPage,
 } from "@linmu/dsh-session-contracts";
 
@@ -38,6 +61,7 @@ export interface MaintenanceClientOptions {
 
 const diffResponseSchema = z.strictObject({ diff: sessionDiffSchema });
 const jobResponseSchema = z.strictObject({ job: jobRefSchema, result: z.unknown().optional() });
+const confirmationResponseSchema = z.strictObject({ confirmation: issuedConfirmationSchema });
 
 export class MaintenanceClient {
   private readonly origin: string;
@@ -63,6 +87,28 @@ export class MaintenanceClient {
   async getGraph(id: string, cursor?: string, signal?: AbortSignal): Promise<VersionGraphPage> {
     const suffix = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;
     return (await this.request(`/v1/sessions/${encodeURIComponent(id)}/graph${suffix}`, {}, versionGraphResponseSchema, signal)).graph as unknown as VersionGraphPage;
+  }
+
+  async overview(signal?: AbortSignal): Promise<DashboardOverview> {
+    return (await this.request("/v1/overview", {}, overviewResponseSchema, signal)).overview as DashboardOverview;
+  }
+
+  async getSession(id: string, signal?: AbortSignal): Promise<SessionDetail> {
+    return (await this.request(
+      `/v1/sessions/${encodeURIComponent(id)}`,
+      {},
+      sessionDetailResponseSchema,
+      signal,
+    )).session as SessionDetail;
+  }
+
+  async getVersion(id: string, versionId: string, signal?: AbortSignal): Promise<VersionContent> {
+    return (await this.request(
+      `/v1/sessions/${encodeURIComponent(id)}/versions/${encodeURIComponent(versionId)}`,
+      {},
+      versionContentResponseSchema,
+      signal,
+    )).version as VersionContent;
   }
 
   async getDiff(input: DiffRequest, signal?: AbortSignal): Promise<SessionDiff> {
@@ -143,6 +189,106 @@ export class MaintenanceClient {
     return (await this.request(`/v1/plans/${encodeURIComponent(id)}`, {}, planResponseSchema, signal)).plan as unknown as SyncPlan;
   }
 
+  async applyPlan(id: string, signal?: AbortSignal): Promise<JobRef> {
+    return (await this.request(
+      `/v1/plans/${encodeURIComponent(id)}/apply`,
+      this.jsonPost({}),
+      jobAcceptedResponseSchema,
+      signal,
+    )).job;
+  }
+
+  async listTransactions(
+    query: TransactionQuery = {},
+    signal?: AbortSignal,
+  ): Promise<Page<TransactionSummary>> {
+    const search = new URLSearchParams();
+    if (query.cursor !== undefined) search.set("cursor", query.cursor);
+    if (query.limit !== undefined) search.set("limit", String(query.limit));
+    if (query.status !== undefined) search.set("status", query.status);
+    const value = await this.request(
+      `/v1/transactions${search.size === 0 ? "" : `?${search}`}`,
+      {},
+      transactionListResponseSchema,
+      signal,
+    );
+    return value.page as unknown as Page<TransactionSummary>;
+  }
+
+  async getTransaction(id: string, signal?: AbortSignal): Promise<TransactionDetail> {
+    return (await this.request(
+      `/v1/transactions/${encodeURIComponent(id)}`,
+      {},
+      transactionDetailResponseSchema,
+      signal,
+    )).detail as TransactionDetail;
+  }
+
+  async requestRestoreConfirmation(id: string, signal?: AbortSignal): Promise<IssuedConfirmation> {
+    return (await this.request(
+      `/v1/transactions/${encodeURIComponent(id)}/restore-confirmation`,
+      this.jsonPost({}),
+      confirmationResponseSchema,
+      signal,
+    )).confirmation as IssuedConfirmation;
+  }
+
+  async restoreTransaction(id: string, confirmationToken: string, signal?: AbortSignal): Promise<JobRef> {
+    return (await this.request(
+      `/v1/transactions/${encodeURIComponent(id)}/restore`,
+      this.jsonPost({ confirmationToken }),
+      jobAcceptedResponseSchema,
+      signal,
+    )).job;
+  }
+
+  async listCheckpoints(signal?: AbortSignal): Promise<readonly Checkpoint[]> {
+    return (await this.request("/v1/checkpoints", {}, checkpointListResponseSchema, signal)).checkpoints as readonly Checkpoint[];
+  }
+
+  async createCheckpoint(input: CreateCheckpointRequest, signal?: AbortSignal): Promise<Checkpoint> {
+    return (await this.request(
+      "/v1/checkpoints",
+      this.jsonPost(input),
+      checkpointResponseSchema,
+      signal,
+    )).checkpoint as Checkpoint;
+  }
+
+  async createCheckpointRestorePlan(
+    input: CheckpointRestoreRequest,
+    signal?: AbortSignal,
+  ): Promise<SyncPlan> {
+    return (await this.request(
+      `/v1/checkpoints/${encodeURIComponent(input.checkpointId)}/restore-plan`,
+      this.jsonPost({ targetInstanceId: input.targetInstanceId, createdAt: input.createdAt }),
+      planResponseSchema,
+      signal,
+    )).plan as unknown as SyncPlan;
+  }
+
+  async diagnostics(signal?: AbortSignal): Promise<readonly AdapterDiagnostic[]> {
+    return (await this.request(
+      "/v1/diagnostics/adapters",
+      {},
+      diagnosticsResponseSchema,
+      signal,
+    )).diagnostics as readonly AdapterDiagnostic[];
+  }
+
+  async getSettings(signal?: AbortSignal): Promise<MaintenanceSettings> {
+    return (await this.request("/v1/settings", {}, settingsResponseSchema, signal)).settings as MaintenanceSettings;
+  }
+
+  async patchSettings(input: MaintenanceSettingsPatch, signal?: AbortSignal): Promise<MaintenanceSettings> {
+    return (await this.request(
+      "/v1/settings",
+      this.jsonPatch(input),
+      settingsResponseSchema,
+      signal,
+    )).settings as MaintenanceSettings;
+  }
+
   async scan(instanceIds: readonly string[], signal?: AbortSignal): Promise<JobRef> {
     return (await this.request("/v1/jobs/scan", this.jsonPost({ instanceIds }), jobAcceptedResponseSchema, signal)).job;
   }
@@ -163,6 +309,10 @@ export class MaintenanceClient {
 
   private jsonPost(value: unknown): RequestInit {
     return { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
+  }
+
+  private jsonPatch(value: unknown): RequestInit {
+    return { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
   }
 
   private async request<T>(path: string, init: RequestInit, schema: ZodType<T>, signal?: AbortSignal): Promise<T> {

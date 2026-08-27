@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { JobRunner } from "../src/jobs/job-runner.js";
 import { JobStore } from "../src/jobs/job-store.js";
@@ -27,5 +27,28 @@ describe("persistent scan job recovery", () => {
     expect(events.at(-1)?.type).toBe("completed");
     expect(store.get("job_unknown")?.ref.status).toBe("failed");
     expect(store.listEvents("job_unknown").at(-1)).toMatchObject({ type: "failed", code: "RECOVERY_REQUIRED" });
+  });
+
+  it("replays an interrupted apply through the idempotent write boundary but never persists restore tokens", async () => {
+    const fixture = await createEngineFixture("write-job-recovery");
+    cleanups.push(fixture.cleanupAll);
+    const store = new JobStore(fixture.engine.repository.database);
+    const apply = store.createApply("plan-fixture");
+    const restore = store.createRestore("transaction-fixture");
+    fixture.engine.repository.database.prepare("UPDATE jobs SET status = 'running' WHERE id IN (?, ?)")
+      .run(apply.id, restore.id);
+    let applyCalls = 0;
+    fixture.engine.applyPlan = async () => {
+      applyCalls += 1;
+      return { id: "transaction-fixture", status: "completed" };
+    };
+
+    const runner = new JobRunner(fixture.engine, store);
+    runner.start();
+    await vi.waitFor(() => expect(store.get(apply.id)?.ref.status).toBe("completed"));
+    expect(applyCalls).toBe(1);
+    expect(store.get(apply.id)?.ref.status).toBe("completed");
+    expect(store.get(restore.id)?.request).toEqual({ kind: "restore", transactionId: "transaction-fixture" });
+    expect(store.listEvents(restore.id).at(-1)).toMatchObject({ type: "failed", code: "RECOVERY_REQUIRED" });
   });
 });

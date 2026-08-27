@@ -41,8 +41,10 @@ describe("authenticated loopback API", () => {
     });
     expect(pathInjection.status).toBe(400);
     expect((await fetch(`${server.origin}/v1/plans/plan_x/apply`, {
-      method: "POST", headers: { authorization: `Bearer ${server.token}` },
-    })).status).toBe(501);
+      method: "POST",
+      headers: { authorization: `Bearer ${server.token}`, "content-type": "application/json" },
+      body: "{}",
+    })).status).toBe(202);
   });
 
   it("refuses non-loopback binding", async () => {

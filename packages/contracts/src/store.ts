@@ -26,6 +26,7 @@ import type {
 } from "./model.js";
 import type { ContinuationJob, ContinuationTransition } from "./continuations.js";
 import type { SyncPlan } from "./plans.js";
+import type { TransactionQuery, TransactionSummary } from "./operations.js";
 
 export interface VerifiedRefAdvance {
   readonly logicalSessionId: string;
@@ -54,6 +55,7 @@ export interface SessionRepository {
   counts(): Promise<RepositoryCounts>;
   getGraph(logicalSessionId: string): Promise<VersionGraphData>;
   listSessions(query: SessionQuery): Promise<Page<SessionSummary>>;
+  getSessionSummary(logicalSessionId: string): Promise<SessionSummary | undefined>;
   getGraphPage(logicalSessionId: string, cursor?: string): Promise<VersionGraphPage>;
   listReachableObjectIds(): Promise<readonly string[]>;
   savePlan(plan: SyncPlan): Promise<void>;
@@ -78,6 +80,7 @@ export interface TransactionRepository extends CheckpointRepository, Confirmatio
   getTransaction(id: string): Promise<TransactionRecord | undefined>;
   findTransactionByPlan(planId: string, planHash: string): Promise<TransactionRecord | undefined>;
   listRecoverableTransactions(): Promise<readonly TransactionRecord[]>;
+  listTransactions(query: TransactionQuery): Promise<Page<TransactionSummary>>;
   nextTransactionSequence(transactionId: string): Promise<number>;
   listTransactionSteps(transactionId: string): Promise<readonly TransactionStep[]>;
   recordTransactionStep(input: TransactionTransition): Promise<TransactionRecord>;

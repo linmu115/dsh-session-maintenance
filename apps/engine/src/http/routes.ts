@@ -1,14 +1,19 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 
 import {
   SessionMaintenanceError,
   continuationPreviewRequestSchema,
   resolutionContinuationRequestSchema,
   diffRequestSchema,
+  checkpointRestoreBodySchema,
+  createCheckpointRequestSchema,
+  maintenanceSettingsPatchSchema,
   planRequestSchema,
+  restoreOperationRequestSchema,
   scanRequestSchema,
   sessionQuerySchema,
+  transactionQuerySchema,
   type DiffRequest,
   type ContinuationPreviewRequest,
   type CreateContinuationRequest,
@@ -16,6 +21,10 @@ import {
   type PlanRequest,
   type ResolutionContinuationRequest,
   type SessionQuery,
+  type CheckpointRestoreRequest,
+  type CreateCheckpointRequest,
+  type MaintenanceSettingsPatch,
+  type TransactionQuery,
 } from "@linmu/dsh-session-contracts";
 
 import type { SessionMaintenanceEngine } from "../engine.js";
@@ -41,6 +50,16 @@ function send(response: ServerResponse, status: number, value: unknown): void {
 
 function errorBody(code: string, message: string): JsonValue {
   return { error: { code, message } };
+}
+
+const emptyRequestSchema = z.strictObject({});
+
+function pathId(value: string): string {
+  const decoded = decodeURIComponent(value);
+  if (decoded.length === 0 || decoded.length > 256 || /[\\/\u0000-\u001f\u007f]/u.test(decoded)) {
+    throw new HttpBodyError(400, "Invalid path identifier");
+  }
+  return decoded;
 }
 
 export async function routeRequest(
@@ -70,6 +89,10 @@ export async function routeRequest(
       send(response, 200, { instances: await context.engine.listInstances() });
       return;
     }
+    if (request.method === "GET" && url.pathname === "/v1/overview") {
+      send(response, 200, { overview: await context.engine.overview() });
+      return;
+    }
     if (request.method === "GET" && url.pathname === "/v1/sessions") {
       const query = sessionQuerySchema.parse({
         ...(url.searchParams.has("cursor") ? { cursor: url.searchParams.get("cursor") } : {}),
@@ -82,7 +105,20 @@ export async function routeRequest(
     }
     const graph = url.pathname.match(/^\/v1\/sessions\/([^/]+)\/graph$/u);
     if (request.method === "GET" && graph !== null) {
-      send(response, 200, { graph: await context.engine.getGraph(decodeURIComponent(graph[1]!), url.searchParams.get("cursor") ?? undefined) });
+      send(response, 200, { graph: await context.engine.getGraph(pathId(graph[1]!), url.searchParams.get("cursor") ?? undefined) });
+      return;
+    }
+    const version = url.pathname.match(/^\/v1\/sessions\/([^/]+)\/versions\/([^/]+)$/u);
+    if (request.method === "GET" && version !== null) {
+      send(response, 200, { version: await context.engine.getVersionContent(
+        pathId(version[1]!),
+        pathId(version[2]!),
+      ) });
+      return;
+    }
+    const session = url.pathname.match(/^\/v1\/sessions\/([^/]+)$/u);
+    if (request.method === "GET" && session !== null) {
+      send(response, 200, { session: await context.engine.getSessionDetail(pathId(session[1]!)) });
       return;
     }
     if (request.method === "POST" && url.pathname === "/v1/diffs") {
@@ -111,12 +147,13 @@ export async function routeRequest(
     }
     const continuationRecover = url.pathname.match(/^\/v1\/continuations\/([^/]+)\/recover$/u);
     if (request.method === "POST" && continuationRecover !== null) {
-      send(response, 200, { continuation: await context.engine.recoverContinuation(decodeURIComponent(continuationRecover[1]!)) });
+      emptyRequestSchema.parse(await readJsonBody(request));
+      send(response, 200, { continuation: await context.engine.recoverContinuation(pathId(continuationRecover[1]!)) });
       return;
     }
     const continuation = url.pathname.match(/^\/v1\/continuations\/([^/]+)$/u);
     if (request.method === "GET" && continuation !== null) {
-      const stored = await context.engine.getContinuation(decodeURIComponent(continuation[1]!));
+      const stored = await context.engine.getContinuation(pathId(continuation[1]!));
       if (stored === undefined) { send(response, 404, errorBody("CONTINUATION_NOT_FOUND", "Continuation not found")); return; }
       send(response, 200, { continuation: stored });
       return;
@@ -128,7 +165,7 @@ export async function routeRequest(
     }
     const jobEvents = url.pathname.match(/^\/v1\/jobs\/([^/]+)\/events$/u);
     if (request.method === "GET" && jobEvents !== null) {
-      const id = decodeURIComponent(jobEvents[1]!);
+      const id = pathId(jobEvents[1]!);
       if (context.jobStore.get(id) === undefined) { send(response, 404, errorBody("NOT_FOUND", "Job not found")); return; }
       const last = request.headers["last-event-id"] ?? url.searchParams.get("after") ?? "-1";
       const after = Number.parseInt(Array.isArray(last) ? last[0] ?? "-1" : last, 10);
@@ -137,7 +174,7 @@ export async function routeRequest(
     }
     const job = url.pathname.match(/^\/v1\/jobs\/([^/]+)$/u);
     if (request.method === "GET" && job !== null) {
-      const stored = context.jobStore.get(decodeURIComponent(job[1]!));
+      const stored = context.jobStore.get(pathId(job[1]!));
       if (stored === undefined) { send(response, 404, errorBody("NOT_FOUND", "Job not found")); return; }
       send(response, 200, { job: stored.ref, ...(stored.result === undefined ? {} : { result: stored.result }) });
       return;
@@ -146,18 +183,84 @@ export async function routeRequest(
       send(response, 201, { plan: await context.engine.createPlan(planRequestSchema.parse(await readJsonBody(request)) as unknown as PlanRequest) });
       return;
     }
+    const planApply = url.pathname.match(/^\/v1\/plans\/([^/]+)\/apply$/u);
+    if (request.method === "POST" && planApply !== null) {
+      emptyRequestSchema.parse(await readJsonBody(request));
+      send(response, 202, { job: context.jobs.enqueueApply(pathId(planApply[1]!)) });
+      return;
+    }
     const plan = url.pathname.match(/^\/v1\/plans\/([^/]+)$/u);
     if (request.method === "GET" && plan !== null) {
-      const stored = await context.engine.getPlan(decodeURIComponent(plan[1]!));
+      const stored = await context.engine.getPlan(pathId(plan[1]!));
       if (stored === undefined) { send(response, 404, errorBody("NOT_FOUND", "Plan not found")); return; }
       send(response, 200, { plan: stored });
       return;
     }
-    if (
-      request.method === "POST" &&
-      (/^\/v1\/plans\/[^/]+\/apply$/u.test(url.pathname) || /^\/v1\/transactions\/[^/]+\/restore$/u.test(url.pathname))
-    ) {
-      throw new SessionMaintenanceError("CAPABILITY_NOT_AVAILABLE", "Write operations are unavailable in phase one");
+    if (request.method === "GET" && url.pathname === "/v1/transactions") {
+      const query = transactionQuerySchema.parse({
+        ...(url.searchParams.has("cursor") ? { cursor: url.searchParams.get("cursor") } : {}),
+        ...(url.searchParams.has("limit") ? { limit: Number(url.searchParams.get("limit")) } : {}),
+        ...(url.searchParams.has("status") ? { status: url.searchParams.get("status") } : {}),
+      }) as unknown as TransactionQuery;
+      send(response, 200, { page: await context.engine.listTransactions(query) });
+      return;
+    }
+    const restoreConfirmation = url.pathname.match(/^\/v1\/transactions\/([^/]+)\/restore-confirmation$/u);
+    if (request.method === "POST" && restoreConfirmation !== null) {
+      emptyRequestSchema.parse(await readJsonBody(request));
+      send(response, 201, { confirmation: await context.engine.issueRestoreConfirmation(pathId(restoreConfirmation[1]!)) });
+      return;
+    }
+    const transactionRestore = url.pathname.match(/^\/v1\/transactions\/([^/]+)\/restore$/u);
+    if (request.method === "POST" && transactionRestore !== null) {
+      const body = restoreOperationRequestSchema.parse(await readJsonBody(request));
+      send(response, 202, { job: context.jobs.enqueueRestore({
+        transactionId: pathId(transactionRestore[1]!),
+        confirmationToken: body.confirmationToken,
+      }) });
+      return;
+    }
+    const transaction = url.pathname.match(/^\/v1\/transactions\/([^/]+)$/u);
+    if (request.method === "GET" && transaction !== null) {
+      const detail = await context.engine.getTransactionDetail(pathId(transaction[1]!));
+      if (detail === undefined) { send(response, 404, errorBody("TRANSACTION_NOT_FOUND", "Transaction not found")); return; }
+      send(response, 200, { detail });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/checkpoints") {
+      send(response, 200, { checkpoints: await context.engine.listCheckpoints() });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/checkpoints") {
+      send(response, 201, { checkpoint: await context.engine.createCheckpoint(
+        createCheckpointRequestSchema.parse(await readJsonBody(request)) as unknown as CreateCheckpointRequest,
+      ) });
+      return;
+    }
+    const checkpointRestore = url.pathname.match(/^\/v1\/checkpoints\/([^/]+)\/restore-plan$/u);
+    if (request.method === "POST" && checkpointRestore !== null) {
+      const body = checkpointRestoreBodySchema.parse(await readJsonBody(request));
+      const input: CheckpointRestoreRequest = {
+        checkpointId: pathId(checkpointRestore[1]!),
+        targetInstanceId: body.targetInstanceId,
+        createdAt: body.createdAt,
+      };
+      send(response, 201, { plan: await context.engine.createCheckpointRestorePlan(input) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/diagnostics/adapters") {
+      send(response, 200, { diagnostics: await context.engine.listAdapterDiagnostics() });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/settings") {
+      send(response, 200, { settings: await context.engine.getSettings() });
+      return;
+    }
+    if (request.method === "PATCH" && url.pathname === "/v1/settings") {
+      send(response, 200, { settings: await context.engine.patchSettings(
+        maintenanceSettingsPatchSchema.parse(await readJsonBody(request)) as MaintenanceSettingsPatch,
+      ) });
+      return;
     }
     send(response, 404, errorBody("NOT_FOUND", "Route not found"));
   } catch (error) {
