@@ -57,6 +57,7 @@ function catalogFingerprint(summary: PlatformSessionSummary): StateFingerprint {
       title: summary.title,
       archived: summary.archived,
       workspaceId: summary.workspaceId,
+      workspaceLabel: summary.workspaceLabel ?? null,
       updatedAt: summary.updatedAt,
       hint: summary.hint,
     } as unknown as JsonValue),
@@ -224,6 +225,13 @@ export class DiscoveryService {
     summary: PlatformSessionSummary,
   ): Promise<RepositoryWriteResult> {
       const binding = await this.repository.findBinding(summary.key);
+      if (binding !== undefined) {
+        await this.enqueueWrite(() => this.repository.recordWorkspaceMembership({
+          bindingId: binding.id,
+          workspaceId: summary.workspaceId,
+          displayName: summary.workspaceLabel ?? null,
+        }));
+      }
       const head = binding === undefined ? undefined : await this.repository.getObservedHead(binding.id);
       const fingerprint = catalogFingerprint(summary);
       if (head?.fingerprint.kind === "catalog" && head.fingerprint.value === fingerprint.value) {
@@ -286,7 +294,15 @@ export class DiscoveryService {
         },
         candidates,
       };
-      const result = await this.enqueueWrite(() => this.repository.recordObservedVersion(record));
+      const result = await this.enqueueWrite(async () => {
+        const written = await this.repository.recordObservedVersion(record);
+        await this.repository.recordWorkspaceMembership({
+          bindingId: resolved.binding.id,
+          workspaceId: summary.workspaceId,
+          displayName: summary.workspaceLabel ?? null,
+        });
+        return written;
+      });
       this.peers.set(resolved.binding.id, { session: normalized, binding: resolved.binding });
     return result;
   }

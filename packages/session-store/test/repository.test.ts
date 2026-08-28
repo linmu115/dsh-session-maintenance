@@ -37,14 +37,15 @@ describe("SqliteSessionRepository", () => {
       DROP TABLE transaction_steps;
       DROP TABLE transactions;
       DROP TABLE native_mirrors;
-      DELETE FROM schema_migrations WHERE version IN (3, 4, 5);
+      DROP TABLE binding_workspaces;
+      DELETE FROM schema_migrations WHERE version IN (3, 4, 5, 6);
     `);
     schemaTwo.close();
 
     let upgraded = openMaintenanceDatabase(dbPath);
     expect(
       upgraded.prepare("SELECT version FROM schema_migrations ORDER BY version").all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }]);
+    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
     expect(
       upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transactions'").get(),
     ).toEqual({ name: "transactions" });
@@ -54,10 +55,13 @@ describe("SqliteSessionRepository", () => {
     expect(
       upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'native_mirrors'").get(),
     ).toEqual({ name: "native_mirrors" });
+    expect(
+      upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'binding_workspaces'").get(),
+    ).toEqual({ name: "binding_workspaces" });
     upgraded.close();
     upgraded = openMaintenanceDatabase(dbPath);
     expect(
-      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 5").get(),
+      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 6").get(),
     ).toEqual({ count: 1 });
     upgraded.close();
   });
@@ -134,6 +138,20 @@ describe("SqliteSessionRepository", () => {
         value: "fingerprint-a",
       },
     });
+    await repository.recordWorkspaceMembership({
+      bindingId: "binding-a",
+      workspaceId: "workspace_alpha",
+      displayName: "Alpha",
+    });
+    expect((await repository.listSessions({ workspaceId: "workspace_alpha" })).items[0]?.workspace).toEqual({
+      id: "workspace_alpha",
+      name: "Alpha",
+    });
+    expect(await repository.listWorkspaces()).toMatchObject([{
+      workspace: { id: "workspace_alpha", name: "Alpha" },
+      sessionCount: 1,
+      platforms: ["dsh"],
+    }]);
     expect(await repository.listReachableObjectIds()).toEqual([bodyObject]);
 
     repository.close();
@@ -152,7 +170,7 @@ describe("SqliteSessionRepository", () => {
     const database = openMaintenanceDatabase(dbPath);
     database
       .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-      .run(6, "2026-08-26T00:00:00.000Z");
+      .run(7, "2026-08-26T00:00:00.000Z");
     database.close();
     expect(() => openMaintenanceDatabase(dbPath)).toThrow(/newer schema/iu);
 

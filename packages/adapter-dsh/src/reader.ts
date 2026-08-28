@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { lstat, open, readFile, readdir, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, relative, resolve } from "node:path";
+import { basename, isAbsolute, join, relative, resolve } from "node:path";
 
 import {
   SessionMaintenanceError,
@@ -20,6 +20,7 @@ import {
   type DecodedDshArtifact,
   type DshSessionHeader,
 } from "./zstd-codec.js";
+import { dshWorkspaceId } from "./workspace.js";
 
 const MAX_HEADER_READ_BYTES = 1024 * 1024;
 
@@ -33,6 +34,8 @@ export interface DshReadHooks {
 interface ProjectionEntry {
   readonly id: string;
   readonly projectId: string;
+  readonly workspaceLabel: string | null;
+  readonly workspacePath: string | null;
   readonly archived: boolean;
   readonly title: string;
 }
@@ -52,6 +55,8 @@ function requiredRecord(value: unknown, message: string): Record<string, unknown
 export interface DshCatalogEntry {
   readonly key: PlatformSessionKey;
   readonly projectId: string;
+  readonly workspaceLabel: string | null;
+  readonly workspacePath: string | null;
   readonly artifactPath: string;
   readonly header: DshSessionHeader;
   readonly title: string;
@@ -63,6 +68,7 @@ export interface DshCatalogEntry {
 export interface DshObservationPayload extends DecodedDshArtifact {
   readonly format: "dsh-0.1.1-rc.2-session-v0";
   readonly projectId: string;
+  readonly workspacePath: string | null;
   readonly title: string;
   readonly archived: boolean;
 }
@@ -131,8 +137,21 @@ async function loadProjection(root: string): Promise<ReadonlyMap<string, Project
   const workspaceTables = requiredRecord(workspace.tables, "DSH workspace tables are malformed");
   const workspaces = requiredRecord(workspaceTables.workspaces, "DSH workspace table is malformed");
   const projectBySession = new Map<string, string>();
+  const workspaceLabels = new Map<string, string>();
+  const workspacePaths = new Map<string, string>();
   for (const [projectId, value] of Object.entries(workspaces)) {
     const item = requiredRecord(value, "DSH workspace entry is malformed");
+    const title = item.title;
+    const path = item.path;
+    if (title !== undefined && typeof title !== "string") throw new Error("DSH workspace title is malformed");
+    if (path !== undefined && typeof path !== "string") throw new Error("DSH workspace path is malformed");
+    const label = typeof title === "string" && title.trim().length > 0
+      ? title.trim()
+      : typeof path === "string" && path.trim().length > 0
+        ? basename(path.trim())
+        : projectId;
+    workspaceLabels.set(projectId, label);
+    if (typeof path === "string" && path.trim().length > 0) workspacePaths.set(projectId, path.trim());
     if (!Array.isArray(item.sessionIds) || item.sessionIds.some((id) => typeof id !== "string")) {
       throw new Error("DSH workspace session IDs are malformed");
     }
@@ -156,6 +175,8 @@ async function loadProjection(root: string): Promise<ReadonlyMap<string, Project
     result.set(id, {
       id,
       projectId: projectBySession.get(id) ?? "ungrouped",
+      workspaceLabel: workspaceLabels.get(projectBySession.get(id) ?? "") ?? null,
+      workspacePath: workspacePaths.get(projectBySession.get(id) ?? "") ?? null,
       archived: archived.has(id),
       title: title ?? id,
     });
@@ -236,6 +257,8 @@ export async function* iterateDshCatalog(
         yield {
           key: { platform: "dsh", instanceId: instance.id, sessionId: header.id },
           projectId: metadata?.projectId ?? project.name,
+          workspaceLabel: metadata?.workspaceLabel ?? (project.name === "ungrouped" ? null : project.name),
+          workspacePath: metadata?.workspacePath ?? null,
           artifactPath,
           header,
           title: metadata?.title ?? header.id,
@@ -259,7 +282,8 @@ export async function* listDshSessions(
       key: entry.key,
       title: entry.title,
       archived: entry.archived,
-      workspaceId: entry.projectId,
+      workspaceId: dshWorkspaceId(instance.id, entry.projectId, entry.workspacePath),
+      workspaceLabel: entry.workspaceLabel,
       updatedAt: new Date(
         entry.header.createdAt < 1_000_000_000_000
           ? entry.header.createdAt * 1000
@@ -314,6 +338,7 @@ export async function observeDshSession(
     format: "dsh-0.1.1-rc.2-session-v0",
     ...decoded,
     projectId: entry.projectId,
+    workspacePath: entry.workspacePath,
     title: entry.title,
     archived: entry.archived,
   };

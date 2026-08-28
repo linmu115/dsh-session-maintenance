@@ -89,6 +89,7 @@ export const platformSessionSummarySchema = z.strictObject({
   title: z.string(),
   archived: z.boolean(),
   workspaceId: z.string().nullable(),
+  workspaceLabel: z.string().nullable(),
   updatedAt: timestampSchema,
   hint: observationHintSchema,
 });
@@ -404,6 +405,12 @@ export const sessionQuerySchema = z.strictObject({
   limit: z.number().int().min(1).max(100).optional(),
   platform: platformKindSchema.optional(),
   status: sessionStatusSchema.optional(),
+  workspaceId: z.string().min(1).nullable().optional(),
+});
+
+export const workspaceRefSchema = z.strictObject({
+  id: z.string().min(1),
+  name: z.string().min(1),
 });
 
 export const sessionSummarySchema = z.strictObject({
@@ -412,6 +419,16 @@ export const sessionSummarySchema = z.strictObject({
   archived: z.boolean(),
   platforms: z.array(platformKindSchema),
   status: sessionStatusSchema,
+  updatedAt: timestampSchema,
+  workspace: workspaceRefSchema.nullable(),
+});
+
+export const workspaceSummarySchema = z.strictObject({
+  workspace: workspaceRefSchema.nullable(),
+  sessionCount: nonNegativeIntegerSchema,
+  conflictCount: nonNegativeIntegerSchema,
+  unmappedCount: nonNegativeIntegerSchema,
+  platforms: z.array(platformKindSchema),
   updatedAt: timestampSchema,
 });
 

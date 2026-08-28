@@ -9,6 +9,7 @@ import {
 
 import type { CodexThreadRow } from "./parser.js";
 import { openCodexDatabase, resolveContainedRollout } from "./stable-read.js";
+import { codexWorkspaceId, codexWorkspaceLabel } from "./workspace.js";
 
 export async function* listCodexSessions(
   instance: RegisteredInstance,
@@ -57,7 +58,8 @@ export async function* listCodexSessions(
       key: { platform: "codex", instanceId: instance.id, sessionId: row.id },
       title: row.title || row.name || row.id,
       archived: Boolean(row.archived),
-      workspaceId: null,
+      workspaceId: codexWorkspaceId(row.cwd),
+      workspaceLabel: codexWorkspaceLabel(row.cwd),
       updatedAt: new Date(row.updated_at_ms ?? row.updated_at * 1000).toISOString(),
       hint: { size: Number(info.size), mtimeNs: info.mtimeNs.toString() },
     };

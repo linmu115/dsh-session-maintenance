@@ -3,6 +3,7 @@ import type {
   EngineStatus,
   Page,
   SessionSummary,
+  WorkspaceSummary,
   TransactionRecord,
   NormalizedSession,
   PlatformBinding,
@@ -38,6 +39,10 @@ export interface EngineStatusResponse {
 
 export interface SessionListResponse {
   readonly page: Page<SessionSummary>;
+}
+
+export interface WorkspaceListResponse {
+  readonly workspaces: readonly WorkspaceSummary[];
 }
 
 export interface VersionGraphResponse {
