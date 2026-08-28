@@ -123,7 +123,11 @@ class ApiClient {
   constructor(options: ApiClientOptions) {
     this.origin = options.origin.replace(/\/$/u, "");
     this.transport = options.transport;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    const implementation = options.fetchImpl ?? fetch;
+    // Keep the browser-native fetch detached from ApiClient. Calling a stored
+    // Web API function as `this.fetchImpl(...)` otherwise supplies ApiClient as
+    // its receiver and Chromium rejects the request with "Illegal invocation".
+    this.fetchImpl = (input, init) => implementation(input, init);
   }
 
   async listSessions(query: SessionQuery = {}, signal?: AbortSignal): Promise<Page<SessionSummary>> {
