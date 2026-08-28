@@ -3,5 +3,7 @@ packages:
   - "packages/*"
   - "plugins/*"
 
+autoInstallPeers: false
+
 allowBuilds:
   esbuild: true

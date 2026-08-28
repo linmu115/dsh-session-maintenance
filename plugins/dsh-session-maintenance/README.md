@@ -1,10 +1,10 @@
 # DSH Session Maintenance
 
-这是官方 DeepSeek Harness `0.1.1-rc.2` 的会话维护入口。它把会话右键菜单和一个轻量操作面板接到独立的 Session Maintenance Engine；版本图、差异、同步计划、Checkpoint 和恢复仍由独立看板完成。
+这是 DeepSeek Harness 的会话维护入口。当前测试基线是官方 `0.1.1-rc.2`，但安装元数据不限制 DSH 版本。它把会话右键菜单和一个轻量操作面板接到独立的 Session Maintenance Engine；版本图、差异、同步计划、Checkpoint 和恢复仍由独立看板完成。
 
 ## 使用前准备
 
-- 官方 DSH `0.1.1-rc.2`，使用 `web` profile；
+- DSH `web` profile；当前回归测试基线为官方 `0.1.1-rc.2`；
 - 已安装并启动本项目打包的 Maintenance Engine；
 - 使用本项目的可信安装器登记 Engine 连接。安装器只给 DSH host 一个连接描述符位置，浏览器不会读取 Engine capability；
 - `dsh-better-sidebar` 是可选增强，不安装也能使用全部核心入口。
@@ -13,7 +13,7 @@
 
 使用本项目生成的插件 tgz，向目标官方 profile 添加 `dsh-session-maintenance`，再应用随包提供的 `cordis.patch.yml` 并重启该 profile。不要手工把 Engine token 写进插件设置；Engine 每次重启都会轮换 token，插件 host 会重新读取受 ACL 保护的连接描述符。
 
-安装完成后，会话列表右键出现维护操作，页面右下角出现“会话维护”按钮。若已安装 `dsh-resource-management`，还可以进入“插件管理 → dsh-session-maintenance → 参数设置”，从统一操作面板检查 Engine、扫描会话或打开完整看板。若 DSH 客户端结构不再符合 `0.1.1-rc.2` 契约，菜单会安全停用，不会猜测会话身份。
+安装完成后，会话列表右键出现维护操作，页面右下角出现“会话维护”按钮。若已安装 `dsh-resource-management`，还可以进入“插件管理 → dsh-session-maintenance → 参数设置”，从统一操作面板检查 Engine、扫描会话或打开完整看板。插件安装不做版本拒绝；若实际客户端能力或结构不兼容，对应功能会在运行时报告或安全停用，不会猜测会话身份。
 
 ## 日常使用
 
