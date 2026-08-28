@@ -4,3 +4,4 @@ export * from "./discovery.js";
 export * from "./graph.js";
 export * from "./normalize.js";
 export * from "./planner.js";
+export * from "./workspace.js";

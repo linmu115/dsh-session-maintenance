@@ -82,6 +82,7 @@ export interface PlatformSessionSummary {
   readonly title: string;
   readonly archived: boolean;
   readonly workspaceId: string | null;
+  readonly workspaceLabel: string | null;
   readonly updatedAt: string;
   readonly hint: ObservationHint;
 }
@@ -294,6 +295,13 @@ export interface SessionQuery {
   readonly limit?: number;
   readonly platform?: PlatformKind;
   readonly status?: SessionStatus;
+  /** Undefined means every workspace; null means only unclassified sessions. */
+  readonly workspaceId?: string | null;
+}
+
+export interface WorkspaceRef {
+  readonly id: string;
+  readonly name: string;
 }
 
 export interface SessionSummary {
@@ -302,6 +310,16 @@ export interface SessionSummary {
   readonly archived: boolean;
   readonly platforms: readonly PlatformKind[];
   readonly status: SessionStatus;
+  readonly updatedAt: string;
+  readonly workspace: WorkspaceRef | null;
+}
+
+export interface WorkspaceSummary {
+  readonly workspace: WorkspaceRef | null;
+  readonly sessionCount: number;
+  readonly conflictCount: number;
+  readonly unmappedCount: number;
+  readonly platforms: readonly PlatformKind[];
   readonly updatedAt: string;
 }
 

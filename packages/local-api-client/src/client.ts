@@ -23,6 +23,7 @@ import {
   sessionDetailResponseSchema,
   sessionDiffSchema,
   sessionSummarySchema,
+  workspaceSummarySchema,
   settingsResponseSchema,
   transactionDetailResponseSchema,
   transactionListResponseSchema,
@@ -56,6 +57,7 @@ import {
   type SessionDiff,
   type SessionQuery,
   type SessionSummary,
+  type WorkspaceSummary,
   type SessionDetail,
   type SyncPlan,
   type TransactionDetail,
@@ -123,7 +125,11 @@ class ApiClient {
   constructor(options: ApiClientOptions) {
     this.origin = options.origin.replace(/\/$/u, "");
     this.transport = options.transport;
-    this.fetchImpl = options.fetchImpl ?? fetch;
+    const implementation = options.fetchImpl ?? fetch;
+    // Keep the browser-native fetch detached from ApiClient. Calling a stored
+    // Web API function as `this.fetchImpl(...)` otherwise supplies ApiClient as
+    // its receiver and Chromium rejects the request with "Illegal invocation".
+    this.fetchImpl = (input, init) => implementation(input, init);
   }
 
   async listSessions(query: SessionQuery = {}, signal?: AbortSignal): Promise<Page<SessionSummary>> {
@@ -132,8 +138,19 @@ class ApiClient {
     if (query.limit !== undefined) search.set("limit", String(query.limit));
     if (query.platform !== undefined) search.set("platform", query.platform);
     if (query.status !== undefined) search.set("status", query.status);
+    if (query.workspaceId !== undefined) search.set("workspace", query.workspaceId ?? "__unclassified__");
     const value = await this.request(`/v1/sessions${search.size === 0 ? "" : `?${search}`}`, {}, z.strictObject({ page: pageSchema(sessionSummarySchema) }), signal);
     return value.page as unknown as Page<SessionSummary>;
+  }
+
+  async listWorkspaces(signal?: AbortSignal): Promise<readonly WorkspaceSummary[]> {
+    const value = await this.request(
+      "/v1/workspaces",
+      {},
+      z.strictObject({ workspaces: z.array(workspaceSummarySchema) }),
+      signal,
+    );
+    return value.workspaces as readonly WorkspaceSummary[];
   }
 
   async getGraph(id: string, cursor?: string, signal?: AbortSignal): Promise<VersionGraphPage> {

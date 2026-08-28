@@ -5,7 +5,7 @@
 - Windows 10/11、Node.js 22.19 或更高版本；
 - 官方 DeepSeek Harness `0.1.1-rc.2`；
 - 一个调用方选定的官方 DSH profile，例如 `web`；
-- 构建产物 `dsh-session-maintenance-engine-0.1.0.tgz` 与 `dsh-session-maintenance-0.1.0.tgz`。
+- 构建产物 `dsh-session-maintenance-engine-0.1.0.tgz` 与 `dsh-session-maintenance-0.1.1.tgz`。
 
 不需要 EAC、`web-desktop`、旧 Codex 同步插件或源码工作树。
 
@@ -48,7 +48,7 @@ node .\engine\dsh-session-maint.mjs --state-root "$env:LOCALAPPDATA\DSH-Session-
 $env:DSH_HOME = "<DSH_HOME>"
 $env:DSH_INSTALL_ROOT = "<DeepSeek-Harness安装目录>"
 $dshBin = Join-Path $env:DSH_INSTALL_ROOT "runtime-0.1.1-rc.2\node_modules\@deepseek-ai\dsh\lib\bin.js"
-node $dshBin plugin --profile web add "<产物目录>\dsh-session-maintenance-0.1.0.tgz"
+node $dshBin plugin --profile web add "<产物目录>\dsh-session-maintenance-0.1.1.tgz"
 ```
 
 官方命令会把包登记为 profile 顶层依赖，并把它加入 `dsh.profile.bundles`。不要手工复制到全局 `node_modules`。
@@ -68,8 +68,9 @@ node $dshBin --profile web --host 127.0.0.1 --port 3080 --no-open
 
 1. 打开官方 DSH 页面，确认没有 “Failed to load plugins”。
 2. 页面出现“会话维护”入口；会话右键出现扫描、版本图、比较和 Checkpoint 等操作。
-3. 点击“扫描当前会话”，确认返回 job ID 或明确的离线提示。
-4. 打开独立看板，确认版本图、计划和 Checkpoint 页面可访问。
-5. 在任何写入前先建立 Checkpoint；需要人工复核的计划不会从菜单直接执行。
+3. 打开 Plugin Manager 中的 `dsh-session-maintenance`，确认“参数设置”页出现检查 Engine、扫描会话和打开完整看板三个按钮。
+4. 点击“扫描当前会话”，确认返回 job ID 或明确的离线提示。
+5. 打开独立看板，确认版本图、计划和 Checkpoint 页面可访问。
+6. 在任何写入前先建立 Checkpoint；需要人工复核的计划不会从菜单直接执行。
 
 自动化验收命令及证据见 `docs/validation/phase-2-acceptance.md`。

@@ -7,7 +7,6 @@ import type {
 } from "@linmu/dsh-session-contracts";
 import {
   normalizeSession,
-  sha256Canonical,
   type RawSessionEvent,
 } from "@linmu/dsh-session-domain";
 
@@ -15,6 +14,7 @@ import {
   isCodexObservationPayload,
   type CodexEnvelope,
 } from "./parser.js";
+import { codexWorkspaceId } from "./workspace.js";
 
 function asJson(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;
@@ -129,7 +129,7 @@ export function normalizeCodexObservation(observation: StableObservation): Norma
     key: observation.key,
     title: payload.thread.title || payload.thread.name || payload.thread.id,
     archived: Boolean(payload.thread.archived),
-    workspaceId: `workspace_${sha256Canonical(payload.thread.cwd).slice(0, 24)}`,
+    workspaceId: codexWorkspaceId(payload.thread.cwd),
     provenance: {
       ...observation.key,
       observedAt: new Date(payload.thread.updated_at_ms ?? payload.thread.updated_at * 1000).toISOString(),

@@ -76,7 +76,8 @@ describe("DshReadAdapter", () => {
     expect(summary).toMatchObject({
       title: "Fixture conversation",
       archived: false,
-      workspaceId: "workspace-fixture",
+      workspaceId: expect.stringMatching(/^workspace_/u),
+      workspaceLabel: "Fixture workspace",
     });
     const observation = stable(await adapter.observe(instance, summary!.key, summary!.hint));
     const normalized = await adapter.normalize(observation);

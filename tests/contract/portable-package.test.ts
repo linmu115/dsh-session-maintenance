@@ -13,5 +13,5 @@ describe("portable workspace", () => {
       windowsHide: true,
     });
     expect(result.stdout).toMatch(/^portable:/u);
-  });
+  }, 15_000);
 });

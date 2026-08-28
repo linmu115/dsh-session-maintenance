@@ -38,6 +38,7 @@ import {
   type SessionQuery,
   type SessionStatus,
   type SessionSummary,
+  type WorkspaceSummary,
   type SessionVersionManifest,
   type SyncPlan,
   type StoredConfirmation,
@@ -141,6 +142,8 @@ interface SessionRow {
   readonly head_count: number;
   readonly distinct_heads: number;
   readonly updated_at: string | null;
+  readonly workspace_id: string | null;
+  readonly workspace_name: string | null;
 }
 
 interface TransactionRow {
@@ -295,6 +298,9 @@ function sessionSummary(row: SessionRow): SessionSummary {
     platforms,
     status,
     updatedAt: row.updated_at ?? row.created_at,
+    workspace: row.workspace_id === null
+      ? null
+      : { id: row.workspace_id, name: row.workspace_name ?? row.workspace_id },
   };
 }
 
@@ -834,6 +840,27 @@ export class SqliteSessionRepository {
     return true;
   }
 
+  async recordWorkspaceMembership(input: {
+    readonly bindingId: string;
+    readonly workspaceId: string | null;
+    readonly displayName: string | null;
+  }): Promise<void> {
+    if (input.workspaceId === null) {
+      this.database.prepare("DELETE FROM binding_workspaces WHERE binding_id = ?").run(input.bindingId);
+      return;
+    }
+    const displayName = input.displayName?.trim() || input.workspaceId;
+    this.database
+      .prepare(
+        `INSERT INTO binding_workspaces (binding_id, workspace_id, display_name)
+         VALUES (?, ?, ?)
+         ON CONFLICT(binding_id) DO UPDATE SET
+           workspace_id = excluded.workspace_id,
+           display_name = excluded.display_name`,
+      )
+      .run(input.bindingId, input.workspaceId, displayName);
+  }
+
   async getObservedHead(bindingId: string): Promise<ObservedHead | undefined> {
     const row = this.database
       .prepare(
@@ -1097,30 +1124,52 @@ export class SqliteSessionRepository {
     };
   }
 
+  private sessionRows(logicalSessionId?: string): readonly SessionRow[] {
+    const where = logicalSessionId === undefined ? "" : "WHERE ls.id = ?";
+    const statement = this.database.prepare(
+      `WITH ranked_workspaces AS (
+         SELECT pb.logical_session_id, bw.workspace_id, bw.display_name,
+                ROW_NUMBER() OVER (
+                  PARTITION BY pb.logical_session_id
+                  ORDER BY CASE pb.platform WHEN 'dsh' THEN 0 ELSE 1 END,
+                           COALESCE(pr.observed_at, '') DESC,
+                           pb.id
+                ) AS workspace_rank
+         FROM platform_bindings pb
+         JOIN binding_workspaces bw ON bw.binding_id = pb.id
+         LEFT JOIN platform_refs pr ON pr.binding_id = pb.id
+       )
+       SELECT ls.id, ls.display_title, ls.archived, ls.created_at,
+              GROUP_CONCAT(DISTINCT pb.platform) AS platforms,
+              COUNT(DISTINCT pb.id) AS binding_count,
+              COUNT(DISTINCT pr.binding_id) AS head_count,
+              COUNT(DISTINCT pr.version_id) AS distinct_heads,
+              MAX(pr.observed_at) AS updated_at,
+              rw.workspace_id,
+              rw.display_name AS workspace_name
+       FROM logical_sessions ls
+       LEFT JOIN platform_bindings pb ON pb.logical_session_id = ls.id
+       LEFT JOIN platform_refs pr ON pr.binding_id = pb.id
+       LEFT JOIN ranked_workspaces rw
+         ON rw.logical_session_id = ls.id AND rw.workspace_rank = 1
+       ${where}
+       GROUP BY ls.id
+       ORDER BY COALESCE(MAX(pr.observed_at), ls.created_at) DESC, ls.id`,
+    );
+    return (logicalSessionId === undefined ? statement.all() : statement.all(logicalSessionId)) as unknown as SessionRow[];
+  }
+
   async listSessions(query: SessionQuery): Promise<Page<SessionSummary>> {
     const limit = Math.min(Math.max(query.limit ?? 50, 1), 200);
     const offset = query.cursor === undefined ? 0 : Number.parseInt(query.cursor, 10);
     if (!Number.isSafeInteger(offset) || offset < 0) throw new TypeError(`Invalid session cursor: ${query.cursor}`);
-    const rows = this.database
-      .prepare(
-        `SELECT ls.id, ls.display_title, ls.archived, ls.created_at,
-                GROUP_CONCAT(DISTINCT pb.platform) AS platforms,
-                COUNT(DISTINCT pb.id) AS binding_count,
-                COUNT(DISTINCT pr.binding_id) AS head_count,
-                COUNT(DISTINCT pr.version_id) AS distinct_heads,
-                MAX(pr.observed_at) AS updated_at
-         FROM logical_sessions ls
-         LEFT JOIN platform_bindings pb ON pb.logical_session_id = ls.id
-         LEFT JOIN platform_refs pr ON pr.binding_id = pb.id
-         GROUP BY ls.id
-         ORDER BY COALESCE(MAX(pr.observed_at), ls.created_at) DESC, ls.id`,
-      )
-      .all() as unknown as SessionRow[];
-    const summaries = rows.map(sessionSummary);
+    const summaries = this.sessionRows().map(sessionSummary);
     const filtered = summaries.filter(
       (summary) =>
         (query.platform === undefined || summary.platforms.includes(query.platform)) &&
-        (query.status === undefined || summary.status === query.status),
+        (query.status === undefined || summary.status === query.status) &&
+        (query.workspaceId === undefined ||
+          (query.workspaceId === null ? summary.workspace === null : summary.workspace?.id === query.workspaceId)),
     );
     const items = filtered.slice(offset, offset + limit);
     return {
@@ -1129,22 +1178,50 @@ export class SqliteSessionRepository {
     };
   }
 
+  async listWorkspaces(): Promise<readonly WorkspaceSummary[]> {
+    const groups = new Map<string, {
+      workspace: WorkspaceSummary["workspace"];
+      sessionCount: number;
+      conflictCount: number;
+      unmappedCount: number;
+      platforms: Set<PlatformKind>;
+      updatedAt: string;
+    }>();
+    for (const summary of this.sessionRows().map(sessionSummary)) {
+      const key = summary.workspace?.id ?? "\u0000unclassified";
+      const existing = groups.get(key) ?? {
+        workspace: summary.workspace,
+        sessionCount: 0,
+        conflictCount: 0,
+        unmappedCount: 0,
+        platforms: new Set<PlatformKind>(),
+        updatedAt: summary.updatedAt,
+      };
+      existing.sessionCount += 1;
+      if (summary.status === "diverged") existing.conflictCount += 1;
+      if (summary.status === "unmapped") existing.unmappedCount += 1;
+      for (const platform of summary.platforms) existing.platforms.add(platform);
+      if (summary.updatedAt > existing.updatedAt) existing.updatedAt = summary.updatedAt;
+      groups.set(key, existing);
+    }
+    return [...groups.values()]
+      .map((group): WorkspaceSummary => ({
+        workspace: group.workspace,
+        sessionCount: group.sessionCount,
+        conflictCount: group.conflictCount,
+        unmappedCount: group.unmappedCount,
+        platforms: [...group.platforms].sort(),
+        updatedAt: group.updatedAt,
+      }))
+      .sort((left, right) => {
+        if (left.workspace === null) return 1;
+        if (right.workspace === null) return -1;
+        return left.workspace.name.localeCompare(right.workspace.name, "zh-CN");
+      });
+  }
+
   async getSessionSummary(logicalSessionId: string): Promise<SessionSummary | undefined> {
-    const row = this.database
-      .prepare(
-        `SELECT ls.id, ls.display_title, ls.archived, ls.created_at,
-                GROUP_CONCAT(DISTINCT pb.platform) AS platforms,
-                COUNT(DISTINCT pb.id) AS binding_count,
-                COUNT(DISTINCT pr.binding_id) AS head_count,
-                COUNT(DISTINCT pr.version_id) AS distinct_heads,
-                MAX(pr.observed_at) AS updated_at
-         FROM logical_sessions ls
-         LEFT JOIN platform_bindings pb ON pb.logical_session_id = ls.id
-         LEFT JOIN platform_refs pr ON pr.binding_id = pb.id
-         WHERE ls.id = ?
-         GROUP BY ls.id`,
-      )
-      .get(logicalSessionId) as SessionRow | undefined;
+    const row = this.sessionRows(logicalSessionId)[0];
     return row === undefined ? undefined : sessionSummary(row);
   }
 

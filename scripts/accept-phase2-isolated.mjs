@@ -10,6 +10,7 @@ import { readTarGz, stableJson } from "./phase2-pack-lib.mjs";
 
 const outFlag = process.argv.indexOf("--out");
 const out = resolve(outFlag >= 0 ? process.argv[outFlag + 1] : ".artifacts/phase2");
+const pluginVersion = JSON.parse(await readFile(resolve("plugins/dsh-session-maintenance/package.json"), "utf8")).version;
 const root = await mkdtemp(join(tmpdir(), "dsh-session-maintenance-phase2-"));
 const profile = join(root, "marked-official-rc2-profile-fixture");
 const engineState = join(root, "engine-state-preserved-on-uninstall");
@@ -45,7 +46,8 @@ try {
   await mkdir(pluginRoot, { recursive: true });
   await mkdir(engineState, { recursive: true });
   await writeFile(join(profile, ".dsh-session-maintenance-fixture.json"), stableJson({ officialContract: "0.1.1-rc.2", synthetic: true }));
-  const archive = readTarGz(await readFile(join(out, "dsh-session-maintenance-0.1.0.tgz")));
+  const archive = readTarGz(await readFile(join(out, `dsh-session-maintenance-${pluginVersion}.tgz`)));
+  if (!archive.has("package/dsh-management/panel.yaml")) throw new Error("Packaged plugin omitted the Manager panel contract");
   for (const [name, bytes] of archive) {
     if (!name.startsWith("package/") || name.includes("..")) throw new Error(`Unsafe plugin archive entry: ${name}`);
     const target = join(pluginRoot, name.slice("package/".length));

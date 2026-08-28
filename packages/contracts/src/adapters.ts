@@ -12,6 +12,7 @@ import type {
   SessionDiff,
   SessionQuery,
   SessionSummary,
+  WorkspaceSummary,
   StableObservation,
   BackupManifest,
   PreparedWrite,
@@ -81,6 +82,7 @@ export interface PlatformWriteAdapter {
 export interface ReadOnlyEngine {
   listInstances(): Promise<readonly InstanceStatus[]>;
   listSessions(query: SessionQuery): Promise<Page<SessionSummary>>;
+  listWorkspaces(): Promise<readonly WorkspaceSummary[]>;
   getGraph(id: string, cursor?: string): Promise<VersionGraphPage>;
   scan(request: ScanRequest): Promise<DiscoveryResult>;
   diff(request: DiffRequest): Promise<SessionDiff>;

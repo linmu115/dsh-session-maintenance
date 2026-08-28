@@ -21,6 +21,7 @@ import {
   type SessionReadAdapter,
   type SessionRepository,
   type SessionSummary,
+  type WorkspaceSummary,
   type SyncPlan,
   type VersionGraphPage,
   type ContentObjectStore,
@@ -187,6 +188,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
 
   listSessions(query: SessionQuery): Promise<Page<SessionSummary>> {
     return this.repository.listSessions(query);
+  }
+
+  listWorkspaces(): Promise<readonly WorkspaceSummary[]> {
+    return this.repository.listWorkspaces();
   }
 
   getGraph(id: string, cursor?: string): Promise<VersionGraphPage> {

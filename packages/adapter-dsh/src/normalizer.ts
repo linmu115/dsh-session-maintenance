@@ -118,6 +118,9 @@ export function normalizeDshObservation(observation: StableObservation): Normali
     key: observation.key,
     title: payload.title,
     archived: payload.archived,
+    // Keep platform workspace identity separate from the cross-platform directory index.
+    // Directory grouping is recorded from the catalog summary and must not change
+    // discovery confidence or normalized session hashes.
     workspaceId: `workspace_${sha256Canonical({
       instanceId: observation.key.instanceId,
       projectId: payload.projectId,

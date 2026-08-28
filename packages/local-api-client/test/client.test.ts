@@ -19,7 +19,10 @@ describe("MaintenanceClient", () => {
 
   it("keeps the Engine capability out of the cookie-authenticated Dashboard client", async () => {
     const calls: Array<{ readonly url: string; readonly init?: RequestInit }> = [];
-    const fetchImpl: typeof fetch = async (input, init) => {
+    const receivers: unknown[] = [];
+    const fetchImpl: typeof fetch = async function (this: unknown, input, init) {
+      receivers.push(this);
+      if (this !== undefined) throw new TypeError("Illegal invocation");
       const url = String(input);
       calls.push({ url, ...(init === undefined ? {} : { init }) });
       if (url.endsWith("/v1/ui/session")) {
@@ -35,6 +38,7 @@ describe("MaintenanceClient", () => {
     expect(client.initialLogicalSessionId).toBe("logical-fixture");
     await client.overview();
     expect(calls).toHaveLength(2);
+    expect(receivers).toEqual([undefined, undefined]);
     expect(calls[0]?.init?.credentials).toBe("same-origin");
     const headers = new Headers(calls[1]?.init?.headers);
     expect(calls[1]?.init?.credentials).toBe("same-origin");

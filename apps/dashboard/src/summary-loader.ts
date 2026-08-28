@@ -3,33 +3,36 @@ import type {
   Page,
   SessionQuery,
   SessionSummary,
+  WorkspaceSummary,
 } from "@linmu/dsh-session-contracts";
 
 export interface DashboardSummaryApi {
   overview(signal?: AbortSignal): Promise<DashboardOverview>;
   listSessions(query?: SessionQuery, signal?: AbortSignal): Promise<Page<SessionSummary>>;
+  listWorkspaces(signal?: AbortSignal): Promise<readonly WorkspaceSummary[]>;
 }
 
 export interface DashboardSummary {
   readonly overview: DashboardOverview;
-  readonly sessions: Page<SessionSummary>;
+  readonly workspaces: readonly WorkspaceSummary[];
 }
 
 export async function loadDashboardSummary(
   api: DashboardSummaryApi,
   signal?: AbortSignal,
 ): Promise<DashboardSummary> {
-  const [overview, sessions] = await Promise.all([
+  const [overview, workspaces] = await Promise.all([
     api.overview(signal),
-    api.listSessions({ limit: 25 }, signal),
+    api.listWorkspaces(signal),
   ]);
-  return { overview, sessions };
+  return { overview, workspaces };
 }
 
-export function loadSessionPage(
+export function loadWorkspaceSessionPage(
   api: DashboardSummaryApi,
-  cursor: string,
+  workspaceId: string | null,
+  cursor?: string,
   signal?: AbortSignal,
 ): Promise<Page<SessionSummary>> {
-  return api.listSessions({ cursor, limit: 25 }, signal);
+  return api.listSessions({ ...(cursor === undefined ? {} : { cursor }), workspaceId, limit: 25 }, signal);
 }

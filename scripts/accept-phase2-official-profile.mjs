@@ -20,6 +20,7 @@ const runtimeRoot = join(installRoot, `runtime-${EXPECTED_DSH}`);
 const dshManifestPath = join(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "package.json");
 const dshBin = join(runtimeRoot, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js");
 const dshManifest = JSON.parse(await readFile(dshManifestPath, "utf8"));
+const pluginVersion = JSON.parse(await readFile(resolve("plugins/dsh-session-maintenance/package.json"), "utf8")).version;
 if (dshManifest.version !== EXPECTED_DSH) {
   throw new Error(`Official runtime drift: expected ${EXPECTED_DSH}, got ${String(dshManifest.version)}`);
 }
@@ -28,7 +29,7 @@ const root = await mkdtemp(join(tmpdir(), "dsh-session-maintenance-official-rc2-
 const marker = join(root, ".phase2-official-profile-marker.json");
 const dshHome = join(root, "home");
 const engineState = join(root, "engine-state");
-const pluginArtifact = resolve(out, "dsh-session-maintenance-0.1.0.tgz");
+const pluginArtifact = resolve(out, `dsh-session-maintenance-${pluginVersion}.tgz`);
 const logParts = [];
 let engineServer;
 let dshProcess;

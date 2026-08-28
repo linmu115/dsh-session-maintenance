@@ -332,6 +332,7 @@ importers:
       '@deepseek-ai/dsh-workspace':
         specifier: 0.1.1-rc.2
         version: 0.1.1-rc.2(ca1aef6913f66bb64a14405a8170db89)
+    devDependencies:
       '@deepseek-ai/schemastery':
         specifier: ^3.18.1
         version: 3.18.1
@@ -341,10 +342,12 @@ importers:
       '@linmu/dsh-host-gateway':
         specifier: workspace:*
         version: link:../../packages/dsh-host-gateway
-    devDependencies:
       '@types/node':
         specifier: 24.3.0
         version: 24.3.0
+      esbuild:
+        specifier: 0.25.12
+        version: 0.25.12
       typescript:
         specifier: 5.9.2
         version: 5.9.2

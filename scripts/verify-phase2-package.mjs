@@ -4,6 +4,9 @@ import { join, resolve } from "node:path";
 
 import { sha256 } from "./phase2-pack-lib.mjs";
 
+const pluginVersion = JSON.parse(await readFile(resolve("plugins/dsh-session-maintenance/package.json"), "utf8")).version;
+const engineVersion = JSON.parse(await readFile(resolve("apps/engine/package.json"), "utf8")).version;
+
 const first = resolve(".artifacts/phase2-repro-a");
 const second = resolve(".artifacts/phase2-repro-b");
 const entry = process.env.npm_execpath;
@@ -22,7 +25,7 @@ await rm(first, { recursive: true, force: true });
 await rm(second, { recursive: true, force: true });
 run(first, false);
 run(second, true);
-for (const name of ["dsh-session-maintenance-0.1.0.tgz", "dsh-session-maintenance-engine-0.1.0.tgz", "phase2-manifest.json"]) {
+for (const name of [`dsh-session-maintenance-${pluginVersion}.tgz`, `dsh-session-maintenance-engine-${engineVersion}.tgz`, "phase2-manifest.json"]) {
   const left = await readFile(join(first, name));
   const right = await readFile(join(second, name));
   if (sha256(left) !== sha256(right)) throw new Error(`Phase 2 package is not reproducible: ${name}`);

@@ -42,10 +42,15 @@ export function hasUiSessionCookie(request: IncomingMessage): boolean {
 }
 
 function exactUiOrigin(request: IncomingMessage, origin: string): boolean {
+  const expected = new URL(origin);
+  if (request.headers.host !== expected.host) return false;
   if (request.headers.origin !== undefined) return request.headers.origin === origin;
   if (request.headers["sec-fetch-site"] !== "same-origin") return false;
   const referer = request.headers.referer;
-  if (referer === undefined) return false;
+  // The dashboard deliberately sends Referrer-Policy: no-referrer so its
+  // browser bootstrap has no Referer. Fetch Metadata plus the exact loopback
+  // Host still proves that the request came from the dashboard origin.
+  if (referer === undefined) return true;
   try { return new URL(referer).origin === origin; } catch { return false; }
 }
 

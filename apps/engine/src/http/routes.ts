@@ -192,8 +192,15 @@ export async function routeRequest(
         ...(url.searchParams.has("limit") ? { limit: Number(url.searchParams.get("limit")) } : {}),
         ...(url.searchParams.has("platform") ? { platform: url.searchParams.get("platform") } : {}),
         ...(url.searchParams.has("status") ? { status: url.searchParams.get("status") } : {}),
+        ...(url.searchParams.has("workspace")
+          ? { workspaceId: url.searchParams.get("workspace") === "__unclassified__" ? null : url.searchParams.get("workspace") }
+          : {}),
       });
       send(response, 200, { page: await context.engine.listSessions(query as unknown as SessionQuery) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/workspaces") {
+      send(response, 200, { workspaces: await context.engine.listWorkspaces() });
       return;
     }
     const graph = url.pathname.match(/^\/v1\/sessions\/([^/]+)\/graph$/u);

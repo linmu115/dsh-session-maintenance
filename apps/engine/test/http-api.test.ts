@@ -26,6 +26,7 @@ describe("authenticated loopback API", () => {
     expect(events.map((event) => event.type)).toEqual(["queued", "running", "progress", "progress", "completed"]);
     expect(events.map((event) => event.sequence)).toEqual([0, 1, 2, 3, 4]);
     expect((await client.listSessions()).items).toHaveLength(1);
+    expect(await client.listWorkspaces()).toHaveLength(1);
     expect(await hashTree(fixture.codexHome)).toBe(before);
 
     const oversized = await fetch(`${server.origin}/v1/diffs`, {

@@ -2,7 +2,9 @@ import s from "@deepseek-ai/schemastery";
 
 import { normalizeConfig, type Config as PluginConfig } from "./config.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
+import { launchDashboard } from "./dashboard-launcher.js";
 import { createProxyHandler, FileConnectionProvider, RestrictedEngineProxy } from "./engine-proxy.js";
+import { registerManagerActions, type ManagerActionContext } from "./manager-actions.js";
 
 export const name = "dsh-session-maintenance";
 export type Config = PluginConfig;
@@ -18,6 +20,7 @@ export const inject = ["webServer", "sessions", "sessionPersistence", "workspace
 interface HostContext extends CoreRuntimeContext {
   readonly webServer: { register(input: { kind: "prefix"; path: string; handler: ReturnType<typeof createProxyHandler> | ReturnType<typeof createCoreGatewayHandler> }): void | (() => void) };
   effect(callback: () => void | (() => void), label?: string): void;
+  inject?(services: readonly string[], callback: (ctx: HostContext & ManagerActionContext) => void): void;
 }
 
 export function apply(ctx: HostContext, input: PluginConfig): void {
@@ -27,10 +30,11 @@ export function apply(ctx: HostContext, input: PluginConfig): void {
   const connection = descriptorPath === undefined
     ? { current: async () => { throw new Error("维护引擎连接尚未由可信安装器登记"); } }
     : new FileConnectionProvider(descriptorPath);
+  const proxy = new RestrictedEngineProxy(config, connection);
   const unregisterProxy = ctx.webServer.register({
     kind: "prefix",
     path: "/dsh-session-maintenance/api",
-    handler: createProxyHandler(new RestrictedEngineProxy(config, connection)),
+    handler: createProxyHandler(proxy),
   });
   const unregisterCore = ctx.webServer.register({
     kind: "prefix",
@@ -41,8 +45,12 @@ export function apply(ctx: HostContext, input: PluginConfig): void {
     if (typeof unregisterCore === "function") unregisterCore();
     if (typeof unregisterProxy === "function") unregisterProxy();
   }, "dsh-session-maintenance: host gateways");
+  ctx.inject?.(["resourceManagementActions"], (actionContext) => {
+    registerManagerActions(actionContext, proxy, launchDashboard);
+  });
 }
 
 export * from "./config.js";
 export * from "./core-gateway.js";
 export * from "./engine-proxy.js";
+export * from "./manager-actions.js";

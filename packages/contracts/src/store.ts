@@ -15,6 +15,7 @@ import type {
   RepositoryWriteResult,
   SessionQuery,
   SessionSummary,
+  WorkspaceSummary,
   SessionVersionManifest,
   VersionGraphData,
   VersionGraphPage,
@@ -44,6 +45,11 @@ export interface SessionRepository {
   createLogicalSession(input: LogicalSession): Promise<boolean>;
   findBinding(key: PlatformSessionKey): Promise<PlatformBinding | undefined>;
   bindPlatformSession(input: PlatformBinding): Promise<boolean>;
+  recordWorkspaceMembership(input: {
+    readonly bindingId: string;
+    readonly workspaceId: string | null;
+    readonly displayName: string | null;
+  }): Promise<void>;
   getObservedHead(bindingId: string): Promise<ObservedHead | undefined>;
   putVersion(input: NewVersion): Promise<SessionVersionManifest>;
   getVersion(id: string): Promise<SessionVersionManifest | undefined>;
@@ -56,6 +62,7 @@ export interface SessionRepository {
   counts(): Promise<RepositoryCounts>;
   getGraph(logicalSessionId: string): Promise<VersionGraphData>;
   listSessions(query: SessionQuery): Promise<Page<SessionSummary>>;
+  listWorkspaces(): Promise<readonly WorkspaceSummary[]>;
   getSessionSummary(logicalSessionId: string): Promise<SessionSummary | undefined>;
   getGraphPage(logicalSessionId: string, cursor?: string): Promise<VersionGraphPage>;
   listReachableObjectIds(): Promise<readonly string[]>;

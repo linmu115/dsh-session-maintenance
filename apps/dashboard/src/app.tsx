@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Activity, ArrowLeft, BookmarkCheck, GitPullRequest, History, ListTree, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
 
-import type { Page, SessionSummary } from "@linmu/dsh-session-contracts";
 import {
   Badge,
   Button,
@@ -16,11 +15,11 @@ import {
 
 import {
   loadDashboardSummary,
-  loadSessionPage,
   type DashboardSummary,
 } from "./summary-loader.js";
 import type { WorkbenchApi } from "./session-workbench.js";
 import type { OperationsApi } from "./operations-pages.js";
+import { WorkspaceDirectory } from "./workspace-directory.js";
 
 const SessionWorkbench = lazy(async () => ({ default: (await import("./session-workbench.js")).SessionWorkbench }));
 const PlansPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).PlansPage }));
@@ -35,33 +34,13 @@ type LoadState =
   | { readonly kind: "error"; readonly message: string }
   | { readonly kind: "ready"; readonly value: DashboardSummary };
 
-function SessionTable(props: { readonly page: Page<SessionSummary>; readonly onOpen: (id: string) => void }) {
-  if (props.page.items.length === 0) {
-    return <EmptyState title="还没有会话基线" description="运行一次扫描后，这里会显示逻辑会话摘要；正文和版本历史不会在此页面预加载。" />;
-  }
-  return <div className="session-table" role="table" aria-label="会话列表">
-    <div className="session-row session-row-head" role="row">
-      <span>会话</span><span>平台</span><span>状态</span><span>更新时间</span>
-    </div>
-    {props.page.items.map((session) => <button className="session-row" role="row" type="button" key={session.logicalSessionId} onClick={() => props.onOpen(session.logicalSessionId)}>
-      <div className="session-title">
-        <strong>{session.title}</strong>
-        <code>{session.logicalSessionId}</code>
-      </div>
-      <span>{session.platforms.map((platform) => <Badge key={platform}>{platform}</Badge>)}</span>
-      <span><Badge tone={statusTone(session.status)}>{session.status}</Badge></span>
-      <time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleString()}</time>
-    </button>)}
-  </div>;
-}
-
 function DashboardContent(props: {
+  readonly api: WorkbenchApi & OperationsApi;
   readonly state: LoadState;
   readonly view: "overview" | "sessions";
   readonly onRetry: () => void;
-  readonly onLoadNext: () => void;
-  readonly loadingNext: boolean;
   readonly onOpenSession: (id: string) => void;
+  readonly refreshKey: number;
 }) {
   if (props.state.kind === "loading") return <Surface><LoadingState /></Surface>;
   if (props.state.kind === "error") return <Surface><EmptyState
@@ -70,15 +49,12 @@ function DashboardContent(props: {
     description={props.state.message}
     action={<Button onClick={props.onRetry}>重试</Button>}
   /></Surface>;
-  const { overview, sessions } = props.state.value;
+  const { overview, workspaces } = props.state.value;
   if (props.view === "sessions") return <>
-    <div className="dsm-page-heading"><div><h2>会话</h2><p>只读取摘要；打开会话后才加载版本树和正文。</p></div></div>
-    <Surface
-      title={`${sessions.items.length} 个已加载会话`}
-      action={sessions.nextCursor === undefined ? null : <Button disabled={props.loadingNext} onClick={props.onLoadNext}>
-        {props.loadingNext ? "正在加载…" : "加载下一页"}
-      </Button>}
-    ><SessionTable page={sessions} onOpen={props.onOpenSession} /></Surface>
+    <div className="dsm-page-heading"><div><h2>会话</h2><p>按工作区浏览；展开目录后才加载其中的会话摘要。</p></div></div>
+    <Surface title={`${workspaces.length} 个工作区目录`}>
+      <WorkspaceDirectory key={props.refreshKey} api={props.api} workspaces={workspaces} onOpenSession={props.onOpenSession} />
+    </Surface>
   </>;
   return <>
     <div className="dsm-page-heading"><div><h2>概览</h2><p>当前登记平台与需要人工关注的会话状态。</p></div></div>
@@ -104,7 +80,6 @@ export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi
   const [view, setView] = useState<View>("overview");
   const [request, setRequest] = useState(0);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [loadingNext, setLoadingNext] = useState(false);
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(props.initialLogicalSessionId);
   useEffect(() => {
     const controller = new AbortController();
@@ -128,18 +103,6 @@ export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi
     <NavButton active={view === "settings"} icon={Settings2} onClick={() => { setSelectedSessionId(undefined); setView("settings"); }}>设置</NavButton>
   </>, [selectedSessionId, view]);
 
-  const loadNext = async () => {
-    if (state.kind !== "ready" || state.value.sessions.nextCursor === undefined) return;
-    setLoadingNext(true);
-    try {
-      const next = await loadSessionPage(props.api, state.value.sessions.nextCursor);
-      setState({ kind: "ready", value: {
-        ...state.value,
-        sessions: { items: [...state.value.sessions.items, ...next.items], ...(next.nextCursor === undefined ? {} : { nextCursor: next.nextCursor }) },
-      } });
-    } finally { setLoadingNext(false); }
-  };
-
   return <DashboardShell
     title="DSH 会话维护"
     subtitle="本地版本、分支、同步与恢复工作台"
@@ -156,7 +119,7 @@ export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi
           : view === "transactions" ? <Suspense fallback={<Surface><LoadingState label="正在打开事务…" /></Surface>}><TransactionsPage api={props.api} /></Suspense>
             : view === "diagnostics" ? <Suspense fallback={<Surface><LoadingState label="正在打开诊断…" /></Surface>}><DiagnosticsPage api={props.api} /></Suspense>
               : view === "settings" ? <Suspense fallback={<Surface><LoadingState label="正在打开设置…" /></Surface>}><SettingsPage api={props.api} /></Suspense>
-          : <DashboardContent state={state} view={view} onRetry={() => setRequest((value) => value + 1)} onLoadNext={() => void loadNext()} loadingNext={loadingNext} onOpenSession={setSelectedSessionId} />}
+          : <DashboardContent api={props.api} state={state} view={view} onRetry={() => setRequest((value) => value + 1)} onOpenSession={setSelectedSessionId} refreshKey={request} />}
   </DashboardShell>;
 }
 

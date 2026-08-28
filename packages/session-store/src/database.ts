@@ -7,6 +7,7 @@ import { MIGRATION_002 } from "./migrations/002-job-events.js";
 import { MIGRATION_003 } from "./migrations/003-transactions.js";
 import { MIGRATION_004 } from "./migrations/004-continuations.js";
 import { MIGRATION_005 } from "./migrations/005-native-mirrors.js";
+import { MIGRATION_006 } from "./migrations/006-workspace-directory.js";
 
 interface VersionRow {
   readonly version: number | null;
@@ -121,6 +122,25 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
       database
         .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
         .run(5, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // Preserve the migration failure.
+      }
+      database.close();
+      throw error;
+    }
+  }
+
+  if (currentVersion < 6) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_006);
+      database
+        .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+        .run(6, new Date().toISOString());
       database.exec("COMMIT");
     } catch (error) {
       try {

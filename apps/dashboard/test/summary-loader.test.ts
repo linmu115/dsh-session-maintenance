@@ -5,7 +5,7 @@ import { DashboardOffline } from "../src/app.js";
 import { loadDashboardSummary, type DashboardSummaryApi } from "../src/summary-loader.js";
 
 describe("Dashboard summary baseline", () => {
-  it("loads only overview and one bounded session page on first render", async () => {
+  it("loads only overview and the lightweight workspace directory on first render", async () => {
     const calls: string[] = [];
     const api: DashboardSummaryApi = {
       overview: async () => {
@@ -16,9 +16,13 @@ describe("Dashboard summary baseline", () => {
         calls.push(`sessions:${query?.limit}`);
         return { items: [] };
       },
+      listWorkspaces: async () => {
+        calls.push("workspaces");
+        return [];
+      },
     };
     await loadDashboardSummary(api);
-    expect(calls).toEqual(["overview", "sessions:25"]);
+    expect(calls).toEqual(["overview", "workspaces"]);
   });
 
   it("renders an actionable offline state without a runtime credential", () => {
