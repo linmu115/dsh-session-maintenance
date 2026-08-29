@@ -12,7 +12,7 @@ describe("package compatibility policy", () => {
       dshWorkshop: { compatibility?: unknown };
     };
 
-    expect(packageJson.version).toBe("0.1.2");
+    expect(packageJson.version).toBe("0.1.3");
     expect(new Set(Object.values(packageJson.peerDependencies))).toEqual(new Set(["*"]));
     expect(packageJson.dshWorkshop.compatibility).toBeUndefined();
   });
