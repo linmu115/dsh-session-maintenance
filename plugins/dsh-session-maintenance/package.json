@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-maintenance",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Version-open DSH entry for the local session maintenance engine",
   "type": "module",
   "license": "MIT",
