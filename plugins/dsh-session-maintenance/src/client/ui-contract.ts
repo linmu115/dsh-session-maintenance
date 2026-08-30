@@ -1,6 +1,6 @@
 import type { ClientContext } from "./context.js";
 
-export const SUPPORTED_CLIENT_CONTRACT = "dsh-web@0.1.1-rc.2|sessions.list:v1|treeitem:_sessionRow_|title:_title_";
+export const SUPPORTED_CLIENT_CONTRACT = "dsh-web|sessions.list:v1|treeitem:_sessionRow_|title:_title_";
 
 function fingerprint(value: string): string {
   let hash = 0x811c9dc5;

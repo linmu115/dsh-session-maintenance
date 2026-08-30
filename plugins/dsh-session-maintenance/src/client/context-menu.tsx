@@ -7,7 +7,6 @@ export interface MenuItem {
   readonly label: string;
   readonly operation?: "scan-current" | "sync-current" | "compare" | "graph" | "checkpoint" | "unlink-candidate" | "archive-candidate" | "delete-candidate";
   readonly dashboard?: true;
-  readonly panel?: true;
 }
 
 export const SESSION_MENU_ITEMS: readonly MenuItem[] = [
@@ -20,14 +19,12 @@ export const SESSION_MENU_ITEMS: readonly MenuItem[] = [
   { id: "unlink", label: "解除映射…", operation: "unlink-candidate" },
   { id: "archive", label: "归档…", operation: "archive-candidate" },
   { id: "delete", label: "删除候选…", operation: "delete-candidate" },
-  { id: "settings", label: "维护参数与操作…", panel: true },
 ] as const;
 
 export function installContextMenu(input: {
   readonly actions: MaintenanceActions;
   readonly instanceId?: string;
   readonly snapshot: () => SessionListSnapshot;
-  readonly openPanel: () => void;
   readonly onFeedback: (message: string) => void;
 }): () => void {
   let menu: HTMLElement | undefined;
@@ -38,7 +35,6 @@ export function installContextMenu(input: {
     pending = true;
     close();
     try {
-      if (item.panel === true) { input.openPanel(); return; }
       if (item.dashboard === true) { input.onFeedback(await openDashboard(input.actions, input.instanceId, sessionId)); return; }
       if (item.operation === undefined) return;
       const result = await input.actions.invoke({
