@@ -10,8 +10,22 @@ export interface SessionListSnapshot {
   readonly byId?: Readonly<Record<string, { readonly title?: string; readonly archived?: boolean } | undefined>>;
 }
 
+export interface SettingsSectionRegistration {
+  readonly name: "settings.section";
+  readonly id: string;
+  readonly order: number;
+  readonly label: string | (() => string);
+  readonly inject?: () => Readonly<Record<string, unknown>>;
+}
+
+export interface ClientSlots {
+  inject(name: "settings.section", callback: () => () => void): () => void;
+  register(registration: SettingsSectionRegistration, component: unknown): () => void;
+}
+
 export interface ClientContext {
   readonly sessions: { readonly list: ObservableSnapshot<SessionListSnapshot> };
+  readonly slots: ClientSlots;
   inject(names: readonly string[], callback: (ctx: ClientContext) => void | Promise<void> | (() => void)): { dispose(): void | Promise<void> };
   effect(callback: () => void | (() => void), label?: string): void;
   get(name: string): unknown;

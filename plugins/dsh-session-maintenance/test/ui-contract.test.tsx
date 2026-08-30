@@ -6,6 +6,7 @@ import { SUPPORTED_CLIENT_FINGERPRINT, verifyUiContract } from "../src/client/ui
 function context(): ClientContext {
   return {
     sessions: { list: { getSnapshot: () => ({ current: "session-1", byId: { "session-1": { title: "Fixture session" } } }), subscribe: () => () => undefined } },
+    slots: { inject: (_name, callback) => callback(), register: () => () => undefined },
     inject: () => ({ dispose: () => undefined }),
     effect: () => undefined,
     get: () => undefined,

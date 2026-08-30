@@ -341,9 +341,15 @@ importers:
       '@types/node':
         specifier: 24.3.0
         version: 24.3.0
+      '@types/react':
+        specifier: 19.1.10
+        version: 19.1.10
       esbuild:
         specifier: 0.25.12
         version: 0.25.12
+      react:
+        specifier: 19.1.1
+        version: 19.1.1
       typescript:
         specifier: 5.9.2
         version: 5.9.2

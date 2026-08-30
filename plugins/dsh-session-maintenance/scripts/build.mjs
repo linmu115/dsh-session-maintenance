@@ -40,6 +40,7 @@ await build({
   format: "cjs",
   target: "es2023",
   conditions: ["development"],
+  external: ["react", "react/jsx-runtime"],
   legalComments: "none",
   banner: {
     js: 'window.__ModuleLoader__.load({ id: "dsh-session-maintenance", factory: (require) => {\nvar module = { exports: {} }; var exports = module.exports;',
