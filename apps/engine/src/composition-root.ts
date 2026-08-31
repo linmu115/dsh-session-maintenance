@@ -1,11 +1,13 @@
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
 import { CodexNativeWriteAdapter } from "@linmu/dsh-adapter-codex-native";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
 import { AdapterHost, AdapterRegistry, NodeAdapterWorkerFactory } from "@linmu/dsh-session-adapter-host";
+import { manifest as alpha2AdapterManifest } from "@linmu/dsh-session-adapter-alpha2";
 import { DshWriteAdapter } from "@linmu/dsh-adapter-dsh-write";
 import { RemoteDshHostGateway } from "@linmu/dsh-host-gateway";
 import {
@@ -22,7 +24,8 @@ import {
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
 import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
-import { SqliteAdapterRegistryRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { SqliteCanonicalProjectionSource } from "@linmu/dsh-session-projection-lifecycle";
+import { SqliteAdapterRegistryRepository, SqliteProjectionRunRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
@@ -39,6 +42,13 @@ import {
   type DshGatewayTarget,
 } from "./dsh-gateway-connection.js";
 import { WriteService } from "./write-service.js";
+
+const resolveModule = createRequire(import.meta.url).resolve;
+const alpha2WorkerEntryPoint = join(
+  dirname(resolveModule("@linmu/dsh-session-adapter-alpha2/package.json")),
+  "dist",
+  "rpc-worker.js",
+);
 
 export interface CompositionOptions {
   readonly stateRoot: string;
@@ -140,6 +150,18 @@ async function createComposition(
     repository: new SqliteAdapterRegistryRepository(repository.database),
     ...(options.clock === undefined ? {} : { now: options.clock }),
   });
+  await adapterRegistry.register({
+    manifest: alpha2AdapterManifest,
+    source: {
+      kind: "generation",
+      generationId: "builtin-canonical-alpha2",
+      packageName: "@linmu/dsh-session-adapter-alpha2",
+      entryPoint: alpha2WorkerEntryPoint,
+    },
+    enabled: true,
+  });
+  const projectionRunRepository = new SqliteProjectionRunRepository(repository.database);
+  const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database);
   let writeService: WriteService | undefined;
   const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
   const writeAdapters = new Map<"codex" | "dsh", PlatformWriteAdapter>();
@@ -202,6 +224,9 @@ async function createComposition(
     migrationCandidatePath: join(options.stateRoot, "metadata.canonical-candidate.sqlite"),
     statusLog,
     adapterRegistry,
+    projectionRunRepository,
+    canonicalProjectionSource,
+    projectionRuntimeRoot: join(options.stateRoot, "projection-runtime"),
     settingsPort: {
       get: async () => (await loadConfig(options.stateRoot)).settings,
       patch: (input) => updateSettings(options.stateRoot, input),

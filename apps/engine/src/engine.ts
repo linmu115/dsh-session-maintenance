@@ -63,6 +63,8 @@ import type { ContinuationService } from "@linmu/dsh-session-continuation-engine
 import type { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
 import type { StatusLog } from "@linmu/dsh-session-status-log";
 import type { AdapterRegistry } from "@linmu/dsh-session-adapter-host";
+import { readProjectionRuntimeSnapshot, type CanonicalProjectionSource, type ProjectionRuntimeSnapshot } from "@linmu/dsh-session-projection-lifecycle";
+import type { ProjectionRunRepository, RunId } from "@linmu/dsh-session-contracts";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
 import { previewCanonicalMigration, type SqliteSessionRepository } from "@linmu/dsh-session-store";
 
@@ -144,6 +146,9 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly objectStore: ContentObjectStore;
   readonly statusLog: StatusLog;
   readonly adapterRegistry: AdapterRegistry;
+  readonly projectionRunRepository: ProjectionRunRepository;
+  readonly canonicalProjectionSource: CanonicalProjectionSource;
+  readonly projectionRuntimeRoot: string;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
   private readonly clock: () => string;
@@ -168,6 +173,9 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly migrationCandidatePath: string;
     readonly statusLog: StatusLog;
     readonly adapterRegistry: AdapterRegistry;
+    readonly projectionRunRepository: ProjectionRunRepository;
+    readonly canonicalProjectionSource: CanonicalProjectionSource;
+    readonly projectionRuntimeRoot: string;
   }) {
     this.instances = input.instances;
     this.adapters = input.adapters;
@@ -186,6 +194,17 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.migrationCandidatePath = input.migrationCandidatePath;
     this.statusLog = input.statusLog;
     this.adapterRegistry = input.adapterRegistry;
+    this.projectionRunRepository = input.projectionRunRepository;
+    this.canonicalProjectionSource = input.canonicalProjectionSource;
+    this.projectionRuntimeRoot = input.projectionRuntimeRoot;
+  }
+
+  async getProjectionRuntimeSnapshot(runId: RunId): Promise<ProjectionRuntimeSnapshot | undefined> {
+    const run = await this.projectionRunRepository.getProjectionRun(runId);
+    if (run === undefined || !["preparing", "running", "draining", "verifying"].includes(run.state)) {
+      return undefined;
+    }
+    return readProjectionRuntimeSnapshot(this.projectionRuntimeRoot, runId);
   }
 
   previewCanonicalMigration(): Promise<CanonicalMigrationPreview> {

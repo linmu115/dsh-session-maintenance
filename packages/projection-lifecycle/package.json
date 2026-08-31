@@ -1,5 +1,5 @@
 {
-  "name": "@linmu/dsh-session-adapter-alpha2",
+  "name": "@linmu/dsh-session-projection-lifecycle",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -8,19 +8,19 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    },
-    "./rpc-worker": {
-      "types": "./dist/rpc-worker.d.ts",
-      "default": "./dist/rpc-worker.js"
-    },
-    "./package.json": "./package.json"
+    }
   },
-  "files": ["dist", "CHANGELOG.md", "BREAKING-CHANGES.md", "COMPATIBILITY.md"],
+  "files": ["dist"],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@linmu/dsh-session-adapter-sdk": "workspace:*"
+    "@linmu/dsh-session-adapter-sdk": "workspace:*",
+    "@linmu/dsh-session-contracts": "workspace:*",
+    "@linmu/dsh-session-status-log": "workspace:*"
+  },
+  "devDependencies": {
+    "@linmu/dsh-session-adapter-alpha2": "workspace:*"
   }
 }

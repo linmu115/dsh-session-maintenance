@@ -37,14 +37,21 @@ function parsePayload(value: JsonValue): Alpha2ProjectionSession {
 export async function inspectAlpha2(reader: ProjectionReader): Promise<ProjectionInspection> {
   const ids = [...await reader.listNativeSessionIds()].sort();
   const sessionDigests: Record<string, string> = {};
-  const workspaceIds: string[] = [];
+  const workspaceReader = reader as ProjectionReader & {
+    readonly listNativeWorkspaceIds?: () => Promise<readonly string[]>;
+  };
+  const workspaceIds: string[] = workspaceReader.listNativeWorkspaceIds === undefined
+    ? []
+    : [...await workspaceReader.listNativeWorkspaceIds()];
   const heldOut = new Set<string>();
   for (const id of ids) {
     const value = await reader.readSession(id);
     const payload = parsePayload(value);
     if (payload.header.id !== id) throw new TypeError(`Alpha2 payload identity mismatch for ${id}`);
     sessionDigests[id] = digest(value);
-    if (payload.workspaceId !== null) workspaceIds.push(payload.workspaceId);
+    if (workspaceReader.listNativeWorkspaceIds === undefined && payload.workspaceId !== null) {
+      workspaceIds.push(payload.workspaceId);
+    }
     for (const event of payload.events) {
       if (!CORE_EVENT_TYPES.has(event.type)) heldOut.add(event.type);
     }

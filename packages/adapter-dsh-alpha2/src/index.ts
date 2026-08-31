@@ -13,6 +13,7 @@ export { normalizeAlpha2Append } from "./normalize-append.js";
 export { inspectAlpha2, verifyAlpha2 } from "./inspect.js";
 export { probeAlpha2 } from "./probe.js";
 export { resolveAlpha2Reference } from "./references.js";
+export * from "./runtime-bridge.js";
 
 export const adapter = defineDshSessionAdapter({
   manifest,

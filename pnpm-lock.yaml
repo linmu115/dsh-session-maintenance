@@ -72,6 +72,9 @@ importers:
       '@linmu/dsh-host-gateway':
         specifier: workspace:*
         version: link:../../packages/dsh-host-gateway
+      '@linmu/dsh-session-adapter-alpha2':
+        specifier: workspace:*
+        version: link:../../packages/adapter-dsh-alpha2
       '@linmu/dsh-session-adapter-host':
         specifier: workspace:*
         version: link:../../packages/adapter-host
@@ -87,6 +90,9 @@ importers:
       '@linmu/dsh-session-native-mirror-engine':
         specifier: workspace:*
         version: link:../../packages/native-mirror-engine
+      '@linmu/dsh-session-projection-lifecycle':
+        specifier: workspace:*
+        version: link:../../packages/projection-lifecycle
       '@linmu/dsh-session-status-log':
         specifier: workspace:*
         version: link:../../packages/session-status-log
@@ -286,6 +292,22 @@ importers:
         specifier: workspace:*
         version: link:../test-support
 
+  packages/projection-lifecycle:
+    dependencies:
+      '@linmu/dsh-session-adapter-sdk':
+        specifier: workspace:*
+        version: link:../session-adapter-sdk
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-status-log':
+        specifier: workspace:*
+        version: link:../session-status-log
+    devDependencies:
+      '@linmu/dsh-session-adapter-alpha2':
+        specifier: workspace:*
+        version: link:../adapter-dsh-alpha2
+
   packages/session-adapter-sdk:
     dependencies:
       '@linmu/dsh-session-contracts':
@@ -386,6 +408,9 @@ importers:
       '@linmu/dsh-host-gateway':
         specifier: workspace:*
         version: link:../../packages/dsh-host-gateway
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../../packages/contracts
       '@types/node':
         specifier: 24.3.0
         version: 24.3.0

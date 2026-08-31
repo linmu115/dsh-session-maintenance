@@ -139,7 +139,7 @@ export async function materializeAlpha2(
     });
   }
   const sessionDigests: Record<string, string> = {};
-  const workspaceIds: string[] = [];
+  const workspaceIds = input.workspaces.map((workspace) => workspace.id);
   for (const item of input.sessions) {
     const nativeSessionId = alpha2NativeSessionId(item.session.id);
     const createdAt = Date.parse(item.session.createdAt);
@@ -158,14 +158,13 @@ export async function materializeAlpha2(
     };
     await output.writeSession(nativeSessionId, payload as unknown as JsonValue);
     sessionDigests[nativeSessionId] = digest(payload as unknown as JsonValue);
-    if (item.workspaceId !== null) workspaceIds.push(item.workspaceId);
   }
   return {
     schemaVersion: 1,
     runId: input.run.id,
     adapterId: manifest.id,
     sessionCount: input.sessions.length,
-    workspaceCount: new Set(workspaceIds).size,
+    workspaceCount: input.workspaces.length,
     catalogDigest: catalogDigest(sessionDigests, workspaceIds),
     sessionDigests,
   };

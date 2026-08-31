@@ -159,6 +159,14 @@ export async function routeRequest(
       send(response, 200, { adapters: context.engine.adapterRegistry.list() });
       return;
     }
+    const projectionRuntimeMatch = /^\/v1\/projection-runs\/([^/]+)\/runtime$/u.exec(url.pathname);
+    if (request.method === "GET" && projectionRuntimeMatch !== null) {
+      const runId = decodeURIComponent(projectionRuntimeMatch[1]!) as never;
+      const snapshot = await context.engine.getProjectionRuntimeSnapshot(runId);
+      if (snapshot === undefined) send(response, 404, { error: "projection run not found" });
+      else send(response, 200, snapshot);
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/v1/session-resolution") {
       const key = platformSessionResolutionRequestSchema.parse(await readJsonBody(request));
       const resolution = await context.engine.resolvePlatformSession(key);

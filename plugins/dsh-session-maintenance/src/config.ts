@@ -16,6 +16,9 @@ export function normalizeConfig(config: Config): Config {
   return { ...config };
 }
 
+export type { ProjectionRuntimeDescriptor } from "./projection-runtime.js";
+export { normalizeProjectionRuntimeDescriptor } from "./projection-runtime.js";
+
 export function connectionDescriptorPath(
   connectionId: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,

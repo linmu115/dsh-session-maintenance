@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Add the isolated Alpha2 Runtime Bridge. The DSH registrar receives only a run ID and Maintenance endpoint; the Engine-owned projection root never crosses the plugin configuration boundary.
+- Add the typed probe worker used by Adapter Host and register the built-in Alpha2 Adapter during Engine composition.
+- Include the complete workspace catalog in projection verification, including empty workspaces.
+
 ## 0.1.0 - 2026-08-31
 
 - Add the first canonical projection Codec for DeepSeek Harness `0.1.2-alpha.2`.
