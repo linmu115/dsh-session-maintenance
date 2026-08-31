@@ -40,6 +40,7 @@ import { allowedOrigin, authorized } from "./auth.js";
 import { HttpBodyError, readJsonBody } from "./body.js";
 import { streamJobEvents } from "./sse.js";
 import { hasUiSessionCookie, type UiSessionManager } from "./ui-session.js";
+import { DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH } from "./dashboard.js";
 
 export interface RouteContext {
   readonly engine: SessionMaintenanceEngine;
@@ -161,6 +162,10 @@ export async function routeRequest(
     }
     if (request.method === "GET" && url.pathname === "/v1/overview") {
       send(response, 200, { overview: await context.engine.overview() });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH) {
+      send(response, 200, { preview: await context.engine.previewCanonicalMigration() });
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/mirrors") {

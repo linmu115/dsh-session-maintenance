@@ -114,8 +114,9 @@ async function createComposition(
   await mkdir(join(options.stateRoot, "objects"), { recursive: true });
   const config = await loadConfig(options.stateRoot);
   const objectStore = new ZstdContentObjectStore(options.stateRoot);
+  const metadataPath = join(options.stateRoot, "metadata.sqlite");
   const repository = new SqliteSessionRepository(
-    openMaintenanceDatabase(join(options.stateRoot, "metadata.sqlite")),
+    openMaintenanceDatabase(metadataPath),
     objectStore,
   );
   const instances = registeredInstances(config);
@@ -186,6 +187,8 @@ async function createComposition(
     objectStore,
     continuations,
     mirrors,
+    migrationSourcePath: metadataPath,
+    migrationCandidatePath: join(options.stateRoot, "metadata.canonical-candidate.sqlite"),
     settingsPort: {
       get: async () => (await loadConfig(options.stateRoot)).settings,
       patch: (input) => updateSettings(options.stateRoot, input),

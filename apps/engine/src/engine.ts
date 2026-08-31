@@ -55,11 +55,12 @@ import {
   type PlanSummary,
   type PlatformSessionKey,
   type PlatformSessionResolution,
+  type CanonicalMigrationPreview,
 } from "@linmu/dsh-session-contracts";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import type { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
-import type { SqliteSessionRepository } from "@linmu/dsh-session-store";
+import { previewCanonicalMigration, type SqliteSessionRepository } from "@linmu/dsh-session-store";
 
 import type { WriteService } from "./write-service.js";
 
@@ -144,6 +145,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   private readonly writeService: WriteService | undefined;
   private readonly mirrors: NativeMirrorService;
   private readonly settingsPort: EngineSettingsPort;
+  private readonly migrationSourcePath: string;
+  private readonly migrationCandidatePath: string;
 
   constructor(input: {
     readonly instances: readonly RegisteredInstance[];
@@ -155,6 +158,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly writeService?: WriteService;
     readonly mirrors: NativeMirrorService;
     readonly settingsPort?: EngineSettingsPort;
+    readonly migrationSourcePath: string;
+    readonly migrationCandidatePath: string;
   }) {
     this.instances = input.instances;
     this.adapters = input.adapters;
@@ -169,6 +174,16 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       get: async () => DEFAULT_SETTINGS,
       patch: async (patch) => ({ ...DEFAULT_SETTINGS, ...patch }),
     };
+    this.migrationSourcePath = input.migrationSourcePath;
+    this.migrationCandidatePath = input.migrationCandidatePath;
+  }
+
+  previewCanonicalMigration(): Promise<CanonicalMigrationPreview> {
+    return previewCanonicalMigration({
+      database: this.repository.database,
+      sourceDatabasePath: this.migrationSourcePath,
+      candidateDatabasePath: this.migrationCandidatePath,
+    });
   }
 
   async listInstances(): Promise<readonly InstanceStatus[]> {

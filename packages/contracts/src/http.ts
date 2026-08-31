@@ -92,3 +92,61 @@ export interface PlatformSessionResolutionResponse { readonly resolution: Platfo
 export interface ProjectionRunResponse { readonly run: ProjectionRun }
 export interface StatusEventListResponse { readonly page: Page<StatusEventV1> }
 export interface AdapterManifestResponse { readonly manifest: AdapterManifestV1 }
+
+export type CanonicalMigrationDisposition =
+  | "codex-mirror"
+  | "maintenance-native"
+  | "codex-mirror-with-derived-child"
+  | "review-required"
+  | "unclassified";
+
+export interface CanonicalMigrationSourceFile {
+  readonly path: string;
+  readonly digest: string;
+  readonly size: number;
+}
+
+export interface CanonicalMigrationClassification {
+  readonly logicalSessionId: string;
+  readonly disposition: CanonicalMigrationDisposition;
+  readonly reasonCode:
+    | "CODEX_ONLY"
+    | "DSH_ONLY"
+    | "MIRROR_EQUAL"
+    | "CODEX_AHEAD"
+    | "DSH_AHEAD_DERIVE"
+    | "DIVERGED_REQUIRES_REVIEW"
+    | "NO_NATIVE_MIRROR"
+    | "INCOMPLETE_MIRROR_STATE";
+  readonly proposedSessionIds: readonly string[];
+  readonly workspaceIds: readonly string[];
+}
+
+export interface CanonicalMigrationPreview {
+  readonly sourceSchemaVersion: number;
+  readonly sourceDigest: string;
+  readonly sourceFiles: readonly CanonicalMigrationSourceFile[];
+  readonly candidate: {
+    readonly path: string;
+    readonly exists: boolean;
+    readonly created: false;
+  };
+  readonly rollback: {
+    readonly sourcePreserved: true;
+    readonly activationRequired: true;
+    readonly strategy: "candidate-copy-and-pointer-swap";
+  };
+  readonly counts: {
+    readonly sourceLogicalSessions: number;
+    readonly codexMirror: number;
+    readonly maintenanceNative: number;
+    readonly codexDerived: number;
+    readonly reviewRequired: number;
+    readonly unclassified: number;
+  };
+  readonly classifications: readonly CanonicalMigrationClassification[];
+}
+
+export interface CanonicalMigrationPreviewResponse {
+  readonly preview: CanonicalMigrationPreview;
+}

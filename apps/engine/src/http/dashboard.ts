@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 const ASSET = /^\/dashboard\/assets\/([A-Za-z0-9][A-Za-z0-9._-]{0,255})$/u;
 
+export const DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH = "/v1/migrations/canonical/preview";
+
 function headers(response: ServerResponse, contentType: string, cacheControl: string): void {
   response.setHeader("content-type", contentType);
   response.setHeader("cache-control", cacheControl);
