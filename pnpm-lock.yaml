@@ -176,6 +176,15 @@ importers:
         specifier: workspace:*
         version: link:../test-support
 
+  packages/canonical-session-engine:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-domain':
+        specifier: workspace:*
+        version: link:../session-domain
+
   packages/continuation-engine:
     dependencies:
       '@linmu/dsh-session-contracts':
