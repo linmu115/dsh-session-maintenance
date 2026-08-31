@@ -12,13 +12,9 @@ describe("Dashboard summary baseline", () => {
         calls.push("overview");
         return { sessions: 1, conflicts: 0, unmapped: 1, unresolvedTransactions: 0, instances: [] };
       },
-      listSessions: async (query) => {
-        calls.push(`sessions:${query?.limit}`);
-        return { items: [] };
-      },
-      listWorkspaces: async () => {
+      listCanonicalWorkspaces: async () => {
         calls.push("workspaces");
-        return [];
+        return { schemaVersion: 1, workspaces: [], unclassified: [] };
       },
     };
     await loadDashboardSummary(api);

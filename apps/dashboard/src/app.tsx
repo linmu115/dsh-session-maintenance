@@ -19,6 +19,7 @@ import {
 } from "./summary-loader.js";
 import type { WorkbenchApi } from "./session-workbench.js";
 import type { OperationsApi } from "./operations-pages.js";
+import type { CatalogApi } from "./catalog-pages.js";
 import { WorkspaceDirectory } from "./workspace-directory.js";
 
 const SessionWorkbench = lazy(async () => ({ default: (await import("./session-workbench.js")).SessionWorkbench }));
@@ -49,11 +50,11 @@ function DashboardContent(props: {
     description={props.state.message}
     action={<Button onClick={props.onRetry}>重试</Button>}
   /></Surface>;
-  const { overview, workspaces } = props.state.value;
+  const { overview, canonicalDirectory } = props.state.value;
   if (props.view === "sessions") return <>
-    <div className="dsm-page-heading"><div><h2>会话</h2><p>按工作区浏览；展开目录后才加载其中的会话摘要。</p></div></div>
-    <Surface title={`${workspaces.length} 个工作区目录`}>
-      <WorkspaceDirectory key={props.refreshKey} api={props.api} workspaces={workspaces} onOpenSession={props.onOpenSession} />
+    <div className="dsm-page-heading"><div><h2>会话</h2><p>从 Maintenance 稳定存储浏览工作区、静态会话与派生关系，不依赖正在运行的 DSH。</p></div></div>
+    <Surface title={`${canonicalDirectory.workspaces.length} 个工作区目录`}>
+      <WorkspaceDirectory key={props.refreshKey} directory={canonicalDirectory} onOpenSession={props.onOpenSession} />
     </Surface>
   </>;
   return <>
@@ -76,7 +77,7 @@ function DashboardContent(props: {
   </>;
 }
 
-export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi; readonly initialLogicalSessionId?: string }) {
+export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi & CatalogApi; readonly initialLogicalSessionId?: string }) {
   const [view, setView] = useState<View>("overview");
   const [request, setRequest] = useState(0);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
@@ -112,7 +113,7 @@ export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi
     {selectedSessionId !== undefined ? <>
         <div className="workbench-heading"><Button onClick={() => setSelectedSessionId(undefined)}><ArrowLeft size={14} /> 返回会话</Button><code>{selectedSessionId}</code></div>
         <Suspense fallback={<Surface><LoadingState label="正在打开版本工作台…" /></Surface>}>
-          <SessionWorkbench api={props.api} logicalSessionId={selectedSessionId} />
+          <SessionWorkbench api={props.api} logicalSessionId={selectedSessionId} onOpenSession={setSelectedSessionId} />
         </Suspense>
       </> : view === "plans" ? <Suspense fallback={<Surface><LoadingState label="正在打开计划…" /></Surface>}><PlansPage api={props.api} /></Suspense>
         : view === "checkpoints" ? <Suspense fallback={<Surface><LoadingState label="正在打开 Checkpoint…" /></Surface>}><CheckpointsPage api={props.api} /></Suspense>

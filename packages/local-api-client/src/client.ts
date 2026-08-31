@@ -4,6 +4,8 @@ import {
   apiErrorResponseSchema,
   checkpointListResponseSchema,
   checkpointResponseSchema,
+  canonicalDashboardSessionResponseSchema,
+  canonicalWorkspaceDirectoryResponseSchema,
   continuationJobResponseSchema,
   continuationPreviewResponseSchema,
   diagnosticsResponseSchema,
@@ -31,6 +33,8 @@ import {
   versionGraphResponseSchema,
   type AdapterDiagnostic,
   type Checkpoint,
+  type CanonicalDashboardSessionDetail,
+  type CanonicalWorkspaceDirectory,
   type CheckpointRestoreRequest,
   type CreateCheckpointRequest,
   type DiffRequest,
@@ -151,6 +155,24 @@ class ApiClient {
       signal,
     );
     return value.workspaces as readonly WorkspaceSummary[];
+  }
+
+  async listCanonicalWorkspaces(signal?: AbortSignal): Promise<CanonicalWorkspaceDirectory> {
+    return (await this.request(
+      "/v1/canonical/workspaces",
+      {},
+      canonicalWorkspaceDirectoryResponseSchema,
+      signal,
+    )).directory as unknown as CanonicalWorkspaceDirectory;
+  }
+
+  async getCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail> {
+    return (await this.request(
+      `/v1/canonical/sessions/${encodeURIComponent(id)}`,
+      {},
+      canonicalDashboardSessionResponseSchema,
+      signal,
+    )).session as unknown as CanonicalDashboardSessionDetail;
   }
 
   async getGraph(id: string, cursor?: string, signal?: AbortSignal): Promise<VersionGraphPage> {

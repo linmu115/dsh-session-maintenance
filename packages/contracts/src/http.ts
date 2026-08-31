@@ -26,6 +26,13 @@ import type { SyncPlan } from "./plans.js";
 import type { AdapterManifestV1 } from "./adapter-sdk.js";
 import type { ProjectionRun } from "./projection.js";
 import type { StatusEventV1 } from "./status.js";
+import type {
+  CanonicalEventV1,
+  CanonicalSessionRecord,
+  LogicalWorkspace,
+  SessionDerivation,
+  WorkspaceMembership,
+} from "./canonical.js";
 
 export interface ApiErrorBody {
   readonly code: string;
@@ -149,4 +156,44 @@ export interface CanonicalMigrationPreview {
 
 export interface CanonicalMigrationPreviewResponse {
   readonly preview: CanonicalMigrationPreview;
+}
+
+/** Stable, read-only model consumed by the standalone Maintenance dashboard. */
+export interface CanonicalDashboardSessionSummary {
+  readonly session: CanonicalSessionRecord;
+  readonly membership: WorkspaceMembership | null;
+}
+
+export interface CanonicalDashboardWorkspace {
+  readonly workspace: LogicalWorkspace;
+  readonly sessions: readonly CanonicalDashboardSessionSummary[];
+}
+
+export interface CanonicalWorkspaceDirectory {
+  readonly schemaVersion: 1;
+  readonly workspaces: readonly CanonicalDashboardWorkspace[];
+  readonly unclassified: readonly CanonicalDashboardSessionSummary[];
+}
+
+export interface CanonicalWorkspaceDirectoryResponse {
+  readonly directory: CanonicalWorkspaceDirectory;
+}
+
+export interface CanonicalLineageRelation {
+  readonly derivation: SessionDerivation;
+  readonly session: CanonicalSessionRecord;
+}
+
+export interface CanonicalDashboardSessionDetail {
+  readonly schemaVersion: 1;
+  readonly session: CanonicalSessionRecord;
+  readonly membership: WorkspaceMembership | null;
+  readonly workspace: LogicalWorkspace | null;
+  readonly events: readonly CanonicalEventV1[];
+  readonly parent: CanonicalLineageRelation | null;
+  readonly children: readonly CanonicalLineageRelation[];
+}
+
+export interface CanonicalDashboardSessionResponse {
+  readonly session: CanonicalDashboardSessionDetail;
 }

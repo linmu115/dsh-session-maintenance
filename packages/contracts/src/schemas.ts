@@ -128,6 +128,38 @@ export const workspaceMembershipSchema = z.strictObject({
   archived: z.boolean(),
   revision: nonNegativeIntegerSchema,
 });
+export const canonicalDashboardSessionSummarySchema = z.strictObject({
+  session: canonicalSessionRecordSchema,
+  membership: workspaceMembershipSchema.nullable(),
+});
+export const canonicalDashboardWorkspaceSchema = z.strictObject({
+  workspace: logicalWorkspaceSchema,
+  sessions: z.array(canonicalDashboardSessionSummarySchema),
+});
+export const canonicalWorkspaceDirectorySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  workspaces: z.array(canonicalDashboardWorkspaceSchema),
+  unclassified: z.array(canonicalDashboardSessionSummarySchema),
+});
+export const canonicalWorkspaceDirectoryResponseSchema = z.strictObject({
+  directory: canonicalWorkspaceDirectorySchema,
+});
+export const canonicalLineageRelationSchema = z.strictObject({
+  derivation: sessionDerivationSchema,
+  session: canonicalSessionRecordSchema,
+});
+export const canonicalDashboardSessionDetailSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  session: canonicalSessionRecordSchema,
+  membership: workspaceMembershipSchema.nullable(),
+  workspace: logicalWorkspaceSchema.nullable(),
+  events: z.array(canonicalEventV1Schema),
+  parent: canonicalLineageRelationSchema.nullable(),
+  children: z.array(canonicalLineageRelationSchema),
+});
+export const canonicalDashboardSessionResponseSchema = z.strictObject({
+  session: canonicalDashboardSessionDetailSchema,
+});
 export const sessionTombstoneSchema = z.strictObject({
   schemaVersion: z.literal(1),
   logicalSessionId: idSchema,

@@ -42,7 +42,12 @@ import { allowedOrigin, authorized } from "./auth.js";
 import { HttpBodyError, readJsonBody } from "./body.js";
 import { streamJobEvents, streamStatusEvents } from "./sse.js";
 import { hasUiSessionCookie, type UiSessionManager } from "./ui-session.js";
-import { DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH } from "./dashboard.js";
+import {
+  DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH,
+  DASHBOARD_CANONICAL_WORKSPACES_PATH,
+  readCanonicalDashboardSession,
+  readCanonicalWorkspaceDirectory,
+} from "./dashboard.js";
 
 export interface RouteContext {
   readonly engine: SessionMaintenanceEngine;
@@ -194,6 +199,23 @@ export async function routeRequest(
     }
     if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH) {
       send(response, 200, { preview: await context.engine.previewCanonicalMigration() });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_WORKSPACES_PATH) {
+      send(response, 200, { directory: await readCanonicalWorkspaceDirectory(context.engine.repository.database) });
+      return;
+    }
+    const canonicalSession = url.pathname.match(/^\/v1\/canonical\/sessions\/([^/]+)$/u);
+    if (request.method === "GET" && canonicalSession !== null) {
+      const detail = await readCanonicalDashboardSession(
+        context.engine.repository.database,
+        pathId(canonicalSession[1]!),
+      );
+      if (detail === undefined) {
+        send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
+      } else {
+        send(response, 200, { session: detail });
+      }
       return;
     }
     if (request.method === "GET" && (url.pathname === "/v1/status-events" || url.pathname === "/v1/status-events/stream")) {

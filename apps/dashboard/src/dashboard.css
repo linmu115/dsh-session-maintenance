@@ -137,6 +137,38 @@
 .settings-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 18px; padding: 16px; }
 .toggle-field { display: flex; min-height: 38px; align-items: center; gap: 8px; }
 .settings-form > .job-feedback, .settings-form > .inline-error { grid-column: 1 / -1; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.canonical-session-list { display: grid; }
+.canonical-session-row { display: grid; grid-template-columns: minmax(220px, 1fr) auto auto; align-items: center; gap: 12px; width: 100%; min-height: 66px; padding: 10px 14px 10px 34px; border: 0; border-bottom: 1px solid var(--dsm-border); color: inherit; text-align: left; background: #fff; cursor: pointer; }
+.canonical-session-row:hover, .canonical-session-row:focus-visible { background: #eef7f3; }
+.canonical-session-row strong, .canonical-session-row code { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.canonical-session-row code { margin-top: 3px; color: var(--dsm-muted); font: 10px/1.4 var(--dsm-mono); }
+.canonical-session-row time { color: var(--dsm-muted); font-size: 11px; }
+.canonical-session-badges { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 5px; }
+.workspace-folder-content .workspace-folder { margin: 8px 10px; border: 1px solid var(--dsm-border); border-radius: 8px; }
+.canonical-unclassified { margin-top: 10px; }
+.canonical-workbench { min-height: calc(100vh - 210px); }
+.canonical-session-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 18px; border-bottom: 1px solid var(--dsm-border); }
+.canonical-session-heading h2 { margin: 0 0 5px; }
+.canonical-session-heading code { color: var(--dsm-muted); font: 10px/1.4 var(--dsm-mono); }
+.canonical-session-heading > div:last-child { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.canonical-transcript { display: grid; gap: 10px; padding: 18px; }
+.canonical-event { padding: 14px; border: 1px solid var(--dsm-border); border-radius: 9px; background: var(--dsm-soft-surface); }
+.canonical-event > header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; color: var(--dsm-muted); font-size: 11px; }
+.canonical-event-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.canonical-event-json { max-height: 360px; margin: 0; padding: 12px; overflow: auto; border-radius: 6px; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; }
+.canonical-event-held-out { padding: 10px; border: 1px solid #e3bd7b; border-radius: 7px; background: #fff9ed; }
+.canonical-event-held-out p { margin: 0 0 6px; }
+.lineage-view { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; padding: 18px; }
+.lineage-view h3 { margin-top: 0; }
+.lineage-relation { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; padding: 12px; border: 1px solid var(--dsm-border); border-radius: 8px; color: inherit; text-align: left; background: var(--dsm-soft-surface); cursor: pointer; }
+.lineage-relation:hover, .lineage-relation:focus-visible { border-color: #9fcfbd; background: #eef7f3; }
+.lineage-relation strong, .lineage-relation code, .lineage-relation small { display: block; }
+.lineage-relation code, .lineage-relation small { margin-top: 4px; color: var(--dsm-muted); font: 10px/1.4 var(--dsm-mono); }
+.canonical-metadata { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; padding: 18px; }
+.canonical-metadata > div { padding: 12px; border: 1px solid var(--dsm-border); border-radius: 8px; }
+.canonical-metadata dt { color: var(--dsm-muted); font-size: 11px; }
+.canonical-metadata dd { margin: 5px 0 0; overflow-wrap: anywhere; }
 
 @media (max-width: 820px) {
   .workspace-folder-row { grid-template-columns: auto auto minmax(0, 1fr) auto; }
@@ -150,4 +182,8 @@
   .diff-columns { grid-template-columns: 1fr; }
   .catalog-layout { grid-template-columns: 1fr; }
   .settings-form { grid-template-columns: 1fr; }
+  .canonical-session-row { grid-template-columns: minmax(0, 1fr) auto; padding-left: 14px; }
+  .canonical-session-row time { display: none; }
+  .canonical-session-badges { display: none; }
+  .lineage-view, .canonical-metadata { grid-template-columns: 1fr; }
 }
