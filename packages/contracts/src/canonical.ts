@@ -122,3 +122,21 @@ export interface SessionTombstone {
   readonly retentionUntil: string;
   readonly restoredAt: string | null;
 }
+
+export interface StableLogicalReference {
+  readonly referenceType: "annotation" | "sticker" | "obsidian-reference";
+  readonly logicalSessionId: LogicalSessionId | null;
+  readonly logicalAnchorId: string | null;
+  readonly legacyNativeSessionId: string | null;
+  readonly legacyNativeAnchorId: string | null;
+}
+
+export interface StableLogicalReferenceResolution {
+  readonly referenceType: "annotation" | "sticker" | "obsidian-reference";
+  readonly logicalSessionId: LogicalSessionId | null;
+  readonly logicalAnchorId: string | null;
+  readonly nativeSessionId: NativeSessionId | null;
+  readonly nativeAnchorId: string | null;
+  readonly runId: RunId | null;
+  readonly status: "resolved" | "unavailable";
+}

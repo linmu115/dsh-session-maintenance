@@ -9,6 +9,7 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 
 export type ProxyOperation =
   | "status"
+  | "reference:resolve"
   | "resolve"
   | "scan-current"
   | "sync-current"
@@ -28,6 +29,11 @@ export interface ProxyRequest {
   readonly sessionId?: string;
   readonly applySafe?: boolean;
   readonly settings?: Readonly<Record<string, unknown>>;
+  readonly referenceType?: "annotation" | "sticker" | "obsidian-reference";
+  readonly logicalSessionId?: string | null;
+  readonly logicalAnchorId?: string | null;
+  readonly legacyNativeSessionId?: string | null;
+  readonly legacyNativeAnchorId?: string | null;
 }
 
 export interface ProxyResult {
@@ -38,6 +44,15 @@ export interface ProxyResult {
   readonly jobId?: string;
   readonly url?: string;
   readonly settings?: unknown;
+  readonly referenceResolution?: {
+    readonly referenceType: "annotation" | "sticker" | "obsidian-reference";
+    readonly logicalSessionId: string | null;
+    readonly logicalAnchorId: string | null;
+    readonly nativeSessionId: string | null;
+    readonly nativeAnchorId: string | null;
+    readonly runId: string | null;
+    readonly status: "resolved" | "unavailable";
+  };
 }
 
 export interface EngineConnection {
@@ -117,16 +132,31 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
 function assertRequest(value: unknown): ProxyRequest {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError("请求必须是对象");
   const record = value as Record<string, unknown>;
-  const allowed = new Set(["operation", "instanceId", "sessionId", "applySafe", "settings"]);
+  const allowed = new Set([
+    "operation", "instanceId", "sessionId", "applySafe", "settings", "referenceType",
+    "logicalSessionId", "logicalAnchorId", "legacyNativeSessionId", "legacyNativeAnchorId",
+  ]);
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("请求包含未允许字段");
   const operations: readonly ProxyOperation[] = [
-    "status", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
+    "status", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
     "unlink-candidate", "archive-candidate", "delete-candidate", "settings:get", "settings:patch",
   ];
   if (!operations.includes(record.operation as ProxyOperation)) throw new TypeError("未知维护操作");
   if (record.instanceId !== undefined) safeId(record.instanceId, "instanceId");
   if (record.sessionId !== undefined) safeId(record.sessionId, "sessionId");
-  if (record.applySafe !== undefined && typeof record.applySafe !== "boolean") throw new TypeError("applySafe 必须是布尔值");
+    if (record.applySafe !== undefined && typeof record.applySafe !== "boolean") throw new TypeError("applySafe 必须是布尔值");
+  if (record.operation === "reference:resolve") {
+    if (!["annotation", "sticker", "obsidian-reference"].includes(String(record.referenceType))) {
+      throw new TypeError("referenceType 不是受支持的引用类型");
+    }
+    for (const key of ["logicalSessionId", "logicalAnchorId", "legacyNativeSessionId", "legacyNativeAnchorId"] as const) {
+      const value = record[key];
+      if (value !== undefined && value !== null) safeId(value, key);
+    }
+    if (record.logicalSessionId == null && record.legacyNativeSessionId == null) {
+      throw new TypeError("引用必须包含逻辑会话或旧原生会话 ID");
+    }
+  }
   return record as unknown as ProxyRequest;
 }
 
@@ -161,6 +191,16 @@ export class RestrictedEngineProxy {
     if (input.operation === "status") {
       await this.engine("/v1/health");
       return { ok: true, message: "维护引擎在线" };
+    }
+    if (input.operation === "reference:resolve") {
+      const value = await this.engine("/v1/references/resolve", "POST", {
+        referenceType: input.referenceType,
+        logicalSessionId: input.logicalSessionId ?? null,
+        logicalAnchorId: input.logicalAnchorId ?? null,
+        legacyNativeSessionId: input.legacyNativeSessionId ?? null,
+        legacyNativeAnchorId: input.legacyNativeAnchorId ?? null,
+      }) as { referenceResolution?: never; resolution: NonNullable<ProxyResult["referenceResolution"]> };
+      return { ok: true, message: "已解析稳定引用", referenceResolution: value.resolution };
     }
     if (input.operation === "settings:get") {
       const value = await this.engine("/v1/settings");

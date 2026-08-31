@@ -66,7 +66,8 @@ import type { AdapterRegistry } from "@linmu/dsh-session-adapter-host";
 import { readProjectionRuntimeSnapshot, type CanonicalProjectionSource, type ProjectionRuntimeSnapshot } from "@linmu/dsh-session-projection-lifecycle";
 import type { ProjectionRunRepository, RunId } from "@linmu/dsh-session-contracts";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
-import { previewCanonicalMigration, type SqliteSessionRepository } from "@linmu/dsh-session-store";
+import { previewCanonicalMigration, SqliteSessionAliasRepository, type SqliteSessionRepository } from "@linmu/dsh-session-store";
+import type { StableLogicalReference, StableLogicalReferenceResolution } from "@linmu/dsh-session-contracts";
 
 import type { WriteService } from "./write-service.js";
 
@@ -148,6 +149,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly adapterRegistry: AdapterRegistry;
   readonly projectionRunRepository: ProjectionRunRepository;
   readonly canonicalProjectionSource: CanonicalProjectionSource;
+  readonly sessionAliases: SqliteSessionAliasRepository;
   readonly projectionRuntimeRoot: string;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
@@ -175,6 +177,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly adapterRegistry: AdapterRegistry;
     readonly projectionRunRepository: ProjectionRunRepository;
     readonly canonicalProjectionSource: CanonicalProjectionSource;
+    readonly sessionAliases?: SqliteSessionAliasRepository;
     readonly projectionRuntimeRoot: string;
   }) {
     this.instances = input.instances;
@@ -196,6 +199,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.adapterRegistry = input.adapterRegistry;
     this.projectionRunRepository = input.projectionRunRepository;
     this.canonicalProjectionSource = input.canonicalProjectionSource;
+    this.sessionAliases = input.sessionAliases
+      ?? new SqliteSessionAliasRepository(input.repository.database);
     this.projectionRuntimeRoot = input.projectionRuntimeRoot;
   }
 
@@ -205,6 +210,29 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       return undefined;
     }
     return readProjectionRuntimeSnapshot(this.projectionRuntimeRoot, runId);
+  }
+
+  async resolveStableReference(input: StableLogicalReference): Promise<StableLogicalReferenceResolution> {
+    const resolution = await this.sessionAliases.resolveStableReference(input);
+    if (resolution.runId === null) return resolution;
+    const run = await this.projectionRunRepository.getProjectionRun(resolution.runId);
+    if (run === undefined) return resolution;
+    const span = await this.statusLog.start({
+      runId: run.id,
+      leaseId: run.leaseId,
+      profileId: run.profileId,
+      adapterId: run.adapterId,
+      dshVersion: run.dshVersion,
+      stage: "reference.roundtrip.verify",
+      logicalSessionId: resolution.logicalSessionId,
+      nativeSessionId: resolution.nativeSessionId,
+      operationId: null,
+      diagnosticDetailRef: `diag:reference-${input.referenceType}-${resolution.status}`,
+    });
+    await this.statusLog.succeed(span, {
+      diagnosticDetailRef: `diag:reference-${input.referenceType}-${resolution.status}`,
+    });
+    return resolution;
   }
 
   previewCanonicalMigration(): Promise<CanonicalMigrationPreview> {

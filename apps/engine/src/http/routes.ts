@@ -64,6 +64,15 @@ function errorBody(code: string, message: string): JsonValue {
 }
 
 const emptyRequestSchema = z.strictObject({});
+const stableReferenceRequestSchema = z.strictObject({
+  referenceType: z.enum(["annotation", "sticker", "obsidian-reference"]),
+  logicalSessionId: z.string().min(1).nullable(),
+  logicalAnchorId: z.string().min(1).nullable(),
+  legacyNativeSessionId: z.string().min(1).nullable(),
+  legacyNativeAnchorId: z.string().min(1).nullable(),
+}).refine((value) => value.logicalSessionId !== null || value.legacyNativeSessionId !== null, {
+  message: "A logical or legacy session ID is required",
+});
 
 function pathId(value: string): string {
   const decoded = decodeURIComponent(value);
@@ -157,6 +166,11 @@ export async function routeRequest(
     }
     if (request.method === "GET" && url.pathname === "/v1/adapters/registry") {
       send(response, 200, { adapters: context.engine.adapterRegistry.list() });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/references/resolve") {
+      const input = stableReferenceRequestSchema.parse(await readJsonBody(request));
+      send(response, 200, { resolution: await context.engine.resolveStableReference(input as never) });
       return;
     }
     const projectionRuntimeMatch = /^\/v1\/projection-runs\/([^/]+)\/runtime$/u.exec(url.pathname);

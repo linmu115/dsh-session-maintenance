@@ -25,7 +25,7 @@ import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
 import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
 import { SqliteCanonicalProjectionSource } from "@linmu/dsh-session-projection-lifecycle";
-import { SqliteAdapterRegistryRepository, SqliteProjectionRunRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { SqliteAdapterRegistryRepository, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
@@ -162,6 +162,7 @@ async function createComposition(
   });
   const projectionRunRepository = new SqliteProjectionRunRepository(repository.database);
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database);
+  const sessionAliases = new SqliteSessionAliasRepository(repository.database);
   let writeService: WriteService | undefined;
   const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
   const writeAdapters = new Map<"codex" | "dsh", PlatformWriteAdapter>();
@@ -226,6 +227,7 @@ async function createComposition(
     adapterRegistry,
     projectionRunRepository,
     canonicalProjectionSource,
+    sessionAliases,
     projectionRuntimeRoot: join(options.stateRoot, "projection-runtime"),
     settingsPort: {
       get: async () => (await loadConfig(options.stateRoot)).settings,
