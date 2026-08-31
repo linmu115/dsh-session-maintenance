@@ -26,6 +26,7 @@ import type {
   InstanceStatus,
   DiscoveryResult,
   EngineStatus,
+  JsonValue,
 } from "./model.js";
 import type {
   ApplyPlanRequest,
@@ -39,6 +40,24 @@ import type {
   SyncPlan,
 } from "./plans.js";
 import type { Checkpoint, TransactionRecord, TransactionRef } from "./model.js";
+import type {
+  AdapterProbeResult,
+  CanonicalAppendOperation,
+  CanonicalProjectionInput,
+  DshEnvironmentDescriptor,
+  NativeAppendOperation,
+  NativeReferenceResolution,
+  ProjectionInspection,
+  ProjectionManifest,
+  RuntimeAttachContext,
+  RuntimeDrainResult,
+  RuntimeHandle,
+  StableSessionReference,
+  AdapterVerificationResult,
+  AdapterManifestV1,
+} from "./adapter-sdk.js";
+import type { NativeSessionId } from "./canonical.js";
+import type { ProjectionRun } from "./projection.js";
 
 export interface SessionReadAdapter {
   readonly platform: "codex" | "dsh";
@@ -98,4 +117,39 @@ export interface WriteEngine extends ReadOnlyEngine {
   recoverTransaction(request: RecoverTransactionRequest): Promise<TransactionRef>;
   createCheckpoint(request: CreateCheckpointRequest): Promise<Checkpoint>;
   createCheckpointRestorePlan(request: CheckpointRestoreRequest): Promise<SyncPlan>;
+}
+
+export interface ProjectionWriter {
+  writeWorkspace(nativeWorkspaceId: string, payload: JsonValue): Promise<void>;
+  writeSession(nativeSessionId: NativeSessionId, payload: JsonValue): Promise<void>;
+}
+
+export interface ProjectionReader {
+  listNativeSessionIds(): Promise<readonly NativeSessionId[]>;
+  readSession(nativeSessionId: NativeSessionId): Promise<JsonValue>;
+}
+
+export interface DshSessionAdapterV1 {
+  readonly manifest: AdapterManifestV1;
+  probe(environment: DshEnvironmentDescriptor): Promise<AdapterProbeResult>;
+  materialize(
+    input: CanonicalProjectionInput,
+    output: ProjectionWriter,
+  ): Promise<ProjectionManifest>;
+  normalizeAppend(operation: NativeAppendOperation): Promise<CanonicalAppendOperation>;
+  inspect(projection: ProjectionReader): Promise<ProjectionInspection>;
+  verify(
+    expected: ProjectionManifest,
+    actual: ProjectionInspection,
+  ): Promise<AdapterVerificationResult>;
+  resolveReference(
+    reference: StableSessionReference,
+    run: ProjectionRun,
+  ): Promise<NativeReferenceResolution>;
+}
+
+export interface DshRuntimeBridgeV1 {
+  attach(context: RuntimeAttachContext): Promise<RuntimeHandle>;
+  drain(handle: RuntimeHandle): Promise<RuntimeDrainResult>;
+  detach(handle: RuntimeHandle): Promise<void>;
 }

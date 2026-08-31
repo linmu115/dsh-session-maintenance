@@ -23,6 +23,9 @@ import type {
 } from "./operations.js";
 import type { JobRef } from "./jobs.js";
 import type { SyncPlan } from "./plans.js";
+import type { AdapterManifestV1 } from "./adapter-sdk.js";
+import type { ProjectionRun } from "./projection.js";
+import type { StatusEventV1 } from "./status.js";
 
 export interface ApiErrorBody {
   readonly code: string;
@@ -86,3 +89,6 @@ export interface OverviewResponse { readonly overview: DashboardOverview }
 export interface DashboardLaunchResponse { readonly launch: DashboardLaunchInfo }
 export interface DashboardUiSessionResponse { readonly session: DashboardUiSession }
 export interface PlatformSessionResolutionResponse { readonly resolution: PlatformSessionResolution }
+export interface ProjectionRunResponse { readonly run: ProjectionRun }
+export interface StatusEventListResponse { readonly page: Page<StatusEventV1> }
+export interface AdapterManifestResponse { readonly manifest: AdapterManifestV1 }

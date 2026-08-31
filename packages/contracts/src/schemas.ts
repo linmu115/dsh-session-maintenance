@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { JsonValue } from "./model.js";
+import { STATUS_STAGES } from "./status.js";
 
 const idSchema = z.string().min(1);
 const timestampSchema = z.string().datetime({ offset: true });
@@ -35,6 +36,234 @@ export const sessionStatusSchema = z.enum([
   "paused",
   "unsupported",
 ]);
+
+export const authorityScopeSchema = z.enum(["codex", "maintenance"]);
+export const sessionOriginKindSchema = z.enum([
+  "codex-mirror",
+  "maintenance-native",
+  "codex-derived",
+]);
+export const sessionDerivationKindSchema = z.literal("dsh-continuation");
+
+export const canonicalEventKindSchema = z.enum([
+  "user-message",
+  "assistant-message",
+  "system-message",
+  "reasoning",
+  "tool-call",
+  "tool-result",
+  "annotation",
+  "sticker",
+  "obsidian-reference",
+  "attachment",
+  "system-metadata",
+  "opaque-unknown",
+]);
+export const canonicalEventRoleSchema = z.enum([
+  "user",
+  "assistant",
+  "system",
+  "tool",
+  "unknown",
+]);
+export const canonicalEventSourceSchema = z.strictObject({
+  platform: platformKindSchema,
+  instanceId: idSchema,
+  sessionId: idSchema,
+  eventId: idSchema.nullable(),
+  cursor: z.string().nullable(),
+});
+export const canonicalEventV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  logicalSessionId: idSchema,
+  sequence: nonNegativeIntegerSchema,
+  kind: canonicalEventKindSchema,
+  role: canonicalEventRoleSchema,
+  content: jsonValueSchema,
+  source: canonicalEventSourceSchema,
+  contentDigest: idSchema,
+  rawPayload: jsonValueSchema.nullable(),
+  extensions: z.record(z.string(), jsonValueSchema),
+});
+export const canonicalSessionRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  authorityScope: authorityScopeSchema,
+  originKind: sessionOriginKindSchema,
+  headVersionId: idSchema.nullable(),
+  title: z.string(),
+  tags: z.array(z.string()),
+  archivedAt: timestampSchema.nullable(),
+  tombstonedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const sessionDerivationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  childSessionId: idSchema,
+  parentSessionId: idSchema,
+  baseVersionId: idSchema,
+  kind: sessionDerivationKindSchema,
+  triggerRunId: idSchema,
+  triggerOperationId: idSchema,
+  createdAt: timestampSchema,
+});
+export const logicalWorkspaceSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  parentId: idSchema.nullable(),
+  name: z.string().min(1),
+  sortKey: z.string(),
+  deletedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const workspaceMembershipSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  workspaceId: idSchema.nullable(),
+  displayOrder: nonNegativeIntegerSchema,
+  pinned: z.boolean(),
+  archived: z.boolean(),
+  revision: nonNegativeIntegerSchema,
+});
+export const sessionTombstoneSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  operationId: idSchema,
+  checkpointId: idSchema,
+  previousWorkspaceId: idSchema.nullable(),
+  deletedAt: timestampSchema,
+  retentionUntil: timestampSchema,
+  restoredAt: timestampSchema.nullable(),
+});
+
+export const projectionRunStateSchema = z.enum([
+  "preparing",
+  "running",
+  "draining",
+  "verifying",
+  "closed",
+  "recovery-required",
+  "recovering",
+  "recovered",
+  "quarantined",
+  "cleanup-pending",
+]);
+export const projectionSessionModeSchema = z.enum([
+  "maintenance-write",
+  "codex-read-until-write",
+  "hidden",
+  "recovery-only",
+]);
+export const projectionOperationStatusSchema = z.enum([
+  "pending",
+  "committed",
+  "failed",
+  "quarantined",
+]);
+export const projectionRunSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  leaseId: idSchema,
+  branchId: idSchema,
+  instanceId: idSchema,
+  profileId: idSchema,
+  dshVersion: idSchema,
+  adapterId: idSchema,
+  state: projectionRunStateSchema,
+  startedAt: timestampSchema,
+  heartbeatAt: timestampSchema,
+  checkpointId: idSchema.nullable(),
+});
+export const projectionSessionSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  runId: idSchema,
+  nativeSessionId: idSchema,
+  logicalSessionId: idSchema,
+  baseVersionId: idSchema.nullable(),
+  mode: projectionSessionModeSchema,
+  nativeRevision: nonNegativeIntegerSchema,
+  lastCommittedOperationId: idSchema.nullable(),
+  derivedChildSessionId: idSchema.nullable(),
+});
+export const projectionOperationReceiptSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  operationId: idSchema,
+  runId: idSchema,
+  logicalSessionId: idSchema,
+  nativeSessionId: idSchema,
+  status: projectionOperationStatusSchema,
+  canonicalVersionId: idSchema.nullable(),
+  projectionRevision: nonNegativeIntegerSchema,
+  committedAt: timestampSchema.nullable(),
+});
+
+export const statusStageSchema = z.enum(STATUS_STAGES);
+export const statusEventStateSchema = z.enum(["started", "succeeded", "failed"]);
+export const statusEventV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  at: timestampSchema,
+  runId: idSchema,
+  leaseId: idSchema,
+  profileId: idSchema,
+  adapterId: idSchema,
+  dshVersion: idSchema,
+  stage: statusStageSchema,
+  state: statusEventStateSchema,
+  logicalSessionId: idSchema.nullable(),
+  nativeSessionId: idSchema.nullable(),
+  operationId: idSchema.nullable(),
+  parentEventId: idSchema.nullable(),
+  spanId: idSchema,
+  errorCode: z.string().nullable(),
+  durationMs: nonNegativeIntegerSchema.nullable(),
+  diagnosticDetailRef: z.string().nullable(),
+});
+export const statusEventQuerySchema = z.strictObject({
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  runId: idSchema.optional(),
+  logicalSessionId: idSchema.optional(),
+  operationId: idSchema.optional(),
+  stage: statusStageSchema.optional(),
+});
+
+export const adapterCapabilitySchema = z.enum([
+  "session-persistence",
+  "append",
+  "revision-check",
+  "read-from",
+  "borrow-session",
+  "snapshots",
+  "workspace-projection",
+  "annotation",
+  "sticker-obsidian-reference",
+  "unknown-event-round-trip",
+  "stable-native-session-id",
+  "metadata-hot-update",
+  "deep-link-resolution",
+  "recovery",
+  "projection-verification",
+]);
+export const adapterVerificationStatusSchema = z.enum([
+  "verified",
+  "compatible",
+  "experimental",
+  "failed",
+]);
+export const adapterManifestV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  displayName: z.string().min(1),
+  adapterApiVersion: z.literal(1),
+  packageVersion: z.string().min(1),
+  testedDshVersions: z.array(z.string().min(1)),
+  declaredDshRange: z.string().min(1),
+  capabilities: z.array(adapterCapabilitySchema),
+});
 
 export const platformSessionKeySchema = z.strictObject({
   platform: platformKindSchema,
