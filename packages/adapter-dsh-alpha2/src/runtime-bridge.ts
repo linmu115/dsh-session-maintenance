@@ -47,6 +47,7 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
   readonly registrar: Alpha2RuntimeRegistrar;
   private readonly registrations = new Map<RunId, Alpha2RuntimeRegistration>();
   private readonly appendHandlers = new Map<RunId, Alpha2AppendHandler>();
+  private readonly drainingRuns = new Set<RunId>();
 
   constructor(registrar: Alpha2RuntimeRegistrar) {
     this.registrar = registrar;
@@ -70,6 +71,7 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
 
   async drain(handle: RuntimeHandle): Promise<RuntimeDrainResult> {
     const registration = this.registration(handle);
+    this.drainingRuns.add(handle.runId);
     return this.registrar.drain(registration.registrationId, handle.runId);
   }
 
@@ -78,6 +80,7 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
     await this.registrar.detach(registration.registrationId, handle.runId);
     this.registrations.delete(handle.runId);
     this.appendHandlers.delete(handle.runId);
+    this.drainingRuns.delete(handle.runId);
   }
 
   async bindAppendHandler(handle: RuntimeHandle, handler: Alpha2AppendHandler): Promise<void> {
@@ -89,6 +92,9 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
   }
 
   async submitAppend(operation: NativeAppendOperation): Promise<ProjectionOperationReceipt> {
+    if (this.drainingRuns.has(operation.runId)) {
+      throw new Error(`Alpha2 runtime is draining and rejects new appends for ${operation.runId}`);
+    }
     const handler = this.appendHandlers.get(operation.runId);
     if (handler === undefined) throw new Error(`Alpha2 append handler is not bound for ${operation.runId}`);
     return handler(operation);

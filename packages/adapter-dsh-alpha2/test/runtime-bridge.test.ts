@@ -38,6 +38,14 @@ describe("Alpha2 Runtime Bridge", () => {
     expect(JSON.stringify(registrar.attach.mock.calls)).not.toContain("projectionRoot");
     expect(JSON.stringify(registrar.attach.mock.calls)).not.toContain("must-not-cross");
     await expect(bridge.drain(handle)).resolves.toMatchObject({ pendingOperations: 0 });
+    await expect(bridge.submitAppend({
+      runId: run.id,
+      operationId: "operation-after-drain" as never,
+      nativeSessionId: "native-after-drain" as never,
+      nativeRevision: 1,
+      payload: { logicalSessionId: "logical-after-drain", events: [] },
+      observedAt: at,
+    })).rejects.toThrow("draining");
     await bridge.detach(handle);
     await expect(bridge.drain(handle)).rejects.toThrow("not attached");
   });

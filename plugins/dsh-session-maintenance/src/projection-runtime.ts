@@ -20,12 +20,14 @@ export interface ProjectionRuntimeTransport {
 
 export interface ProjectionPersistenceOverlay {
   attach(snapshot: ProjectionRuntimeSnapshot): Promise<string>;
+  beginDrain(registrationId: string): Promise<void>;
   pending(registrationId: string): Promise<number>;
   detach(registrationId: string): Promise<void>;
 }
 
 export class Alpha2ProjectionPersistenceOverlay implements ProjectionPersistenceOverlay {
   private readonly snapshots = new Map<string, ProjectionRuntimeSnapshot>();
+  private readonly draining = new Set<string>();
 
   async attach(snapshot: ProjectionRuntimeSnapshot): Promise<string> {
     const registrationId = `projection:${snapshot.runId}`;
@@ -39,8 +41,19 @@ export class Alpha2ProjectionPersistenceOverlay implements ProjectionPersistence
     return 0;
   }
 
+  async beginDrain(registrationId: string): Promise<void> {
+    this.snapshot(registrationId);
+    this.draining.add(registrationId);
+  }
+
+  isDraining(registrationId: string): boolean {
+    this.snapshot(registrationId);
+    return this.draining.has(registrationId);
+  }
+
   async detach(registrationId: string): Promise<void> {
     if (!this.snapshots.delete(registrationId)) throw new Error(`Projection overlay not found: ${registrationId}`);
+    this.draining.delete(registrationId);
   }
 
   list(registrationId: string): readonly string[] {
@@ -132,6 +145,7 @@ export class ProjectionRuntimeRegistrar {
 
   async drain(registrationId: string, runId: string): Promise<{ readonly runId: string; readonly pendingOperations: number; readonly receipts: readonly [] }> {
     this.assertRegistration(runId, registrationId);
+    await this.overlay.beginDrain(registrationId);
     return { runId, pendingOperations: await this.overlay.pending(registrationId), receipts: [] };
   }
 

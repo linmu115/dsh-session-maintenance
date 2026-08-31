@@ -134,6 +134,14 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
     await this.writeJson(join(this.root, "projection-manifest.json"), manifest as unknown as JsonValue);
   }
 
+  async replaceManifest(manifest: ProjectionManifest): Promise<void> {
+    await this.writeJsonAtomically(join(this.root, "projection-manifest.json"), manifest as unknown as JsonValue);
+  }
+
+  async readManifest(): Promise<ProjectionManifest> {
+    return JSON.parse(await readFile(join(this.root, "projection-manifest.json"), "utf8")) as ProjectionManifest;
+  }
+
   private async writeJson(path: string, value: JsonValue, exclusive = true): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${JSON.stringify(value)}\n`, { encoding: "utf8", flag: exclusive ? "wx" : "w" });

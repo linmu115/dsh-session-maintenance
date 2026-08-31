@@ -33,6 +33,17 @@ interface ReceiptRow {
   readonly receipt_json: string;
 }
 
+interface ProjectionSessionRow {
+  readonly run_id: string;
+  readonly native_session_id: string;
+  readonly logical_session_id: string;
+  readonly base_version_id: string | null;
+  readonly mode: ProjectionSession["mode"];
+  readonly native_revision: number;
+  readonly last_committed_operation_id: string | null;
+  readonly derived_child_session_id: string | null;
+}
+
 function runFromRow(row: RunRow): ProjectionRun {
   return projectionRunSchema.parse({
     schemaVersion: 1,
@@ -111,6 +122,30 @@ export class SqliteProjectionRunRepository implements ProjectionRunRepository {
     if (Number(result.changes) !== 1) {
       throw new Error(`Projection run not found: ${id}`);
     }
+  }
+
+  async setProjectionRunCheckpoint(id: RunId, checkpointId: string): Promise<void> {
+    const result = this.database.prepare("UPDATE projection_runs SET checkpoint_id = ? WHERE id = ?").run(checkpointId, id);
+    if (Number(result.changes) !== 1) throw new Error(`Projection run not found: ${id}`);
+  }
+
+  async listProjectionSessions(runId: RunId): Promise<readonly ProjectionSession[]> {
+    const rows = this.database.prepare(
+      `SELECT run_id, native_session_id, logical_session_id, base_version_id, mode,
+              native_revision, last_committed_operation_id, derived_child_session_id
+       FROM projection_sessions WHERE run_id = ? ORDER BY native_session_id`,
+    ).all(runId) as unknown as ProjectionSessionRow[];
+    return rows.map((row) => projectionSessionSchema.parse({
+      schemaVersion: 1,
+      runId: row.run_id,
+      nativeSessionId: row.native_session_id,
+      logicalSessionId: row.logical_session_id,
+      baseVersionId: row.base_version_id,
+      mode: row.mode,
+      nativeRevision: row.native_revision,
+      lastCommittedOperationId: row.last_committed_operation_id,
+      derivedChildSessionId: row.derived_child_session_id,
+    }) as unknown as ProjectionSession);
   }
 
   async upsertProjectionSession(input: ProjectionSession): Promise<void> {

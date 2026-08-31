@@ -33,6 +33,7 @@ describe("DSH projection runtime", () => {
     expect(overlay.inspect(registration.registrationId, "native-alpha2")).toMatchObject({ header: { version: 0 } });
     expect(JSON.stringify(transport.load.mock.calls)).not.toMatch(/projectionRoot|sessions[/\\]/u);
     await expect(registrar.drain(registration.registrationId, snapshot.runId)).resolves.toMatchObject({ pendingOperations: 0 });
+    expect(overlay.isDraining(registration.registrationId)).toBe(true);
     await registrar.detach(registration.registrationId, snapshot.runId);
     expect(detach).toHaveBeenCalledWith("projection:run-alpha2-projection");
   });

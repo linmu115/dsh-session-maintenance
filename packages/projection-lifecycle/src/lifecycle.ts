@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import type {
   AdapterVerificationResult,
   BranchId,
+  CheckpointRepository,
   DshRuntimeBridgeV1,
   DshSessionAdapterV1,
   LeaseId,
@@ -13,6 +14,7 @@ import type {
   ProjectionOperationReceipt,
   ProjectionRun,
   ProjectionRunRepository,
+  ProjectionSession,
   RuntimeHandle,
   RunId,
 } from "@linmu/dsh-session-contracts";
@@ -25,9 +27,14 @@ import {
   type MutableNativeProjectionBridge,
   type ProjectionAppendContext,
 } from "./append.js";
+import { projectionCloseCheckpoint, removeProjectionRun, type ProjectionCloseReceipt } from "./close.js";
 import { ProjectionLease, ProjectionLeaseError } from "./lease.js";
 import { JsonProjectionDirectory, projectionRootFor, type CanonicalProjectionSource } from "./materialize.js";
 import { ProjectionWriteAheadLog } from "./wal.js";
+import {
+  readProjectionRecoveryDescriptor,
+  writeProjectionRecoveryDescriptor,
+} from "./recovery.js";
 
 export interface OpenProjectionRunInput {
   readonly instanceId: string;
@@ -68,6 +75,7 @@ export class ProjectionLifecycle {
   readonly bridge: DshRuntimeBridgeV1;
   readonly runtimeRoot: string;
   readonly canonicalEngine: DshAppendCommitter | undefined;
+  readonly checkpointRepository: Pick<CheckpointRepository, "saveCheckpoint"> | undefined;
   private readonly lease: ProjectionLease;
   private readonly clock: () => string;
   private readonly idFactory: (kind: IdKind) => string;
@@ -80,6 +88,7 @@ export class ProjectionLifecycle {
     readonly adapter: DshSessionAdapterV1;
     readonly bridge: DshRuntimeBridgeV1;
     readonly canonicalEngine?: DshAppendCommitter;
+    readonly checkpointRepository?: Pick<CheckpointRepository, "saveCheckpoint">;
     readonly runtimeRoot: string;
     readonly clock?: () => string;
     readonly idFactory?: (kind: IdKind) => string;
@@ -90,6 +99,7 @@ export class ProjectionLifecycle {
     this.adapter = input.adapter;
     this.bridge = input.bridge;
     this.canonicalEngine = input.canonicalEngine;
+    this.checkpointRepository = input.checkpointRepository;
     this.runtimeRoot = resolve(input.runtimeRoot);
     this.lease = new ProjectionLease(input.runRepository);
     this.clock = input.clock ?? (() => new Date().toISOString());
@@ -174,6 +184,11 @@ export class ProjectionLifecycle {
           authorityScope: item.session.authorityScope,
         });
       }
+      await writeProjectionRecoveryDescriptor(projectionRoot, {
+        schemaVersion: 1,
+        runId,
+        maintenanceEndpoint: input.maintenanceEndpoint,
+      });
       await this.statusLog.succeed(materializeSpan);
     } catch (error) {
       await this.quarantine(runId);
@@ -204,6 +219,7 @@ export class ProjectionLifecycle {
         directory,
         wal: new ProjectionWriteAheadLog(projectionRoot),
         sessions,
+        acceptingAppends: true,
       };
       this.activeRuns.set(runId, context);
       if ("bindAppendHandler" in this.bridge && typeof this.bridge.bindAppendHandler === "function") {
@@ -238,6 +254,9 @@ export class ProjectionLifecycle {
     if (this.canonicalEngine === undefined) {
       throw new ProjectionLifecycleError("CANONICAL_ENGINE_UNAVAILABLE", handle.run.id, "Canonical session engine is not configured");
     }
+    if (!context.acceptingAppends) {
+      throw new ProjectionLifecycleError("RUN_DRAINING", handle.run.id, "Projection run is draining and no longer accepts native appends");
+    }
     return commitProjectionAppend({
       context,
       operation,
@@ -247,6 +266,194 @@ export class ProjectionLifecycle {
       bridge: this.bridge,
       canonicalEngine: this.canonicalEngine,
       clock: this.clock,
+    });
+  }
+
+  async closeRun(handle: ProjectionRunHandle): Promise<ProjectionCloseReceipt> {
+    const context = this.activeRuns.get(handle.run.id);
+    if (context === undefined) {
+      throw new ProjectionLifecycleError("RUN_NOT_ACTIVE", handle.run.id, "Projection run is not active in this lifecycle");
+    }
+    const span = await this.startShutdownSpan(context.handle.run);
+    context.acceptingAppends = false;
+    let cleanupStarted = false;
+    try {
+      await this.lease.setState(handle.run.id, "draining");
+      await this.drainPending(context);
+      const result = await this.verifyCheckpointAndDetach(context);
+      cleanupStarted = true;
+      await removeProjectionRun(context.handle.projectionRoot);
+      await this.lease.setState(handle.run.id, "closed");
+      this.activeRuns.delete(handle.run.id);
+      await this.statusLog.succeed(span);
+      return { ...result, removedProjection: true, state: "closed" };
+    } catch (error) {
+      await this.lease.setState(handle.run.id, cleanupStarted ? "cleanup-pending" : "recovery-required").catch(() => undefined);
+      await this.statusLog.fail(span, { errorCode: cleanupStarted ? "CLEANUP_PENDING" : "RUN_CLOSE_FAILED" });
+      throw new ProjectionLifecycleError(cleanupStarted ? "CLEANUP_PENDING" : "RUN_CLOSE_FAILED", handle.run.id, "Projection run did not close cleanly", { cause: error });
+    }
+  }
+
+  async recover(runId: RunId): Promise<ProjectionCloseReceipt> {
+    const run = await this.runRepository.getProjectionRun(runId);
+    if (run === undefined) throw new ProjectionLifecycleError("RUN_NOT_FOUND", runId, "Projection run does not exist");
+    const span = await this.startShutdownSpan(run);
+    let context = this.activeRuns.get(runId);
+    let cleanupStarted = false;
+    try {
+      await this.lease.setState(runId, "recovering");
+      context ??= await this.restoreRecoveryContext(run);
+      context.acceptingAppends = false;
+      await this.replayPending(context);
+      const result = await this.verifyCheckpointAndDetach(context);
+      cleanupStarted = true;
+      await removeProjectionRun(context.handle.projectionRoot);
+      await this.lease.setState(runId, "recovered");
+      this.activeRuns.delete(runId);
+      await this.statusLog.succeed(span);
+      return { ...result, removedProjection: true, state: "recovered" };
+    } catch (error) {
+      const corrupt = error instanceof SyntaxError || error instanceof TypeError;
+      const state = cleanupStarted ? "cleanup-pending" : corrupt ? "quarantined" : "recovery-required";
+      await this.lease.setState(runId, state).catch(() => undefined);
+      await this.statusLog.fail(span, { errorCode: cleanupStarted ? "CLEANUP_PENDING" : corrupt ? "RECOVERY_QUARANTINED" : "RUN_RECOVERY_FAILED" });
+      throw new ProjectionLifecycleError(cleanupStarted ? "CLEANUP_PENDING" : corrupt ? "RECOVERY_QUARANTINED" : "RUN_RECOVERY_FAILED", runId, "Projection recovery did not complete", { cause: error });
+    }
+  }
+
+  private async drainPending(context: ProjectionAppendContext): Promise<void> {
+    await this.bridge.drain(context.handle.runtime);
+    await this.replayPending(context);
+    const drained = await this.bridge.drain(context.handle.runtime);
+    if (drained.pendingOperations !== 0 || (await context.wal.pending()).length !== 0) {
+      throw new Error("Projection runtime still has pending operations after drain");
+    }
+  }
+
+  private async replayPending(context: ProjectionAppendContext): Promise<void> {
+    const pending = await context.wal.pending();
+    if (pending.length > 0 && this.canonicalEngine === undefined) {
+      throw new Error("Canonical session engine is unavailable during recovery");
+    }
+    for (const record of pending) {
+      await commitProjectionAppend({
+        context,
+        operation: record.operation,
+        runRepository: this.runRepository,
+        statusLog: this.statusLog,
+        adapter: this.adapter,
+        bridge: this.bridge,
+        canonicalEngine: this.canonicalEngine!,
+        clock: this.clock,
+      });
+    }
+  }
+
+  private async verifyCheckpointAndDetach(
+    context: ProjectionAppendContext,
+  ): Promise<Omit<ProjectionCloseReceipt, "removedProjection" | "state">> {
+    const inspection = await this.adapter.inspect(context.directory);
+    const finalManifest: ProjectionManifest = {
+      schemaVersion: 1,
+      runId: context.handle.run.id,
+      adapterId: context.handle.run.adapterId,
+      sessionCount: inspection.sessionCount,
+      workspaceCount: inspection.workspaceCount,
+      catalogDigest: inspection.catalogDigest,
+      sessionDigests: inspection.sessionDigests,
+    };
+    const verification = await this.adapter.verify(finalManifest, inspection);
+    if (!verification.ok) throw new Error("Projection close verification failed");
+    await context.directory.replaceManifest(finalManifest);
+    const checkpoint = projectionCloseCheckpoint(context.handle.run, inspection, this.clock());
+    if (this.checkpointRepository === undefined) {
+      throw new Error("Checkpoint repository is required to finalize a projection run");
+    }
+    await this.checkpointRepository.saveCheckpoint(checkpoint);
+    const checkpointRuns = this.runRepository as ProjectionRunRepository & {
+      setProjectionRunCheckpoint?: (runId: RunId, checkpointId: string) => Promise<void>;
+    };
+    if (checkpointRuns.setProjectionRunCheckpoint === undefined) {
+      throw new Error("Projection repository cannot link the close checkpoint");
+    }
+    await checkpointRuns.setProjectionRunCheckpoint(context.handle.run.id, checkpoint.id);
+    await this.bridge.detach(context.handle.runtime);
+    return {
+      runId: context.handle.run.id,
+      checkpointId: checkpoint.id,
+      finalCatalogDigest: inspection.catalogDigest,
+    };
+  }
+
+  private async restoreRecoveryContext(run: ProjectionRun): Promise<ProjectionAppendContext> {
+    const projectionRoot = projectionRootFor(this.runtimeRoot, run.id);
+    const directory = new JsonProjectionDirectory(projectionRoot);
+    const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
+    if (descriptor.runId !== run.id) throw new TypeError("Projection recovery run ID mismatch");
+    const manifest = await directory.readManifest();
+    const inspection = await this.adapter.inspect(directory);
+    const verification = await this.adapter.verify(manifest, inspection);
+    const recoveryRuns = this.runRepository as ProjectionRunRepository & {
+      listProjectionSessions?: (runId: RunId) => Promise<readonly ProjectionSession[]>;
+    };
+    const mappings = await recoveryRuns.listProjectionSessions?.(run.id);
+    if (mappings === undefined) throw new TypeError("Projection repository cannot enumerate recovery mappings");
+    const source = await this.source.load(run);
+    const sourceById = new Map(source.sessions.map((item) => [item.session.id, item]));
+    const sessions = new Map<string, ActiveProjectionSession>();
+    for (const mapping of mappings) {
+      const item = sourceById.get(mapping.logicalSessionId);
+      if (item === undefined) throw new TypeError(`Recovery mapping has no canonical session: ${mapping.logicalSessionId}`);
+      sessions.set(mapping.nativeSessionId, {
+        projection: mapping,
+        title: item.session.title,
+        tags: item.session.tags,
+        archivedAt: item.session.archivedAt,
+        workspaceId: item.workspaceId,
+        authorityScope: item.session.authorityScope,
+      });
+    }
+    const recovering = { ...run, state: "recovering" as const };
+    const runtime = await this.bridge.attach({
+      run: recovering,
+      projectionRoot,
+      maintenanceEndpoint: descriptor.maintenanceEndpoint,
+    });
+    const handle: ProjectionRunHandle = {
+      run: { ...run, state: "running" },
+      projectionRoot,
+      manifest,
+      inspection,
+      verification,
+      runtime,
+    };
+    const context: ProjectionAppendContext = {
+      handle,
+      directory,
+      wal: new ProjectionWriteAheadLog(projectionRoot),
+      sessions,
+      acceptingAppends: false,
+    };
+    this.activeRuns.set(run.id, context);
+    if ("bindAppendHandler" in this.bridge && typeof this.bridge.bindAppendHandler === "function") {
+      await (this.bridge as MutableNativeProjectionBridge & {
+        bindAppendHandler(runtime: RuntimeHandle, handler: (operation: NativeAppendOperation) => Promise<ProjectionOperationReceipt>): Promise<void>;
+      }).bindAppendHandler(runtime, async (operation) => this.append(handle, operation));
+    }
+    return context;
+  }
+
+  private startShutdownSpan(run: ProjectionRun): Promise<StatusSpanHandle> {
+    return this.statusLog.start({
+      runId: run.id,
+      leaseId: run.leaseId,
+      profileId: run.profileId,
+      adapterId: run.adapterId,
+      dshVersion: run.dshVersion,
+      stage: "run.shutdown-recovery",
+      logicalSessionId: null,
+      nativeSessionId: null,
+      operationId: null,
     });
   }
 

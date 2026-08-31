@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, open, readFile, readdir, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 
 import type {
@@ -72,6 +72,29 @@ export class ProjectionWriteAheadLog {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
       throw error;
     }
+  }
+
+  async list(): Promise<readonly ProjectionWalRecord[]> {
+    let names: string[];
+    try {
+      names = await readdir(this.root);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+      throw error;
+    }
+    const records: ProjectionWalRecord[] = [];
+    for (const name of names.filter((value) => value.endsWith(".json")).sort()) {
+      const parsed = JSON.parse(await readFile(join(this.root, name), "utf8")) as ProjectionWalRecord;
+      if (parsed.schemaVersion !== 1 || typeof parsed.operation?.operationId !== "string") {
+        throw new TypeError(`Projection WAL record is invalid: ${name}`);
+      }
+      records.push(parsed);
+    }
+    return records;
+  }
+
+  async pending(): Promise<readonly ProjectionWalRecord[]> {
+    return (await this.list()).filter((record) => record.state === "pending");
   }
 
   async putPending(operation: NativeAppendOperation, at: string): Promise<ProjectionWalRecord> {

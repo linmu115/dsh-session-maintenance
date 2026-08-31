@@ -52,6 +52,7 @@ export interface ProjectionAppendContext {
   readonly directory: JsonProjectionDirectory;
   readonly wal: ProjectionWriteAheadLog;
   readonly sessions: Map<string, ActiveProjectionSession>;
+  acceptingAppends: boolean;
 }
 
 export class ProjectionAppendError extends Error {

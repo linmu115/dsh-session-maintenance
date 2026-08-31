@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Stop accepting new native appends as soon as drain begins, while allowing the Engine to replay already durable WAL operations before detach.
 - Switch a projected Codex session to its Maintenance-owned child identity only after the first DSH append commits; the native runtime session ID remains stable for the active run.
 - Route native Alpha2 appends through a run-bound handler, validate contiguous revisions before WAL persistence, and update only the run-scoped temporary projection.
 - Add the isolated Alpha2 Runtime Bridge. The DSH registrar receives only a run ID and Maintenance endpoint; the Engine-owned projection root never crosses the plugin configuration boundary.
