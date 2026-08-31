@@ -59,6 +59,8 @@ import {
   versionIdFor,
 } from "@linmu/dsh-session-domain";
 
+import { SqliteCanonicalRepository } from "./canonical-repository.js";
+
 interface ManifestRow {
   readonly manifest_json: string;
 }
@@ -415,10 +417,12 @@ function confirmationJson(row: ConfirmationRow): StoredConfirmation {
 export class SqliteSessionRepository {
   readonly database: DatabaseSync;
   readonly objectStore: ContentObjectStore;
+  readonly canonical: SqliteCanonicalRepository;
 
   constructor(database: DatabaseSync, objectStore: ContentObjectStore) {
     this.database = database;
     this.objectStore = objectStore;
+    this.canonical = new SqliteCanonicalRepository(database);
   }
 
   async createLogicalSession(input: LogicalSession): Promise<boolean> {
