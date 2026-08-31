@@ -1,12 +1,14 @@
 import type {
   DshRuntimeBridgeV1,
   JsonValue,
+  LogicalSessionId,
   NativeAppendOperation,
   ProjectionOperationReceipt,
   RunId,
   RuntimeAttachContext,
   RuntimeDrainResult,
   RuntimeHandle,
+  SessionVersionId,
 } from "@linmu/dsh-session-adapter-sdk";
 
 import { manifest } from "./manifest.js";
@@ -133,6 +135,22 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
       }
     });
     return { session, appendedEvents: payload.events };
+  }
+
+  async switchLogicalSession(
+    handle: RuntimeHandle,
+    nativeSessionId: NativeAppendOperation["nativeSessionId"],
+    logicalSessionId: LogicalSessionId,
+    baseVersionId: SessionVersionId | null,
+    projection: Alpha2MutableProjection,
+  ): Promise<void> {
+    this.registration(handle);
+    const session = record(await projection.readSession(nativeSessionId), "Alpha2 projection session");
+    await projection.replaceSession(nativeSessionId, {
+      ...session,
+      logicalSessionId,
+      baseVersionId,
+    });
   }
 
   private registration(handle: RuntimeHandle): Alpha2RuntimeRegistration {

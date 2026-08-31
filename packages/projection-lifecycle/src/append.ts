@@ -12,7 +12,7 @@ import type {
   SessionVersionId,
 } from "@linmu/dsh-session-contracts";
 import type { DshAppendCommitter } from "@linmu/dsh-canonical-session-engine";
-import type { StatusLog } from "@linmu/dsh-session-status-log";
+import type { StatusLog, StatusSpanHandle } from "@linmu/dsh-session-status-log";
 
 import type { JsonProjectionDirectory } from "./materialize.js";
 import type { ProjectionRunHandle } from "./lifecycle.js";
@@ -24,7 +24,7 @@ export interface ActiveProjectionSession {
   readonly tags: readonly string[];
   readonly archivedAt: string | null;
   readonly workspaceId: LogicalWorkspaceId | null;
-  readonly authorityScope: CanonicalSessionRecord["authorityScope"];
+  authorityScope: CanonicalSessionRecord["authorityScope"];
 }
 
 export interface MutableNativeProjectionBridge extends DshRuntimeBridgeV1 {
@@ -36,6 +36,13 @@ export interface MutableNativeProjectionBridge extends DshRuntimeBridgeV1 {
   applyAppend(
     handle: RuntimeHandle,
     operation: NativeAppendOperation,
+    projection: JsonProjectionDirectory,
+  ): Promise<void>;
+  switchLogicalSession(
+    handle: RuntimeHandle,
+    nativeSessionId: NativeAppendOperation["nativeSessionId"],
+    logicalSessionId: LogicalSessionId,
+    baseVersionId: SessionVersionId | null,
     projection: JsonProjectionDirectory,
   ): Promise<void>;
 }
@@ -59,7 +66,8 @@ export class ProjectionAppendError extends Error {
 
 function appendBridge(bridge: DshRuntimeBridgeV1): MutableNativeProjectionBridge {
   if (!("validateAppend" in bridge) || typeof bridge.validateAppend !== "function"
-    || !("applyAppend" in bridge) || typeof bridge.applyAppend !== "function") {
+    || !("applyAppend" in bridge) || typeof bridge.applyAppend !== "function"
+    || !("switchLogicalSession" in bridge) || typeof bridge.switchLogicalSession !== "function") {
     throw new ProjectionAppendError("RUNTIME_APPEND_UNSUPPORTED", "Selected runtime bridge cannot update its native projection");
   }
   return bridge as MutableNativeProjectionBridge;
@@ -117,20 +125,72 @@ export async function commitProjectionAppend(input: {
     if (existingReceipt.runId !== operation.runId || existingReceipt.nativeSessionId !== operation.nativeSessionId) {
       throw new ProjectionAppendError("OPERATION_RECEIPT_MISMATCH", "Operation receipt belongs to another projection target");
     }
-    if (session.projection.nativeRevision < existingReceipt.projectionRevision) {
-      const advanced: ProjectionSession = {
-        ...session.projection,
-        logicalSessionId: existingReceipt.logicalSessionId,
-        baseVersionId: existingReceipt.canonicalVersionId,
-        nativeRevision: existingReceipt.projectionRevision,
-        lastCommittedOperationId: existingReceipt.operationId,
-      };
-      await input.runRepository.upsertProjectionSession(advanced);
-      session.projection = advanced;
-    }
-    const wal = await context.wal.get(operation.operationId);
-    if (wal !== undefined && wal.state !== "committed" && wal.projectionApplied) {
-      await context.wal.markCommitted(operation.operationId, existingReceipt, input.clock());
+    const needsReconciliation = session.projection.nativeRevision < existingReceipt.projectionRevision
+      || session.projection.logicalSessionId !== existingReceipt.logicalSessionId;
+    if (needsReconciliation) {
+      const reconciliationSpan = await input.statusLog.start({
+        runId: context.handle.run.id,
+        leaseId: context.handle.run.leaseId,
+        profileId: context.handle.run.profileId,
+        adapterId: context.handle.run.adapterId,
+        dshVersion: context.handle.run.dshVersion,
+        stage: "session.append.commit",
+        logicalSessionId: session.projection.logicalSessionId,
+        nativeSessionId: operation.nativeSessionId,
+        operationId: operation.operationId,
+      });
+      const derivationReconciliationSpan = session.authorityScope === "codex"
+        ? await input.statusLog.start({
+            runId: context.handle.run.id,
+            leaseId: context.handle.run.leaseId,
+            profileId: context.handle.run.profileId,
+            adapterId: context.handle.run.adapterId,
+            dshVersion: context.handle.run.dshVersion,
+            stage: "session.derivation.create",
+            logicalSessionId: session.projection.logicalSessionId,
+            nativeSessionId: operation.nativeSessionId,
+            operationId: operation.operationId,
+          })
+        : undefined;
+      try {
+        if (session.projection.logicalSessionId !== existingReceipt.logicalSessionId) {
+          await appendBridge(input.bridge).switchLogicalSession(
+            context.handle.runtime,
+            operation.nativeSessionId,
+            existingReceipt.logicalSessionId,
+            existingReceipt.canonicalVersionId,
+            context.directory,
+          );
+        }
+        const advanced: ProjectionSession = {
+          ...session.projection,
+          logicalSessionId: existingReceipt.logicalSessionId,
+          baseVersionId: existingReceipt.canonicalVersionId,
+          nativeRevision: existingReceipt.projectionRevision,
+          lastCommittedOperationId: existingReceipt.operationId,
+          mode: "maintenance-write",
+          derivedChildSessionId: session.authorityScope === "codex"
+            ? existingReceipt.logicalSessionId
+            : session.projection.derivedChildSessionId,
+        };
+        await input.runRepository.upsertProjectionSession(advanced);
+        session.projection = advanced;
+        session.authorityScope = "maintenance";
+        const wal = await context.wal.get(operation.operationId);
+        if (wal !== undefined && wal.state !== "committed" && wal.projectionApplied) {
+          await context.wal.markCommitted(operation.operationId, existingReceipt, input.clock());
+        }
+        if (derivationReconciliationSpan !== undefined) {
+          await input.statusLog.succeed(derivationReconciliationSpan);
+        }
+        await input.statusLog.succeed(reconciliationSpan);
+      } catch (error) {
+        if (derivationReconciliationSpan !== undefined) {
+          await input.statusLog.fail(derivationReconciliationSpan, { errorCode: "PROJECTION_RECONCILE_FAILED" });
+        }
+        await input.statusLog.fail(reconciliationSpan, { errorCode: "PROJECTION_RECONCILE_FAILED" });
+        throw new ProjectionAppendError("PROJECTION_RECONCILE_FAILED", "Committed append could not reconcile its projection mapping", { cause: error });
+      }
     }
     return existingReceipt;
   }
@@ -146,6 +206,7 @@ export async function commitProjectionAppend(input: {
     operationId: operation.operationId,
   });
   let failureCode = "APPEND_COMMIT_FAILED";
+  let derivationSpan: StatusSpanHandle | undefined;
   try {
     const bridge = appendBridge(input.bridge);
     let walRecord = await context.wal.get(operation.operationId);
@@ -174,6 +235,20 @@ export async function commitProjectionAppend(input: {
     if (normalized.logicalSessionId !== session.projection.logicalSessionId) {
       throw new ProjectionAppendError("LOGICAL_SESSION_MISMATCH", "Adapter append resolved another logical session");
     }
+    const deriving = session.authorityScope === "codex";
+    if (deriving) {
+      derivationSpan = await input.statusLog.start({
+        runId: context.handle.run.id,
+        leaseId: context.handle.run.leaseId,
+        profileId: context.handle.run.profileId,
+        adapterId: context.handle.run.adapterId,
+        dshVersion: context.handle.run.dshVersion,
+        stage: "session.derivation.create",
+        logicalSessionId: session.projection.logicalSessionId,
+        nativeSessionId: operation.nativeSessionId,
+        operationId: operation.operationId,
+      });
+    }
     failureCode = "MAINTENANCE_APPEND_FAILED";
     const canonical = await input.canonicalEngine.appendDsh({
       logicalSessionId: normalized.logicalSessionId,
@@ -194,6 +269,9 @@ export async function commitProjectionAppend(input: {
         nativeRevision: operation.nativeRevision,
       },
     });
+    if (deriving && canonical.outcome !== "derived") {
+      throw new ProjectionAppendError("DERIVATION_OUTCOME_INVALID", "Codex first write did not create a derived session");
+    }
     const receipt = toReceipt(
       operation,
       canonical.logicalSessionId,
@@ -202,20 +280,41 @@ export async function commitProjectionAppend(input: {
     );
     failureCode = "PROJECTION_RECEIPT_WRITE_FAILED";
     await input.runRepository.saveOperationReceipt(receipt);
+    if (deriving) {
+      await appendBridge(input.bridge).switchLogicalSession(
+        context.handle.runtime,
+        operation.nativeSessionId,
+        canonical.logicalSessionId,
+        canonical.versionId,
+        context.directory,
+      );
+    }
     const advanced: ProjectionSession = {
       ...session.projection,
       logicalSessionId: canonical.logicalSessionId,
       baseVersionId: canonical.versionId,
       nativeRevision: operation.nativeRevision,
       lastCommittedOperationId: operation.operationId,
+      mode: deriving ? "maintenance-write" : session.projection.mode,
+      derivedChildSessionId: deriving
+        ? canonical.logicalSessionId
+        : session.projection.derivedChildSessionId,
     };
     await input.runRepository.upsertProjectionSession(advanced);
     session.projection = advanced;
+    if (deriving) session.authorityScope = "maintenance";
     await context.wal.markCommitted(operation.operationId, receipt, input.clock());
+    if (derivationSpan !== undefined) {
+      await input.statusLog.succeed(derivationSpan);
+      derivationSpan = undefined;
+    }
     await input.statusLog.succeed(span);
     return receipt;
   } catch (error) {
     if (error instanceof ProjectionAppendError) failureCode = error.code;
+    if (derivationSpan !== undefined) {
+      await input.statusLog.fail(derivationSpan, { errorCode: failureCode });
+    }
     await input.statusLog.fail(span, { errorCode: failureCode });
     if (error instanceof ProjectionAppendError) throw error;
     throw new ProjectionAppendError(failureCode, "Projection append did not reach a durable Maintenance receipt", { cause: error });

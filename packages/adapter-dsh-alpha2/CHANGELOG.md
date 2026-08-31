@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Switch a projected Codex session to its Maintenance-owned child identity only after the first DSH append commits; the native runtime session ID remains stable for the active run.
 - Route native Alpha2 appends through a run-bound handler, validate contiguous revisions before WAL persistence, and update only the run-scoped temporary projection.
 - Add the isolated Alpha2 Runtime Bridge. The DSH registrar receives only a run ID and Maintenance endpoint; the Engine-owned projection root never crosses the plugin configuration boundary.
 - Add the typed probe worker used by Adapter Host and register the built-in Alpha2 Adapter during Engine composition.

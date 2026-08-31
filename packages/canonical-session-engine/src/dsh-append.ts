@@ -16,6 +16,11 @@ import type {
 } from "@linmu/dsh-session-contracts";
 
 import { buildCanonicalVersion } from "./codex-observation.js";
+import {
+  derivedLogicalSessionIdFor,
+  metadataAtDerivationBase,
+  retargetDerivedEvents,
+} from "./derivation.js";
 import type {
   CanonicalEngineReceipt,
   CanonicalSessionEngineStore,
@@ -105,6 +110,7 @@ export async function appendDsh(
   let archivedAt = input.archivedAt;
   let workspaceId = input.workspaceId;
   let originKind: CanonicalSessionRecord["originKind"] = "maintenance-native";
+  let appendedEvents = input.appendedEvents;
 
   if (source === undefined) {
     outcome = "created";
@@ -112,23 +118,27 @@ export async function appendDsh(
     if (source.session.originKind !== "codex-mirror") {
       throw new Error(`Codex authority requires a codex-mirror origin: ${source.session.id}`);
     }
-    if (input.derivedLogicalSessionId === undefined || input.baseVersionId === undefined) {
-      throw new Error("First DSH write to a Codex mirror requires a derived session ID and base version");
+    if (input.baseVersionId === undefined) {
+      throw new Error("First DSH write to a Codex mirror requires the projected base version");
     }
     const base = await store.getVersion(input.baseVersionId);
     if (base === undefined || base.logicalSessionId !== source.session.id) {
       throw new Error(`Codex derivation base version is invalid: ${input.baseVersionId}`);
     }
-    targetId = input.derivedLogicalSessionId;
+    targetId = input.derivedLogicalSessionId
+      ?? derivedLogicalSessionIdFor(source.session.id, input.projection.operationId);
     targetSnapshot = await store.getSession(targetId);
     if (targetSnapshot !== undefined) {
       throw new Error(`Derived logical session already exists without an operation receipt: ${targetId}`);
     }
     baseEvents = base.events;
-    title = source.session.title;
-    tags = source.session.tags;
-    archivedAt = source.session.archivedAt;
-    workspaceId = source.workspaceId;
+    parentVersionIds = [base.id];
+    const inherited = metadataAtDerivationBase(base, source.session);
+    title = inherited.title;
+    tags = inherited.tags;
+    archivedAt = inherited.archivedAt;
+    workspaceId = inherited.workspaceId;
+    appendedEvents = retargetDerivedEvents(input.appendedEvents, targetId);
     originKind = "codex-derived";
     outcome = "derived";
     derivation = {
@@ -158,11 +168,11 @@ export async function appendDsh(
     originKind = source.session.originKind;
   }
 
-  assertAppendTarget(targetId, input.appendedEvents);
+  assertAppendTarget(targetId, appendedEvents);
   const version = buildCanonicalVersion({
     logicalSessionId: targetId,
     parentVersionIds,
-    events: [...baseEvents, ...input.appendedEvents],
+    events: [...baseEvents, ...appendedEvents],
     workspaceId,
     title,
     tags,
