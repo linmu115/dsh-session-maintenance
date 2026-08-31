@@ -20,7 +20,8 @@ import {
 } from "@linmu/dsh-session-contracts";
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
-import { SqliteSessionRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
+import { SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
@@ -129,6 +130,10 @@ async function createComposition(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   const mirrors = new NativeMirrorService({ repository, ...(options.clock === undefined ? {} : { clock: options.clock }) });
+  const statusLog = new StatusLog(
+    new SqliteStatusEventAdapter(new SqliteStatusEventRepository(repository.database)),
+    options.clock === undefined ? {} : { clock: options.clock },
+  );
   let writeService: WriteService | undefined;
   const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
   const writeAdapters = new Map<"codex" | "dsh", PlatformWriteAdapter>();
@@ -189,6 +194,7 @@ async function createComposition(
     mirrors,
     migrationSourcePath: metadataPath,
     migrationCandidatePath: join(options.stateRoot, "metadata.canonical-candidate.sqlite"),
+    statusLog,
     settingsPort: {
       get: async () => (await loadConfig(options.stateRoot)).settings,
       patch: (input) => updateSettings(options.stateRoot, input),

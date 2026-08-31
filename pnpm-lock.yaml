@@ -84,6 +84,9 @@ importers:
       '@linmu/dsh-session-native-mirror-engine':
         specifier: workspace:*
         version: link:../../packages/native-mirror-engine
+      '@linmu/dsh-session-status-log':
+        specifier: workspace:*
+        version: link:../../packages/session-status-log
       '@linmu/dsh-session-store':
         specifier: workspace:*
         version: link:../../packages/session-store
@@ -267,6 +270,15 @@ importers:
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts
+
+  packages/session-status-log:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-store':
+        specifier: workspace:*
+        version: link:../session-store
 
   packages/session-store:
     dependencies:

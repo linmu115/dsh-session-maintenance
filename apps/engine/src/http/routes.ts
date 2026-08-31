@@ -17,6 +17,7 @@ import {
   platformSessionResolutionRequestSchema,
   scanRequestSchema,
   sessionQuerySchema,
+  statusEventQuerySchema,
   transactionQuerySchema,
   type DiffRequest,
   type ContinuationPreviewRequest,
@@ -31,6 +32,7 @@ import {
   type NativeMirrorActionRequest,
   type TransactionQuery,
   type PlanQuery,
+  type StatusEventQuery,
 } from "@linmu/dsh-session-contracts";
 
 import type { SessionMaintenanceEngine } from "../engine.js";
@@ -38,7 +40,7 @@ import type { JobRunner } from "../jobs/job-runner.js";
 import type { JobStore } from "../jobs/job-store.js";
 import { allowedOrigin, authorized } from "./auth.js";
 import { HttpBodyError, readJsonBody } from "./body.js";
-import { streamJobEvents } from "./sse.js";
+import { streamJobEvents, streamStatusEvents } from "./sse.js";
 import { hasUiSessionCookie, type UiSessionManager } from "./ui-session.js";
 import { DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH } from "./dashboard.js";
 
@@ -166,6 +168,23 @@ export async function routeRequest(
     }
     if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH) {
       send(response, 200, { preview: await context.engine.previewCanonicalMigration() });
+      return;
+    }
+    if (request.method === "GET" && (url.pathname === "/v1/status-events" || url.pathname === "/v1/status-events/stream")) {
+      const query = statusEventQuerySchema.parse({
+        ...(url.searchParams.has("cursor") ? { cursor: url.searchParams.get("cursor") } : {}),
+        ...(url.searchParams.has("limit") ? { limit: Number(url.searchParams.get("limit")) } : {}),
+        ...(url.searchParams.has("runId") ? { runId: url.searchParams.get("runId") } : {}),
+        ...(url.searchParams.has("logicalSessionId") ? { logicalSessionId: url.searchParams.get("logicalSessionId") } : {}),
+        ...(url.searchParams.has("operationId") ? { operationId: url.searchParams.get("operationId") } : {}),
+        ...(url.searchParams.has("stage") ? { stage: url.searchParams.get("stage") } : {}),
+        ...(url.searchParams.has("spanId") ? { spanId: url.searchParams.get("spanId") } : {}),
+      }) as unknown as StatusEventQuery;
+      if (url.pathname.endsWith("/stream")) {
+        await streamStatusEvents(response, context.engine.statusLog, query);
+      } else {
+        send(response, 200, { page: await context.engine.listStatusEvents(query) });
+      }
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/mirrors") {

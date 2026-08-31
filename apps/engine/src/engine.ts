@@ -56,9 +56,12 @@ import {
   type PlatformSessionKey,
   type PlatformSessionResolution,
   type CanonicalMigrationPreview,
+  type StatusEventQuery,
+  type StatusEventV1,
 } from "@linmu/dsh-session-contracts";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import type { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
+import type { StatusLog } from "@linmu/dsh-session-status-log";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
 import { previewCanonicalMigration, type SqliteSessionRepository } from "@linmu/dsh-session-store";
 
@@ -138,6 +141,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly adapters: readonly SessionReadAdapter[];
   readonly repository: SqliteSessionRepository;
   readonly objectStore: ContentObjectStore;
+  readonly statusLog: StatusLog;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
   private readonly clock: () => string;
@@ -160,6 +164,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly settingsPort?: EngineSettingsPort;
     readonly migrationSourcePath: string;
     readonly migrationCandidatePath: string;
+    readonly statusLog: StatusLog;
   }) {
     this.instances = input.instances;
     this.adapters = input.adapters;
@@ -176,6 +181,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     };
     this.migrationSourcePath = input.migrationSourcePath;
     this.migrationCandidatePath = input.migrationCandidatePath;
+    this.statusLog = input.statusLog;
   }
 
   previewCanonicalMigration(): Promise<CanonicalMigrationPreview> {
@@ -184,6 +190,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       sourceDatabasePath: this.migrationSourcePath,
       candidateDatabasePath: this.migrationCandidatePath,
     });
+  }
+
+  listStatusEvents(query: StatusEventQuery): Promise<Page<StatusEventV1>> {
+    return this.statusLog.list(query);
   }
 
   async listInstances(): Promise<readonly InstanceStatus[]> {
