@@ -265,6 +265,12 @@ importers:
         specifier: workspace:*
         version: link:../test-support
 
+  packages/session-adapter-sdk:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
   packages/session-domain:
     dependencies:
       '@linmu/dsh-session-contracts':
