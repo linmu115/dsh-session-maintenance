@@ -1,6 +1,6 @@
 import s from "@deepseek-ai/schemastery";
 
-import { connectionDescriptorPath, normalizeConfig, type Config as PluginConfig } from "./config.js";
+import { connectionDescriptorPath, launcherProjectionProfile, normalizeConfig, type Config as PluginConfig } from "./config.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
 import { launchDashboard } from "./dashboard-launcher.js";
 import { createProxyHandler, FileConnectionProvider, RestrictedEngineProxy } from "./engine-proxy.js";
@@ -13,6 +13,10 @@ export const Config = s.object({
   connectionId: s.string().default("primary"),
   dshInstanceId: s.string().default("dsh-web"),
   profileId: s.string().default("web"),
+  sessionSource: s.string().default("native"),
+  maintenanceEndpoint: s.string().default("auto"),
+  adapterSelection: s.string().default("auto"),
+  pinnedAdapterId: s.string().default(""),
 });
 
 export const inject = ["webServer", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery"] as const;
@@ -24,7 +28,11 @@ interface HostContext extends CoreRuntimeContext {
 }
 
 export function apply(ctx: HostContext, input: PluginConfig): void {
-  const config = normalizeConfig(input);
+  const config = normalizeConfig({ ...input, pinnedAdapterId: input.pinnedAdapterId || null });
+  // Parse the Launcher hand-off during plugin activation. It contains only
+  // opaque IDs and a loopback origin; session directories and capabilities
+  // remain owned by the Engine connection descriptor.
+  launcherProjectionProfile(config);
   const descriptorPath = connectionDescriptorPath(config.connectionId);
   const connection = descriptorPath === undefined
     ? { current: async () => { throw new Error("维护引擎连接尚未由可信安装器登记"); } }

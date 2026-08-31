@@ -46,6 +46,18 @@ const DEFAULT_SETTINGS: MaintenanceSettings = {
 
 const EMPTY_CONFIG: EngineConfig = { schemaVersion: 1, instances: {}, codexTargets: {}, settings: DEFAULT_SETTINGS };
 
+/**
+ * Trusted launchers may select the Engine state root without placing session
+ * paths in a DSH Profile. The value is consumed by the Engine process only;
+ * DSH receives a loopback endpoint and opaque run/profile IDs.
+ */
+export function launcherStateRoot(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): string | undefined {
+  const value = environment.DSH_SESSION_MAINTENANCE_STATE_ROOT?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
+
 export function configPathFor(stateRoot: string): string {
   return join(stateRoot, "config.yaml");
 }
