@@ -173,10 +173,10 @@ export function TransactionsPage(props: { readonly api: OperationsApi }) {
   if (error !== undefined && page === undefined) return <Surface><EmptyState kind="warning" title="事务与恢复不可用" description={error} /></Surface>;
   if (page === undefined) return <Surface><LoadingState label="正在读取事务摘要…" /></Surface>;
   return <>
-    <div className="dsm-page-heading"><div><h2>事务与恢复</h2><p>恢复严格依据 journal、适配器契约和一次性作用域确认；不会提供“忽略错误继续”。</p></div></div>
+    <div className="dsm-page-heading"><div><h2>事务与恢复</h2><p>这里只保留历史平台写事务的恢复入口；会话续写已由临时投影增量提交到 canonical 真源。</p></div></div>
     <div className="catalog-layout transaction-layout">
       <Surface title={`${page.items.length} 个事务`} action={page.nextCursor === undefined ? null : <Button onClick={() => void loadMore()}>加载更多</Button>}>
-        {page.items.length === 0 ? <EmptyState title="还没有写事务" description="安全计划执行后会在这里留下 journal 和验证结果。" /> : <div className="catalog-list">{page.items.map((item) => <button type="button" key={item.id} data-selected={selectedId === item.id} onClick={() => setSelectedId(item.id)}>
+        {page.items.length === 0 ? <EmptyState title="没有待恢复的历史写事务" description="Canonical 投影运行状态请在运行中心查看。" /> : <div className="catalog-list">{page.items.map((item) => <button type="button" key={item.id} data-selected={selectedId === item.id} onClick={() => setSelectedId(item.id)}>
           <span><strong>{item.id}</strong><code>{item.planId}</code></span><Badge tone={statusTone(item.status)}>{item.status}</Badge><small>{new Date(item.updatedAt).toLocaleString()}</small>
         </button>)}</div>}
       </Surface>

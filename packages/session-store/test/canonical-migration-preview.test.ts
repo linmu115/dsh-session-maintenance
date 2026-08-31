@@ -149,6 +149,8 @@ describe("canonical migration preview", () => {
     seedSession(database, "target-ahead", { codexVersionId: "v-target-base", dshVersionId: "v-target-new", commonVersionId: "v-target-base" });
     seedSession(database, "diverged", { codexVersionId: "v-diverged-codex", dshVersionId: "v-diverged-dsh", commonVersionId: "v-diverged-base" });
     seedSession(database, "unclassified", { codexVersionId: null, dshVersionId: null, commonVersionId: null, withMirror: false });
+    seedSession(database, "codex-binding-only", { codexVersionId: "v-codex-binding", dshVersionId: null, commonVersionId: null, withMirror: false });
+    seedSession(database, "dsh-binding-only", { codexVersionId: null, dshVersionId: "v-dsh-binding", commonVersionId: null, withMirror: false });
     const before = await digest(sourceDatabasePath);
 
     const preview = await previewCanonicalMigration({
@@ -159,9 +161,9 @@ describe("canonical migration preview", () => {
 
     expect(preview.sourceSchemaVersion).toBe(6);
     expect(preview.counts).toEqual({
-      sourceLogicalSessions: 7,
-      codexMirror: 4,
-      maintenanceNative: 1,
+      sourceLogicalSessions: 9,
+      codexMirror: 5,
+      maintenanceNative: 2,
       codexDerived: 1,
       reviewRequired: 1,
       unclassified: 1,
@@ -174,6 +176,8 @@ describe("canonical migration preview", () => {
       "target-ahead": "codex-mirror-with-derived-child",
       diverged: "review-required",
       unclassified: "unclassified",
+      "codex-binding-only": "codex-mirror",
+      "dsh-binding-only": "maintenance-native",
     });
     expect(preview.classifications.find((item) => item.logicalSessionId === "diverged")).toMatchObject({
       proposedSessionIds: [],
@@ -186,6 +190,6 @@ describe("canonical migration preview", () => {
     expect(preview.rollback).toMatchObject({ sourcePreserved: true, activationRequired: true });
     await expect(access(candidateDatabasePath)).rejects.toMatchObject({ code: "ENOENT" });
     expect(await digest(sourceDatabasePath)).toBe(before);
-    expect(database.prepare("SELECT COUNT(*) AS count FROM logical_sessions").get()).toEqual({ count: 7 });
+    expect(database.prepare("SELECT COUNT(*) AS count FROM logical_sessions").get()).toEqual({ count: 9 });
   }, 15_000);
 });

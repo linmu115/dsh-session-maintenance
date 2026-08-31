@@ -9,6 +9,8 @@ import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
 import { AdapterHost, AdapterRegistry, NodeAdapterWorkerFactory } from "@linmu/dsh-session-adapter-host";
 import { manifest as alpha2AdapterManifest } from "@linmu/dsh-session-adapter-alpha2";
 import { manifest as rc2AdapterManifest } from "@linmu/dsh-session-adapter-rc2";
+import { adapter as alpha2Adapter } from "@linmu/dsh-session-adapter-alpha2";
+import { adapter as rc2Adapter } from "@linmu/dsh-session-adapter-rc2";
 import { DshWriteAdapter } from "@linmu/dsh-adapter-dsh-write";
 import { RemoteDshHostGateway } from "@linmu/dsh-host-gateway";
 import {
@@ -23,14 +25,16 @@ import {
   type SyncPlan,
 } from "@linmu/dsh-session-contracts";
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
-import { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
+import { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
-import { SqliteCanonicalProjectionSource } from "@linmu/dsh-session-projection-lifecycle";
-import { SqliteAdapterRegistryRepository, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { ProjectionLifecycle, SqliteCanonicalProjectionSource } from "@linmu/dsh-session-projection-lifecycle";
+import { SqliteAdapterRegistryRepository, SqliteCanonicalSessionEngineStore, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
   addInstance,
+  activateDatabaseFile,
+  activeDatabasePath,
   initializeStateRoot,
   loadConfig,
   registeredCodexTargets,
@@ -132,7 +136,7 @@ async function createComposition(
   await mkdir(join(options.stateRoot, "objects"), { recursive: true });
   const config = await loadConfig(options.stateRoot);
   const objectStore = new ZstdContentObjectStore(options.stateRoot);
-  const metadataPath = join(options.stateRoot, "metadata.sqlite");
+  const metadataPath = activeDatabasePath(options.stateRoot, config);
   const repository = new SqliteSessionRepository(
     openMaintenanceDatabase(metadataPath),
     objectStore,
@@ -146,7 +150,6 @@ async function createComposition(
     targets: registeredCodexTargets(config),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
-  const mirrors = new NativeMirrorService({ repository, ...(options.clock === undefined ? {} : { clock: options.clock }) });
   const statusLog = new StatusLog(
     new SqliteStatusEventAdapter(new SqliteStatusEventRepository(repository.database)),
     options.clock === undefined ? {} : { clock: options.clock },
@@ -178,6 +181,9 @@ async function createComposition(
   });
   const projectionRunRepository = new SqliteProjectionRunRepository(repository.database);
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database);
+  const canonicalEngine = new CanonicalSessionEngine(
+    new SqliteCanonicalSessionEngineStore(repository.database, objectStore),
+  );
   const sessionAliases = new SqliteSessionAliasRepository(repository.database);
   let writeService: WriteService | undefined;
   const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
@@ -236,9 +242,32 @@ async function createComposition(
     repository,
     objectStore,
     continuations,
-    mirrors,
+    canonicalEngine,
+    projectionLifecycleFactory: ({ adapterId, bridge }) => {
+      const adapter = adapterId === alpha2Adapter.manifest.id
+        ? alpha2Adapter
+        : adapterId === rc2Adapter.manifest.id
+          ? rc2Adapter
+          : undefined;
+      if (adapter === undefined) throw new TypeError(`Unsupported built-in projection adapter: ${adapterId}`);
+      return new ProjectionLifecycle({
+        runRepository: projectionRunRepository,
+        statusLog,
+        source: canonicalProjectionSource,
+        adapter,
+        bridge,
+        canonicalEngine,
+        checkpointRepository: repository,
+        runtimeRoot: join(options.stateRoot, "projection-runtime"),
+        ...(options.clock === undefined ? {} : { clock: options.clock }),
+      });
+    },
     migrationSourcePath: metadataPath,
     migrationCandidatePath: join(options.stateRoot, "metadata.canonical-candidate.sqlite"),
+    migrationArchivePath: join(options.stateRoot, "metadata.pre-canonical-v6.sqlite"),
+    migrationPort: {
+      activateDatabaseFile: async (databaseFile) => { await activateDatabaseFile(options.stateRoot, databaseFile); },
+    },
     statusLog,
     adapterRegistry,
     projectionRunRepository,

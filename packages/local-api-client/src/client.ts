@@ -16,9 +16,6 @@ import {
   jobAcceptedResponseSchema,
   jobRefSchema,
   overviewResponseSchema,
-  nativeMirrorListResponseSchema,
-  nativeMirrorPreviewResponseSchema,
-  nativeMirrorResponseSchema,
   pageSchema,
   planResponseSchema,
   planListResponseSchema,
@@ -56,9 +53,6 @@ import {
   type DashboardLaunchInfo,
   type MaintenanceSettings,
   type MaintenanceSettingsPatch,
-  type NativeMirrorActionPreview,
-  type NativeMirrorActionRequest,
-  type NativeMirrorRecord,
   type Page,
   type PlanRequest,
   type PlanQuery,
@@ -244,27 +238,6 @@ class ApiClient {
 
   async overview(signal?: AbortSignal): Promise<DashboardOverview> {
     return (await this.request("/v1/overview", {}, overviewResponseSchema, signal)).overview as DashboardOverview;
-  }
-
-  async listNativeMirrors(signal?: AbortSignal): Promise<readonly NativeMirrorRecord[]> {
-    return (await this.request("/v1/mirrors", {}, nativeMirrorListResponseSchema, signal)).mirrors as readonly NativeMirrorRecord[];
-  }
-
-  async getNativeMirror(id: string, signal?: AbortSignal): Promise<NativeMirrorRecord | undefined> {
-    try {
-      return (await this.request(`/v1/mirrors/${encodeURIComponent(id)}`, {}, nativeMirrorResponseSchema, signal)).mirror as NativeMirrorRecord;
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith("MIRROR_NOT_ENABLED:")) return undefined;
-      throw error;
-    }
-  }
-
-  async previewNativeMirrorAction(id: string, input: NativeMirrorActionRequest, signal?: AbortSignal): Promise<NativeMirrorActionPreview> {
-    return (await this.request(`/v1/mirrors/${encodeURIComponent(id)}/preview`, this.jsonPost(input), nativeMirrorPreviewResponseSchema, signal)).preview as NativeMirrorActionPreview;
-  }
-
-  async applyNativeMirrorAction(id: string, input: NativeMirrorActionRequest, signal?: AbortSignal): Promise<NativeMirrorRecord> {
-    return (await this.request(`/v1/mirrors/${encodeURIComponent(id)}/actions`, this.jsonPost(input), nativeMirrorResponseSchema, signal)).mirror as NativeMirrorRecord;
   }
 
   async getSession(id: string, signal?: AbortSignal): Promise<SessionDetail> {

@@ -1,5 +1,10 @@
 # 第四阶段：Codex 原生镜像执行计划
 
+> **已被取代（2026-09-01）**：本计划的 Native Mirror 主线已由
+> `2026-08-31-session-maintenance-canonical-projection-design.md` 与对应实施计划取代。
+> 旧表仅作为一次性迁移输入保留；生产 Engine、HTTP API、客户端和 Dashboard
+> 不再加载或操作 Native Mirror。
+
 > 日期：2026-08-27  
 > 分支：`codex/phase-4-native-mirror`  
 > 前置：阶段三 continuation 能力已合入；阶段二正式部署与阶段三真实验收并行收口。

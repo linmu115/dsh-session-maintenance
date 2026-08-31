@@ -69,6 +69,9 @@ importers:
       '@linmu/dsh-adapter-dsh-write':
         specifier: workspace:*
         version: link:../../packages/adapter-dsh-write
+      '@linmu/dsh-canonical-session-engine':
+        specifier: workspace:*
+        version: link:../../packages/canonical-session-engine
       '@linmu/dsh-host-gateway':
         specifier: workspace:*
         version: link:../../packages/dsh-host-gateway
@@ -90,9 +93,6 @@ importers:
       '@linmu/dsh-session-domain':
         specifier: workspace:*
         version: link:../../packages/session-domain
-      '@linmu/dsh-session-native-mirror-engine':
-        specifier: workspace:*
-        version: link:../../packages/native-mirror-engine
       '@linmu/dsh-session-projection-lifecycle':
         specifier: workspace:*
         version: link:../../packages/projection-lifecycle
@@ -285,22 +285,6 @@ importers:
         specifier: 4.1.5
         version: 4.1.5
 
-  packages/native-mirror-engine:
-    dependencies:
-      '@linmu/dsh-session-contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@linmu/dsh-session-domain':
-        specifier: workspace:*
-        version: link:../session-domain
-    devDependencies:
-      '@linmu/dsh-session-store':
-        specifier: workspace:*
-        version: link:../session-store
-      '@linmu/dsh-session-test-support':
-        specifier: workspace:*
-        version: link:../test-support
-
   packages/projection-lifecycle:
     dependencies:
       '@linmu/dsh-canonical-session-engine':
@@ -343,6 +327,9 @@ importers:
 
   packages/session-store:
     dependencies:
+      '@linmu/dsh-canonical-session-engine':
+        specifier: workspace:*
+        version: link:../canonical-session-engine
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts

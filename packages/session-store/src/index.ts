@@ -7,6 +7,7 @@ export * from "./migrations/006-workspace-directory.js";
 export * from "./migrations/007-canonical-session-source.js";
 export * from "./migrations/008-projection-runtime.js";
 export * from "./canonical-repository.js";
+export * from "./canonical-engine-store.js";
 export * from "./canonical-migration.js";
 export * from "./logical-workspace-repository.js";
 export * from "./session-alias-repository.js";
