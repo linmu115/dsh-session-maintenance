@@ -9,15 +9,25 @@ import type {
   LeaseId,
   ProjectionInspection,
   ProjectionManifest,
+  NativeAppendOperation,
+  ProjectionOperationReceipt,
   ProjectionRun,
   ProjectionRunRepository,
   RuntimeHandle,
   RunId,
 } from "@linmu/dsh-session-contracts";
+import type { DshAppendCommitter } from "@linmu/dsh-canonical-session-engine";
 import type { StatusLog, StatusSpanHandle } from "@linmu/dsh-session-status-log";
 
+import {
+  commitProjectionAppend,
+  type ActiveProjectionSession,
+  type MutableNativeProjectionBridge,
+  type ProjectionAppendContext,
+} from "./append.js";
 import { ProjectionLease, ProjectionLeaseError } from "./lease.js";
 import { JsonProjectionDirectory, projectionRootFor, type CanonicalProjectionSource } from "./materialize.js";
+import { ProjectionWriteAheadLog } from "./wal.js";
 
 export interface OpenProjectionRunInput {
   readonly instanceId: string;
@@ -57,9 +67,11 @@ export class ProjectionLifecycle {
   readonly adapter: DshSessionAdapterV1;
   readonly bridge: DshRuntimeBridgeV1;
   readonly runtimeRoot: string;
+  readonly canonicalEngine: DshAppendCommitter | undefined;
   private readonly lease: ProjectionLease;
   private readonly clock: () => string;
   private readonly idFactory: (kind: IdKind) => string;
+  private readonly activeRuns = new Map<RunId, ProjectionAppendContext>();
 
   constructor(input: {
     readonly runRepository: ProjectionRunRepository;
@@ -67,6 +79,7 @@ export class ProjectionLifecycle {
     readonly source: CanonicalProjectionSource;
     readonly adapter: DshSessionAdapterV1;
     readonly bridge: DshRuntimeBridgeV1;
+    readonly canonicalEngine?: DshAppendCommitter;
     readonly runtimeRoot: string;
     readonly clock?: () => string;
     readonly idFactory?: (kind: IdKind) => string;
@@ -76,6 +89,7 @@ export class ProjectionLifecycle {
     this.source = input.source;
     this.adapter = input.adapter;
     this.bridge = input.bridge;
+    this.canonicalEngine = input.canonicalEngine;
     this.runtimeRoot = resolve(input.runtimeRoot);
     this.lease = new ProjectionLease(input.runRepository);
     this.clock = input.clock ?? (() => new Date().toISOString());
@@ -120,6 +134,7 @@ export class ProjectionLifecycle {
     let manifest: ProjectionManifest;
     let inspection: ProjectionInspection;
     let verification: AdapterVerificationResult;
+    const sessions = new Map<string, ActiveProjectionSession>();
     const materializeSpan = await this.startSpan(preparing, "projection.materialize");
     try {
       projectionInput = await this.source.load(preparing);
@@ -138,7 +153,7 @@ export class ProjectionLifecycle {
         if (reference.nativeSessionId === null || reference.status !== "resolved") {
           throw new Error(`Adapter did not resolve native identity for ${item.session.id}`);
         }
-        await this.runRepository.upsertProjectionSession({
+        const projection = {
           schemaVersion: 1,
           runId,
           nativeSessionId: reference.nativeSessionId,
@@ -148,6 +163,15 @@ export class ProjectionLifecycle {
           nativeRevision: item.events.length,
           lastCommittedOperationId: null,
           derivedChildSessionId: null,
+        } as const;
+        await this.runRepository.upsertProjectionSession(projection);
+        sessions.set(reference.nativeSessionId, {
+          projection,
+          title: item.session.title,
+          tags: item.session.tags,
+          archivedAt: item.session.archivedAt,
+          workspaceId: item.workspaceId,
+          authorityScope: item.session.authorityScope,
         });
       }
       await this.statusLog.succeed(materializeSpan);
@@ -167,8 +191,7 @@ export class ProjectionLifecycle {
       });
       attachedRuntime = runtime;
       await this.lease.setState(runId, "running");
-      await this.statusLog.succeed(attachSpan);
-      return {
+      const handle: ProjectionRunHandle = {
         run: { ...preparing, state: "running" },
         projectionRoot,
         manifest,
@@ -176,7 +199,25 @@ export class ProjectionLifecycle {
         verification,
         runtime,
       };
+      const context: ProjectionAppendContext = {
+        handle,
+        directory,
+        wal: new ProjectionWriteAheadLog(projectionRoot),
+        sessions,
+      };
+      this.activeRuns.set(runId, context);
+      if ("bindAppendHandler" in this.bridge && typeof this.bridge.bindAppendHandler === "function") {
+        await (this.bridge as MutableNativeProjectionBridge & {
+          bindAppendHandler(
+            runtime: RuntimeHandle,
+            handler: (operation: NativeAppendOperation) => Promise<ProjectionOperationReceipt>,
+          ): Promise<void>;
+        }).bindAppendHandler(runtime, async (operation) => this.append(handle, operation));
+      }
+      await this.statusLog.succeed(attachSpan);
+      return handle;
     } catch (error) {
+      this.activeRuns.delete(runId);
       if (attachedRuntime !== undefined) {
         await this.bridge.detach(attachedRuntime).catch(() => undefined);
       }
@@ -184,6 +225,29 @@ export class ProjectionLifecycle {
       await this.statusLog.fail(attachSpan, { errorCode: "RUNTIME_ATTACH_FAILED" });
       throw new ProjectionLifecycleError("RUNTIME_ATTACH_FAILED", runId, "Alpha2 runtime persistence attach failed", { cause: error });
     }
+  }
+
+  async append(
+    handle: ProjectionRunHandle,
+    operation: NativeAppendOperation,
+  ): Promise<ProjectionOperationReceipt> {
+    const context = this.activeRuns.get(handle.run.id);
+    if (context === undefined || context.handle.runtime !== handle.runtime) {
+      throw new ProjectionLifecycleError("RUN_NOT_ACTIVE", handle.run.id, "Projection run is not active in this lifecycle");
+    }
+    if (this.canonicalEngine === undefined) {
+      throw new ProjectionLifecycleError("CANONICAL_ENGINE_UNAVAILABLE", handle.run.id, "Canonical session engine is not configured");
+    }
+    return commitProjectionAppend({
+      context,
+      operation,
+      runRepository: this.runRepository,
+      statusLog: this.statusLog,
+      adapter: this.adapter,
+      bridge: this.bridge,
+      canonicalEngine: this.canonicalEngine,
+      clock: this.clock,
+    });
   }
 
   private startSpan(run: ProjectionRun, stage: "run.lease" | "projection.materialize" | "runtime.persistence.attach"): Promise<StatusSpanHandle> {

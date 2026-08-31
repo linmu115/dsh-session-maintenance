@@ -294,6 +294,9 @@ importers:
 
   packages/projection-lifecycle:
     dependencies:
+      '@linmu/dsh-canonical-session-engine':
+        specifier: workspace:*
+        version: link:../canonical-session-engine
       '@linmu/dsh-session-adapter-sdk':
         specifier: workspace:*
         version: link:../session-adapter-sdk

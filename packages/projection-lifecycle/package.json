@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@linmu/dsh-session-adapter-sdk": "workspace:*",
+    "@linmu/dsh-canonical-session-engine": "workspace:*",
     "@linmu/dsh-session-contracts": "workspace:*",
     "@linmu/dsh-session-status-log": "workspace:*"
   },

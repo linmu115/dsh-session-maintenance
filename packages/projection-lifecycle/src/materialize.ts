@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -87,6 +88,12 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
     await this.writeJson(join(this.root, "session-index.json"), [...this.sessionIds].sort(), false);
   }
 
+  async replaceSession(nativeSessionId: NativeSessionId, payload: JsonValue): Promise<void> {
+    const path = join(this.root, "sessions", `${encoded(nativeSessionId)}.json`);
+    await this.writeJsonAtomically(path, payload);
+    this.sessionIds.add(nativeSessionId);
+  }
+
   async listNativeSessionIds(): Promise<readonly NativeSessionId[]> {
     if (this.sessionIds.size === 0) {
       try {
@@ -130,6 +137,24 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
   private async writeJson(path: string, value: JsonValue, exclusive = true): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
     await writeFile(path, `${JSON.stringify(value)}\n`, { encoding: "utf8", flag: exclusive ? "wx" : "w" });
+  }
+
+  private async writeJsonAtomically(path: string, value: JsonValue): Promise<void> {
+    await mkdir(dirname(path), { recursive: true });
+    const temporary = `${path}.${randomUUID()}.tmp`;
+    const handle = await open(temporary, "wx");
+    try {
+      await handle.writeFile(`${JSON.stringify(value)}\n`, "utf8");
+      await handle.sync();
+    } finally {
+      await handle.close();
+    }
+    try {
+      await rename(temporary, path);
+    } catch (error) {
+      await rm(temporary, { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 }
 

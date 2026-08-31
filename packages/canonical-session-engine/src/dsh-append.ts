@@ -45,6 +45,11 @@ export interface DshAppendInput {
   readonly projection: DshProjectionAppendContext;
 }
 
+/** Narrow port used by projection runtimes; storage remains owned by CanonicalSessionEngine. */
+export interface DshAppendCommitter {
+  appendDsh(input: DshAppendInput): Promise<CanonicalEngineReceipt>;
+}
+
 function assertAppendTarget(
   logicalSessionId: LogicalSessionId,
   events: readonly CanonicalEventV1[],

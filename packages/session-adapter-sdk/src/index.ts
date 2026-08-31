@@ -16,6 +16,7 @@ export type {
   LogicalWorkspaceId,
   NativeSessionId,
   OperationId,
+  ProjectionOperationReceipt,
   ProjectionRun,
   RunId,
   SessionVersionId,
