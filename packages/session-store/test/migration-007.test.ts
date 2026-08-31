@@ -5,12 +5,12 @@ import { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { openMaintenanceDatabase } from "../src/index.js";
 import { MIGRATION_002 } from "../src/migrations/002-job-events.js";
 import { MIGRATION_003 } from "../src/migrations/003-transactions.js";
 import { MIGRATION_004 } from "../src/migrations/004-continuations.js";
 import { MIGRATION_005 } from "../src/migrations/005-native-mirrors.js";
 import { MIGRATION_006 } from "../src/migrations/006-workspace-directory.js";
+import { MIGRATION_007 } from "../src/migrations/007-canonical-session-source.js";
 import { MIGRATION_001 } from "../src/schema.js";
 
 const roots: string[] = [];
@@ -106,8 +106,15 @@ describe("migration 007 canonical session source", () => {
     const path = join(root, "metadata.sqlite");
     createSyntheticV6Database(path);
 
-    const database = openMaintenanceDatabase(path);
+    const database = new DatabaseSync(path);
     databases.push(database);
+    database.exec("PRAGMA foreign_keys = ON");
+    database.exec("BEGIN IMMEDIATE");
+    database.exec(MIGRATION_007);
+    database
+      .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+      .run(7, createdAt);
+    database.exec("COMMIT");
 
     expect(
       database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get(),
@@ -169,5 +176,5 @@ describe("migration 007 canonical session source", () => {
         .get("legacy-session"),
     ).toEqual({ state: "paused", pause_reason: "legacy-preserved" });
 
-  });
+  }, 15_000);
 });

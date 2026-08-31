@@ -51,4 +51,5 @@ export interface StatusEventQuery {
   readonly logicalSessionId?: LogicalSessionId;
   readonly operationId?: OperationId;
   readonly stage?: StatusStage;
+  readonly spanId?: StatusSpanId;
 }

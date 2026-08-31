@@ -229,6 +229,7 @@ export const statusEventQuerySchema = z.strictObject({
   logicalSessionId: idSchema.optional(),
   operationId: idSchema.optional(),
   stage: statusStageSchema.optional(),
+  spanId: idSchema.optional(),
 });
 
 export const adapterCapabilitySchema = z.enum([

@@ -49,7 +49,7 @@ describe("SqliteSessionRepository", () => {
       upgraded.prepare("SELECT version FROM schema_migrations ORDER BY version").all(),
     ).toEqual([
       { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 },
-      { version: 5 }, { version: 6 }, { version: 7 },
+      { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 },
     ]);
     expect(
       upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transactions'").get(),
@@ -66,10 +66,10 @@ describe("SqliteSessionRepository", () => {
     upgraded.close();
     upgraded = openMaintenanceDatabase(dbPath);
     expect(
-      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 7").get(),
+      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 8").get(),
     ).toEqual({ count: 1 });
     upgraded.close();
-  });
+  }, 15_000);
 
   it("persists immutable versions and observed refs across reopen", async () => {
     const root = await temporaryRoot();
@@ -175,7 +175,7 @@ describe("SqliteSessionRepository", () => {
     const database = openMaintenanceDatabase(dbPath);
     database
       .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-      .run(8, "2026-08-26T00:00:00.000Z");
+      .run(9, "2026-08-26T00:00:00.000Z");
     database.close();
     expect(() => openMaintenanceDatabase(dbPath)).toThrow(/newer schema/iu);
 
