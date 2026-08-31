@@ -155,6 +155,10 @@ export async function routeRequest(
       send(response, 200, { instances: await context.engine.listInstances() });
       return;
     }
+    if (request.method === "GET" && url.pathname === "/v1/adapters/registry") {
+      send(response, 200, { adapters: context.engine.adapterRegistry.list() });
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/v1/session-resolution") {
       const key = platformSessionResolutionRequestSchema.parse(await readJsonBody(request));
       const resolution = await context.engine.resolvePlatformSession(key);

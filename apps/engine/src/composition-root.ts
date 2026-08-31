@@ -5,6 +5,7 @@ import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
 import { CodexNativeWriteAdapter } from "@linmu/dsh-adapter-codex-native";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
+import { AdapterHost, AdapterRegistry, NodeAdapterWorkerFactory } from "@linmu/dsh-session-adapter-host";
 import { DshWriteAdapter } from "@linmu/dsh-adapter-dsh-write";
 import { RemoteDshHostGateway } from "@linmu/dsh-host-gateway";
 import {
@@ -21,7 +22,7 @@ import {
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
 import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
-import { SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { SqliteAdapterRegistryRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
@@ -134,6 +135,11 @@ async function createComposition(
     new SqliteStatusEventAdapter(new SqliteStatusEventRepository(repository.database)),
     options.clock === undefined ? {} : { clock: options.clock },
   );
+  const adapterRegistry = new AdapterRegistry({
+    host: new AdapterHost(new NodeAdapterWorkerFactory()),
+    repository: new SqliteAdapterRegistryRepository(repository.database),
+    ...(options.clock === undefined ? {} : { now: options.clock }),
+  });
   let writeService: WriteService | undefined;
   const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
   const writeAdapters = new Map<"codex" | "dsh", PlatformWriteAdapter>();
@@ -195,6 +201,7 @@ async function createComposition(
     migrationSourcePath: metadataPath,
     migrationCandidatePath: join(options.stateRoot, "metadata.canonical-candidate.sqlite"),
     statusLog,
+    adapterRegistry,
     settingsPort: {
       get: async () => (await loadConfig(options.stateRoot)).settings,
       patch: (input) => updateSettings(options.stateRoot, input),

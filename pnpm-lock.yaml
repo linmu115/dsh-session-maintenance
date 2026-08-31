@@ -72,6 +72,9 @@ importers:
       '@linmu/dsh-host-gateway':
         specifier: workspace:*
         version: link:../../packages/dsh-host-gateway
+      '@linmu/dsh-session-adapter-host':
+        specifier: workspace:*
+        version: link:../../packages/adapter-host
       '@linmu/dsh-session-continuation-engine':
         specifier: workspace:*
         version: link:../../packages/continuation-engine
@@ -178,6 +181,18 @@ importers:
       '@linmu/dsh-session-test-support':
         specifier: workspace:*
         version: link:../test-support
+
+  packages/adapter-host:
+    dependencies:
+      '@linmu/dsh-session-adapter-sdk':
+        specifier: workspace:*
+        version: link:../session-adapter-sdk
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-store':
+        specifier: workspace:*
+        version: link:../session-store
 
   packages/canonical-session-engine:
     dependencies:

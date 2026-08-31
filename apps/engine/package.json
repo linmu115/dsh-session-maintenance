@@ -19,6 +19,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@linmu/dsh-session-adapter-host": "workspace:*",
     "@linmu/dsh-adapter-codex-continuation": "workspace:*",
     "@linmu/dsh-adapter-codex-read": "workspace:*",
     "@linmu/dsh-adapter-codex-native": "workspace:*",
