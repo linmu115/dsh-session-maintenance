@@ -22,6 +22,7 @@ export interface ProjectionPersistenceOverlay {
   attach(snapshot: ProjectionRuntimeSnapshot): Promise<string>;
   beginDrain(registrationId: string): Promise<void>;
   pending(registrationId: string): Promise<number>;
+  hideSession(registrationId: string, nativeSessionId: string): Promise<void>;
   detach(registrationId: string): Promise<void>;
 }
 
@@ -44,6 +45,15 @@ export class Alpha2ProjectionPersistenceOverlay implements ProjectionPersistence
   async beginDrain(registrationId: string): Promise<void> {
     this.snapshot(registrationId);
     this.draining.add(registrationId);
+  }
+
+  async hideSession(registrationId: string, nativeSessionId: string): Promise<void> {
+    const snapshot = this.snapshot(registrationId);
+    if (!snapshot.sessions.some((session) => session.nativeSessionId === nativeSessionId)) return;
+    this.snapshots.set(registrationId, {
+      ...snapshot,
+      sessions: snapshot.sessions.filter((session) => session.nativeSessionId !== nativeSessionId),
+    });
   }
 
   isDraining(registrationId: string): boolean {
@@ -149,10 +159,20 @@ export class ProjectionRuntimeRegistrar {
     return { runId, pendingOperations: await this.overlay.pending(registrationId), receipts: [] };
   }
 
+  async drainSession(registrationId: string, runId: string, _nativeSessionId: string): Promise<{ readonly runId: string; readonly pendingOperations: number; readonly receipts: readonly [] }> {
+    this.assertRegistration(runId, registrationId);
+    return { runId, pendingOperations: await this.overlay.pending(registrationId), receipts: [] };
+  }
+
   async detach(registrationId: string, runId: string): Promise<void> {
     this.assertRegistration(runId, registrationId);
     await this.overlay.detach(registrationId);
     this.registrations.delete(runId);
+  }
+
+  async hideSession(registrationId: string, runId: string, nativeSessionId: string): Promise<void> {
+    this.assertRegistration(runId, registrationId);
+    await this.overlay.hideSession(registrationId, nativeSessionId);
   }
 
   private assertRegistration(runId: string, registrationId: string): void {

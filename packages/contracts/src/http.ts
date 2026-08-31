@@ -23,9 +23,9 @@ import type {
 } from "./operations.js";
 import type { JobRef } from "./jobs.js";
 import type { SyncPlan } from "./plans.js";
-import type { AdapterManifestV1 } from "./adapter-sdk.js";
-import type { ProjectionRun } from "./projection.js";
-import type { StatusEventV1 } from "./status.js";
+import type { StatusEventState, StatusEventV1, StatusStage } from "./status.js";
+import type { AdapterManifestV1, AdapterProbeResult } from "./adapter-sdk.js";
+import type { ProjectionRun, ProjectionSessionMode } from "./projection.js";
 import type {
   CanonicalEventV1,
   CanonicalSessionRecord,
@@ -196,4 +196,79 @@ export interface CanonicalDashboardSessionDetail {
 
 export interface CanonicalDashboardSessionResponse {
   readonly session: CanonicalDashboardSessionDetail;
+}
+
+export interface CanonicalSessionMaintenancePatch {
+  readonly title?: string;
+  readonly tags?: readonly string[];
+  readonly workspaceId?: string | null;
+  readonly displayOrder?: number;
+  readonly pinned?: boolean;
+  readonly archived?: boolean;
+}
+
+export interface CanonicalSessionMaintenanceResult {
+  readonly session: CanonicalDashboardSessionDetail;
+}
+
+export interface CanonicalSessionDeleteResult {
+  readonly logicalSessionId: string;
+  readonly state: "deleted" | "pending-delete";
+  readonly checkpointId: string | null;
+  readonly pendingOperations: number;
+}
+
+export interface CanonicalSessionRestoreResult {
+  readonly logicalSessionId: string;
+  readonly state: "restored";
+  readonly workspaceId: string | null;
+}
+
+export interface RecentlyDeletedSession {
+  readonly session: CanonicalSessionRecord;
+  readonly tombstone: import("./canonical.js").SessionTombstone | null;
+  readonly pendingOperations: number;
+}
+
+export interface RecentlyDeletedResponse {
+  readonly sessions: readonly RecentlyDeletedSession[];
+}
+
+export interface RunCenterItem {
+  readonly run: ProjectionRun;
+  readonly projectedSessions: number;
+  readonly hiddenSessions: number;
+  readonly pendingOperations: number;
+  readonly modes: Readonly<Partial<Record<ProjectionSessionMode, number>>>;
+  readonly latestStages: Readonly<Partial<Record<StatusStage, {
+    readonly state: StatusEventState;
+    readonly at: string;
+    readonly errorCode: string | null;
+    readonly diagnosticDetailRef: string | null;
+  }>>>;
+}
+
+export interface RunCenterResponse {
+  readonly runs: readonly RunCenterItem[];
+}
+
+export interface AdapterDashboardRecord {
+  readonly manifest: AdapterManifestV1;
+  readonly enabled: boolean;
+  readonly sourceKind: "npm" | "local" | "generation";
+  readonly sourceLabel: string;
+}
+
+export interface AdapterDashboardResponse {
+  readonly adapters: readonly AdapterDashboardRecord[];
+}
+
+export interface AdapterExperimentalSelectionResponse {
+  readonly selection: {
+    readonly adapterId: string;
+    readonly manifest: AdapterManifestV1;
+    readonly probe: AdapterProbeResult;
+    readonly reason: "pinned" | "verified" | "probe-compatible" | "experimental";
+    readonly verificationRunId: string;
+  };
 }

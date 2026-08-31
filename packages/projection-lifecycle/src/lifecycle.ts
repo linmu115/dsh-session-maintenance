@@ -269,6 +269,42 @@ export class ProjectionLifecycle {
     });
   }
 
+  /** Drains accepted writes before hiding one session from the attached temporary projection. */
+  async hideSession(
+    handle: ProjectionRunHandle,
+    logicalSessionId: string,
+  ): Promise<{ readonly nativeSessionId: string; readonly mode: "hidden" }> {
+    const context = this.activeRuns.get(handle.run.id);
+    if (context === undefined || context.handle.runtime !== handle.runtime) {
+      throw new ProjectionLifecycleError("RUN_NOT_ACTIVE", handle.run.id, "Projection run is not active in this lifecycle");
+    }
+    const match = [...context.sessions.entries()].find(([, session]) => session.projection.logicalSessionId === logicalSessionId);
+    if (match === undefined) throw new ProjectionLifecycleError("SESSION_NOT_PROJECTED", handle.run.id, `Logical session is not projected: ${logicalSessionId}`);
+    const [nativeSessionId, active] = match;
+    const span = await this.startShutdownSpan(context.handle.run);
+    context.acceptingAppends = false;
+    try {
+      const drained = this.bridge.drainSession === undefined
+        ? await this.bridge.drain(context.handle.runtime)
+        : await this.bridge.drainSession(context.handle.runtime, active.projection.nativeSessionId);
+      await this.replayPending(context);
+      if (drained.pendingOperations !== 0 || (await context.wal.pending()).length !== 0) {
+        throw new Error("Projected session still has pending operations after drain");
+      }
+      if (this.bridge.hideSession === undefined) throw new Error("Selected runtime bridge cannot hide one projected session");
+      await this.bridge.hideSession(context.handle.runtime, active.projection.nativeSessionId);
+      active.projection = { ...active.projection, mode: "hidden" };
+      await this.runRepository.upsertProjectionSession(active.projection);
+      await this.statusLog.succeed(span, { diagnosticDetailRef: "diag:session-delete-hidden" });
+      return { nativeSessionId, mode: "hidden" };
+    } catch (error) {
+      await this.statusLog.fail(span, { errorCode: "SESSION_DELETE_DRAIN_FAILED", diagnosticDetailRef: "diag:session-delete-pending" });
+      throw new ProjectionLifecycleError("SESSION_DELETE_DRAIN_FAILED", handle.run.id, "Projected session could not be drained before delete", { cause: error });
+    } finally {
+      context.acceptingAppends = true;
+    }
+  }
+
   async closeRun(handle: ProjectionRunHandle): Promise<ProjectionCloseReceipt> {
     const context = this.activeRuns.get(handle.run.id);
     if (context === undefined) {

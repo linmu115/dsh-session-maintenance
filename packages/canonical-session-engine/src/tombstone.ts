@@ -34,6 +34,14 @@ export async function tombstoneSession(
   store: CanonicalSessionEngineStore,
   input: TombstoneSessionInput,
 ): Promise<CanonicalEngineReceipt> {
+  const deletedAt = Date.parse(input.deletedAt);
+  const retentionUntil = Date.parse(input.retentionUntil);
+  if (!Number.isFinite(deletedAt) || !Number.isFinite(retentionUntil) || retentionUntil <= deletedAt) {
+    throw new TypeError("Tombstone retention must end after the deletion timestamp");
+  }
+  if (String(input.checkpointId).length === 0) {
+    throw new TypeError("Tombstone requires a deletion-preflight checkpoint");
+  }
   const priorReceipt = await store.getOperationReceipt(input.operationId);
   if (priorReceipt !== undefined) return priorReceipt;
   const current = await store.getSession(input.logicalSessionId);

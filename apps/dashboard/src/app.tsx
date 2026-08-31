@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
-import { Activity, ArrowLeft, BookmarkCheck, GitPullRequest, History, ListTree, RefreshCw, Settings2, ShieldCheck } from "lucide-react";
+import { Activity, ArrowLeft, BookmarkCheck, GitPullRequest, History, ListTree, Plug, RadioTower, RefreshCw, Settings2, ShieldCheck, Trash2 } from "lucide-react";
 
 import {
   Badge,
@@ -20,6 +20,9 @@ import {
 import type { WorkbenchApi } from "./session-workbench.js";
 import type { OperationsApi } from "./operations-pages.js";
 import type { CatalogApi } from "./catalog-pages.js";
+import type { RecentlyDeletedApi } from "./recently-deleted.js";
+import type { RunCenterApi } from "./run-center.js";
+import type { AdapterPageApi } from "./adapter-page.js";
 import { WorkspaceDirectory } from "./workspace-directory.js";
 
 const SessionWorkbench = lazy(async () => ({ default: (await import("./session-workbench.js")).SessionWorkbench }));
@@ -28,8 +31,11 @@ const CheckpointsPage = lazy(async () => ({ default: (await import("./catalog-pa
 const TransactionsPage = lazy(async () => ({ default: (await import("./operations-pages.js")).TransactionsPage }));
 const DiagnosticsPage = lazy(async () => ({ default: (await import("./operations-pages.js")).DiagnosticsPage }));
 const SettingsPage = lazy(async () => ({ default: (await import("./operations-pages.js")).SettingsPage }));
+const RecentlyDeletedPage = lazy(async () => ({ default: (await import("./recently-deleted.js")).RecentlyDeletedPage }));
+const RunCenterPage = lazy(async () => ({ default: (await import("./run-center.js")).RunCenterPage }));
+const AdapterPage = lazy(async () => ({ default: (await import("./adapter-page.js")).AdapterPage }));
 
-type View = "overview" | "sessions" | "plans" | "checkpoints" | "transactions" | "diagnostics" | "settings";
+type View = "overview" | "sessions" | "plans" | "checkpoints" | "transactions" | "diagnostics" | "runs" | "adapters" | "deleted" | "settings";
 type LoadState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
@@ -77,7 +83,7 @@ function DashboardContent(props: {
   </>;
 }
 
-export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi & CatalogApi; readonly initialLogicalSessionId?: string }) {
+export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi & CatalogApi & RecentlyDeletedApi & RunCenterApi & AdapterPageApi; readonly initialLogicalSessionId?: string }) {
   const [view, setView] = useState<View>("overview");
   const [request, setRequest] = useState(0);
   const [state, setState] = useState<LoadState>({ kind: "loading" });
@@ -101,6 +107,9 @@ export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi
     <NavButton active={view === "checkpoints"} icon={BookmarkCheck} onClick={() => { setSelectedSessionId(undefined); setView("checkpoints"); }}>Checkpoints</NavButton>
     <NavButton active={view === "transactions"} icon={History} onClick={() => { setSelectedSessionId(undefined); setView("transactions"); }}>事务与恢复</NavButton>
     <NavButton active={view === "diagnostics"} icon={ShieldCheck} onClick={() => { setSelectedSessionId(undefined); setView("diagnostics"); }}>诊断</NavButton>
+    <NavButton active={view === "runs"} icon={RadioTower} onClick={() => { setSelectedSessionId(undefined); setView("runs"); }}>运行中心</NavButton>
+    <NavButton active={view === "adapters"} icon={Plug} onClick={() => { setSelectedSessionId(undefined); setView("adapters"); }}>Adapter</NavButton>
+    <NavButton active={view === "deleted"} icon={Trash2} onClick={() => { setSelectedSessionId(undefined); setView("deleted"); }}>最近删除</NavButton>
     <NavButton active={view === "settings"} icon={Settings2} onClick={() => { setSelectedSessionId(undefined); setView("settings"); }}>设置</NavButton>
   </>, [selectedSessionId, view]);
 
@@ -113,12 +122,15 @@ export function DashboardApp(props: { readonly api: WorkbenchApi & OperationsApi
     {selectedSessionId !== undefined ? <>
         <div className="workbench-heading"><Button onClick={() => setSelectedSessionId(undefined)}><ArrowLeft size={14} /> 返回会话</Button><code>{selectedSessionId}</code></div>
         <Suspense fallback={<Surface><LoadingState label="正在打开版本工作台…" /></Surface>}>
-          <SessionWorkbench api={props.api} logicalSessionId={selectedSessionId} onOpenSession={setSelectedSessionId} />
+          <SessionWorkbench api={props.api} logicalSessionId={selectedSessionId} onOpenSession={setSelectedSessionId} onDeleted={() => { setSelectedSessionId(undefined); setView("deleted"); setRequest((value) => value + 1); }} />
         </Suspense>
       </> : view === "plans" ? <Suspense fallback={<Surface><LoadingState label="正在打开计划…" /></Surface>}><PlansPage api={props.api} /></Suspense>
         : view === "checkpoints" ? <Suspense fallback={<Surface><LoadingState label="正在打开 Checkpoint…" /></Surface>}><CheckpointsPage api={props.api} /></Suspense>
           : view === "transactions" ? <Suspense fallback={<Surface><LoadingState label="正在打开事务…" /></Surface>}><TransactionsPage api={props.api} /></Suspense>
             : view === "diagnostics" ? <Suspense fallback={<Surface><LoadingState label="正在打开诊断…" /></Surface>}><DiagnosticsPage api={props.api} /></Suspense>
+              : view === "runs" ? <Suspense fallback={<Surface><LoadingState label="正在打开运行中心…" /></Surface>}><RunCenterPage api={props.api} /></Suspense>
+                : view === "adapters" ? <Suspense fallback={<Surface><LoadingState label="正在打开 Adapter…" /></Surface>}><AdapterPage api={props.api} /></Suspense>
+                  : view === "deleted" ? <Suspense fallback={<Surface><LoadingState label="正在打开最近删除…" /></Surface>}><RecentlyDeletedPage api={props.api} onOpenSession={setSelectedSessionId} /></Suspense>
               : view === "settings" ? <Suspense fallback={<Surface><LoadingState label="正在打开设置…" /></Surface>}><SettingsPage api={props.api} /></Suspense>
           : <DashboardContent api={props.api} state={state} view={view} onRetry={() => setRequest((value) => value + 1)} onOpenSession={setSelectedSessionId} refreshKey={request} />}
   </DashboardShell>;

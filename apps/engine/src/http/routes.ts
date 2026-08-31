@@ -33,6 +33,7 @@ import {
   type TransactionQuery,
   type PlanQuery,
   type StatusEventQuery,
+  type CanonicalSessionMaintenancePatch,
 } from "@linmu/dsh-session-contracts";
 
 import type { SessionMaintenanceEngine } from "../engine.js";
@@ -47,6 +48,12 @@ import {
   DASHBOARD_CANONICAL_WORKSPACES_PATH,
   readCanonicalDashboardSession,
   readCanonicalWorkspaceDirectory,
+  updateCanonicalDashboardSession,
+  deleteCanonicalDashboardSession,
+  restoreCanonicalDashboardSession,
+  deleteLogicalWorkspace,
+  readRecentlyDeleted,
+  readRunCenter,
 } from "./dashboard.js";
 
 export interface RouteContext {
@@ -77,6 +84,18 @@ const stableReferenceRequestSchema = z.strictObject({
   legacyNativeAnchorId: z.string().min(1).nullable(),
 }).refine((value) => value.logicalSessionId !== null || value.legacyNativeSessionId !== null, {
   message: "A logical or legacy session ID is required",
+});
+const canonicalSessionPatchSchema = z.strictObject({
+  title: z.string().max(500).optional(),
+  tags: z.array(z.string().max(200)).max(100).optional(),
+  workspaceId: z.string().min(1).nullable().optional(),
+  displayOrder: z.number().int().nonnegative().optional(),
+  pinned: z.boolean().optional(),
+  archived: z.boolean().optional(),
+});
+const adapterSelectionRequestSchema = z.strictObject({
+  instanceId: z.string().min(1),
+  adapterId: z.string().min(1),
 });
 
 function pathId(value: string): string {
@@ -205,6 +224,59 @@ export async function routeRequest(
       send(response, 200, { directory: await readCanonicalWorkspaceDirectory(context.engine.repository.database) });
       return;
     }
+    if (request.method === "GET" && url.pathname === "/v1/canonical/recently-deleted") {
+      send(response, 200, { sessions: await readRecentlyDeleted(context.engine.repository.database) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/canonical/run-center") {
+      send(response, 200, { runs: readRunCenter(context.engine.repository.database) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/canonical/adapters") {
+      send(response, 200, { adapters: context.engine.adapterRegistry.list().map((registration) => ({
+        manifest: registration.manifest,
+        enabled: registration.enabled,
+        sourceKind: registration.source.kind,
+        sourceLabel: registration.source.kind === "local" ? `local:${registration.manifest.id}`
+          : registration.source.kind === "generation" ? `generation:${registration.source.generationId}`
+            : `npm:${registration.source.packageName}`,
+      })) });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/canonical/adapters/select") {
+      const body = adapterSelectionRequestSchema.parse(await readJsonBody(request));
+      const instance = context.engine.instances.find((item) => item.id === body.instanceId && item.platform === "dsh");
+      if (instance === undefined) {
+        send(response, 404, errorBody("DSH_INSTANCE_NOT_FOUND", "Registered DSH instance not found"));
+        return;
+      }
+      const selection = await context.engine.adapterRegistry.select({
+        environment: {
+          dshVersion: instance.platformVersion,
+          packageVersions: {
+            "@deepseek-ai/dsh-session": instance.platformVersion,
+            "@deepseek-ai/dsh-session-persistence": instance.platformVersion,
+          },
+          runtimeCapabilities: ["sessionPersistence"],
+        },
+        pinnedAdapterId: body.adapterId as never,
+      });
+      send(response, 200, { selection: {
+        adapterId: selection.adapterId,
+        manifest: selection.registration.manifest,
+        probe: selection.probe,
+        reason: selection.reason,
+        verificationRunId: selection.verificationRunId,
+      } });
+      return;
+    }
+    const canonicalWorkspace = url.pathname.match(/^\/v1\/canonical\/workspaces\/([^/]+)$/u);
+    if (request.method === "DELETE" && canonicalWorkspace !== null) {
+      const deleted = deleteLogicalWorkspace(context.engine.repository.database, pathId(canonicalWorkspace[1]!), new Date().toISOString());
+      if (!deleted) send(response, 404, errorBody("CANONICAL_WORKSPACE_NOT_FOUND", "Canonical workspace not found"));
+      else send(response, 200, { deleted: true });
+      return;
+    }
     const canonicalSession = url.pathname.match(/^\/v1\/canonical\/sessions\/([^/]+)$/u);
     if (request.method === "GET" && canonicalSession !== null) {
       const detail = await readCanonicalDashboardSession(
@@ -216,6 +288,64 @@ export async function routeRequest(
       } else {
         send(response, 200, { session: detail });
       }
+      return;
+    }
+    if (request.method === "PATCH" && canonicalSession !== null) {
+      const detail = await updateCanonicalDashboardSession(
+        context.engine.repository.database,
+        pathId(canonicalSession[1]!),
+        canonicalSessionPatchSchema.parse(await readJsonBody(request)) as CanonicalSessionMaintenancePatch,
+        new Date().toISOString(),
+      );
+      if (detail === undefined) send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
+      else send(response, 200, { session: detail });
+      return;
+    }
+    if (request.method === "DELETE" && canonicalSession !== null) {
+      const logicalSessionId = pathId(canonicalSession[1]!);
+      const activeRows = context.engine.repository.database.prepare(
+        `SELECT DISTINCT pr.id, pr.lease_id, pr.profile_id, pr.adapter_id, pr.dsh_version
+         FROM projection_runs pr JOIN projection_sessions ps ON ps.run_id = pr.id
+         WHERE ps.logical_session_id = ? AND pr.state IN ('preparing','running','draining','verifying','recovery-required','recovering')`,
+      ).all(logicalSessionId) as unknown as Array<{ readonly id: string; readonly lease_id: string; readonly profile_id: string; readonly adapter_id: string; readonly dsh_version: string }>;
+      const spans = [];
+      for (const run of activeRows) spans.push(await context.engine.statusLog.start({
+        runId: run.id as never,
+        leaseId: run.lease_id as never,
+        profileId: run.profile_id,
+        adapterId: run.adapter_id as never,
+        dshVersion: run.dsh_version,
+        stage: "run.shutdown-recovery",
+        logicalSessionId: logicalSessionId as never,
+        nativeSessionId: null,
+        operationId: null,
+        diagnosticDetailRef: "diag:session-delete",
+      }));
+      const at = new Date();
+      const result = deleteCanonicalDashboardSession(
+        context.engine.repository.database,
+        logicalSessionId,
+        at.toISOString(),
+        new Date(at.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      );
+      if (result === undefined) {
+        for (const span of spans) await context.engine.statusLog.fail(span, { errorCode: "SESSION_NOT_FOUND" });
+        send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
+      } else {
+        for (const span of spans) {
+          if (result.state === "pending-delete") await context.engine.statusLog.fail(span, { errorCode: "DELETE_PENDING_WRITES", diagnosticDetailRef: "diag:session-delete-pending" });
+          else await context.engine.statusLog.succeed(span, { diagnosticDetailRef: "diag:session-delete-hidden" });
+        }
+        send(response, result.state === "pending-delete" ? 202 : 200, { deletion: result });
+      }
+      return;
+    }
+    const canonicalRestore = url.pathname.match(/^\/v1\/canonical\/sessions\/([^/]+)\/restore$/u);
+    if (request.method === "POST" && canonicalRestore !== null) {
+      emptyRequestSchema.parse(await readJsonBody(request));
+      const restored = restoreCanonicalDashboardSession(context.engine.repository.database, pathId(canonicalRestore[1]!), new Date().toISOString());
+      if (restored === undefined) send(response, 404, errorBody("CANONICAL_SESSION_NOT_DELETED", "Canonical session is not deleted"));
+      else send(response, 200, { restoration: restored });
       return;
     }
     if (request.method === "GET" && (url.pathname === "/v1/status-events" || url.pathname === "/v1/status-events/stream")) {

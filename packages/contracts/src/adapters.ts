@@ -151,5 +151,8 @@ export interface DshSessionAdapterV1 {
 export interface DshRuntimeBridgeV1 {
   attach(context: RuntimeAttachContext): Promise<RuntimeHandle>;
   drain(handle: RuntimeHandle): Promise<RuntimeDrainResult>;
+  drainSession?(handle: RuntimeHandle, nativeSessionId: NativeSessionId): Promise<RuntimeDrainResult>;
+  /** Removes one native session from an attached temporary projection after pending writes drain. */
+  hideSession?(handle: RuntimeHandle, nativeSessionId: NativeSessionId): Promise<void>;
   detach(handle: RuntimeHandle): Promise<void>;
 }

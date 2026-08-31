@@ -10,6 +10,10 @@ import type {
   TransactionDetail,
   TransactionQuery,
   TransactionSummary,
+  CanonicalDashboardSessionDetail,
+  CanonicalSessionDeleteResult,
+  CanonicalSessionMaintenancePatch,
+  CanonicalWorkspaceDirectory,
 } from "@linmu/dsh-session-contracts";
 import { Badge, Button, EmptyState, LoadingState, Surface, statusTone } from "@linmu/dsh-session-ui";
 
@@ -23,6 +27,77 @@ export interface OperationsApi {
   diagnostics(signal?: AbortSignal): Promise<readonly AdapterDiagnostic[]>;
   getSettings(signal?: AbortSignal): Promise<MaintenanceSettings>;
   patchSettings(input: MaintenanceSettingsPatch, signal?: AbortSignal): Promise<MaintenanceSettings>;
+  listCanonicalWorkspaces(signal?: AbortSignal): Promise<CanonicalWorkspaceDirectory>;
+  updateCanonicalSession(id: string, patch: CanonicalSessionMaintenancePatch, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail>;
+  deleteCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalSessionDeleteResult>;
+}
+
+export function canonicalSessionPatchFromForm(input: {
+  readonly title: string;
+  readonly tags: string;
+  readonly workspaceId: string;
+  readonly pinned: boolean;
+  readonly archived: boolean;
+}): CanonicalSessionMaintenancePatch {
+  return {
+    title: input.title.trim(),
+    tags: input.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
+    workspaceId: input.workspaceId.length === 0 ? null : input.workspaceId,
+    pinned: input.pinned,
+    archived: input.archived,
+  };
+}
+
+export function CanonicalSessionOperations(props: {
+  readonly api: Pick<OperationsApi, "listCanonicalWorkspaces" | "updateCanonicalSession" | "deleteCanonicalSession">;
+  readonly detail: CanonicalDashboardSessionDetail;
+  readonly onUpdated: (detail: CanonicalDashboardSessionDetail) => void;
+  readonly onDeleted: (result: CanonicalSessionDeleteResult) => void;
+}) {
+  const [directory, setDirectory] = useState<CanonicalWorkspaceDirectory>();
+  const [title, setTitle] = useState(props.detail.session.title);
+  const [tags, setTags] = useState(props.detail.session.tags.join(", "));
+  const [workspaceId, setWorkspaceId] = useState(props.detail.membership?.workspaceId ?? "");
+  const [pinned, setPinned] = useState(props.detail.membership?.pinned ?? false);
+  const [archived, setArchived] = useState(props.detail.membership?.archived ?? false);
+  const [deleteReady, setDeleteReady] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  useEffect(() => {
+    const controller = new AbortController();
+    void props.api.listCanonicalWorkspaces(controller.signal).then(setDirectory, (reason: unknown) => setError(reason instanceof Error ? reason.message : "工作区目录不可用"));
+    return () => controller.abort();
+  }, [props.api]);
+  useEffect(() => {
+    setTitle(props.detail.session.title); setTags(props.detail.session.tags.join(", "));
+    setWorkspaceId(props.detail.membership?.workspaceId ?? ""); setPinned(props.detail.membership?.pinned ?? false);
+    setArchived(props.detail.membership?.archived ?? false); setDeleteReady(false);
+  }, [props.detail]);
+  const save = async () => {
+    setBusy(true); setError(undefined);
+    try {
+      props.onUpdated(await props.api.updateCanonicalSession(props.detail.session.id, canonicalSessionPatchFromForm({ title, tags, workspaceId, pinned, archived })));
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "保存失败"); }
+    finally { setBusy(false); }
+  };
+  const remove = async () => {
+    setBusy(true); setError(undefined);
+    try { props.onDeleted(await props.api.deleteCanonicalSession(props.detail.session.id)); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "删除失败"); }
+    finally { setBusy(false); }
+  };
+  return <div className="canonical-session-operations" data-testid="canonical-session-operations">
+    <div className="operations-form">
+      <label className="field"><span>标题</span><input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
+      <label className="field"><span>标签（逗号分隔）</span><input value={tags} onChange={(event) => setTags(event.target.value)} /></label>
+      <label className="field"><span>逻辑工作区</span><select value={workspaceId} onChange={(event) => setWorkspaceId(event.target.value)}><option value="">未归类</option>{directory?.workspaces.map((entry) => <option key={entry.workspace.id} value={entry.workspace.id}>{entry.workspace.name}</option>)}</select></label>
+      <label className="toggle-field"><input type="checkbox" checked={pinned} onChange={(event) => setPinned(event.target.checked)} />固定在工作区顶部</label>
+      <label className="toggle-field"><input type="checkbox" checked={archived} onChange={(event) => setArchived(event.target.checked)} />归档</label>
+      <Button tone="primary" disabled={busy || title.trim().length === 0} onClick={() => void save()}>保存会话属性</Button>
+    </div>
+    <div className="danger-zone"><div><strong>删除逻辑会话</strong><p>先建立 Checkpoint，再写入墓碑并从活动投影隐藏；不会写回 Codex。</p></div>{deleteReady ? <><span>再次点击确认本次删除。</span><Button tone="danger" disabled={busy} onClick={() => void remove()}>确认删除</Button><Button disabled={busy} onClick={() => setDeleteReady(false)}>取消</Button></> : <Button tone="danger" disabled={busy} onClick={() => setDeleteReady(true)}>准备删除</Button>}</div>
+    {error === undefined ? null : <p className="inline-error">{error}</p>}
+  </div>;
 }
 
 function RecoveryPanel(props: { readonly api: OperationsApi; readonly detail: TransactionDetail; readonly onRefresh: () => void }) {

@@ -24,6 +24,8 @@ export interface Alpha2RuntimeRegistrar {
     readonly maintenanceEndpoint: string;
   }): Promise<Alpha2RuntimeRegistration>;
   drain(registrationId: string, runId: RunId): Promise<RuntimeDrainResult>;
+  drainSession?(registrationId: string, runId: RunId, nativeSessionId: NativeAppendOperation["nativeSessionId"]): Promise<RuntimeDrainResult>;
+  hideSession?(registrationId: string, runId: RunId, nativeSessionId: NativeAppendOperation["nativeSessionId"]): Promise<void>;
   detach(registrationId: string, runId: RunId): Promise<void>;
 }
 
@@ -75,12 +77,25 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
     return this.registrar.drain(registration.registrationId, handle.runId);
   }
 
+  async drainSession(handle: RuntimeHandle, nativeSessionId: NativeAppendOperation["nativeSessionId"]): Promise<RuntimeDrainResult> {
+    const registration = this.registration(handle);
+    return this.registrar.drainSession === undefined
+      ? this.registrar.drain(registration.registrationId, handle.runId)
+      : this.registrar.drainSession(registration.registrationId, handle.runId, nativeSessionId);
+  }
+
   async detach(handle: RuntimeHandle): Promise<void> {
     const registration = this.registration(handle);
     await this.registrar.detach(registration.registrationId, handle.runId);
     this.registrations.delete(handle.runId);
     this.appendHandlers.delete(handle.runId);
     this.drainingRuns.delete(handle.runId);
+  }
+
+  async hideSession(handle: RuntimeHandle, nativeSessionId: NativeAppendOperation["nativeSessionId"]): Promise<void> {
+    const registration = this.registration(handle);
+    if (this.registrar.hideSession === undefined) throw new Error("Alpha2 runtime registrar cannot hide a projected session");
+    await this.registrar.hideSession(registration.registrationId, handle.runId, nativeSessionId);
   }
 
   async bindAppendHandler(handle: RuntimeHandle, handler: Alpha2AppendHandler): Promise<void> {

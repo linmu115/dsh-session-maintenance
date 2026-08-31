@@ -35,6 +35,13 @@ import {
   type Checkpoint,
   type CanonicalDashboardSessionDetail,
   type CanonicalWorkspaceDirectory,
+  type CanonicalSessionMaintenancePatch,
+  type CanonicalSessionDeleteResult,
+  type CanonicalSessionRestoreResult,
+  type RecentlyDeletedSession,
+  type RunCenterItem,
+  type AdapterDashboardRecord,
+  type AdapterExperimentalSelectionResponse,
   type CheckpointRestoreRequest,
   type CreateCheckpointRequest,
   type DiffRequest,
@@ -173,6 +180,61 @@ class ApiClient {
       canonicalDashboardSessionResponseSchema,
       signal,
     )).session as unknown as CanonicalDashboardSessionDetail;
+  }
+
+  async updateCanonicalSession(id: string, patch: CanonicalSessionMaintenancePatch, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail> {
+    const response = await this.request(
+      `/v1/canonical/sessions/${encodeURIComponent(id)}`,
+      this.jsonPatch(patch),
+      z.custom<{ readonly session: CanonicalDashboardSessionDetail }>(),
+      signal,
+    );
+    return response.session;
+  }
+
+  async deleteCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalSessionDeleteResult> {
+    const response = await this.request(
+      `/v1/canonical/sessions/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+      z.custom<{ readonly deletion: CanonicalSessionDeleteResult }>(),
+      signal,
+    );
+    return response.deletion;
+  }
+
+  async restoreCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalSessionRestoreResult> {
+    const response = await this.request(
+      `/v1/canonical/sessions/${encodeURIComponent(id)}/restore`,
+      this.jsonPost({}),
+      z.custom<{ readonly restoration: CanonicalSessionRestoreResult }>(),
+      signal,
+    );
+    return response.restoration;
+  }
+
+  async listRecentlyDeleted(signal?: AbortSignal): Promise<readonly RecentlyDeletedSession[]> {
+    return (await this.request("/v1/canonical/recently-deleted", {}, z.custom<{ readonly sessions: readonly RecentlyDeletedSession[] }>(), signal)).sessions;
+  }
+
+  async deleteCanonicalWorkspace(id: string, signal?: AbortSignal): Promise<void> {
+    await this.request(`/v1/canonical/workspaces/${encodeURIComponent(id)}`, { method: "DELETE" }, z.strictObject({ deleted: z.literal(true) }), signal);
+  }
+
+  async listProjectionRuns(signal?: AbortSignal): Promise<readonly RunCenterItem[]> {
+    return (await this.request("/v1/canonical/run-center", {}, z.custom<{ readonly runs: readonly RunCenterItem[] }>(), signal)).runs;
+  }
+
+  async listCanonicalAdapters(signal?: AbortSignal): Promise<readonly AdapterDashboardRecord[]> {
+    return (await this.request("/v1/canonical/adapters", {}, z.custom<{ readonly adapters: readonly AdapterDashboardRecord[] }>(), signal)).adapters;
+  }
+
+  async selectExperimentalAdapter(instanceId: string, adapterId: string, signal?: AbortSignal): Promise<AdapterExperimentalSelectionResponse["selection"]> {
+    return (await this.request(
+      "/v1/canonical/adapters/select",
+      this.jsonPost({ instanceId, adapterId }),
+      z.custom<AdapterExperimentalSelectionResponse>(),
+      signal,
+    )).selection;
   }
 
   async getGraph(id: string, cursor?: string, signal?: AbortSignal): Promise<VersionGraphPage> {
