@@ -8,6 +8,7 @@ import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation"
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
 import { AdapterHost, AdapterRegistry, NodeAdapterWorkerFactory } from "@linmu/dsh-session-adapter-host";
 import { manifest as alpha2AdapterManifest } from "@linmu/dsh-session-adapter-alpha2";
+import { manifest as rc2AdapterManifest } from "@linmu/dsh-session-adapter-rc2";
 import { DshWriteAdapter } from "@linmu/dsh-adapter-dsh-write";
 import { RemoteDshHostGateway } from "@linmu/dsh-host-gateway";
 import {
@@ -46,6 +47,11 @@ import { WriteService } from "./write-service.js";
 const resolveModule = createRequire(import.meta.url).resolve;
 const alpha2WorkerEntryPoint = join(
   dirname(resolveModule("@linmu/dsh-session-adapter-alpha2/package.json")),
+  "dist",
+  "rpc-worker.js",
+);
+const rc2WorkerEntryPoint = join(
+  dirname(resolveModule("@linmu/dsh-session-adapter-rc2/package.json")),
   "dist",
   "rpc-worker.js",
 );
@@ -157,6 +163,16 @@ async function createComposition(
       generationId: "builtin-canonical-alpha2",
       packageName: "@linmu/dsh-session-adapter-alpha2",
       entryPoint: alpha2WorkerEntryPoint,
+    },
+    enabled: true,
+  });
+  await adapterRegistry.register({
+    manifest: rc2AdapterManifest,
+    source: {
+      kind: "generation",
+      generationId: "builtin-canonical-rc2",
+      packageName: "@linmu/dsh-session-adapter-rc2",
+      entryPoint: rc2WorkerEntryPoint,
     },
     enabled: true,
   });

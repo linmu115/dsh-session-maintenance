@@ -2,6 +2,7 @@ export * from "./manifest.js";
 export * from "./adapter.js";
 export * from "./runtime-bridge.js";
 export * from "./conformance.js";
+export * from "./logical-digest.js";
 
 export type {
   AdapterCapability,

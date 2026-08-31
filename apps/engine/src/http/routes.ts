@@ -257,7 +257,7 @@ export async function routeRequest(
             "@deepseek-ai/dsh-session": instance.platformVersion,
             "@deepseek-ai/dsh-session-persistence": instance.platformVersion,
           },
-          runtimeCapabilities: ["sessionPersistence"],
+          runtimeCapabilities: ["sessionPersistence", "legacySessionPersistence"],
         },
         pinnedAdapterId: body.adapterId as never,
       });

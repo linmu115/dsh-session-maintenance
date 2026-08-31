@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@linmu/dsh-session-adapter-alpha2": "workspace:*",
+    "@linmu/dsh-session-adapter-rc2": "workspace:*",
     "@linmu/dsh-session-adapter-host": "workspace:*",
     "@linmu/dsh-session-projection-lifecycle": "workspace:*",
     "@linmu/dsh-adapter-codex-continuation": "workspace:*",

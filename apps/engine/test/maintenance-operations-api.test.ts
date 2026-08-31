@@ -58,7 +58,7 @@ describe("Maintenance canonical operations API", () => {
 
     await client.deleteCanonicalWorkspace("workspace-managed");
     expect((await client.listCanonicalWorkspaces()).unclassified[0]?.session.id).toBe("logical-managed");
-    expect(await client.listCanonicalAdapters()).toHaveLength(1);
+    expect(await client.listCanonicalAdapters()).toHaveLength(2);
     const experimental = await client.selectExperimentalAdapter("dsh-fixture", adapterId);
     expect(experimental.adapterId).toBe(adapterId);
     expect(["pinned", "experimental", "probe-compatible", "verified"]).toContain(experimental.reason);
