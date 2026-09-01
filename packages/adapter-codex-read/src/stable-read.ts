@@ -1,5 +1,5 @@
-import { createHash } from "node:crypto";
-import { readFile, realpath, stat } from "node:fs/promises";
+import { createReadStream } from "node:fs";
+import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
@@ -14,7 +14,7 @@ import {
 
 import {
   MAX_CODEX_ROLLOUT_BYTES,
-  parseCodexJsonl,
+  parseCodexJsonlChunks,
   type CodexThreadRow,
 } from "./parser.js";
 import type { CodexReadStatusEvent } from "./status.js";
@@ -127,7 +127,7 @@ export async function observeCodexSession(
   }
 
   hooks.onBodyRead?.();
-  const bytes = await readFile(path);
+  const parsed = await parseCodexJsonlChunks(createReadStream(path));
   await hooks.afterRead?.(path);
   const after = await stat(path, { bigint: true });
   if (before.size !== after.size || before.mtimeNs !== after.mtimeNs) {
@@ -142,7 +142,7 @@ export async function observeCodexSession(
     return { kind: "unstable", key, reason: "Rollout changed during read", retryable: true };
   }
 
-  const envelopes = parseCodexJsonl(bytes);
+  const envelopes = parsed.envelopes;
   const rootMeta = envelopes[0];
   if (rootMeta?.type !== "session_meta" || rootMeta.payload.id !== key.sessionId) {
     throw new SessionMaintenanceError(
@@ -156,7 +156,7 @@ export async function observeCodexSession(
     instanceId: instance.id,
     sessionId: key.sessionId,
     consistency: "double-stat",
-    detail: `captured ${bytes.byteLength} stable rollout bytes`,
+    detail: `streamed ${parsed.bytesRead} stable rollout bytes`,
   });
   return {
     kind: "stable",
@@ -164,7 +164,7 @@ export async function observeCodexSession(
     fingerprint: {
       ...key,
       kind: "content",
-      value: createHash("sha256").update(bytes).digest("hex"),
+      value: parsed.digest,
     },
     payload: { format: "codex-0.146.0", thread, envelopes },
   };
