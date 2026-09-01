@@ -24,6 +24,8 @@
     "accept:phase2-isolated": "node scripts/accept-phase2-isolated.mjs",
     "accept:phase2-official": "node scripts/accept-phase2-official-profile.mjs",
     "verify:phase2-clean": "node scripts/verify-phase2-clean.mjs",
+    "package:canonical": "node scripts/package-canonical-projection.mjs",
+    "verify:canonical-package": "node scripts/verify-canonical-projection-package.mjs",
     "assert:portable": "node scripts/assert-portable.mjs",
     "check": "pnpm typecheck && pnpm build && pnpm test",
     "verify:clean": "pnpm bootstrap && pnpm check"

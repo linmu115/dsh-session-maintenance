@@ -94,13 +94,14 @@ const pluginClient = await build({
 await copyFile(join(root, "packages", "dsh-core-extension", "dist", "rc2-host.js"), join(plugin, "lib", "rc2-host.js"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "cordis.patch.yml"), join(plugin, "cordis.patch.yml"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "README.md"), join(plugin, "README.md"));
+await copyFile(join(root, "plugins", "dsh-session-maintenance", "CHANGELOG.md"), join(plugin, "CHANGELOG.md"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "LICENSE"), join(plugin, "LICENSE"));
 await cp(join(root, "plugins", "dsh-session-maintenance", "dsh-management"), join(plugin, "dsh-management"), { recursive: true });
 await writeFile(join(plugin, "lib", "index.d.ts"), "export declare const name = \"dsh-session-maintenance\";\nexport declare function apply(ctx: unknown, config: unknown): void;\n");
 await writeFile(join(plugin, "lib", "client", "index.d.ts"), "export declare function apply(ctx: unknown): void;\n");
 const packagedPluginManifest = {
   ...sourcePluginManifest,
-  files: ["lib", "dsh-management", "cordis.patch.yml", "README.md", "LICENSE"],
+  files: ["lib", "dsh-management", "cordis.patch.yml", "CHANGELOG.md", "README.md", "LICENSE"],
   dependencies: {},
 };
 delete packagedPluginManifest.devDependencies;

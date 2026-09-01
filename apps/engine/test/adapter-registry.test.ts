@@ -42,6 +42,7 @@ describe("Adapter Registry API", () => {
     expect(await response.json()).toMatchObject({
       adapters: [
         { manifest: { id: "dsh-alpha2" }, source: { kind: "generation" } },
+        { manifest: { id: "dsh-rc2" }, source: { kind: "generation" } },
         { manifest: { id: "registry-generation" }, source: { kind: "generation" } },
         { manifest: { id: "registry-local" }, source: { kind: "local" } },
         { manifest: { id: "registry-npm" }, source: { kind: "npm" } },

@@ -1,7 +1,7 @@
 {
   "name": "dsh-session-maintenance",
-  "version": "0.1.5",
-  "description": "Version-open DSH entry for the local session maintenance engine",
+  "version": "0.2.0",
+  "description": "Version-open DSH entry for Maintenance-backed canonical sessions and temporary projections",
   "type": "module",
   "license": "MIT",
   "main": "lib/index.js",
@@ -11,7 +11,7 @@
     "./client": { "types": "./lib/client/index.d.ts", "default": "./lib/client/index.js" },
     "./package.json": "./package.json"
   },
-  "files": ["lib", "dsh-management", "cordis.patch.yml", "README.md", "LICENSE"],
+  "files": ["lib", "dsh-management", "cordis.patch.yml", "CHANGELOG.md", "README.md", "LICENSE"],
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit",
