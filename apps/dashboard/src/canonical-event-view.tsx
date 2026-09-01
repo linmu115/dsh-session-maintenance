@@ -1,5 +1,6 @@
 import type { CanonicalEventV1, JsonValue } from "@linmu/dsh-session-contracts";
 import { Badge } from "@linmu/dsh-session-ui";
+import { SafeMarkdown } from "./safe-markdown.js";
 
 export interface CanonicalEventPresentation {
   readonly heldOut: boolean;
@@ -29,8 +30,8 @@ export function CanonicalEventView(props: { readonly event: CanonicalEventV1 }) 
     </header>
     {presentation.heldOut
       ? <div className="canonical-event-held-out"><p>{presentation.text}</p><a href="#diagnostics" aria-label={`查看事件 ${props.event.id} 的诊断`}>查看诊断</a></div>
-      : typeof props.event.content === "string"
-        ? <p className="canonical-event-text">{presentation.text}</p>
+      : typeof props.event.content === "string" && !["tool-call", "tool-result", "attachment", "system-metadata"].includes(props.event.kind)
+        ? <SafeMarkdown>{presentation.text}</SafeMarkdown>
         : <pre className="canonical-event-json"><code>{presentation.text}</code></pre>}
   </article>;
 }

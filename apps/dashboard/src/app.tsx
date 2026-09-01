@@ -23,7 +23,7 @@ import type { CatalogApi } from "./catalog-pages.js";
 import type { RecentlyDeletedApi } from "./recently-deleted.js";
 import type { RunCenterApi } from "./run-center.js";
 import type { AdapterPageApi } from "./adapter-page.js";
-import { WorkspaceDirectory } from "./workspace-directory.js";
+import { ProjectDirectory } from "./project-directory.js";
 
 const SessionWorkbench = lazy(async () => ({ default: (await import("./session-workbench.js")).SessionWorkbench }));
 const PlansPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).PlansPage }));
@@ -58,9 +58,9 @@ function DashboardContent(props: {
   /></Surface>;
   const { overview, canonicalDirectory } = props.state.value;
   if (props.view === "sessions") return <>
-    <div className="dsm-page-heading"><div><h2>会话</h2><p>从 Maintenance 稳定存储浏览工作区、静态会话与派生关系，不依赖正在运行的 DSH。</p></div></div>
-    <Surface title={`${canonicalDirectory.workspaces.length} 个工作区目录`}>
-      <WorkspaceDirectory key={props.refreshKey} directory={canonicalDirectory} onOpenSession={props.onOpenSession} />
+    <div className="dsm-page-heading"><div><h2>会话</h2><p>按项目浏览 Maintenance 稳定会话；每个会话的工作区在详情中独立展示。</p></div></div>
+    <Surface title={`${canonicalDirectory.projects.length} 个项目`}>
+      <ProjectDirectory key={props.refreshKey} directory={canonicalDirectory} onOpenSession={props.onOpenSession} />
     </Surface>
   </>;
   return <>

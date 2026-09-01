@@ -156,6 +156,14 @@
 .canonical-event { padding: 14px; border: 1px solid var(--dsm-border); border-radius: 9px; background: var(--dsm-soft-surface); }
 .canonical-event > header { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; color: var(--dsm-muted); font-size: 11px; }
 .canonical-event-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.project-root-label { overflow: hidden; color: var(--dsm-muted); font: 10px/1.4 var(--dsm-mono); text-overflow: ellipsis; white-space: nowrap; }
+.safe-markdown { overflow-wrap: anywhere; }
+.safe-markdown > :first-child { margin-top: 0; }
+.safe-markdown > :last-child { margin-bottom: 0; }
+.safe-markdown pre { max-height: 360px; padding: 12px; overflow: auto; border-radius: 6px; background: #fff; }
+.safe-markdown table { display: block; max-width: 100%; overflow: auto; border-collapse: collapse; }
+.safe-markdown th, .safe-markdown td { padding: 5px 8px; border: 1px solid var(--dsm-border); }
+.markdown-blocked-link, .markdown-image-placeholder { color: var(--dsm-muted); }
 .canonical-event-json { max-height: 360px; margin: 0; padding: 12px; overflow: auto; border-radius: 6px; background: #fff; white-space: pre-wrap; overflow-wrap: anywhere; }
 .canonical-event-held-out { padding: 10px; border: 1px solid #e3bd7b; border-radius: 7px; background: #fff9ed; }
 .canonical-event-held-out p { margin: 0 0 6px; }

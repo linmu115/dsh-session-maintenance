@@ -1,16 +1,16 @@
 import type {
   DashboardOverview,
-  CanonicalWorkspaceDirectory,
+  CanonicalProjectDirectory,
 } from "@linmu/dsh-session-contracts";
 
 export interface DashboardSummaryApi {
   overview(signal?: AbortSignal): Promise<DashboardOverview>;
-  listCanonicalWorkspaces(signal?: AbortSignal): Promise<CanonicalWorkspaceDirectory>;
+  listCanonicalProjects(signal?: AbortSignal): Promise<CanonicalProjectDirectory>;
 }
 
 export interface DashboardSummary {
   readonly overview: DashboardOverview;
-  readonly canonicalDirectory: CanonicalWorkspaceDirectory;
+  readonly canonicalDirectory: CanonicalProjectDirectory;
 }
 
 export async function loadDashboardSummary(
@@ -19,7 +19,7 @@ export async function loadDashboardSummary(
 ): Promise<DashboardSummary> {
   const [overview, canonicalDirectory] = await Promise.all([
     api.overview(signal),
-    api.listCanonicalWorkspaces(signal),
+    api.listCanonicalProjects(signal),
   ]);
   return { overview, canonicalDirectory };
 }

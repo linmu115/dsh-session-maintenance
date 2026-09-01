@@ -9,7 +9,7 @@ import { LineageView } from "./lineage-view.js";
 import { CanonicalSessionOperations, type OperationsApi } from "./operations-pages.js";
 import type { DashboardSummaryApi } from "./summary-loader.js";
 
-export interface WorkbenchApi extends DashboardSummaryApi, Pick<OperationsApi, "updateCanonicalSession" | "deleteCanonicalSession"> {
+export interface WorkbenchApi extends DashboardSummaryApi, Pick<OperationsApi, "listCanonicalWorkspaces" | "updateCanonicalSession" | "deleteCanonicalSession"> {
   getCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail>;
 }
 
@@ -62,7 +62,7 @@ export function SessionWorkbench(props: {
     <Surface>
       <header className="canonical-session-heading">
         <div><h2>{detail.session.title || "未命名会话"}</h2><code>{detail.session.id}</code></div>
-        <div><Badge>{canonicalOriginLabel(detail.session.originKind)}</Badge><Badge>{detail.session.authorityScope === "codex" ? "Codex 权威" : "Maintenance 权威"}</Badge>{detail.workspace === null ? <Badge>未归类</Badge> : <Badge>{detail.workspace.name}</Badge>}</div>
+        <div><Badge>{canonicalOriginLabel(detail.session.originKind)}</Badge><Badge>{detail.session.authorityScope === "codex" ? "Codex 权威" : "Maintenance 权威"}</Badge><Badge>项目：{detail.project?.name ?? "待指定"}</Badge><Badge>工作区：{detail.workspace?.name ?? "未归类"}</Badge></div>
       </header>
       <LocalTabs value={tab} onChange={setTab} tabs={[{ id: "content", label: "静态会话" }, { id: "lineage", label: "来源与派生" }, { id: "metadata", label: "元数据" }, { id: "manage", label: "管理" }]} />
       {tab === "content" ? <section className="canonical-transcript" aria-label="Canonical 静态会话内容">
@@ -74,6 +74,8 @@ export function SessionWorkbench(props: {
         <div><dt>权威范围</dt><dd>{detail.session.authorityScope}</dd></div>
         <div><dt>Head 版本</dt><dd><code>{detail.session.headVersionId ?? "尚无"}</code></dd></div>
         <div><dt>工作区</dt><dd>{detail.workspace?.name ?? "未归类"}</dd></div>
+        <div><dt>项目</dt><dd>{detail.project?.name ?? "待指定项目"}</dd></div>
+        <div><dt>项目根</dt><dd>{detail.projectRoots.length === 0 ? "无" : detail.projectRoots.map((root) => root.path).join("、")}</dd></div>
         <div><dt>标签</dt><dd>{detail.session.tags.length === 0 ? "无" : detail.session.tags.join("、")}</dd></div>
         <div><dt>更新时间</dt><dd><time dateTime={detail.session.updatedAt}>{new Date(detail.session.updatedAt).toLocaleString()}</time></dd></div>
       </dl> : null}
