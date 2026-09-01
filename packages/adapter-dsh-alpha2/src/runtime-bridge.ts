@@ -143,6 +143,7 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
       logicalSessionId: registration.logicalSessionId,
       baseVersionId: null,
       workspaceId: registration.workspaceId,
+      projectId: registration.projectId,
       title: registration.title,
       tags: [],
       header,

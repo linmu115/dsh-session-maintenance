@@ -90,6 +90,7 @@ import type { StableLogicalReference, StableLogicalReferenceResolution } from "@
 
 import type { WriteService } from "./write-service.js";
 import { ProjectionRuntimeBroker } from "./runtime-broker.js";
+import { SqliteRuntimeProjectResolver } from "./runtime-project-resolver.js";
 
 export interface EngineSettingsPort {
   get(): Promise<MaintenanceSettings>;
@@ -244,6 +245,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.runtimeBroker = new ProjectionRuntimeBroker({
       lifecycleFactory: input.projectionLifecycleFactory,
       statusLog: this.statusLog,
+      projectResolver: new SqliteRuntimeProjectResolver(input.repository.database),
       selectAdapter: async (request) => (await this.adapterRegistry.select({
         environment: {
           dshVersion: request.dshVersion,

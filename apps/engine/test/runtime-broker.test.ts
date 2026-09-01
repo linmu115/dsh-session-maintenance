@@ -28,6 +28,7 @@ function request() {
       runtimeCapabilities: ["sessionPersistence", "session/event", "session/flush"],
     },
     pinnedAdapterId: null,
+    projectSelection: { kind: "all" as const },
   };
 }
 
@@ -49,6 +50,7 @@ describe("ProjectionRuntimeBroker", () => {
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
+      projectResolver: { resolveProject: async () => "project-test", assignProject: async () => undefined } as never,
     });
 
     const prepared = await broker.prepareRun(request());
@@ -89,6 +91,7 @@ describe("ProjectionRuntimeBroker", () => {
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
+      projectResolver: { resolveProject: async () => "project-test", assignProject: async () => undefined } as never,
     });
     const prepared = await broker.prepareRun(request());
     await broker.attachRun({ schemaVersion: 1, clientId: request().runtimeClientId, runId, temporaryPersistenceRootId: prepared.temporaryPersistenceRootId, attachedAt: "2026-09-01T00:00:00.000Z" });
@@ -122,6 +125,7 @@ describe("ProjectionRuntimeBroker", () => {
 
   it("registers a DSH-created native session before accepting its first live event", async () => {
     const registrations: unknown[] = [];
+    const assignments: unknown[] = [];
     const lifecycle = {
       prepareRun: async () => ({
         run: { id: runId, leaseId: "lease-test", instanceId: "alpha2-test", state: "preparing" },
@@ -133,11 +137,26 @@ describe("ProjectionRuntimeBroker", () => {
         registrations.push(registration);
         return { logicalSessionId: (registration as { logicalSessionId: string }).logicalSessionId };
       },
+      append: async (_active: unknown, operation: NativeAppendOperation) => ({
+        schemaVersion: 1,
+        operationId: operation.operationId,
+        runId,
+        nativeSessionId,
+        logicalSessionId: (operation.payload as { logicalSessionId: string }).logicalSessionId,
+        canonicalVersionId: null,
+        projectionRevision: operation.nativeRevision,
+        committedAt: operation.observedAt,
+        status: "committed",
+      }),
     };
     const broker = new ProjectionRuntimeBroker({
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
+      projectResolver: {
+        resolveProject: async () => "project-deepseek",
+        assignProject: async (logicalSessionId: string, projectId: string) => { assignments.push({ logicalSessionId, projectId }); },
+      } as never,
     });
     const prepared = await broker.prepareRun(request());
     await broker.attachRun({
@@ -164,6 +183,53 @@ describe("ProjectionRuntimeBroker", () => {
       header,
       title: "DSH live-created session",
       workspaceId: null,
+      projectId: "project-deepseek",
     })]);
+    await broker.append(request().runtimeClientId, {
+      runId,
+      operationId: "operation-live-created" as never,
+      nativeSessionId,
+      nativeRevision: 1,
+      payload: { logicalSessionId: registered.logicalSessionId, events: [{ seq: 0, type: "message" }] },
+      observedAt: "2026-09-01T00:00:01.000Z",
+    });
+    expect(assignments).toEqual([{ logicalSessionId: registered.logicalSessionId, projectId: "project-deepseek" }]);
+  });
+
+  it("uses recovery instead of normal close when the runtime did not drain", async () => {
+    const calls: string[] = [];
+    const lifecycle = {
+      prepareRun: async () => ({
+        run: { id: runId, leaseId: "lease-test", state: "preparing" },
+        projectionRoot: "D:/synthetic/projection-run",
+        manifest: {}, inspection: {}, verification: {}, maintenanceEndpoint: "runtime-broker",
+      }),
+      attachRun: async (prepared: object) => ({ ...prepared, run: { id: runId, state: "running" }, runtime: {} }),
+      recover: async () => {
+        calls.push("tail-reconcile-checkpoint-cleanup");
+        return { state: "recovered", removedProjection: true };
+      },
+    };
+    const broker = new ProjectionRuntimeBroker({
+      lifecycleFactory: () => lifecycle as never,
+      selectAdapter: async () => "dsh-alpha2" as AdapterId,
+      statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
+      projectResolver: { resolveProject: async () => "project-test", assignProject: async () => undefined } as never,
+    });
+    const prepared = await broker.prepareRun(request());
+    await broker.attachRun({
+      schemaVersion: 1,
+      clientId: request().runtimeClientId,
+      runId,
+      temporaryPersistenceRootId: prepared.temporaryPersistenceRootId,
+      attachedAt: "2026-09-01T00:00:00.000Z",
+    });
+    await expect(broker.closeRun({
+      schemaVersion: 1,
+      clientId: request().client.id,
+      runId,
+      reason: "recovery",
+    })).resolves.toMatchObject({ state: "recovered", removedProjection: true });
+    expect(calls).toEqual(["tail-reconcile-checkpoint-cleanup"]);
   });
 });

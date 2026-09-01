@@ -16,6 +16,7 @@ import type {
   ProjectionRun,
   ProjectionRunRepository,
   ProjectionSession,
+  LogicalProjectId,
   RuntimeHandle,
   RunId,
 } from "@linmu/dsh-session-contracts";
@@ -43,6 +44,10 @@ export interface OpenProjectionRunInput {
   readonly dshVersion: string;
   readonly branchId: BranchId;
   readonly maintenanceEndpoint: string;
+  readonly runtimeBroker?: {
+    readonly ownerClientId: string;
+    readonly runtimeClientId: string;
+  };
 }
 
 export interface ProjectionRunHandle {
@@ -62,6 +67,22 @@ export interface PreparedProjectionRunHandle {
   readonly verification: AdapterVerificationResult;
   readonly maintenanceEndpoint: string;
 }
+
+export interface ProjectionRecoverySessionSnapshot {
+  readonly projection: ProjectionSession;
+  readonly payload: import("@linmu/dsh-session-contracts").JsonValue;
+  readonly projectId: LogicalProjectId | null;
+  readonly header: import("@linmu/dsh-session-contracts").JsonValue;
+  readonly committedEvents: readonly import("@linmu/dsh-session-contracts").JsonValue[];
+}
+
+export type ProjectionRecoveryOperationSource = (
+  input: {
+    readonly run: ProjectionRun;
+    readonly projectionRoot: string;
+    readonly sessions: readonly ProjectionRecoverySessionSnapshot[];
+  },
+) => Promise<readonly NativeAppendOperation[]>;
 
 interface PreparedProjectionContext {
   readonly handle: PreparedProjectionRunHandle;
@@ -205,6 +226,12 @@ export class ProjectionLifecycle {
         schemaVersion: 1,
         runId,
         maintenanceEndpoint: input.maintenanceEndpoint,
+        ...(input.runtimeBroker === undefined ? {} : {
+          runtimeBroker: {
+            ...input.runtimeBroker,
+            temporaryPersistenceRootId: `projection:${runId}`,
+          },
+        }),
       });
       await this.statusLog.succeed(materializeSpan);
     } catch (error) {
@@ -408,7 +435,14 @@ export class ProjectionLifecycle {
     }
   }
 
-  async recover(runId: RunId): Promise<ProjectionCloseReceipt> {
+  async recover(
+    runId: RunId,
+    operationSource?: ProjectionRecoveryOperationSource,
+    onCommitted?: (input: {
+      readonly receipt: ProjectionOperationReceipt;
+      readonly projectId: LogicalProjectId | null;
+    }) => Promise<void>,
+  ): Promise<ProjectionCloseReceipt> {
     const run = await this.runRepository.getProjectionRun(runId);
     if (run === undefined) throw new ProjectionLifecycleError("RUN_NOT_FOUND", runId, "Projection run does not exist");
     const span = await this.startShutdownSpan(run);
@@ -419,6 +453,28 @@ export class ProjectionLifecycle {
       context ??= await this.restoreRecoveryContext(run);
       context.acceptingAppends = false;
       await this.replayPending(context);
+      if (operationSource !== undefined) {
+        if (this.canonicalEngine === undefined) throw new Error("Canonical session engine is unavailable during recovery");
+        const snapshots = await this.recoverySnapshots(context);
+        const projects = new Map(snapshots.map((snapshot) => [snapshot.projection.nativeSessionId, snapshot.projectId]));
+        for (const operation of await operationSource({
+          run,
+          projectionRoot: context.handle.projectionRoot,
+          sessions: snapshots,
+        })) {
+          const receipt = await commitProjectionAppend({
+            context,
+            operation,
+            runRepository: this.runRepository,
+            statusLog: this.statusLog,
+            adapter: this.adapter,
+            bridge: this.bridge,
+            canonicalEngine: this.canonicalEngine,
+            clock: this.clock,
+          });
+          await onCommitted?.({ receipt, projectId: projects.get(operation.nativeSessionId) ?? null });
+        }
+      }
       const result = await this.verifyCheckpointAndDetach(context);
       cleanupStarted = true;
       await removeProjectionRun(context.handle.projectionRoot);
@@ -517,14 +573,28 @@ export class ProjectionLifecycle {
     const sessions = new Map<string, ActiveProjectionSession>();
     for (const mapping of mappings) {
       const item = sourceById.get(mapping.logicalSessionId);
-      if (item === undefined) throw new TypeError(`Recovery mapping has no canonical session: ${mapping.logicalSessionId}`);
+      if (item !== undefined) {
+        sessions.set(mapping.nativeSessionId, {
+          projection: mapping,
+          title: item.session.title,
+          tags: item.session.tags,
+          archivedAt: item.session.archivedAt,
+          workspaceId: item.workspaceId,
+          authorityScope: item.session.authorityScope,
+        });
+        continue;
+      }
+      if (this.adapter.recoverProjectionSession === undefined) {
+        throw new TypeError(`Recovery mapping has no canonical session: ${mapping.logicalSessionId}`);
+      }
+      const recovered = this.adapter.recoverProjectionSession(mapping, await directory.readSession(mapping.nativeSessionId));
       sessions.set(mapping.nativeSessionId, {
         projection: mapping,
-        title: item.session.title,
-        tags: item.session.tags,
-        archivedAt: item.session.archivedAt,
-        workspaceId: item.workspaceId,
-        authorityScope: item.session.authorityScope,
+        title: recovered.title,
+        tags: recovered.tags,
+        archivedAt: recovered.archivedAt,
+        workspaceId: recovered.workspaceId,
+        authorityScope: recovered.authorityScope,
       });
     }
     const recovering = { ...run, state: "recovering" as const };
@@ -555,6 +625,25 @@ export class ProjectionLifecycle {
       }).bindAppendHandler(runtime, async (operation) => this.append(handle, operation));
     }
     return context;
+  }
+
+  private async recoverySnapshots(context: ProjectionAppendContext): Promise<readonly ProjectionRecoverySessionSnapshot[]> {
+    if (this.adapter.recoverProjectionSession === undefined) {
+      throw new TypeError(`Adapter does not expose recovery projection decoding: ${this.adapter.manifest.id}`);
+    }
+    const snapshots: ProjectionRecoverySessionSnapshot[] = [];
+    for (const active of context.sessions.values()) {
+      const payload = await context.directory.readSession(active.projection.nativeSessionId);
+      const recovered = this.adapter.recoverProjectionSession(active.projection, payload);
+      snapshots.push({
+        projection: active.projection,
+        payload,
+        projectId: recovered.projectId,
+        header: recovered.header,
+        committedEvents: recovered.committedEvents,
+      });
+    }
+    return snapshots;
   }
 
   private startShutdownSpan(run: ProjectionRun): Promise<StatusSpanHandle> {

@@ -7,6 +7,11 @@ export interface ProjectionRecoveryDescriptor {
   readonly schemaVersion: 1;
   readonly runId: RunId;
   readonly maintenanceEndpoint: string;
+  readonly runtimeBroker?: {
+    readonly ownerClientId: string;
+    readonly runtimeClientId: string;
+    readonly temporaryPersistenceRootId: string;
+  };
 }
 
 function pathFor(projectionRoot: string): string {
@@ -28,5 +33,10 @@ export async function readProjectionRecoveryDescriptor(
   if (descriptor.schemaVersion !== 1 || typeof descriptor.runId !== "string" || typeof descriptor.maintenanceEndpoint !== "string") {
     throw new TypeError("Projection recovery descriptor is invalid");
   }
+  if (descriptor.runtimeBroker !== undefined && (
+    typeof descriptor.runtimeBroker.ownerClientId !== "string"
+    || typeof descriptor.runtimeBroker.runtimeClientId !== "string"
+    || typeof descriptor.runtimeBroker.temporaryPersistenceRootId !== "string"
+  )) throw new TypeError("Projection Runtime Broker recovery descriptor is invalid");
   return descriptor;
 }

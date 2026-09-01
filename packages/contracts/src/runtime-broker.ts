@@ -1,6 +1,7 @@
 import type {
   AdapterId,
   BranchId,
+  LogicalProjectId,
   NativeSessionId,
   RunId,
 } from "./canonical.js";
@@ -9,6 +10,10 @@ import type { ProjectionOperationReceipt } from "./projection.js";
 import type { JsonValue } from "./model.js";
 
 export type RuntimeBrokerClientKind = "launcher" | "plugin" | "cli";
+
+export type RuntimeBrokerProjectSelection =
+  | { readonly kind: "all" }
+  | { readonly kind: "ids"; readonly projectIds: readonly LogicalProjectId[] };
 
 export interface RuntimeBrokerPrepareRunRequest {
   readonly schemaVersion: 1;
@@ -28,6 +33,8 @@ export interface RuntimeBrokerPrepareRunRequest {
     readonly runtimeCapabilities: readonly string[];
   };
   readonly pinnedAdapterId: AdapterId | null;
+  /** Defaults to all canonical projects for Launcher-owned runs. */
+  readonly projectSelection: RuntimeBrokerProjectSelection;
 }
 
 export interface RuntimeBrokerPreparedRun {

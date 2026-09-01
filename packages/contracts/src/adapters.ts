@@ -46,6 +46,7 @@ import type {
   CanonicalProjectionInput,
   DshEnvironmentDescriptor,
   NativeAppendOperation,
+  NativeRecoverySession,
   NativeSessionRegistration,
   NativeReferenceResolution,
   ProjectionInspection,
@@ -58,7 +59,7 @@ import type {
   AdapterManifestV1,
 } from "./adapter-sdk.js";
 import type { NativeSessionId } from "./canonical.js";
-import type { ProjectionRun } from "./projection.js";
+import type { ProjectionRun, ProjectionSession } from "./projection.js";
 
 export interface SessionReadAdapter {
   readonly platform: "codex" | "dsh";
@@ -147,6 +148,11 @@ export interface DshSessionAdapterV1 {
     reference: StableSessionReference,
     run: ProjectionRun,
   ): Promise<NativeReferenceResolution>;
+  /** Decodes adapter-owned projection metadata during crash recovery. */
+  recoverProjectionSession?(
+    projection: ProjectionSession,
+    payload: JsonValue,
+  ): NativeRecoverySession;
 }
 
 export interface DshRuntimeBridgeV1 {

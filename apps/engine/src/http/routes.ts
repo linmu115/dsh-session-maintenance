@@ -91,6 +91,10 @@ const runtimeBrokerPrepareSchema = z.strictObject({
     runtimeCapabilities: z.array(z.string().min(1).max(200)).max(200),
   }),
   pinnedAdapterId: runtimeBrokerIdSchema.nullable(),
+  projectSelection: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("all") }),
+    z.strictObject({ kind: z.literal("ids"), projectIds: z.array(runtimeBrokerIdSchema).min(1) }),
+  ]),
 });
 const runtimeBrokerAttachSchema = z.strictObject({
   schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,

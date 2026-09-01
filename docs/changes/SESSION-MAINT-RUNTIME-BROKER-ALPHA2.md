@@ -34,9 +34,11 @@ operation carries the observed event prefix once. Later events carry only their
 own event and preserve native sequence order, including after a transient
 Broker failure.
 
-The native header is preserved as runtime evidence. Canonical project and
-workspace remain separate Maintenance relations; reverse collection must not
-derive canonical workspace membership from native `cwd`.
+The native header is preserved as runtime evidence. Its exact, normalized
+`cwd` is resolved against canonical project roots and the new logical session
+is assigned to that project after its first canonical commit. Canonical
+workspace remains a separate Maintenance relation and is never inferred from
+native `cwd`.
 
 ## Shutdown ownership
 
@@ -49,10 +51,18 @@ the durability barrier, checkpoint, detach and temporary-root cleanup.
 ## Recovery boundary
 
 The Engine WAL remains the authoritative retry source once an event reaches
-the Broker. If the DSH process dies before the HTTP request reaches Engine, the
-per-run official JSONL projection is the recovery fallback. Reconciliation of
-that JSONL tail is intentionally left for the process-guardian recovery commit;
-normal close is rejected until the plugin reports a completed runtime flush.
+the Broker. Recovery first replays that WAL, then the Alpha2 Adapter reads only
+the Broker-created per-run official JSONL root. It validates the official path,
+header, contiguous sequence and complete committed prefix before producing one
+deterministic missing-tail operation. Rewrites, truncation, gaps, unknown files,
+unmapped sessions and future formats fail closed and quarantine the run.
+
+Broker ownership and runtime capability IDs are stored in the run recovery
+descriptor. Therefore a restarted Engine can authenticate the owner, rebuild
+the lifecycle context, recover a DSH-created session that had not yet reached
+canonical storage, commit the JSONL tail, create a final checkpoint and remove
+the temporary projection. Normal close remains separate and is rejected until
+the plugin reports a completed runtime flush.
 
 ## Focused verification
 
@@ -64,3 +74,9 @@ normal close is rejected until the plugin reports a completed runtime flush.
 - A transient first append failure retries the same event, then commits the
   next event without replaying the full seed prefix.
 - Plugin drain never invokes the owner-only close endpoint.
+- Project-root matching assigns a newly created DSH session without changing
+  its independent workspace relation; missing and ambiguous roots fail closed.
+- Alpha2 tail recovery accepts an unchanged prefix and a contiguous tail, and
+  rejects gaps, rewrites, unknown layouts and unmapped sessions.
+- An abnormal owner close selects recovery even without a runtime-drained
+  acknowledgement; normal owner close still cannot bypass that acknowledgement.

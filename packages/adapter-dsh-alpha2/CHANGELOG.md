@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add fail-closed Alpha2 crash-tail recovery for the official per-run JSONL and
+  checksummed zstd persistence layouts. Recovery proves the committed prefix
+  and contiguous native sequence before emitting a deterministic append.
+- Decode recovery metadata from the temporary projection so a DSH-created
+  session can be recovered before its first canonical commit while preserving
+  project and workspace as independent relations.
+
 - Stop accepting new native appends as soon as drain begins, while allowing the Engine to replay already durable WAL operations before detach.
 - Switch a projected Codex session to its Maintenance-owned child identity only after the first DSH append commits; the native runtime session ID remains stable for the active run.
 - Route native Alpha2 appends through a run-bound handler, validate contiguous revisions before WAL persistence, and update only the run-scoped temporary projection.

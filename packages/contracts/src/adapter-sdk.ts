@@ -158,4 +158,17 @@ export interface NativeSessionRegistration {
   readonly header: JsonValue;
   readonly title: string;
   readonly workspaceId: LogicalWorkspaceId | null;
+  readonly projectId: LogicalProjectId;
+}
+
+/** Adapter-decoded metadata needed to rebuild a crashed temporary projection. */
+export interface NativeRecoverySession {
+  readonly title: string;
+  readonly tags: readonly string[];
+  readonly archivedAt: string | null;
+  readonly workspaceId: LogicalWorkspaceId | null;
+  readonly authorityScope: CanonicalSessionRecord["authorityScope"];
+  readonly projectId: LogicalProjectId | null;
+  readonly header: JsonValue;
+  readonly committedEvents: readonly JsonValue[];
 }
