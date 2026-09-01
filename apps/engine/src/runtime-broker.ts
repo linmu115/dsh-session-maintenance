@@ -331,8 +331,18 @@ export class ProjectionRuntimeBroker {
       assertOwner(existing, input.clientId);
       existing.closing = true;
       try {
+        const runtimeWasAttached = existing.active !== null;
+        if (!runtimeWasAttached) {
+          existing.registrar.acknowledge({
+            schemaVersion: 1,
+            clientId: existing.runtimeClientId,
+            runId: input.runId,
+            temporaryPersistenceRootId: existing.temporaryPersistenceRootId,
+            attachedAt: this.clock(),
+          });
+        }
         await this.flushAll(existing);
-        const receipt = await this.recoverLifecycle(existing.lifecycle, input.runId);
+        const receipt = await this.recoverLifecycle(existing.lifecycle, input.runId, runtimeWasAttached);
         this.runs.delete(input.runId);
         return { schemaVersion: 1, runId: input.runId, state: receipt.state, removedProjection: true };
       } catch (error) {
@@ -377,7 +387,8 @@ export class ProjectionRuntimeBroker {
     }
   }
 
-  private recoverLifecycle(lifecycle: ProjectionLifecycle, runId: RunId) {
+  private recoverLifecycle(lifecycle: ProjectionLifecycle, runId: RunId, recoverRuntimeTail = true) {
+    if (!recoverRuntimeTail) return lifecycle.recover(runId);
     return lifecycle.recover(
       runId,
       async ({ projectionRoot, sessions }) => recoverAlpha2RuntimeTail({

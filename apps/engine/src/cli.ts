@@ -26,16 +26,24 @@ import {
   registeredInstances,
 } from "./config.js";
 import { startMaintenanceServer } from "./http/server.js";
+import { MaintenanceExternalLifecycleProvider, runExternalLifecycleStdio } from "./external-lifecycle-provider.js";
 
 export interface CliOptions {
   readonly fixturePolicy?: (root: string) => void;
   readonly stdout?: (text: string) => void;
   readonly stderr?: (text: string) => void;
   readonly clock?: () => string;
+  readonly stdin?: () => Promise<string>;
 }
 
 function output(write: (text: string) => void, value: unknown): void {
   write(`${JSON.stringify(value)}\n`);
+}
+
+async function readStandardInput(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function collect(value: string, previous: readonly string[]): readonly string[] {
@@ -363,6 +371,17 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     const engine = await createReadOnlyComposition(compositionOptions());
     try { output(stdout, { continuation: await engine.recoverContinuation(value.id) }); } finally { engine.close(); }
   });
+
+  program.command("external-lifecycle")
+    .description("Run one schema-v1 external lifecycle request from JSON stdin")
+    .action(async () => {
+      const input = options.stdin === undefined ? await readStandardInput() : await options.stdin();
+      const provider = new MaintenanceExternalLifecycleProvider(compositionOptions().stateRoot, {
+        ...(options.clock === undefined ? {} : { clock: options.clock }),
+      });
+      const response = await runExternalLifecycleStdio(input, provider);
+      output(stdout, response);
+    });
 
   program.command("serve")
     .option("--host <host>", "loopback host", "127.0.0.1")

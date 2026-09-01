@@ -6,6 +6,7 @@ export * from "./composition-root.js";
 export * from "./config.js";
 export * from "./dsh-gateway-connection.js";
 export * from "./engine.js";
+export * from "./external-lifecycle-provider.js";
 export * from "./http/server.js";
 export * from "./http/dashboard.js";
 export * from "./jobs/job-runner.js";
