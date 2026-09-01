@@ -36,6 +36,8 @@ describe("Alpha2 projection open integration", () => {
     databases.push(database);
     const canonical = new SqliteCanonicalRepository(database);
     const workspaceId = "workspace-alpha2-integration" as never;
+    const projectId = "project-alpha2-integration" as never;
+    const projectRoot = "D:\\fixture\\alpha2-project-root";
     const logicalSessionId = "logical-alpha2-integration" as never;
     await canonical.upsertLogicalWorkspace({
       schemaVersion: 1,
@@ -67,6 +69,30 @@ describe("Alpha2 projection open integration", () => {
       displayOrder: 0,
       pinned: false,
       archived: false,
+      revision: 0,
+    });
+    await canonical.upsertLogicalProject({
+      schemaVersion: 1,
+      id: projectId,
+      name: "Synthetic integration project",
+      sourcePlatform: "maintenance",
+      sourceProjectId: null,
+      sortKey: "0001",
+      deletedAt: null,
+      createdAt: at,
+      updatedAt: at,
+    });
+    await canonical.replaceProjectRoots(projectId, [{
+      schemaVersion: 1,
+      projectId,
+      path: projectRoot,
+      normalizedPath: "d:\\fixture\\alpha2-project-root",
+      ordinal: 0,
+    }]);
+    await canonical.setProjectMembership({
+      schemaVersion: 1,
+      logicalSessionId,
+      projectId,
       revision: 0,
     });
     await canonical.putCanonicalEvent({
@@ -120,7 +146,8 @@ describe("Alpha2 projection open integration", () => {
     expect(await projection.readSession(alpha2NativeSessionId(logicalSessionId))).toMatchObject({
       logicalSessionId,
       workspaceId,
-      header: { version: 0 },
+      projectId,
+      header: { version: 0, cwd: projectRoot },
       events: [{ type: "user/message", seq: 0 }],
     });
     const persisted = await new SqliteStatusEventRepository(database).listStatusEvents({ runId: handle.run.id, limit: 100 });

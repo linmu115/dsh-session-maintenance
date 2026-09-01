@@ -127,6 +127,8 @@ describe("DSH Alpha2 Adapter Core Smoke", () => {
             extensions: { dshEventType: heldOut.type, heldOut: true },
           }],
           workspaceId: "workspace-alpha2-smoke" as never,
+          projectId: "project-alpha2-smoke" as never,
+          projectRoot: "D:\\fixture\\project-root",
         }],
       },
       writer,
@@ -196,6 +198,13 @@ describe("DSH Alpha2 Adapter Core Smoke", () => {
     });
     expect(result.projection.catalogDigest).toMatch(/^sha256:[0-9a-f]{64}$/u);
     expect(result.projection.sessionDigests[alpha2NativeSessionId(logicalSessionId)]).toMatch(/^sha256:[0-9a-f]{64}$/u);
-    expect((sessions.get(alpha2NativeSessionId(logicalSessionId)) as { readonly events: readonly JsonValue[] }).events[2]).toEqual(heldOut);
+    const projected = sessions.get(alpha2NativeSessionId(logicalSessionId)) as {
+      readonly workspaceId: string;
+      readonly header: { readonly cwd?: string };
+      readonly events: readonly JsonValue[];
+    };
+    expect(projected.header.cwd).toBe("D:\\fixture\\project-root");
+    expect(projected.workspaceId).toBe("workspace-alpha2-smoke");
+    expect(projected.events[2]).toEqual(heldOut);
   });
 });

@@ -26,6 +26,7 @@ export interface Alpha2ProjectionSession {
   readonly schemaVersion: 1;
   readonly logicalSessionId: LogicalSessionId;
   readonly baseVersionId: string | null;
+  readonly projectId: string | null;
   readonly workspaceId: string | null;
   readonly title: string;
   readonly tags: readonly string[];
@@ -33,6 +34,7 @@ export interface Alpha2ProjectionSession {
     readonly version: 0;
     readonly id: NativeSessionId;
     readonly createdAt: number;
+    readonly cwd?: string;
   };
   readonly events: readonly Alpha2SessionEvent[];
 }
@@ -150,10 +152,16 @@ export async function materializeAlpha2(
       schemaVersion: 1,
       logicalSessionId: item.session.id,
       baseVersionId: item.session.headVersionId,
+      projectId: item.projectId ?? null,
       workspaceId: item.workspaceId,
       title: item.session.title,
       tags: item.session.tags,
-      header: { version: 0, id: nativeSessionId, createdAt },
+      header: {
+        version: 0,
+        id: nativeSessionId,
+        createdAt,
+        ...(item.projectRoot === null ? {} : { cwd: item.projectRoot }),
+      },
       events: item.events.map((event) => materializeEvent(event, createdAt)),
     };
     await output.writeSession(nativeSessionId, payload as unknown as JsonValue);

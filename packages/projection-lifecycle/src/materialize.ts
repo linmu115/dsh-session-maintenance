@@ -178,6 +178,8 @@ interface SessionRow {
   readonly created_at: string;
   readonly updated_at: string;
   readonly workspace_id: string | null;
+  readonly project_id: string | null;
+  readonly project_root: string | null;
 }
 
 interface WorkspaceRow {
@@ -218,9 +220,17 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
     const sessionRows = this.database.prepare(
       `SELECT s.id, s.display_title, s.labels_json, s.authority_scope, s.origin_kind,
               s.head_version_id, s.archived_at, s.tombstoned_at, s.created_at, s.updated_at,
-              m.workspace_id
+               m.workspace_id,
+               p.id AS project_id,
+               (SELECT r.root_path
+                  FROM project_roots r
+                 WHERE r.project_id = p.id
+                 ORDER BY r.ordinal, r.normalized_root_path
+                 LIMIT 1) AS project_root
        FROM logical_sessions s
        LEFT JOIN workspace_memberships m ON m.logical_session_id = s.id
+       LEFT JOIN project_memberships pm ON pm.logical_session_id = s.id
+       LEFT JOIN logical_projects p ON p.id = pm.project_id AND p.deleted_at IS NULL
        WHERE s.authority_scope IS NOT NULL
          AND s.origin_kind IS NOT NULL
          AND s.updated_at IS NOT NULL
@@ -254,6 +264,8 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
         workspaceId: row.workspace_id !== null && existingWorkspaces.has(row.workspace_id as never)
           ? row.workspace_id as never
           : null,
+        projectId: row.project_id as never,
+        projectRoot: row.project_root,
       };
     });
     return { run, workspaces, sessions };
