@@ -5,6 +5,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { deterministicTarGz, sha256, stableJson } from "./phase2-pack-lib.mjs";
+import { externalizeDshHostPackages } from "./canonical-plugin-manifest.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const repositoryRoot = resolve(process.env.DSH_PLUGIN_REPOSITORIES_ROOT ?? dirname(root));
@@ -97,7 +98,8 @@ async function packRepositoryPackage(input, versionByName) {
   const packageRoot = join(staging, "external", sourceManifest.name.replaceAll("/", "__"));
   await mkdir(packageRoot, { recursive: true });
   await copyPaths(input.repo, packageRoot, input.paths);
-  await writeFile(join(packageRoot, "package.json"), `${stableJson(portableManifest(sourceManifest, versionByName))}\n`);
+  const manifest = externalizeDshHostPackages(portableManifest(sourceManifest, versionByName));
+  await writeFile(join(packageRoot, "package.json"), `${stableJson(manifest)}\n`);
   const bytes = await deterministicTarGz(packageRoot, "package");
   return {
     bytes,

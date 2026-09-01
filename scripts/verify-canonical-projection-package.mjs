@@ -3,6 +3,7 @@ import { readFile, readdir, rm } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 import { readTarGz, sha256 } from "./phase2-pack-lib.mjs";
+import { DSH_HOST_OWNED_PACKAGES } from "./canonical-plugin-manifest.mjs";
 
 const root = process.cwd();
 const first = resolve(".artifacts/canonical-repro-a");
@@ -45,9 +46,20 @@ for (const name of leftFiles) {
   const right = await readFile(join(second, name));
   if (sha256(left) !== sha256(right)) throw new Error(`Canonical package is not reproducible: ${name}`);
   if (name.endsWith(".tgz")) {
-    for (const entry of readTarGz(left).keys()) {
+    const archive = readTarGz(left);
+    for (const entry of archive.keys()) {
       if (/(?:^|\/)(?:sessions?|objects?|projection-homes?)(?:\/|$)|\.sqlite(?:-|$)|session\.jsonl/iu.test(entry)) {
         throw new Error(`User session or state content leaked into ${name}: ${entry}`);
+      }
+    }
+    const rawPackageManifest = archive.get("package/package.json");
+    if (rawPackageManifest !== undefined) {
+      const packageManifest = JSON.parse(rawPackageManifest.toString("utf8"));
+      for (const hostPackage of DSH_HOST_OWNED_PACKAGES) {
+        if (packageManifest.dependencies?.[hostPackage] !== undefined
+          || packageManifest.optionalDependencies?.[hostPackage] !== undefined) {
+          throw new Error(`Host-owned DSH package would be materialized by ${name}: ${hostPackage}`);
+        }
       }
     }
   }
