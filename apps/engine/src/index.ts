@@ -1,5 +1,6 @@
 export * from "./cli.js";
 export * from "./codex-canonical-import.js";
+export * from "./canonical-reseed.js";
 export * from "./sqlite-codex-project-port.js";
 export * from "./composition-root.js";
 export * from "./config.js";

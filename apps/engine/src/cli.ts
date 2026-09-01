@@ -16,6 +16,7 @@ import {
   probeAndAddInstance,
   type CompositionOptions,
 } from "./composition-root.js";
+import { reseedCanonicalCandidate } from "./canonical-reseed.js";
 import type { DshGatewayTarget } from "./dsh-gateway-connection.js";
 import {
   addCodexTarget,
@@ -235,6 +236,56 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     const engine = await createReadOnlyComposition(compositionOptions());
     try { output(stdout, { status: await engine.status() }); } finally { engine.close(); }
   });
+
+  const canonical = program.command("canonical");
+  canonical.command("reseed-alpha2")
+    .requiredOption("--candidate-file <name>")
+    .requiredOption("--dsh-home <path>")
+    .option("--dsh-instance-id <id>", "stable source identity", "dsh-alpha2")
+    .requiredOption("--retain-dsh <id>", "DSH session to retain; repeatable", collect, [])
+    .option("--maintenance-project <name>", "project for retained DSH sessions", "DeepSeek")
+    .requiredOption("--maintenance-project-root <path>")
+    .option("--codex-instance <id>")
+    .option("--expected-codex <count>")
+    .option("--json")
+    .action(async (value: {
+      candidateFile: string;
+      dshHome: string;
+      dshInstanceId: string;
+      retainDsh: readonly string[];
+      maintenanceProject: string;
+      maintenanceProjectRoot: string;
+      codexInstance?: string;
+      expectedCodex?: string;
+    }) => {
+      const config = await loadConfig(compositionOptions().stateRoot);
+      const instances = registeredInstances(config);
+      const codex = value.codexInstance === undefined
+        ? instances.filter((item) => item.platform === "codex")
+        : instances.filter((item) => item.platform === "codex" && item.id === value.codexInstance);
+      if (codex.length !== 1) {
+        throw new TypeError(`Canonical reseed requires exactly one selected Codex instance; found ${codex.length}`);
+      }
+      const expectedCodexSessions = value.expectedCodex === undefined
+        ? undefined
+        : Number.parseInt(value.expectedCodex, 10);
+      if (expectedCodexSessions !== undefined && (!Number.isSafeInteger(expectedCodexSessions) || expectedCodexSessions < 0)) {
+        throw new TypeError(`Invalid expected Codex session count: ${value.expectedCodex}`);
+      }
+      const manifest = await reseedCanonicalCandidate({
+        stateRoot: compositionOptions().stateRoot,
+        candidateFile: value.candidateFile,
+        dshHome: resolve(value.dshHome),
+        dshInstanceId: value.dshInstanceId,
+        retainedDshSessionIds: value.retainDsh,
+        maintenanceProjectName: value.maintenanceProject,
+        maintenanceProjectRoot: resolve(value.maintenanceProjectRoot),
+        codexInstance: codex[0]!,
+        ...(expectedCodexSessions === undefined ? {} : { expectedCodexSessions }),
+        onStatus: (status) => output(stderr, status),
+      });
+      output(stdout, { manifest });
+    });
 
   const continuation = program.command("continuation");
   const addContinuationOptions = (command: Command): Command => command
