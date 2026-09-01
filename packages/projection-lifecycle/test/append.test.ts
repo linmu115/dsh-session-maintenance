@@ -172,9 +172,13 @@ describe("ProjectionLifecycle.append", () => {
     const projection = new JsonProjectionDirectory(handle.projectionRoot);
     expect(await projection.readSession(nativeSessionId)).toMatchObject({ events: [{ seq: 0 }, { seq: 1 }, { seq: 2 }] });
     expect(await runRepository.getOperationReceipt(operation.operationId)).toBeUndefined();
-    expect((await statusAdapter.list({ operationId: operation.operationId, limit: 20 })).items.map((event) => event.state)).toEqual([
-      "started",
-      "failed",
+    expect((await statusAdapter.list({ operationId: operation.operationId, limit: 20 })).items.map((event) => `${event.stage}:${event.state}`)).toEqual([
+      "session.append.commit:started",
+      "runtime.wal.durable:started",
+      "runtime.wal.durable:succeeded",
+      "runtime.canonical.committed:started",
+      "runtime.canonical.committed:failed",
+      "session.append.commit:failed",
     ]);
 
     unavailable = false;
@@ -184,11 +188,19 @@ describe("ProjectionLifecycle.append", () => {
     expect(committed).toMatchObject({ status: "committed", projectionRevision: 3, canonicalVersionId: "version-after-append" });
     expect(appendDsh).toHaveBeenCalledTimes(2);
     expect(await wal.get(operation.operationId)).toMatchObject({ state: "committed", projectionApplied: true, receipt: committed });
-    expect((await statusAdapter.list({ operationId: operation.operationId, limit: 20 })).items.map((event) => event.state)).toEqual([
-      "started",
-      "failed",
-      "started",
-      "succeeded",
+    expect((await statusAdapter.list({ operationId: operation.operationId, limit: 20 })).items.map((event) => `${event.stage}:${event.state}`)).toEqual([
+      "session.append.commit:started",
+      "runtime.wal.durable:started",
+      "runtime.wal.durable:succeeded",
+      "runtime.canonical.committed:started",
+      "runtime.canonical.committed:failed",
+      "session.append.commit:failed",
+      "session.append.commit:started",
+      "runtime.wal.durable:started",
+      "runtime.wal.durable:succeeded",
+      "runtime.canonical.committed:started",
+      "runtime.canonical.committed:succeeded",
+      "session.append.commit:succeeded",
     ]);
   });
 });

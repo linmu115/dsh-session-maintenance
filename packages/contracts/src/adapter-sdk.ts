@@ -151,3 +151,11 @@ export interface RuntimeDrainResult {
   readonly pendingOperations: number;
   readonly receipts: readonly ProjectionOperationReceipt[];
 }
+
+export interface NativeSessionRegistration {
+  readonly nativeSessionId: NativeSessionId;
+  readonly logicalSessionId: LogicalSessionId;
+  readonly header: JsonValue;
+  readonly title: string;
+  readonly workspaceId: LogicalWorkspaceId | null;
+}

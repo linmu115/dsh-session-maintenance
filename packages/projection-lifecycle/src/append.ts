@@ -208,9 +208,22 @@ export async function commitProjectionAppend(input: {
   });
   let failureCode = "APPEND_COMMIT_FAILED";
   let derivationSpan: StatusSpanHandle | undefined;
+  let walSpan: StatusSpanHandle | undefined;
+  let canonicalSpan: StatusSpanHandle | undefined;
   try {
     const bridge = appendBridge(input.bridge);
     let walRecord = await context.wal.get(operation.operationId);
+    walSpan = await input.statusLog.start({
+      runId: context.handle.run.id,
+      leaseId: context.handle.run.leaseId,
+      profileId: context.handle.run.profileId,
+      adapterId: context.handle.run.adapterId,
+      dshVersion: context.handle.run.dshVersion,
+      stage: "runtime.wal.durable",
+      logicalSessionId: session.projection.logicalSessionId,
+      nativeSessionId: operation.nativeSessionId,
+      operationId: operation.operationId,
+    });
     if (walRecord === undefined) {
       assertNativeRevision(session, operation);
       failureCode = "NATIVE_REVISION_MISMATCH";
@@ -220,6 +233,8 @@ export async function commitProjectionAppend(input: {
     } else {
       walRecord = await context.wal.putPending(operation, input.clock());
     }
+    await input.statusLog.succeed(walSpan);
+    walSpan = undefined;
     if (!walRecord.projectionApplied) {
       assertNativeRevision(session, operation);
       failureCode = "NATIVE_REVISION_MISMATCH";
@@ -251,6 +266,17 @@ export async function commitProjectionAppend(input: {
       });
     }
     failureCode = "MAINTENANCE_APPEND_FAILED";
+    canonicalSpan = await input.statusLog.start({
+      runId: context.handle.run.id,
+      leaseId: context.handle.run.leaseId,
+      profileId: context.handle.run.profileId,
+      adapterId: context.handle.run.adapterId,
+      dshVersion: context.handle.run.dshVersion,
+      stage: "runtime.canonical.committed",
+      logicalSessionId: session.projection.logicalSessionId,
+      nativeSessionId: operation.nativeSessionId,
+      operationId: operation.operationId,
+    });
     const canonical = await input.canonicalEngine.appendDsh({
       logicalSessionId: normalized.logicalSessionId,
       ...(normalized.baseVersionId === null ? {} : { baseVersionId: normalized.baseVersionId }),
@@ -270,6 +296,8 @@ export async function commitProjectionAppend(input: {
         nativeRevision: operation.nativeRevision,
       },
     });
+    await input.statusLog.succeed(canonicalSpan);
+    canonicalSpan = undefined;
     if (deriving && canonical.outcome !== "derived") {
       throw new ProjectionAppendError("DERIVATION_OUTCOME_INVALID", "Codex first write did not create a derived session");
     }
@@ -313,6 +341,8 @@ export async function commitProjectionAppend(input: {
     return receipt;
   } catch (error) {
     if (error instanceof ProjectionAppendError) failureCode = error.code;
+    if (walSpan !== undefined) await input.statusLog.fail(walSpan, { errorCode: failureCode });
+    if (canonicalSpan !== undefined) await input.statusLog.fail(canonicalSpan, { errorCode: failureCode });
     if (derivationSpan !== undefined) {
       await input.statusLog.fail(derivationSpan, { errorCode: failureCode });
     }

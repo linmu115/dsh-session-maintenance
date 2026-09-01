@@ -76,6 +76,56 @@ function errorBody(code: string, message: string): JsonValue {
 }
 
 const emptyRequestSchema = z.strictObject({});
+const runtimeBrokerIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9@/._:-]{0,255}$/u);
+const runtimeBrokerPrepareSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  client: z.strictObject({ kind: z.enum(["launcher", "plugin", "cli"]), id: runtimeBrokerIdSchema }),
+  runtimeClientId: runtimeBrokerIdSchema,
+  instanceId: runtimeBrokerIdSchema,
+  profileId: runtimeBrokerIdSchema,
+  dshVersion: z.string().min(1).max(100),
+  maintenanceEndpoint: z.string().url(),
+  branchId: runtimeBrokerIdSchema,
+  environment: z.strictObject({
+    packageVersions: z.record(z.string(), z.string()),
+    runtimeCapabilities: z.array(z.string().min(1).max(200)).max(200),
+  }),
+  pinnedAdapterId: runtimeBrokerIdSchema.nullable(),
+});
+const runtimeBrokerAttachSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, temporaryPersistenceRootId: runtimeBrokerIdSchema,
+  attachedAt: z.iso.datetime(),
+});
+const runtimeBrokerAppendSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  clientId: runtimeBrokerIdSchema,
+  operation: z.strictObject({
+    runId: runtimeBrokerIdSchema,
+    operationId: runtimeBrokerIdSchema,
+    nativeSessionId: runtimeBrokerIdSchema,
+    nativeRevision: z.number().int().nonnegative(),
+    payload: z.unknown(),
+    observedAt: z.iso.datetime(),
+  }),
+});
+const runtimeBrokerRegisterSessionSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, nativeSessionId: runtimeBrokerIdSchema,
+  header: z.unknown(), title: z.string().max(500),
+});
+const runtimeBrokerFlushSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, nativeSessionId: runtimeBrokerIdSchema,
+});
+const runtimeBrokerCloseSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, reason: z.enum(["normal", "recovery"]),
+});
+const runtimeBrokerDrainSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, runtimeFlushCompletedAt: z.iso.datetime(),
+});
 const stableReferenceRequestSchema = z.strictObject({
   referenceType: z.enum(["annotation", "sticker", "obsidian-reference"]),
   logicalSessionId: z.string().min(1).nullable(),
@@ -198,6 +248,53 @@ export async function routeRequest(
     if (request.method === "POST" && url.pathname === "/v1/references/resolve") {
       const input = stableReferenceRequestSchema.parse(await readJsonBody(request));
       send(response, 200, { resolution: await context.engine.resolveStableReference(input as never) });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/runtime-broker/runs/prepare") {
+      const body = runtimeBrokerPrepareSchema.parse(await readJsonBody(request));
+      send(response, 201, { run: await context.engine.prepareProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const runtimeBrokerAttach = /^\/v1\/runtime-broker\/runs\/([^/]+)\/attach$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerAttach !== null) {
+      const body = runtimeBrokerAttachSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerAttach[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, { run: await context.engine.attachProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const runtimeBrokerAppend = /^\/v1\/runtime-broker\/runs\/([^/]+)\/append$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerAppend !== null) {
+      const body = runtimeBrokerAppendSchema.parse(await readJsonBody(request, 4 * 1024 * 1024));
+      if (decodeURIComponent(runtimeBrokerAppend[1]!) !== body.operation.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, { schemaVersion: 1, receipt: await context.engine.appendProjectionRuntimeEvent(body.clientId, body.operation as never) });
+      return;
+    }
+    const runtimeBrokerRegisterSession = /^\/v1\/runtime-broker\/runs\/([^/]+)\/sessions$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerRegisterSession !== null) {
+      const body = runtimeBrokerRegisterSessionSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerRegisterSession[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 201, { session: await context.engine.registerProjectionRuntimeSession(body as never) });
+      return;
+    }
+    const runtimeBrokerFlush = /^\/v1\/runtime-broker\/runs\/([^/]+)\/flush$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerFlush !== null) {
+      const body = runtimeBrokerFlushSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerFlush[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, await context.engine.flushProjectionRuntimeSession(body as never));
+      return;
+    }
+    const runtimeBrokerClose = /^\/v1\/runtime-broker\/runs\/([^/]+)\/close$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerClose !== null) {
+      const body = runtimeBrokerCloseSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerClose[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, { run: await context.engine.closeProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const runtimeBrokerDrain = /^\/v1\/runtime-broker\/runs\/([^/]+)\/drain$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerDrain !== null) {
+      const body = runtimeBrokerDrainSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerDrain[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, { run: await context.engine.drainProjectionRuntimeRun(body as never) });
       return;
     }
     const projectionRuntimeMatch = /^\/v1\/projection-runs\/([^/]+)\/runtime$/u.exec(url.pathname);

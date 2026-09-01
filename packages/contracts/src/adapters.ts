@@ -46,6 +46,7 @@ import type {
   CanonicalProjectionInput,
   DshEnvironmentDescriptor,
   NativeAppendOperation,
+  NativeSessionRegistration,
   NativeReferenceResolution,
   ProjectionInspection,
   ProjectionManifest,
@@ -155,4 +156,9 @@ export interface DshRuntimeBridgeV1 {
   /** Removes one native session from an attached temporary projection after pending writes drain. */
   hideSession?(handle: RuntimeHandle, nativeSessionId: NativeSessionId): Promise<void>;
   detach(handle: RuntimeHandle): Promise<void>;
+  registerSession?(
+    handle: RuntimeHandle,
+    registration: NativeSessionRegistration,
+    projection: unknown,
+  ): Promise<void>;
 }

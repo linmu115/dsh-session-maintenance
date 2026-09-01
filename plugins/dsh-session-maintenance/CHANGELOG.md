@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+- Add the client-neutral Runtime Broker `prepare`, `attach`, `append`, `flush`,
+  `drain` and owner-only `close` protocol for Alpha2 temporary projections.
+- Observe Alpha2's public `session/event` and `session/flush` hooks with ordered
+  per-session retry queues and explicit WAL/canonical durability status logs.
+- Register sessions created during an active DSH run from their exact native
+  header before committing the first live event.
+- Require a plugin runtime-drained acknowledgement before normal process-owner
+  close, checkpoint and temporary projection cleanup.
+
 ## 0.2.0 - 2026-08-31
 
 - Replace per-instance native mirror ownership with a Maintenance canonical session store and stable logical workspaces.

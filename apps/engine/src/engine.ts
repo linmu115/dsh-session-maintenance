@@ -57,6 +57,20 @@ import {
   type StatusEventV1,
   type AdapterId,
   type DshRuntimeBridgeV1,
+  type NativeAppendOperation,
+  type ProjectionOperationReceipt,
+  type RuntimeBrokerAttachRunRequest,
+  type RuntimeBrokerAttachedRun,
+  type RuntimeBrokerClosedRun,
+  type RuntimeBrokerCloseRunRequest,
+  type RuntimeBrokerFlushRequest,
+  type RuntimeBrokerFlushResponse,
+  type RuntimeBrokerPrepareRunRequest,
+  type RuntimeBrokerPreparedRun,
+  type RuntimeBrokerDrainRunRequest,
+  type RuntimeBrokerDrainedRun,
+  type RuntimeBrokerRegisterSessionRequest,
+  type RuntimeBrokerRegisteredSession,
 } from "@linmu/dsh-session-contracts";
 import type { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
@@ -75,6 +89,7 @@ import {
 import type { StableLogicalReference, StableLogicalReferenceResolution } from "@linmu/dsh-session-contracts";
 
 import type { WriteService } from "./write-service.js";
+import { ProjectionRuntimeBroker } from "./runtime-broker.js";
 
 export interface EngineSettingsPort {
   get(): Promise<MaintenanceSettings>;
@@ -167,6 +182,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly projectionRuntimeRoot: string;
   readonly canonicalEngine: CanonicalSessionEngine;
   readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
+  readonly runtimeBroker: ProjectionRuntimeBroker;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
   private readonly clock: () => string;
@@ -225,6 +241,46 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.projectionRuntimeRoot = input.projectionRuntimeRoot;
     this.canonicalEngine = input.canonicalEngine;
     this.projectionLifecycleFactory = input.projectionLifecycleFactory;
+    this.runtimeBroker = new ProjectionRuntimeBroker({
+      lifecycleFactory: input.projectionLifecycleFactory,
+      statusLog: this.statusLog,
+      selectAdapter: async (request) => (await this.adapterRegistry.select({
+        environment: {
+          dshVersion: request.dshVersion,
+          packageVersions: request.environment.packageVersions,
+          runtimeCapabilities: request.environment.runtimeCapabilities,
+        },
+        ...(request.pinnedAdapterId === null ? {} : { pinnedAdapterId: request.pinnedAdapterId }),
+      })).adapterId,
+    });
+  }
+
+  prepareProjectionRuntimeRun(input: RuntimeBrokerPrepareRunRequest): Promise<RuntimeBrokerPreparedRun> {
+    return this.runtimeBroker.prepareRun(input);
+  }
+
+  attachProjectionRuntimeRun(input: RuntimeBrokerAttachRunRequest): Promise<RuntimeBrokerAttachedRun> {
+    return this.runtimeBroker.attachRun(input);
+  }
+
+  appendProjectionRuntimeEvent(clientId: string, operation: NativeAppendOperation): Promise<ProjectionOperationReceipt> {
+    return this.runtimeBroker.append(clientId, operation);
+  }
+
+  registerProjectionRuntimeSession(input: RuntimeBrokerRegisterSessionRequest): Promise<RuntimeBrokerRegisteredSession> {
+    return this.runtimeBroker.registerSession(input);
+  }
+
+  flushProjectionRuntimeSession(input: RuntimeBrokerFlushRequest): Promise<RuntimeBrokerFlushResponse> {
+    return this.runtimeBroker.flush(input);
+  }
+
+  drainProjectionRuntimeRun(input: RuntimeBrokerDrainRunRequest): Promise<RuntimeBrokerDrainedRun> {
+    return this.runtimeBroker.drainRun(input);
+  }
+
+  closeProjectionRuntimeRun(input: RuntimeBrokerCloseRunRequest): Promise<RuntimeBrokerClosedRun> {
+    return this.runtimeBroker.closeRun(input);
   }
 
   async getProjectionRuntimeSnapshot(runId: RunId): Promise<ProjectionRuntimeSnapshot | undefined> {

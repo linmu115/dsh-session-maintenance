@@ -11,6 +11,7 @@ import type {
   ProjectionInspection,
   ProjectionManifest,
   NativeAppendOperation,
+  NativeSessionRegistration,
   ProjectionOperationReceipt,
   ProjectionRun,
   ProjectionRunRepository,
@@ -53,6 +54,21 @@ export interface ProjectionRunHandle {
   readonly runtime: RuntimeHandle;
 }
 
+export interface PreparedProjectionRunHandle {
+  readonly run: ProjectionRun & { readonly state: "preparing" };
+  readonly projectionRoot: string;
+  readonly manifest: ProjectionManifest;
+  readonly inspection: ProjectionInspection;
+  readonly verification: AdapterVerificationResult;
+  readonly maintenanceEndpoint: string;
+}
+
+interface PreparedProjectionContext {
+  readonly handle: PreparedProjectionRunHandle;
+  readonly directory: JsonProjectionDirectory;
+  readonly sessions: Map<string, ActiveProjectionSession>;
+}
+
 export class ProjectionLifecycleError extends Error {
   readonly code: string;
   readonly runId: RunId;
@@ -79,6 +95,7 @@ export class ProjectionLifecycle {
   private readonly lease: ProjectionLease;
   private readonly clock: () => string;
   private readonly idFactory: (kind: IdKind) => string;
+  private readonly preparedRuns = new Map<RunId, PreparedProjectionContext>();
   private readonly activeRuns = new Map<RunId, ProjectionAppendContext>();
 
   constructor(input: {
@@ -106,7 +123,7 @@ export class ProjectionLifecycle {
     this.idFactory = input.idFactory ?? ((kind) => `${kind}-${randomUUID()}`);
   }
 
-  async openRun(input: OpenProjectionRunInput): Promise<ProjectionRunHandle> {
+  async prepareRun(input: OpenProjectionRunInput): Promise<PreparedProjectionRunHandle> {
     const at = this.clock();
     const runId = this.idFactory("run") as RunId;
     const leaseId = this.idFactory("lease") as LeaseId;
@@ -196,32 +213,50 @@ export class ProjectionLifecycle {
       throw new ProjectionLifecycleError("PROJECTION_MATERIALIZE_FAILED", runId, "Canonical projection materialization failed", { cause: error });
     }
 
-    const attachSpan = await this.startSpan(preparing, "runtime.persistence.attach");
+    const handle: PreparedProjectionRunHandle = {
+      run: preparing,
+      projectionRoot,
+      manifest,
+      inspection,
+      verification,
+      maintenanceEndpoint: input.maintenanceEndpoint,
+    };
+    this.preparedRuns.set(runId, { handle, directory, sessions });
+    return handle;
+  }
+
+  async attachRun(prepared: PreparedProjectionRunHandle): Promise<ProjectionRunHandle> {
+    const context = this.preparedRuns.get(prepared.run.id);
+    if (context === undefined || context.handle !== prepared) {
+      throw new ProjectionLifecycleError("RUN_NOT_PREPARED", prepared.run.id, "Projection run is not prepared in this lifecycle");
+    }
+    const attachSpan = await this.startSpan(prepared.run, "runtime.persistence.attach");
     let attachedRuntime: RuntimeHandle | undefined;
     try {
       const runtime = await this.bridge.attach({
-        run: preparing,
-        projectionRoot,
-        maintenanceEndpoint: input.maintenanceEndpoint,
+        run: prepared.run,
+        projectionRoot: prepared.projectionRoot,
+        maintenanceEndpoint: prepared.maintenanceEndpoint,
       });
       attachedRuntime = runtime;
-      await this.lease.setState(runId, "running");
+      await this.lease.setState(prepared.run.id, "running");
       const handle: ProjectionRunHandle = {
-        run: { ...preparing, state: "running" },
-        projectionRoot,
-        manifest,
-        inspection,
-        verification,
+        run: { ...prepared.run, state: "running" },
+        projectionRoot: prepared.projectionRoot,
+        manifest: prepared.manifest,
+        inspection: prepared.inspection,
+        verification: prepared.verification,
         runtime,
       };
-      const context: ProjectionAppendContext = {
+      const activeContext: ProjectionAppendContext = {
         handle,
-        directory,
-        wal: new ProjectionWriteAheadLog(projectionRoot),
-        sessions,
+        directory: context.directory,
+        wal: new ProjectionWriteAheadLog(prepared.projectionRoot),
+        sessions: context.sessions,
         acceptingAppends: true,
       };
-      this.activeRuns.set(runId, context);
+      this.preparedRuns.delete(prepared.run.id);
+      this.activeRuns.set(prepared.run.id, activeContext);
       if ("bindAppendHandler" in this.bridge && typeof this.bridge.bindAppendHandler === "function") {
         await (this.bridge as MutableNativeProjectionBridge & {
           bindAppendHandler(
@@ -233,14 +268,19 @@ export class ProjectionLifecycle {
       await this.statusLog.succeed(attachSpan);
       return handle;
     } catch (error) {
-      this.activeRuns.delete(runId);
+      this.preparedRuns.delete(prepared.run.id);
+      this.activeRuns.delete(prepared.run.id);
       if (attachedRuntime !== undefined) {
         await this.bridge.detach(attachedRuntime).catch(() => undefined);
       }
-      await this.quarantine(runId);
+      await this.quarantine(prepared.run.id);
       await this.statusLog.fail(attachSpan, { errorCode: "RUNTIME_ATTACH_FAILED" });
-      throw new ProjectionLifecycleError("RUNTIME_ATTACH_FAILED", runId, "Alpha2 runtime persistence attach failed", { cause: error });
+      throw new ProjectionLifecycleError("RUNTIME_ATTACH_FAILED", prepared.run.id, "Alpha2 runtime persistence attach failed", { cause: error });
     }
+  }
+
+  async openRun(input: OpenProjectionRunInput): Promise<ProjectionRunHandle> {
+    return this.attachRun(await this.prepareRun(input));
   }
 
   async append(
@@ -267,6 +307,44 @@ export class ProjectionLifecycle {
       canonicalEngine: this.canonicalEngine,
       clock: this.clock,
     });
+  }
+
+  async registerNativeSession(
+    handle: ProjectionRunHandle,
+    registration: NativeSessionRegistration,
+  ): Promise<ProjectionSession> {
+    const context = this.activeRuns.get(handle.run.id);
+    if (context === undefined || context.handle.runtime !== handle.runtime) {
+      throw new ProjectionLifecycleError("RUN_NOT_ACTIVE", handle.run.id, "Projection run is not active in this lifecycle");
+    }
+    if (context.sessions.has(registration.nativeSessionId)) {
+      return context.sessions.get(registration.nativeSessionId)!.projection;
+    }
+    if (this.bridge.registerSession === undefined) {
+      throw new ProjectionLifecycleError("RUNTIME_SESSION_REGISTER_UNSUPPORTED", handle.run.id, "Runtime bridge cannot register a new native session");
+    }
+    await this.bridge.registerSession(handle.runtime, registration, context.directory);
+    const projection: ProjectionSession = {
+      schemaVersion: 1,
+      runId: handle.run.id,
+      nativeSessionId: registration.nativeSessionId,
+      logicalSessionId: registration.logicalSessionId,
+      baseVersionId: null,
+      mode: "maintenance-write",
+      nativeRevision: 0,
+      lastCommittedOperationId: null,
+      derivedChildSessionId: null,
+    };
+    await this.runRepository.upsertProjectionSession(projection);
+    context.sessions.set(registration.nativeSessionId, {
+      projection,
+      title: registration.title,
+      tags: [],
+      archivedAt: null,
+      workspaceId: registration.workspaceId,
+      authorityScope: "maintenance",
+    });
+    return projection;
   }
 
   /** Drains accepted writes before hiding one session from the attached temporary projection. */

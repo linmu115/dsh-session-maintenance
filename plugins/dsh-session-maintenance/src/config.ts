@@ -19,6 +19,11 @@ export interface LauncherProjectionProfile {
   readonly adapterSelection: "auto" | "pinned" | "experimental";
   readonly pinnedAdapterId: string | null;
   readonly branchId: string;
+  readonly ownerClientId: string;
+  readonly runtimeClientId: string;
+  readonly runId: string;
+  readonly temporaryPersistenceRootId: string;
+  readonly dshVersion: string;
 }
 
 const SAFE_ID = /^[A-Za-z0-9@][A-Za-z0-9@/._:-]{0,255}$/u;
@@ -60,24 +65,16 @@ export function launcherProjectionProfile(
   const encoded = environment.DSH_SESSION_MAINTENANCE_LAUNCH_PROFILE;
   if (encoded === undefined || encoded.trim().length === 0) {
     if (normalized.sessionSource !== "maintenance") return null;
-    const endpoint = normalized.maintenanceEndpoint ?? "auto";
-    if (endpoint === "auto") {
-      throw new TypeError("Launcher must resolve maintenanceEndpoint=auto before DSH starts");
-    }
-    return {
-      schemaVersion: 1,
-      sessionSource: "maintenance",
-      maintenanceEndpoint: loopbackOrigin(endpoint),
-      adapterSelection: normalized.adapterSelection ?? "auto",
-      pinnedAdapterId: normalized.pinnedAdapterId ?? null,
-      branchId: "main",
-    };
+    throw new TypeError("Maintenance sessions require a Runtime Broker prepared handoff before DSH starts");
   }
   let value: unknown;
   try { value = JSON.parse(encoded); } catch { throw new TypeError("Launcher Maintenance profile metadata is not valid JSON"); }
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError("Launcher Maintenance profile metadata is invalid");
   const record = value as Record<string, unknown>;
-  const allowed = new Set(["schemaVersion", "sessionSource", "maintenanceEndpoint", "adapterSelection", "pinnedAdapterId", "branchId"]);
+  const allowed = new Set([
+    "schemaVersion", "sessionSource", "maintenanceEndpoint", "adapterSelection", "pinnedAdapterId", "branchId",
+    "ownerClientId", "runtimeClientId", "runId", "temporaryPersistenceRootId", "dshVersion",
+  ]);
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("Launcher Maintenance profile metadata contains unsupported fields");
   if (record.schemaVersion !== 1 || record.sessionSource !== "maintenance") throw new TypeError("Launcher Maintenance profile schema is unsupported");
   if (record.adapterSelection !== "auto" && record.adapterSelection !== "pinned" && record.adapterSelection !== "experimental") {
@@ -88,6 +85,12 @@ export function launcherProjectionProfile(
   }
   if (record.adapterSelection === "pinned" && record.pinnedAdapterId === null) throw new TypeError("Launcher pinned adapter is missing");
   if (typeof record.branchId !== "string" || !SAFE_ID.test(record.branchId)) throw new TypeError("Launcher branchId is invalid");
+  for (const key of ["ownerClientId", "runtimeClientId", "runId", "temporaryPersistenceRootId"] as const) {
+    if (typeof record[key] !== "string" || !SAFE_ID.test(record[key] as string)) throw new TypeError(`Launcher ${key} is invalid`);
+  }
+  if (typeof record.dshVersion !== "string" || record.dshVersion.length === 0 || record.dshVersion.length > 100) {
+    throw new TypeError("Launcher dshVersion is invalid");
+  }
   return {
     schemaVersion: 1,
     sessionSource: "maintenance",
@@ -95,6 +98,11 @@ export function launcherProjectionProfile(
     adapterSelection: record.adapterSelection,
     pinnedAdapterId: record.pinnedAdapterId as string | null,
     branchId: record.branchId,
+    ownerClientId: record.ownerClientId as string,
+    runtimeClientId: record.runtimeClientId as string,
+    runId: record.runId as string,
+    temporaryPersistenceRootId: record.temporaryPersistenceRootId as string,
+    dshVersion: record.dshVersion,
   };
 }
 

@@ -3,6 +3,7 @@ import type {
   JsonValue,
   LogicalSessionId,
   NativeAppendOperation,
+  NativeSessionRegistration,
   ProjectionOperationReceipt,
   RunId,
   RuntimeAttachContext,
@@ -32,6 +33,7 @@ export interface Alpha2RuntimeRegistrar {
 export interface Alpha2MutableProjection {
   readSession(nativeSessionId: NativeAppendOperation["nativeSessionId"]): Promise<JsonValue>;
   replaceSession(nativeSessionId: NativeAppendOperation["nativeSessionId"], payload: JsonValue): Promise<void>;
+  writeSession?(nativeSessionId: NativeAppendOperation["nativeSessionId"], payload: JsonValue): Promise<void>;
 }
 
 export type Alpha2AppendHandler = (
@@ -124,6 +126,27 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
     await projection.replaceSession(operation.nativeSessionId, {
       ...session,
       events: [...session.events as readonly JsonValue[], ...appendedEvents],
+    });
+  }
+
+  async registerSession(
+    handle: RuntimeHandle,
+    registration: NativeSessionRegistration,
+    projection: Alpha2MutableProjection,
+  ): Promise<void> {
+    this.registration(handle);
+    if (projection.writeSession === undefined) throw new Error("Alpha2 projection cannot register a new native session");
+    const header = record(registration.header, "Alpha2 new SessionHeader");
+    if (header.id !== registration.nativeSessionId) throw new Error("Alpha2 new SessionHeader ID does not match nativeSessionId");
+    await projection.writeSession(registration.nativeSessionId, {
+      schemaVersion: 1,
+      logicalSessionId: registration.logicalSessionId,
+      baseVersionId: null,
+      workspaceId: registration.workspaceId,
+      title: registration.title,
+      tags: [],
+      header,
+      events: [],
     });
   }
 

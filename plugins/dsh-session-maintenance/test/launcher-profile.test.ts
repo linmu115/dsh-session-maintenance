@@ -8,6 +8,14 @@ const base = {
   profileId: "web",
 } as const;
 
+const brokerFields = {
+  ownerClientId: "launcher-client-test",
+  runtimeClientId: "plugin-client-test",
+  runId: "run-alpha2-test",
+  temporaryPersistenceRootId: "projection:run-alpha2-test",
+  dshVersion: "0.1.2-alpha.2",
+} as const;
+
 describe("Launcher Maintenance profile contract", () => {
   it("accepts the runtime-only launcher hand-off without a native session path", () => {
     const encoded = JSON.stringify({
@@ -17,6 +25,7 @@ describe("Launcher Maintenance profile contract", () => {
       adapterSelection: "auto",
       pinnedAdapterId: null,
       branchId: "main",
+      ...brokerFields,
     });
     const profile = launcherProjectionProfile(base, {
       DSH_SESSION_MAINTENANCE_LAUNCH_PROFILE: encoded,
@@ -50,6 +59,7 @@ describe("Launcher Maintenance profile contract", () => {
         adapterSelection: "auto",
         pinnedAdapterId: null,
         branchId: "main",
+        ...brokerFields,
       }),
     })).toThrow("loopback");
     expect(() => launcherProjectionProfile(base, {
@@ -60,6 +70,7 @@ describe("Launcher Maintenance profile contract", () => {
         adapterSelection: "pinned",
         pinnedAdapterId: null,
         branchId: "main",
+        ...brokerFields,
         sessionPath: "D:/forbidden/sessions",
       }),
     })).toThrow("unsupported fields");
