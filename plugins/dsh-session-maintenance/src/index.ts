@@ -13,6 +13,7 @@ import {
   ProjectionRuntimeRegistrar,
   RuntimeBrokerPluginClient,
 } from "./projection-runtime.js";
+import { createRuntimeShutdownHandler } from "./runtime-shutdown.js";
 
 export const name = "dsh-session-maintenance";
 export type Config = PluginConfig;
@@ -27,9 +28,10 @@ export const Config = s.object({
   pinnedAdapterId: s.string().default(""),
 });
 
-export const inject = ["webServer", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery"] as const;
+export const inject = ["webServer", "appExit", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery"] as const;
 
 interface HostContext extends CoreRuntimeContext {
+  readonly appExit: { exit(code: number): void };
   readonly sessions: CoreRuntimeContext["sessions"] & { flush(session: Session): Promise<void> };
   readonly webServer: { register(input: { kind: "prefix"; path: string; handler: ReturnType<typeof createProxyHandler> | ReturnType<typeof createCoreGatewayHandler> }): void | (() => void) };
   effect(callback: () => void | (() => void | Promise<void>), label?: string): void;
@@ -83,6 +85,19 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       offFlush();
       await runtime.drain(new Date().toISOString());
     }, "dsh-session-maintenance: runtime broker session durability");
+    const unregisterShutdown = ctx.webServer.register({
+      kind: "prefix",
+      path: "/dsh-session-maintenance/runtime/shutdown",
+      handler: createRuntimeShutdownHandler({
+        connection,
+        runId: launchProfile.runId,
+        ownerClientId: launchProfile.ownerClientId,
+        exit: (code) => { ctx.appExit.exit(code); },
+      }),
+    });
+    ctx.effect(() => () => {
+      if (typeof unregisterShutdown === "function") unregisterShutdown();
+    }, "dsh-session-maintenance: graceful runtime shutdown");
   }
   const unregisterProxy = ctx.webServer.register({
     kind: "prefix",
@@ -108,3 +123,4 @@ export * from "./core-gateway.js";
 export * from "./engine-proxy.js";
 export * from "./manager-actions.js";
 export * from "./projection-runtime.js";
+export * from "./runtime-shutdown.js";
