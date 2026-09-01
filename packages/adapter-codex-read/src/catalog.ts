@@ -29,7 +29,7 @@ export async function* listCodexSessions(
   const rows = withCodexReadSnapshot(instance.root, (database) =>
     database
       .prepare(
-        `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived
+        `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived, project_id
          FROM threads ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC, id`,
       )
       .all() as unknown as CodexThreadRow[],

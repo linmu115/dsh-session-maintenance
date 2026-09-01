@@ -1,4 +1,6 @@
 export * from "./cli.js";
+export * from "./codex-canonical-import.js";
+export * from "./sqlite-codex-project-port.js";
 export * from "./composition-root.js";
 export * from "./config.js";
 export * from "./dsh-gateway-connection.js";

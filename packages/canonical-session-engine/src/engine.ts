@@ -1,19 +1,23 @@
 import type {
+  AdapterContractRef,
   CanonicalEventV1,
   CanonicalSessionRecord,
   JsonValue,
   LogicalSessionId,
   LogicalWorkspaceId,
   OperationId,
+  PlatformSessionKey,
   ProjectionOperationReceipt,
   SessionDerivation,
   SessionTombstone,
   SessionVersionId,
+  StateFingerprint,
   WorkspaceMembership,
 } from "@linmu/dsh-session-contracts";
 
 import { observeCodex, type CodexObservationInput } from "./codex-observation.js";
 import { appendDsh, type DshAppendInput } from "./dsh-append.js";
+import { importDshNative, type DshNativeImportInput } from "./dsh-native-import.js";
 import {
   restoreSession,
   tombstoneSession,
@@ -45,10 +49,17 @@ export interface CanonicalSessionSnapshot {
 
 export interface CodexObservationRecord {
   readonly logicalSessionId: LogicalSessionId;
+  readonly versionId: SessionVersionId;
   readonly sourceCursor: string | null;
   readonly observedAt: string;
   readonly bodyDigest: string;
   readonly metadataDigest: string;
+  readonly authorityBinding: {
+    readonly bindingId: string;
+    readonly key: PlatformSessionKey;
+    readonly adapterContract: AdapterContractRef;
+    readonly fingerprint: StateFingerprint;
+  } | null;
 }
 
 export type CanonicalEngineOutcome =
@@ -68,7 +79,7 @@ export interface CanonicalEngineReceipt {
 }
 
 export interface CanonicalEngineMutation {
-  readonly kind: "codex-observation" | "dsh-append" | "dsh-derivation" | "tombstone" | "restore";
+  readonly kind: "codex-observation" | "dsh-native-import" | "dsh-append" | "dsh-derivation" | "tombstone" | "restore";
   readonly operationId: OperationId | null;
   readonly session: CanonicalSessionRecord;
   readonly version: CanonicalVersionRecord | null;
@@ -102,6 +113,10 @@ export class CanonicalSessionEngine {
 
   async appendDsh(input: DshAppendInput): Promise<CanonicalEngineReceipt> {
     return appendDsh(this.store, input);
+  }
+
+  async importDshNative(input: DshNativeImportInput): Promise<CanonicalEngineReceipt> {
+    return importDshNative(this.store, input);
   }
 
   async tombstone(input: TombstoneSessionInput): Promise<CanonicalEngineReceipt> {

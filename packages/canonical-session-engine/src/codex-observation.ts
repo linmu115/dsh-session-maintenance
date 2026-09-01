@@ -1,11 +1,14 @@
 import {
   canonicalEventV1Schema,
+  type AdapterContractRef,
   type CanonicalEventV1,
   type CanonicalSessionRecord,
   type JsonValue,
   type LogicalSessionId,
   type LogicalWorkspaceId,
+  type PlatformSessionKey,
   type SessionVersionId,
+  type StateFingerprint,
   type WorkspaceMembership,
 } from "@linmu/dsh-session-contracts";
 import { sha256Canonical, versionIdFor } from "@linmu/dsh-session-domain";
@@ -26,6 +29,12 @@ export interface CodexObservationInput {
   readonly events: readonly CanonicalEventV1[];
   readonly sourceCursor: string | null;
   readonly observedAt: string;
+  readonly authorityBinding?: {
+    readonly bindingId: string;
+    readonly key: PlatformSessionKey;
+    readonly adapterContract: AdapterContractRef;
+    readonly fingerprint: StateFingerprint;
+  };
 }
 
 export interface CanonicalVersionInput {
@@ -144,10 +153,12 @@ export async function observeCodex(
   });
   const observation: CodexObservationRecord = {
     logicalSessionId: input.logicalSessionId,
+    versionId: version.id,
     sourceCursor: input.sourceCursor,
     observedAt: input.observedAt,
     bodyDigest: version.bodyDigest,
     metadataDigest: version.metadataDigest,
+    authorityBinding: input.authorityBinding ?? null,
   };
   if (current?.headVersionId !== null && current !== undefined) {
     const head = await store.getVersion(current.headVersionId);
@@ -155,7 +166,7 @@ export async function observeCodex(
       throw new Error(`Canonical head version is missing: ${current.headVersionId}`);
     }
     if (head.bodyDigest === version.bodyDigest && head.metadataDigest === version.metadataDigest) {
-      await store.recordCodexObservation(observation);
+      await store.recordCodexObservation({ ...observation, versionId: head.id });
       return {
         outcome: "noop",
         operationId: null,

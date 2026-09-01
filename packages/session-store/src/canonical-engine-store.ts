@@ -156,9 +156,16 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     };
   }
 
-  async recordCodexObservation(_input: CodexObservationRecord): Promise<void> {
-    // Source cursors remain authoritative in platform_refs. A no-op observation
-    // does not create another canonical version or duplicate the Codex log.
+  async recordCodexObservation(input: CodexObservationRecord): Promise<void> {
+    if (input.authorityBinding === null) return;
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.putCodexAuthorityBinding(input);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      try { this.database.exec("ROLLBACK"); } catch { /* preserve write failure */ }
+      throw error;
+    }
   }
 
   async commit(input: CanonicalEngineMutation): Promise<CanonicalEngineReceipt> {
@@ -169,6 +176,9 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     try {
       this.ensureSession(input.session);
       if (input.version !== null && bodyObject !== null) this.putVersion(input.version, bodyObject);
+      if (input.observation !== null && input.observation.authorityBinding !== null) {
+        this.putCodexAuthorityBinding(input.observation);
+      }
       this.updateSession(input.session);
       if (input.membership !== null) await this.workspaces.setMembership(input.membership);
       if (input.derivation !== null) this.putDerivation(input.derivation);
@@ -265,6 +275,59 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
       if (event.logicalSessionId !== input.logicalSessionId) continue;
       eventInsert.run(event.id, input.logicalSessionId, event.sequence, event.kind, event.contentDigest, canonicalJson(event as unknown as JsonValue));
     }
+  }
+
+  private putCodexAuthorityBinding(input: CodexObservationRecord): void {
+    const authority = input.authorityBinding;
+    if (authority === null) return;
+    if (authority.key.platform !== "codex") {
+      throw new Error(`Codex observation has a non-Codex authority key: ${authority.key.platform}`);
+    }
+    const existing = this.database.prepare(
+      `SELECT logical_session_id, platform, instance_id, session_id
+       FROM platform_bindings WHERE id = ?`,
+    ).get(authority.bindingId) as {
+      readonly logical_session_id: string;
+      readonly platform: string;
+      readonly instance_id: string;
+      readonly session_id: string;
+    } | undefined;
+    if (existing !== undefined && (
+      existing.logical_session_id !== input.logicalSessionId ||
+      existing.platform !== authority.key.platform ||
+      existing.instance_id !== authority.key.instanceId ||
+      existing.session_id !== authority.key.sessionId
+    )) {
+      throw new Error(`Codex authority binding identity collision: ${authority.bindingId}`);
+    }
+    this.database.prepare(
+      `INSERT INTO platform_bindings
+        (id, logical_session_id, platform, instance_id, session_id,
+         adapter_contract_json, last_common_version_id, status)
+       VALUES (?, ?, ?, ?, ?, ?, NULL, 'read-only')
+       ON CONFLICT(id) DO UPDATE SET adapter_contract_json = excluded.adapter_contract_json`,
+    ).run(
+      authority.bindingId,
+      input.logicalSessionId,
+      authority.key.platform,
+      authority.key.instanceId,
+      authority.key.sessionId,
+      canonicalJson(authority.adapterContract as unknown as JsonValue),
+    );
+    this.database.prepare(
+      `INSERT INTO platform_refs
+        (binding_id, version_id, observed_at, fingerprint_json)
+       VALUES (?, ?, ?, ?)
+       ON CONFLICT(binding_id) DO UPDATE SET
+         version_id = excluded.version_id,
+         observed_at = excluded.observed_at,
+         fingerprint_json = excluded.fingerprint_json`,
+    ).run(
+      authority.bindingId,
+      input.versionId,
+      input.observedAt,
+      canonicalJson(authority.fingerprint as unknown as JsonValue),
+    );
   }
 
   private putDerivation(input: NonNullable<CanonicalEngineMutation["derivation"]>): void {

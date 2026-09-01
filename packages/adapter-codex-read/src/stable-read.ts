@@ -72,7 +72,7 @@ export function withCodexReadSnapshot<T>(
 export function readThread(database: DatabaseSync, id: string): CodexThreadRow | undefined {
   return database
     .prepare(
-      `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived
+      `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived, project_id
        FROM threads WHERE id = ?`,
     )
     .get(id) as CodexThreadRow | undefined;

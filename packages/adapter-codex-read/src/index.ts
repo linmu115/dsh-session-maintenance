@@ -140,5 +140,6 @@ export * from "./catalog.js";
 export * from "./normalizer.js";
 export * from "./parser.js";
 export * from "./probe.js";
+export * from "./projects.js";
 export * from "./stable-read.js";
 export * from "./status.js";

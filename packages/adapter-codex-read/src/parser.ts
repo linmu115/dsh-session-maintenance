@@ -19,6 +19,7 @@ export interface CodexThreadRow {
   readonly updated_at: number;
   readonly updated_at_ms: number | null;
   readonly archived: number;
+  readonly project_id: string | null;
 }
 
 export interface CodexObservationPayload {
