@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- Separate logical projects from execution workspaces. Project roots are
+  projected to Alpha2 `SessionHeader.cwd`, while the canonical workspace/cwd is
+  preserved independently and is never reconstructed from the projection.
+- Add read-only Codex WAL snapshots and direct canonical hot import. Unchanged
+  Codex sessions remain no-ops; a DSH continuation becomes a derived branch
+  only after Alpha2 records a new session event.
+- Add a verified Alpha2 reseed command that builds a new candidate database,
+  preserves selected DSH/Obsidian test sessions with their complete raw event
+  envelopes, imports the live Codex catalog, checks project/workspace
+  memberships and refuses activation on any integrity or count mismatch.
+- Group the standalone WebUI by project and render canonical conversations as
+  inert, sanitized Markdown without executing raw HTML or active resources.
 - Add the client-neutral Runtime Broker `prepare`, `attach`, `append`, `flush`,
   `drain` and owner-only `close` protocol for Alpha2 temporary projections.
 - Observe Alpha2's public `session/event` and `session/flush` hooks with ordered
