@@ -6,6 +6,7 @@ import {
   checkpointResponseSchema,
   canonicalDashboardSessionResponseSchema,
   canonicalWorkspaceDirectoryResponseSchema,
+  canonicalProjectDirectoryResponseSchema,
   continuationJobResponseSchema,
   continuationPreviewResponseSchema,
   diagnosticsResponseSchema,
@@ -32,6 +33,7 @@ import {
   type Checkpoint,
   type CanonicalDashboardSessionDetail,
   type CanonicalWorkspaceDirectory,
+  type CanonicalProjectDirectory,
   type CanonicalSessionMaintenancePatch,
   type CanonicalSessionDeleteResult,
   type CanonicalSessionRestoreResult,
@@ -165,6 +167,15 @@ class ApiClient {
       canonicalWorkspaceDirectoryResponseSchema,
       signal,
     )).directory as unknown as CanonicalWorkspaceDirectory;
+  }
+
+  async listCanonicalProjects(signal?: AbortSignal): Promise<CanonicalProjectDirectory> {
+    return (await this.request(
+      "/v1/canonical/projects",
+      {},
+      canonicalProjectDirectoryResponseSchema,
+      signal,
+    )).directory as unknown as CanonicalProjectDirectory;
   }
 
   async getCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail> {

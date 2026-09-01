@@ -2,6 +2,7 @@ import type {
   AdapterId,
   CanonicalEventV1,
   CanonicalSessionRecord,
+  LogicalProjectId,
   LogicalSessionId,
   LogicalWorkspace,
   LogicalWorkspaceId,
@@ -65,6 +66,10 @@ export interface CanonicalProjectionSessionInput {
   readonly session: CanonicalSessionRecord;
   readonly events: readonly CanonicalEventV1[];
   readonly workspaceId: LogicalWorkspaceId | null;
+  /** Stable project grouping identity, distinct from workspace/cwd execution metadata. */
+  readonly projectId: LogicalProjectId | null;
+  /** Selected canonical project root; the version adapter may map it to native SessionHeader.cwd. */
+  readonly projectRoot: string | null;
 }
 
 export interface CanonicalProjectionInput {

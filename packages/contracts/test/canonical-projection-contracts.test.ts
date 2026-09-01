@@ -3,6 +3,9 @@ import { describe, expect, it } from "vitest";
 import {
   adapterManifestV1Schema,
   canonicalEventV1Schema,
+  logicalProjectSchema,
+  projectMembershipSchema,
+  projectRootSchema,
   canonicalSessionRecordSchema,
   logicalWorkspaceSchema,
   projectionOperationReceiptSchema,
@@ -64,6 +67,33 @@ describe("canonical projection contracts", () => {
 
     expect(canonicalSessionRecordSchema.parse(session)).toEqual(session);
     expect(logicalWorkspaceSchema.parse(workspace)).toEqual(workspace);
+    const project = {
+      schemaVersion: 1 as const,
+      id: "project-skill-management",
+      name: "Skill 管理",
+      sourcePlatform: "codex" as const,
+      sourceProjectId: "codex-project-skill-management",
+      sortKey: "0001",
+      deletedAt: null,
+      createdAt: at,
+      updatedAt: at,
+    };
+    const root = {
+      schemaVersion: 1 as const,
+      projectId: project.id,
+      path: "D:/AI/Skill-Management",
+      normalizedPath: "d:/ai/skill-management",
+      ordinal: 0,
+    };
+    const membership = {
+      schemaVersion: 1 as const,
+      logicalSessionId: session.id,
+      projectId: project.id,
+      revision: 1,
+    };
+    expect(logicalProjectSchema.parse(project)).toEqual(project);
+    expect(projectRootSchema.parse(root)).toEqual(root);
+    expect(projectMembershipSchema.parse(membership)).toEqual(membership);
     expect(sessionDerivationSchema.parse(derivation)).toEqual(derivation);
     expect(sessionTombstoneSchema.parse(tombstone)).toEqual(tombstone);
   });

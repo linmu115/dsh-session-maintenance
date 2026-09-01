@@ -128,6 +128,30 @@ export const workspaceMembershipSchema = z.strictObject({
   archived: z.boolean(),
   revision: nonNegativeIntegerSchema,
 });
+export const logicalProjectSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  name: z.string().min(1),
+  sourcePlatform: z.enum(["codex", "maintenance"]),
+  sourceProjectId: z.string().min(1).nullable(),
+  sortKey: z.string(),
+  deletedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const projectRootSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  projectId: idSchema,
+  path: z.string().min(1),
+  normalizedPath: z.string().min(1),
+  ordinal: nonNegativeIntegerSchema,
+});
+export const projectMembershipSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  projectId: idSchema.nullable(),
+  revision: nonNegativeIntegerSchema,
+});
 export const canonicalDashboardSessionSummarySchema = z.strictObject({
   session: canonicalSessionRecordSchema,
   membership: workspaceMembershipSchema.nullable(),
@@ -144,6 +168,19 @@ export const canonicalWorkspaceDirectorySchema = z.strictObject({
 export const canonicalWorkspaceDirectoryResponseSchema = z.strictObject({
   directory: canonicalWorkspaceDirectorySchema,
 });
+export const canonicalDashboardProjectSchema = z.strictObject({
+  project: logicalProjectSchema,
+  roots: z.array(projectRootSchema),
+  sessions: z.array(canonicalDashboardSessionSummarySchema),
+});
+export const canonicalProjectDirectorySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  projects: z.array(canonicalDashboardProjectSchema),
+  unclassified: z.array(canonicalDashboardSessionSummarySchema),
+});
+export const canonicalProjectDirectoryResponseSchema = z.strictObject({
+  directory: canonicalProjectDirectorySchema,
+});
 export const canonicalLineageRelationSchema = z.strictObject({
   derivation: sessionDerivationSchema,
   session: canonicalSessionRecordSchema,
@@ -153,6 +190,9 @@ export const canonicalDashboardSessionDetailSchema = z.strictObject({
   session: canonicalSessionRecordSchema,
   membership: workspaceMembershipSchema.nullable(),
   workspace: logicalWorkspaceSchema.nullable(),
+  projectMembership: projectMembershipSchema.nullable(),
+  project: logicalProjectSchema.nullable(),
+  projectRoots: z.array(projectRootSchema),
   events: z.array(canonicalEventV1Schema),
   parent: canonicalLineageRelationSchema.nullable(),
   children: z.array(canonicalLineageRelationSchema),

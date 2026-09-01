@@ -44,8 +44,10 @@ import { hasUiSessionCookie, type UiSessionManager } from "./ui-session.js";
 import {
   DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH,
   DASHBOARD_CANONICAL_WORKSPACES_PATH,
+  DASHBOARD_CANONICAL_PROJECTS_PATH,
   readCanonicalDashboardSession,
   readCanonicalWorkspaceDirectory,
+  readCanonicalProjectDirectory,
   updateCanonicalDashboardSession,
   deleteCanonicalDashboardSession,
   restoreCanonicalDashboardSession,
@@ -228,6 +230,10 @@ export async function routeRequest(
     }
     if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_WORKSPACES_PATH) {
       send(response, 200, { directory: await readCanonicalWorkspaceDirectory(context.engine.repository.database) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_PROJECTS_PATH) {
+      send(response, 200, { directory: await readCanonicalProjectDirectory(context.engine.repository.database) });
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/canonical/recently-deleted") {

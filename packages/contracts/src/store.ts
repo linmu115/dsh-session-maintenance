@@ -34,10 +34,14 @@ import type {
   CanonicalSessionRecord,
   LogicalSessionId,
   LogicalWorkspace,
+  LogicalProject,
+  LogicalProjectId,
   OperationId,
   SessionDerivation,
   SessionTombstone,
   WorkspaceMembership,
+  ProjectMembership,
+  ProjectRoot,
 } from "./canonical.js";
 import type {
   ProjectionOperationReceipt,
@@ -158,6 +162,9 @@ export interface CanonicalSessionRepository {
   findDerivationByOperationId(operationId: OperationId): Promise<SessionDerivation | undefined>;
   upsertLogicalWorkspace(input: LogicalWorkspace): Promise<void>;
   setWorkspaceMembership(input: WorkspaceMembership): Promise<void>;
+  upsertLogicalProject(input: LogicalProject): Promise<void>;
+  replaceProjectRoots(projectId: LogicalProjectId, roots: readonly ProjectRoot[]): Promise<void>;
+  setProjectMembership(input: ProjectMembership): Promise<void>;
   saveTombstone(input: SessionTombstone): Promise<void>;
   getTombstone(logicalSessionId: LogicalSessionId): Promise<SessionTombstone | undefined>;
 }

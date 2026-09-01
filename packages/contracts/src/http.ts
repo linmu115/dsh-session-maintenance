@@ -30,6 +30,9 @@ import type {
   CanonicalEventV1,
   CanonicalSessionRecord,
   LogicalWorkspace,
+  LogicalProject,
+  ProjectMembership,
+  ProjectRoot,
   SessionDerivation,
   WorkspaceMembership,
 } from "./canonical.js";
@@ -179,6 +182,23 @@ export interface CanonicalWorkspaceDirectoryResponse {
   readonly directory: CanonicalWorkspaceDirectory;
 }
 
+export interface CanonicalDashboardProject {
+  readonly project: LogicalProject;
+  readonly roots: readonly ProjectRoot[];
+  readonly sessions: readonly CanonicalDashboardSessionSummary[];
+}
+
+/** Top-level session directory. Workspace remains independent session execution metadata. */
+export interface CanonicalProjectDirectory {
+  readonly schemaVersion: 1;
+  readonly projects: readonly CanonicalDashboardProject[];
+  readonly unclassified: readonly CanonicalDashboardSessionSummary[];
+}
+
+export interface CanonicalProjectDirectoryResponse {
+  readonly directory: CanonicalProjectDirectory;
+}
+
 export interface CanonicalLineageRelation {
   readonly derivation: SessionDerivation;
   readonly session: CanonicalSessionRecord;
@@ -189,6 +209,9 @@ export interface CanonicalDashboardSessionDetail {
   readonly session: CanonicalSessionRecord;
   readonly membership: WorkspaceMembership | null;
   readonly workspace: LogicalWorkspace | null;
+  readonly projectMembership: ProjectMembership | null;
+  readonly project: LogicalProject | null;
+  readonly projectRoots: readonly ProjectRoot[];
   readonly events: readonly CanonicalEventV1[];
   readonly parent: CanonicalLineageRelation | null;
   readonly children: readonly CanonicalLineageRelation[];

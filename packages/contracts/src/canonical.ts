@@ -9,6 +9,7 @@ export type BrandedId<Name extends string> = string & {
 export type LogicalSessionId = BrandedId<"LogicalSessionId">;
 export type SessionVersionId = BrandedId<"SessionVersionId">;
 export type LogicalWorkspaceId = BrandedId<"LogicalWorkspaceId">;
+export type LogicalProjectId = BrandedId<"LogicalProjectId">;
 export type RunId = BrandedId<"RunId">;
 export type LeaseId = BrandedId<"LeaseId">;
 export type BranchId = BrandedId<"BranchId">;
@@ -109,6 +110,34 @@ export interface WorkspaceMembership {
   readonly displayOrder: number;
   readonly pinned: boolean;
   readonly archived: boolean;
+  readonly revision: number;
+}
+
+/** Stable top-level directory identity. Projects group sessions; workspaces remain an independent execution context. */
+export interface LogicalProject {
+  readonly schemaVersion: 1;
+  readonly id: LogicalProjectId;
+  readonly name: string;
+  readonly sourcePlatform: "codex" | "maintenance";
+  readonly sourceProjectId: string | null;
+  readonly sortKey: string;
+  readonly deletedAt: string | null;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ProjectRoot {
+  readonly schemaVersion: 1;
+  readonly projectId: LogicalProjectId;
+  readonly path: string;
+  readonly normalizedPath: string;
+  readonly ordinal: number;
+}
+
+export interface ProjectMembership {
+  readonly schemaVersion: 1;
+  readonly logicalSessionId: LogicalSessionId;
+  readonly projectId: LogicalProjectId | null;
   readonly revision: number;
 }
 

@@ -36,6 +36,9 @@ describe("canonical dashboard API", () => {
       },
     });
     await canonical.upsertLogicalWorkspace({ schemaVersion: 1, id: "workspace-root" as never, parentId: null, name: "研究", sortKey: "a", deletedAt: null, createdAt: at, updatedAt: at });
+    await canonical.upsertLogicalProject({ schemaVersion: 1, id: "project-skill" as never, name: "Skill 管理", sourcePlatform: "codex", sourceProjectId: "skill-project", sortKey: "a", deletedAt: null, createdAt: at, updatedAt: at });
+    await canonical.replaceProjectRoots("project-skill" as never, [{ schemaVersion: 1, projectId: "project-skill" as never, path: "D:/AI/Skill", normalizedPath: "d:/ai/skill", ordinal: 0 }]);
+    await canonical.setProjectMembership({ schemaVersion: 1, logicalSessionId: "logical-parent" as never, projectId: "project-skill" as never, revision: 1 });
     await canonical.setWorkspaceMembership({ schemaVersion: 1, logicalSessionId: "logical-parent" as never, workspaceId: "workspace-root" as never, displayOrder: 0, pinned: true, archived: false, revision: 1 });
     await canonical.setWorkspaceMembership({ schemaVersion: 1, logicalSessionId: "logical-child" as never, workspaceId: "workspace-root" as never, displayOrder: 1, pinned: false, archived: false, revision: 1 });
     await canonical.putCanonicalEvent({
@@ -50,7 +53,13 @@ describe("canonical dashboard API", () => {
     expect(directory.workspaces[0]?.sessions.map((entry) => [entry.session.title, entry.session.originKind])).toEqual([
       ["同名会话", "codex-mirror"], ["同名会话", "codex-derived"],
     ]);
+    const projects = await client.listCanonicalProjects();
+    expect(projects.projects[0]?.project.name).toBe("Skill 管理");
+    expect(projects.projects[0]?.sessions.map((entry) => entry.session.id)).toEqual(["logical-parent"]);
+    expect(projects.unclassified.map((entry) => entry.session.id)).toEqual(["logical-child"]);
     const parent = await client.getCanonicalSession("logical-parent");
+    expect(parent.project?.name).toBe("Skill 管理");
+    expect(parent.workspace?.name).toBe("研究");
     expect(parent.events.map((event) => event.content)).toEqual(["静态正文"]);
     expect(parent.children[0]?.session.id).toBe("logical-child");
     const child = await client.getCanonicalSession("logical-child");

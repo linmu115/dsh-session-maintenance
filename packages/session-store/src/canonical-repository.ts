@@ -19,6 +19,7 @@ import {
 import { canonicalJson } from "@linmu/dsh-session-domain";
 
 import { SqliteLogicalWorkspaceRepository } from "./logical-workspace-repository.js";
+import { SqliteLogicalProjectRepository } from "./logical-project-repository.js";
 import { SqliteSessionAliasRepository } from "./session-alias-repository.js";
 
 interface CanonicalSessionRow {
@@ -110,11 +111,13 @@ function parseTombstone(row: TombstoneRow): SessionTombstone {
 export class SqliteCanonicalRepository implements CanonicalSessionRepository {
   readonly database: DatabaseSync;
   readonly workspaces: SqliteLogicalWorkspaceRepository;
+  readonly projects: SqliteLogicalProjectRepository;
   readonly aliases: SqliteSessionAliasRepository;
 
   constructor(database: DatabaseSync) {
     this.database = database;
     this.workspaces = new SqliteLogicalWorkspaceRepository(database);
+    this.projects = new SqliteLogicalProjectRepository(database);
     this.aliases = new SqliteSessionAliasRepository(database);
   }
 
@@ -223,6 +226,21 @@ export class SqliteCanonicalRepository implements CanonicalSessionRepository {
 
   async setWorkspaceMembership(input: WorkspaceMembership): Promise<void> {
     await this.workspaces.setMembership(input);
+  }
+
+  async upsertLogicalProject(input: import("@linmu/dsh-session-contracts").LogicalProject): Promise<void> {
+    await this.projects.upsertProject(input);
+  }
+
+  async replaceProjectRoots(
+    projectId: import("@linmu/dsh-session-contracts").LogicalProjectId,
+    roots: readonly import("@linmu/dsh-session-contracts").ProjectRoot[],
+  ): Promise<void> {
+    await this.projects.replaceRoots(projectId, roots);
+  }
+
+  async setProjectMembership(input: import("@linmu/dsh-session-contracts").ProjectMembership): Promise<void> {
+    await this.projects.setMembership(input);
   }
 
   async saveTombstone(input: SessionTombstone): Promise<void> {
