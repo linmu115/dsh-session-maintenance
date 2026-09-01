@@ -18,10 +18,17 @@ import { listCodexSessions } from "./catalog.js";
 import { normalizeCodexObservation } from "./normalizer.js";
 import { probeCodexInstance } from "./probe.js";
 import { observeCodexSession, type CodexReadHooks } from "./stable-read.js";
+import type { CodexReadStatusEvent } from "./status.js";
 
 export interface CodexReadAdapterOptions {
   readonly fixtureGuard?: (root: string) => void;
   readonly afterRead?: (path: string) => void | Promise<void>;
+  /**
+   * Structured breakpoint entry for live Codex imports. Consumers can persist
+   * these events in their own diagnostic log without coupling this read-only
+   * adapter to a projection run.
+   */
+  readonly onStatus?: (event: CodexReadStatusEvent) => void | Promise<void>;
 }
 
 export interface CodexDebugCounters {
@@ -63,7 +70,12 @@ export class CodexReadAdapter implements SessionReadAdapter {
   }
 
   list(instance: RegisteredInstance, cursor?: ScanCursor): AsyncIterable<PlatformSessionSummary> {
-    return listCodexSessions(instance, cursor, this.options.fixtureGuard);
+    return listCodexSessions(
+      instance,
+      cursor,
+      this.options.fixtureGuard,
+      this.options.onStatus,
+    );
   }
 
   observe(
@@ -74,6 +86,7 @@ export class CodexReadAdapter implements SessionReadAdapter {
     const hooks: CodexReadHooks = {
       ...(this.options.fixtureGuard === undefined ? {} : { fixtureGuard: this.options.fixtureGuard }),
       ...(this.options.afterRead === undefined ? {} : { afterRead: this.options.afterRead }),
+      ...(this.options.onStatus === undefined ? {} : { onStatus: this.options.onStatus }),
       onBodyRead: () => {
         this.bodyReads += 1;
       },
@@ -128,3 +141,4 @@ export * from "./normalizer.js";
 export * from "./parser.js";
 export * from "./probe.js";
 export * from "./stable-read.js";
+export * from "./status.js";

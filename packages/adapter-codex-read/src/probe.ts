@@ -8,7 +8,7 @@ import type {
 import { sha256Canonical } from "@linmu/dsh-session-domain";
 
 import { parseCodexJsonl } from "./parser.js";
-import { openCodexDatabase, resolveContainedRollout } from "./stable-read.js";
+import { resolveContainedRollout, withCodexReadSnapshot } from "./stable-read.js";
 
 export const CODEX_SUPPORTED_VERSION = "0.146.0";
 export const CODEX_REQUIRED_THREAD_COLUMNS = [
@@ -67,26 +67,22 @@ export async function probeCodexInstance(
   }
 
   try {
-    const database = openCodexDatabase(instance.root);
-    let columns: Array<readonly [string, string, number, number]>;
-    let rolloutPath: string | undefined;
-    try {
-      columns = (
+    const snapshot = withCodexReadSnapshot(instance.root, (database) => ({
+      columns: (
         database.prepare("PRAGMA table_info(threads)").all() as unknown as Array<{
           readonly name: string;
           readonly type: string;
           readonly notnull: number;
           readonly pk: number;
         }>
-      ).map((row) => [row.name, row.type, row.notnull, row.pk] as const);
-      rolloutPath = (
+      ).map((row) => [row.name, row.type, row.notnull, row.pk] as const),
+      rolloutPath: (
         database.prepare("SELECT rollout_path FROM threads ORDER BY id LIMIT 1").get() as
           | { readonly rollout_path: string }
           | undefined
-      )?.rollout_path;
-    } finally {
-      database.close();
-    }
+      )?.rollout_path,
+    }));
+    const { columns, rolloutPath } = snapshot;
 
     if (JSON.stringify(columns) !== JSON.stringify(CODEX_REQUIRED_THREAD_COLUMNS)) {
       return {

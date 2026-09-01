@@ -17,11 +17,13 @@ import {
   parseCodexJsonl,
   type CodexThreadRow,
 } from "./parser.js";
+import type { CodexReadStatusEvent } from "./status.js";
 
 export interface CodexReadHooks {
   readonly fixtureGuard?: (root: string) => void;
   readonly afterRead?: (path: string) => void | Promise<void>;
   readonly onBodyRead?: () => void;
+  readonly onStatus?: (event: CodexReadStatusEvent) => void | Promise<void>;
 }
 
 function contained(parent: string, child: string): boolean {
@@ -43,7 +45,28 @@ export async function resolveContainedRollout(root: string, rolloutPath: string)
 }
 
 export function openCodexDatabase(root: string): DatabaseSync {
-  return new DatabaseSync(resolve(root, "state_5.sqlite"), { readOnly: true });
+  const database = new DatabaseSync(resolve(root, "state_5.sqlite"), { readOnly: true, timeout: 250 });
+  database.exec("PRAGMA query_only = ON");
+  return database;
+}
+
+/**
+ * Execute catalog work in one SQLite read transaction. In WAL mode SQLite
+ * pins a consistent snapshot while a live Codex writer continues appending.
+ * This never checkpoints, locks, or writes the Codex database.
+ */
+export function withCodexReadSnapshot<T>(
+  root: string,
+  read: (database: DatabaseSync) => T,
+): T {
+  const database = openCodexDatabase(root);
+  database.exec("BEGIN");
+  try {
+    return read(database);
+  } finally {
+    database.exec("ROLLBACK");
+    database.close();
+  }
 }
 
 export function readThread(database: DatabaseSync, id: string): CodexThreadRow | undefined {
@@ -70,13 +93,9 @@ export async function observeCodexSession(
     throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", "Codex observation key mismatch");
   }
 
-  const database = openCodexDatabase(instance.root);
-  let thread: CodexThreadRow | undefined;
-  try {
-    thread = readThread(database, key.sessionId);
-  } finally {
-    database.close();
-  }
+  const thread = withCodexReadSnapshot(instance.root, (database) =>
+    readThread(database, key.sessionId),
+  );
   if (thread === undefined) {
     throw new SessionMaintenanceError(
       "ADAPTER_INCOMPATIBLE",
@@ -96,6 +115,14 @@ export async function observeCodexSession(
     (hint?.size !== undefined && BigInt(hint.size) !== before.size) ||
     (hint?.mtimeNs !== undefined && hint.mtimeNs !== before.mtimeNs.toString())
   ) {
+    await hooks.onStatus?.({
+      stage: "rollout.stability",
+      state: "retry",
+      instanceId: instance.id,
+      sessionId: key.sessionId,
+      consistency: "double-stat",
+      detail: "catalog fingerprint changed before rollout read",
+    });
     return { kind: "unstable", key, reason: "Catalog fingerprint changed before read", retryable: true };
   }
 
@@ -104,6 +131,14 @@ export async function observeCodexSession(
   await hooks.afterRead?.(path);
   const after = await stat(path, { bigint: true });
   if (before.size !== after.size || before.mtimeNs !== after.mtimeNs) {
+    await hooks.onStatus?.({
+      stage: "rollout.stability",
+      state: "retry",
+      instanceId: instance.id,
+      sessionId: key.sessionId,
+      consistency: "double-stat",
+      detail: "rollout changed during read; retry on the next incremental scan",
+    });
     return { kind: "unstable", key, reason: "Rollout changed during read", retryable: true };
   }
 
@@ -115,6 +150,14 @@ export async function observeCodexSession(
       `Codex root session_meta ID does not match catalog ID: ${key.sessionId}`,
     );
   }
+  await hooks.onStatus?.({
+    stage: "rollout.stability",
+    state: "succeeded",
+    instanceId: instance.id,
+    sessionId: key.sessionId,
+    consistency: "double-stat",
+    detail: `captured ${bytes.byteLength} stable rollout bytes`,
+  });
   return {
     kind: "stable",
     key,

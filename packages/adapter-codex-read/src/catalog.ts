@@ -8,13 +8,15 @@ import {
 } from "@linmu/dsh-session-contracts";
 
 import type { CodexThreadRow } from "./parser.js";
-import { openCodexDatabase, resolveContainedRollout } from "./stable-read.js";
+import { resolveContainedRollout, withCodexReadSnapshot } from "./stable-read.js";
 import { codexWorkspaceId, codexWorkspaceLabel } from "./workspace.js";
+import type { CodexReadStatusEvent } from "./status.js";
 
 export async function* listCodexSessions(
   instance: RegisteredInstance,
   cursor: ScanCursor | undefined,
   fixtureGuard?: (root: string) => void,
+  onStatus?: (event: CodexReadStatusEvent) => void | Promise<void>,
 ): AsyncIterable<PlatformSessionSummary> {
   fixtureGuard?.(instance.root);
   if (instance.platform !== "codex" || instance.platformVersion !== "0.146.0") {
@@ -24,18 +26,22 @@ export async function* listCodexSessions(
     );
   }
 
-  const database = openCodexDatabase(instance.root);
-  let rows: CodexThreadRow[];
-  try {
-    rows = database
+  const rows = withCodexReadSnapshot(instance.root, (database) =>
+    database
       .prepare(
         `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived
          FROM threads ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC, id`,
       )
-      .all() as unknown as CodexThreadRow[];
-  } finally {
-    database.close();
-  }
+      .all() as unknown as CodexThreadRow[],
+  );
+  await onStatus?.({
+    stage: "catalog.snapshot",
+    state: "succeeded",
+    instanceId: instance.id,
+    sessionId: null,
+    consistency: "sqlite-read-transaction",
+    detail: `captured ${rows.length} thread rows without requiring Codex quiescence`,
+  });
 
   const seen = new Set<string>();
   const start = cursor === undefined ? 0 : Number.parseInt(cursor.opaque, 10);

@@ -16,7 +16,7 @@ import {
   type FixtureSandbox,
 } from "@linmu/dsh-session-test-support";
 
-import { CodexReadAdapter } from "../src/index.js";
+import { CodexReadAdapter, type CodexReadStatusEvent } from "../src/index.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -117,17 +117,67 @@ describe("CodexReadAdapter", () => {
     expect(adapter.debugCounters()).toMatchObject({ rolloutBodyReads: 0, rolloutProbeReads: 0 });
   }, 15_000);
 
+  it("hot-reads a WAL snapshot while Codex holds an uncommitted writer", async () => {
+    const sandbox = await createFixtureSandbox("codex-hot-read");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    const databasePath = join(sandbox.codexHome, "state_5.sqlite");
+    const setup = new DatabaseSync(databasePath);
+    setup.exec("PRAGMA journal_mode = WAL");
+    setup.close();
+
+    const writer = new DatabaseSync(databasePath);
+    writer.exec("BEGIN IMMEDIATE");
+    writer.prepare("UPDATE threads SET title = ? WHERE id = ?").run("uncommitted title", "thread-fixture");
+    const status: CodexReadStatusEvent[] = [];
+    const adapter = new CodexReadAdapter({
+      fixtureGuard: assertFixtureSandbox,
+      onStatus: (event) => status.push(event),
+    });
+
+    try {
+      const duringWrite = await collect(adapter.list(instance(sandbox)));
+      expect(duringWrite[0]?.title).toBe("Fixture conversation");
+      expect((await adapter.observe(instance(sandbox), duringWrite[0]!.key, duringWrite[0]!.hint)).kind)
+        .toBe("stable");
+      expect(status).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          stage: "catalog.snapshot",
+          state: "succeeded",
+          consistency: "sqlite-read-transaction",
+        }),
+        expect.objectContaining({
+          stage: "rollout.stability",
+          state: "succeeded",
+          consistency: "double-stat",
+        }),
+      ]));
+      writer.exec("COMMIT");
+      expect((await collect(adapter.list(instance(sandbox))))[0]?.title).toBe("uncommitted title");
+    } finally {
+      try { writer.exec("ROLLBACK"); } catch { /* already committed */ }
+      writer.close();
+    }
+  });
+
   it("returns unstable when the file changes during observation", async () => {
     const sandbox = await createFixtureSandbox("codex-unstable");
     cleanups.push(sandbox.cleanup);
     await writeCodexFixtureHome(sandbox.codexHome);
+    const status: CodexReadStatusEvent[] = [];
     const adapter = new CodexReadAdapter({
       fixtureGuard: assertFixtureSandbox,
       afterRead: async (path) => appendFile(path, " \n"),
+      onStatus: (event) => status.push(event),
     });
     const registered = instance(sandbox);
     const [summary] = await collect(adapter.list(registered));
     expect((await adapter.observe(registered, summary!.key, summary!.hint)).kind).toBe("unstable");
+    expect(status).toContainEqual(expect.objectContaining({
+      stage: "rollout.stability",
+      state: "retry",
+      consistency: "double-stat",
+    }));
   });
 
   it("preserves unknown envelopes as degraded source metadata", async () => {
