@@ -57,7 +57,13 @@ function toolEvent(
       : undefined;
   if (phase === undefined) return undefined;
 
-  const callId = stringValue(payload.call_id) ?? stringValue(payload.id);
+  // A Codex output row is correlated only by its explicit call_id. Falling
+  // back to the row id turns coordination/status outputs into orphan DSH tool
+  // results, which later makes the model request invalid. Call rows may still
+  // use their own id as the protocol call identity.
+  const callId = phase === "result"
+    ? stringValue(payload.call_id)
+    : stringValue(payload.call_id) ?? stringValue(payload.id);
   if (callId === undefined) return undefined;
   const protocol = sourceType.startsWith("custom_") ? "custom" : "function";
   const name = stringValue(payload.name)
@@ -96,6 +102,9 @@ function visibleUserText(value: string): string {
     .replace(/<codex_internal_context\b[^>]*>[\s\S]*?<\/codex_internal_context>/giu, "")
     .replace(/<in-app-browser-context\b[^>]*>[\s\S]*?<\/in-app-browser-context>/giu, "")
     .replace(/<environment_context\b[^>]*>[\s\S]*?<\/environment_context>/giu, "")
+    .replace(/<recommended_plugins\b[^>]*>[\s\S]*?<\/recommended_plugins>/giu, "")
+    .replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/giu, "")
+    .replace(/<app-context\b[^>]*>[\s\S]*?<\/app-context>/giu, "")
     .replace(/(?:^|\n)# Response annotations:[\s\S]*?<\/response-annotations>\s*/giu, "\n");
   visible = visible.replace(
     /<codex_delegation\b[^>]*>[\s\S]*?<input>([\s\S]*?)<\/input>[\s\S]*?<\/codex_delegation>/giu,

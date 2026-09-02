@@ -295,11 +295,18 @@ export class ProjectionLifecycle {
           },
         }),
       });
-      await this.statusLog.succeed(materializeSpan);
+      await this.statusLog.succeed(materializeSpan, {
+        diagnosticDetailRef: "diag:projection-structure-verified",
+      });
     } catch (error) {
       await this.quarantine(runId);
       await this.statusLog.fail(materializeSpan, { errorCode: "PROJECTION_MATERIALIZE_FAILED" });
-      throw new ProjectionLifecycleError("PROJECTION_MATERIALIZE_FAILED", runId, "Canonical projection materialization failed", { cause: error });
+      throw new ProjectionLifecycleError(
+        "PROJECTION_MATERIALIZE_FAILED",
+        runId,
+        `Canonical projection materialization failed: ${boundedErrorMessage(error)}`,
+        { cause: error },
+      );
     }
 
     const handle: PreparedProjectionRunHandle = {

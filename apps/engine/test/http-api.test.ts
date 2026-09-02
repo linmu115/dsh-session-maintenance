@@ -28,6 +28,10 @@ describe("authenticated loopback API", () => {
     expect((await client.listSessions()).items).toHaveLength(1);
     expect(await client.listWorkspaces()).toHaveLength(1);
     expect(await hashTree(fixture.codexHome)).toBe(before);
+    await expect(fixture.engine.applyPlan({ planId: "plan_x" })).rejects.toMatchObject({
+      code: "CAPABILITY_NOT_AVAILABLE",
+    });
+    expect(await hashTree(fixture.codexHome)).toBe(before);
 
     const oversized = await fetch(`${server.origin}/v1/diffs`, {
       method: "POST",

@@ -806,6 +806,11 @@ interface QueuedRuntimeEvent {
   readonly initialPrefix: readonly JsonValue[];
 }
 
+interface PendingRuntimeBatch {
+  readonly queueLength: number;
+  readonly operation: NativeAppendOperation;
+}
+
 const DEFERRED_SESSION_PRELUDE_TYPES = new Set([
   "session/end-seed",
   "permission/preset",
@@ -858,6 +863,7 @@ export class RuntimeBrokerPluginClient {
   private draining = false;
   private readonly tails = new Map<string, Promise<void>>();
   private readonly queues = new Map<string, QueuedRuntimeEvent[]>();
+  private readonly pendingBatches = new Map<string, PendingRuntimeBatch>();
   private readonly failures = new Map<string, unknown>();
   private readonly dynamicMetadata = new Map<string, ProjectedSessionMetadata>();
   private readonly observedDynamicSessions = new Set<string>();
@@ -998,31 +1004,47 @@ export class RuntimeBrokerPluginClient {
     const request = (async () => {
       const queue = this.queues.get(nativeSessionId);
       while ((queue?.length ?? 0) > 0) {
-        const queued = queue![0]!;
         try {
-          const metadata = await this.metadata(nativeSessionId, queued.header);
-          const envelope = object(queued.event, "Alpha2 session/event");
-          if (!Number.isSafeInteger(envelope.seq)) throw new TypeError("Alpha2 session/event lacks a safe seq");
-          const operation: NativeAppendOperation = {
-            runId: this.runId as never,
-            operationId: `${this.runId}:${nativeSessionId}:${String(envelope.seq)}` as never,
-            nativeSessionId: nativeSessionId as NativeSessionId,
-            nativeRevision: Number(envelope.seq) + 1,
-            payload: {
-              logicalSessionId: metadata.logicalSessionId,
-              baseVersionId: metadata.baseVersionId,
-              events: queued.initialPrefix,
-            },
-            observedAt: this.clock(),
-          };
+          let batch = this.pendingBatches.get(nativeSessionId);
+          if (batch === undefined) {
+            const first = queue![0]!;
+            const metadata = await this.metadata(nativeSessionId, first.header);
+            const queueLength = queue!.length;
+            const queuedBatch = queue!.slice(0, queueLength);
+            const last = queuedBatch.at(-1)!;
+            const envelope = object(last.event, "Alpha2 session/event");
+            if (!Number.isSafeInteger(envelope.seq)) throw new TypeError("Alpha2 session/event lacks a safe seq");
+            const events = queuedBatch.flatMap((queued) => [...queued.initialPrefix]);
+            const nativeRevision = Number(envelope.seq) + 1;
+            if (events.length === 0 || nativeRevision < events.length) {
+              throw new TypeError("Alpha2 runtime batch does not form a valid native revision");
+            }
+            batch = {
+              queueLength,
+              operation: {
+                runId: this.runId as never,
+                operationId: `${this.runId}:${nativeSessionId}:${String(envelope.seq)}` as never,
+                nativeSessionId: nativeSessionId as NativeSessionId,
+                nativeRevision,
+                payload: {
+                  logicalSessionId: metadata.logicalSessionId,
+                  baseVersionId: metadata.baseVersionId,
+                  events,
+                },
+                observedAt: this.clock(),
+              },
+            };
+            this.pendingBatches.set(nativeSessionId, batch);
+          }
           const response = await this.post(`/v1/runtime-broker/runs/${encodeURIComponent(this.runId)}/append`, {
             schemaVersion: 1,
             clientId: this.clientId,
-            operation,
+            operation: batch.operation,
           });
           const advanced = committedMetadata(response);
           if (advanced !== undefined) this.dynamicMetadata.set(nativeSessionId, advanced);
-          queue!.shift();
+          queue!.splice(0, batch.queueLength);
+          this.pendingBatches.delete(nativeSessionId);
           this.failures.delete(nativeSessionId);
         } catch (error) {
           this.failures.set(nativeSessionId, error);

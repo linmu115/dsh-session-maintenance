@@ -69,6 +69,10 @@ function isRecord(value: JsonValue | undefined): value is { readonly [key: strin
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
+function diagnosticMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown materialization failure";
+}
+
 function decodeSourceEventSeqs(value: JsonValue, eventSeq: number): readonly number[] {
   if (!Array.isArray(value)) throw new TypeError("Alpha2 sourceEventSeqs must be an array");
   const decoded: number[] = [];
@@ -243,6 +247,25 @@ function canonicalToolCall(event: CanonicalEventV1): { readonly [key: string]: J
   };
 }
 
+function canonicalToolCallMessage(event: CanonicalEventV1): { readonly [key: string]: JsonValue } {
+  const call = canonicalToolCall(event);
+  return {
+    turn: call.turn!,
+    step: call.step!,
+    message: {
+      id: `${event.id}:assistant-tool-call`,
+      role: "assistant",
+      content: [{
+        type: "tool-call",
+        id: call.callId!,
+        name: call.name!,
+        arguments: call.arguments!,
+      }],
+      source: { kind: "model", provider: "codex", model: "imported" },
+    },
+  };
+}
+
 function canonicalToolResult(event: CanonicalEventV1): { readonly [key: string]: JsonValue } {
   const content = canonicalToolRecord(event);
   const callId = nonEmptyString(content.callId) ?? event.id;
@@ -323,14 +346,120 @@ export function materializeEvent(event: CanonicalEventV1, createdAt: number): Al
   };
 }
 
+interface MaterializedDraft {
+  readonly event: Alpha2SessionEvent;
+  /** Original Alpha2 sequence represented by this row; absent for inserted rows. */
+  readonly originSequence?: number;
+  /** Present only for a synthesized Codex tool result. */
+  readonly resultCallId?: string;
+}
+
+function rebaseSurfaceOp(surfaceOp: JsonValue, sequenceMap: ReadonlyMap<number, number>): JsonValue {
+  if (!isRecord(surfaceOp) || surfaceOp.op !== "replace") return surfaceOp;
+  const start = surfaceOp.start;
+  const end = surfaceOp.end;
+  return {
+    ...surfaceOp,
+    ...(typeof start === "number" && sequenceMap.has(start) ? { start: sequenceMap.get(start)! } : {}),
+    ...(typeof end === "number" && sequenceMap.has(end) ? { end: sequenceMap.get(end)! } : {}),
+  };
+}
+
 function materializeEvents(events: readonly CanonicalEventV1[], createdAt: number): readonly Alpha2SessionEvent[] {
-  const output = events.flatMap((event) => packedStorageEvents(event) ?? [materializeEvent(event, createdAt)]);
-  for (const [index, event] of output.entries()) {
-    if (event.seq !== index) {
-      throw new TypeError(`Alpha2 projection event sequence is not contiguous: expected ${index}, got ${event.seq}`);
+  const drafts: MaterializedDraft[] = [];
+  for (const event of events) {
+    const packed = packedStorageEvents(event);
+    if (packed !== undefined) {
+      drafts.push(...packed.map((item) => ({ event: item, originSequence: item.seq })));
+      continue;
     }
+
+    const raw = rawEnvelope(event);
+    if (raw === undefined && event.kind === "tool-call") {
+      const call = canonicalToolCall(event);
+      drafts.push({
+        event: {
+          type: "assistant/message",
+          seq: event.sequence,
+          time: createdAt + event.sequence,
+          data: canonicalToolCallMessage(event),
+          surfaceOp: "append",
+        },
+      });
+      drafts.push({ event: materializeEvent(event, createdAt), originSequence: event.sequence });
+      continue;
+    }
+
+    const materialized = raw ?? materializeEvent(event, createdAt);
+    const content = raw === undefined && event.kind === "tool-result" ? canonicalToolRecord(event) : undefined;
+    drafts.push({
+      event: materialized,
+      originSequence: event.sequence,
+      ...(content === undefined ? {} : { resultCallId: nonEmptyString(content.callId) ?? event.id }),
+    });
   }
-  return output;
+
+  const sequenceMap = new Map<number, number>();
+  let previousOrigin = -1;
+  for (const [newSequence, draft] of drafts.entries()) {
+    if (draft.originSequence === undefined) continue;
+    if (draft.originSequence <= previousOrigin) {
+      throw new TypeError(
+        `Alpha2 projection event sequence is not strictly increasing: ${String(previousOrigin)} -> ${String(draft.originSequence)}`,
+      );
+    }
+    sequenceMap.set(draft.originSequence, newSequence);
+    previousOrigin = draft.originSequence;
+  }
+
+  const callSequenceById = new Map<string, number>();
+  for (const [newSequence, draft] of drafts.entries()) {
+    if (draft.event.type !== "tool/call" || !isRecord(draft.event.data)) continue;
+    const callId = nonEmptyString(draft.event.data.callId);
+    if (callId !== undefined) callSequenceById.set(callId, newSequence);
+  }
+
+  return drafts.map((draft, newSequence) => {
+    const sourceEventSeqs = draft.event.sourceEventSeqs?.map((sequence) => {
+      const rebased = sequenceMap.get(sequence);
+      if (rebased === undefined) {
+        throw new TypeError(`Alpha2 projection source sequence ${sequence} has no materialized target`);
+      }
+      return rebased;
+    });
+    if (draft.resultCallId !== undefined) {
+      const callSequence = callSequenceById.get(draft.resultCallId);
+      if (callSequence === undefined) {
+        return {
+          type: "maintenance/orphan-tool-result",
+          seq: newSequence,
+          time: draft.event.time,
+          data: {
+            reason: "missing-correlated-tool-call",
+            callId: draft.resultCallId,
+            canonicalResult: draft.event.data,
+          },
+          ignorable: true as const,
+        };
+      }
+      return {
+        ...draft.event,
+        seq: newSequence,
+        sourceEventSeqs: [callSequence],
+        ...(draft.event.surfaceOp === undefined
+          ? {}
+          : { surfaceOp: rebaseSurfaceOp(draft.event.surfaceOp, sequenceMap) }),
+      };
+    }
+    return {
+      ...draft.event,
+      seq: newSequence,
+      ...(sourceEventSeqs === undefined ? {} : { sourceEventSeqs }),
+      ...(draft.event.surfaceOp === undefined
+        ? {}
+        : { surfaceOp: rebaseSurfaceOp(draft.event.surfaceOp, sequenceMap) }),
+    };
+  });
 }
 
 export function alpha2ProjectedNativeRevision(
@@ -382,36 +511,43 @@ export async function materializeAlpha2(
   const sessionDigests: Record<string, string> = {};
   const workspaceIds = input.workspaces.map((workspace) => workspace.id);
   for (const item of input.sessions) {
-    const nativeSessionId = alpha2NativeSessionId(item.session.id);
-    const createdAt = Date.parse(item.session.createdAt);
-    if (!Number.isSafeInteger(createdAt) || createdAt < 0) {
-      throw new TypeError(`Canonical session ${item.session.id} has an invalid createdAt timestamp`);
+    try {
+      const nativeSessionId = alpha2NativeSessionId(item.session.id);
+      const createdAt = Date.parse(item.session.createdAt);
+      if (!Number.isSafeInteger(createdAt) || createdAt < 0) {
+        throw new TypeError(`Canonical session ${item.session.id} has an invalid createdAt timestamp`);
+      }
+      const updatedAt = Date.parse(item.session.updatedAt);
+      if (!Number.isSafeInteger(updatedAt) || updatedAt < 0) {
+        throw new TypeError(`Canonical session ${item.session.id} has an invalid updatedAt timestamp`);
+      }
+      const payload: Alpha2ProjectionSession = {
+        schemaVersion: 1,
+        logicalSessionId: item.session.id,
+        baseVersionId: item.session.headVersionId,
+        projectId: item.projectId ?? null,
+        projectTitle: item.projectName ?? null,
+        workspaceId: item.workspaceId,
+        updatedAt: item.session.updatedAt,
+        title: item.session.title,
+        tags: item.session.tags,
+        header: {
+          version: 0,
+          id: nativeSessionId,
+          createdAt,
+          delegationDepth: 0,
+          ...(item.projectRoot === null ? {} : { cwd: item.projectRoot }),
+        },
+        events: materializeEvents(item.events, createdAt),
+      };
+      await output.writeSession(nativeSessionId, payload as unknown as JsonValue);
+      sessionDigests[nativeSessionId] = digest(payload as unknown as JsonValue);
+    } catch (error) {
+      throw new TypeError(
+        `Alpha2 projection session ${item.session.id} failed: ${diagnosticMessage(error)}`,
+        { cause: error },
+      );
     }
-    const updatedAt = Date.parse(item.session.updatedAt);
-    if (!Number.isSafeInteger(updatedAt) || updatedAt < 0) {
-      throw new TypeError(`Canonical session ${item.session.id} has an invalid updatedAt timestamp`);
-    }
-    const payload: Alpha2ProjectionSession = {
-      schemaVersion: 1,
-      logicalSessionId: item.session.id,
-      baseVersionId: item.session.headVersionId,
-      projectId: item.projectId ?? null,
-      projectTitle: item.projectName ?? null,
-      workspaceId: item.workspaceId,
-      updatedAt: item.session.updatedAt,
-      title: item.session.title,
-      tags: item.session.tags,
-      header: {
-        version: 0,
-        id: nativeSessionId,
-        createdAt,
-        delegationDepth: 0,
-        ...(item.projectRoot === null ? {} : { cwd: item.projectRoot }),
-      },
-      events: materializeEvents(item.events, createdAt),
-    };
-    await output.writeSession(nativeSessionId, payload as unknown as JsonValue);
-    sessionDigests[nativeSessionId] = digest(payload as unknown as JsonValue);
   }
   return {
     schemaVersion: 1,

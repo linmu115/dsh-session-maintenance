@@ -2,6 +2,20 @@
 
 ## 0.2.12 - 2026-09-02
 
+- Batch contiguous Alpha2 stream events behind one stable Runtime Broker append
+  operation. Tool-call and model-request flush barriers no longer wait for one
+  HTTP, WAL and canonical commit per `assistant/chunk`; a failed batch retries
+  with the exact same operation ID, revision and payload.
+- Remove the native Codex write adapter from the production Engine. Maintenance
+  can read stable Codex catalog and rollout snapshots, but it can no longer
+  replace Codex rollout files, `session_index.jsonl`, SQLite state, WAL or SHM
+  files through any CLI, WebUI or HTTP plan-apply path.
+- Mark the Alpha2 acceptance boundaries in the persistent status log after
+  projection structure verification, durable append intent, canonical commit,
+  Codex-mirror derivation and durable receipt publication.
+- Accept sparse canonical event sequences in DSH-derived sessions and rebase
+  them only inside the temporary Alpha2 projection. The canonical source and
+  the original Codex rollout remain unchanged.
 - Advance each live session's in-memory logical ID and base version from the
   durable append receipt. Consecutive Alpha2 events no longer reuse the
   startup catalog's stale base and fail with `NATIVE_REVISION_MISMATCH` or

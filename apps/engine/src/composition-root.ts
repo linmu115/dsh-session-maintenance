@@ -3,7 +3,6 @@ import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
-import { CodexNativeWriteAdapter } from "@linmu/dsh-adapter-codex-native";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
 import { AdapterHost, AdapterRegistry, NodeAdapterWorkerFactory } from "@linmu/dsh-session-adapter-host";
@@ -66,7 +65,6 @@ export interface CompositionOptions {
   readonly clock?: () => string;
   readonly fixturePolicy?: (root: string) => void;
   readonly continuationAdapter?: CodexContinuationPort;
-  readonly enableCodexNativeWrites?: boolean;
 }
 
 export interface DshWritableCompositionOptions extends CompositionOptions {
@@ -195,18 +193,6 @@ async function createComposition(
   let writeService: WriteService | undefined;
   const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
   const writeAdapters = new Map<"codex" | "dsh", PlatformWriteAdapter>();
-  if (options.enableCodexNativeWrites === true) {
-    const codexRoots = new Map(instances.filter((instance) => instance.platform === "codex").map((instance) => [instance.id, instance.root]));
-    if (codexRoots.size > 0) {
-      writeAdapters.set("codex", new CodexNativeWriteAdapter({
-        stateRoot: options.stateRoot,
-        loadSource: (plan) => loadVersionBody(repository, objectStore, plan),
-        registeredRoots: codexRoots,
-        ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
-        ...(options.clock === undefined ? {} : { now: () => new Date(options.clock!()) }),
-      }));
-    }
-  }
   if (dshGatewayTargets.length > 0) {
     for (const target of dshGatewayTargets) {
       const instance = instanceMap.get(target.instanceId);

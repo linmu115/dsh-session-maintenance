@@ -237,7 +237,9 @@ export async function commitProjectionAppend(input: {
     } else {
       walRecord = await context.wal.putPending(operation, input.clock());
     }
-    await input.statusLog.succeed(walSpan);
+    await input.statusLog.succeed(walSpan, {
+      diagnosticDetailRef: "diag:append-intent-durable",
+    });
     walSpan = undefined;
     if (!walRecord.projectionApplied) {
       assertNativeRevision(session, operation);
@@ -300,7 +302,9 @@ export async function commitProjectionAppend(input: {
         nativeRevision: operation.nativeRevision,
       },
     });
-    await input.statusLog.succeed(canonicalSpan);
+    await input.statusLog.succeed(canonicalSpan, {
+      diagnosticDetailRef: "diag:canonical-append-committed",
+    });
     canonicalSpan = undefined;
     if (deriving && canonical.outcome !== "derived") {
       throw new ProjectionAppendError("DERIVATION_OUTCOME_INVALID", "Codex first write did not create a derived session");
@@ -338,10 +342,14 @@ export async function commitProjectionAppend(input: {
     if (deriving) session.authorityScope = "maintenance";
     await context.wal.markCommitted(operation.operationId, receipt, input.clock());
     if (derivationSpan !== undefined) {
-      await input.statusLog.succeed(derivationSpan);
+      await input.statusLog.succeed(derivationSpan, {
+        diagnosticDetailRef: "diag:codex-mirror-derived-without-source-write",
+      });
       derivationSpan = undefined;
     }
-    await input.statusLog.succeed(span);
+    await input.statusLog.succeed(span, {
+      diagnosticDetailRef: "diag:durable-maintenance-receipt-written",
+    });
     return receipt;
   } catch (error) {
     if (error instanceof ProjectionAppendError) failureCode = error.code;

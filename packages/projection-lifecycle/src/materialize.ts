@@ -273,7 +273,7 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
 
   private async writeJsonAtomically(path: string, value: JsonValue): Promise<void> {
     await mkdir(dirname(path), { recursive: true });
-    const temporary = `${path}.${randomUUID()}.tmp`;
+    const temporary = join(dirname(path), `.projection-${randomUUID()}.tmp`);
     const handle = await open(temporary, "wx");
     try {
       await handle.writeFile(`${JSON.stringify(value)}\n`, "utf8");

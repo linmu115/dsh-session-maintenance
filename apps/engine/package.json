@@ -25,7 +25,6 @@
     "@linmu/dsh-session-projection-lifecycle": "workspace:*",
     "@linmu/dsh-adapter-codex-continuation": "workspace:*",
     "@linmu/dsh-adapter-codex-read": "workspace:*",
-    "@linmu/dsh-adapter-codex-native": "workspace:*",
     "@linmu/dsh-adapter-dsh": "workspace:*",
     "@linmu/dsh-adapter-dsh-write": "workspace:*",
     "@linmu/dsh-host-gateway": "workspace:*",

@@ -236,7 +236,7 @@ describe("DSH projection runtime", () => {
 
     expect(requests.filter((request) => request.path.endsWith("/sessions"))).toHaveLength(1);
     const appends = requests.filter((request) => request.path.endsWith("/append"));
-    expect(appends).toHaveLength(3);
+    expect(appends).toHaveLength(2);
     expect(appends.map((request) => {
       const operation = request.body.operation as {
         readonly nativeRevision: number;
@@ -253,12 +253,112 @@ describe("DSH projection runtime", () => {
         events: operation.payload.events,
       };
     })).toEqual([
-      { revision: 1, logicalSessionId: "logical-alpha2-live", baseVersionId: "version-alpha2-live", events: [first] },
-      { revision: 1, logicalSessionId: "logical-alpha2-live", baseVersionId: "version-alpha2-live", events: [first] },
-      { revision: 2, logicalSessionId: "logical-alpha2-derived", baseVersionId: "version-committed-1", events: [second] },
+      { revision: 2, logicalSessionId: "logical-alpha2-live", baseVersionId: "version-alpha2-live", events: [first, second] },
+      { revision: 2, logicalSessionId: "logical-alpha2-live", baseVersionId: "version-alpha2-live", events: [first, second] },
     ]);
+    expect(appends[0]!.body.operation).toEqual(appends[1]!.body.operation);
     expect(requests.some((request) => request.path.endsWith("/drain"))).toBe(true);
     expect(requests.some((request) => request.path.endsWith("/close"))).toBe(false);
+  });
+
+  it("batches streamed Alpha2 events that arrive while a durable append is in flight", async () => {
+    const endpoint = "http://127.0.0.1:41781";
+    const runId = "run-alpha2-stream-batch";
+    const nativeSessionId = "native-alpha2-stream-batch";
+    const appends: Array<Record<string, unknown>> = [];
+    let releaseFirstAppend!: () => void;
+    const firstAppendBlocked = new Promise<void>((resolve) => { releaseFirstAppend = resolve; });
+    let firstAppendStarted!: () => void;
+    const firstAppendObserved = new Promise<void>((resolve) => { firstAppendStarted = resolve; });
+    const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      if (url.pathname.endsWith("/attach")) return json({ schemaVersion: 1, runId, state: "running" });
+      if (url.pathname.endsWith("/append")) {
+        appends.push(body);
+        if (appends.length === 1) {
+          firstAppendStarted();
+          await firstAppendBlocked;
+        }
+        const operation = body.operation as { readonly nativeRevision: number };
+        return json({
+          schemaVersion: 1,
+          receipt: {
+            status: "committed",
+            logicalSessionId: "logical-alpha2-stream-batch",
+            canonicalVersionId: `version-${operation.nativeRevision}`,
+          },
+        });
+      }
+      if (url.pathname.endsWith("/flush")) return json({ schemaVersion: 1, pendingOperations: 0 });
+      return json({ error: { message: `unexpected route ${url.pathname}` } }, 404);
+    }) as typeof fetch;
+    const catalogSession = {
+      nativeSessionId,
+      updatedAt: "2026-09-01T00:00:00.000Z",
+      hot: true,
+      eventCount: 0,
+      payload: {
+        logicalSessionId: "logical-alpha2-stream-batch",
+        baseVersionId: "version-0",
+        title: "Stream batch fixture",
+        header: { version: 0, id: nativeSessionId, createdAt: 1 },
+        events: [],
+      },
+    };
+    const registrar = new ProjectionRuntimeRegistrar({
+      transport: { stream: vi.fn(async function* () {
+        yield { type: "catalog-begin" as const, schemaVersion: 2 as const, runId, hotLimit: 200, sessionCount: 1 };
+        yield { type: "catalog-sessions" as const, sessions: [catalogSession] };
+        yield { type: "catalog-end" as const, sessionCount: 1 };
+      }) },
+      overlay: new Alpha2ProjectionPersistenceOverlay(),
+    });
+    const client = new RuntimeBrokerPluginClient({
+      connection: { current: async () => ({ origin: endpoint, token: "t".repeat(32) }) },
+      registrar,
+      clientId: "client-plugin-test",
+      runId,
+      temporaryPersistenceRootId: `projection:${runId}`,
+      maintenanceEndpoint: endpoint,
+      clock: () => "2026-09-01T00:00:01.000Z",
+      fetchImpl,
+    });
+    const header = { version: 0, id: nativeSessionId, cwd: "D:/synthetic/project" };
+    const events = Array.from({ length: 201 }, (_, seq) => ({
+      seq,
+      type: "assistant/chunk",
+      data: { text: `chunk-${seq}` },
+    }));
+
+    await client.attach();
+    client.observe(nativeSessionId, events[0]!, header, [events[0]!]);
+    await firstAppendObserved;
+    for (let seq = 1; seq < events.length; seq += 1) {
+      client.observe(nativeSessionId, events[seq]!, header, events.slice(0, seq + 1));
+    }
+    releaseFirstAppend();
+    await client.flush(nativeSessionId);
+
+    expect(appends).toHaveLength(2);
+    expect(appends.map((body) => {
+      const operation = body.operation as {
+        readonly nativeRevision: number;
+        readonly payload: { readonly events: unknown[] };
+      };
+      return { revision: operation.nativeRevision, eventCount: operation.payload.events.length };
+    })).toEqual([
+      { revision: 1, eventCount: 1 },
+      { revision: 201, eventCount: 200 },
+    ]);
+    expect(appends.flatMap((body) => {
+      const operation = body.operation as { readonly payload: { readonly events: unknown[] } };
+      return operation.payload.events;
+    })).toEqual(events);
   });
 
   it("coalesces the Alpha2 restore boundary and preparation prelude until the first real continuation", async () => {

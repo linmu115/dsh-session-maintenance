@@ -119,7 +119,6 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
 
   const compositionOptions = (): CompositionOptions => ({
     stateRoot: resolve(program.opts<{ stateRoot: string }>().stateRoot),
-    enableCodexNativeWrites: options.fixturePolicy === undefined,
     ...(options.fixturePolicy === undefined ? {} : { fixturePolicy: options.fixturePolicy }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });

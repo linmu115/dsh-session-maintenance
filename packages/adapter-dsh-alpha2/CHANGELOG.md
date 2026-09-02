@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+## 0.1.2-alpha.2 sparse derived sequence hotfix - 2026-09-02
+
+- Rebase strictly increasing but non-contiguous canonical event sequences into
+  Alpha2's contiguous native sequence space. A DSH-derived continuation can
+  retain its Codex mirror prefix and a later canonical append range without
+  blocking the entire projection at startup.
+- Rebase tool-result source references and replacement surface boundaries
+  against the same native sequence map; canonical source data is not changed.
+
+## Unreleased
+
+- Repair imported Codex tool history at Alpha2's actual model-message boundary.
+  Each canonical tool call now emits an identified `assistant/message` with a
+  `tool-call` content block before the log-only `tool/call`; the correlated
+  `tool/result` points back through `sourceEventSeqs`. This prevents Alpha2
+  from sending a standalone `role: tool` message without a preceding
+  `assistant.tool_calls` entry.
+- Keep historical unmatched tool outputs off the model surface as ignorable
+  `maintenance/orphan-tool-result` evidence. This also contains previously
+  imported Codex coordination outputs that never carried a protocol
+  `call_id`.
+
 - Keep live append metadata synchronized with each durable receipt so the next
   Alpha2 event targets the derived logical session and current canonical base.
   Recovery supersedes stale-metadata WAL evidence before replaying the proven

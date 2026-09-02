@@ -281,6 +281,39 @@ describe("CodexReadAdapter", () => {
     expect(normalized.compatibility.status).toBe("compatible");
   });
 
+  it("preserves an output without call_id as metadata instead of inventing an orphan tool result", async () => {
+    const sandbox = await createFixtureSandbox("codex-orphan-tool-output");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    await appendFile(
+      join(sandbox.codexHome, "rollouts", "thread-fixture.jsonl"),
+      `${JSON.stringify({
+        type: "response_item",
+        payload: {
+          type: "function_call_output",
+          id: "orphan-output-row",
+          output: "<codex_delegation>internal coordination</codex_delegation>",
+        },
+      })}\n`,
+    );
+    const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    const registered = instance(sandbox);
+    const [summary] = await collect(adapter.list(registered));
+    const normalized = await adapter.normalize(
+      expectStable(await adapter.observe(registered, summary!.key, summary!.hint)),
+    );
+
+    expect(normalized.events.some((event) => event.kind === "tool-import" || event.role === "tool")).toBe(false);
+    const degraded = normalized.events.find((event) =>
+      (JSON.stringify(event.extensions.codexEnvelope) ?? "").includes("orphan-output-row"));
+    expect(degraded).toMatchObject({ kind: "metadata", role: "unknown" });
+    expect(normalized.compatibility.status).toBe("degraded");
+    expect(normalized.compatibility.issues).toContainEqual(expect.objectContaining({
+      code: "CODEX_EVENT_DEGRADED",
+      sourceType: "response_item",
+    }));
+  });
+
   it("removes Codex-only goal and annotation scaffolding from projected user messages", async () => {
     const sandbox = await createFixtureSandbox("codex-internal-context");
     cleanups.push(sandbox.cleanup);
@@ -305,6 +338,17 @@ describe("CodexReadAdapter", () => {
             content: [{
               type: "input_text",
               text: "<environment_context>\n<current_date>2026-09-02</current_date>\n<timezone>Asia/Shanghai</timezone>\n</environment_context>",
+            }],
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [{
+              type: "input_text",
+              text: "<recommended_plugins>\n- internal-plugin\n</recommended_plugins>\n<system-reminder>internal tools</system-reminder>\n<app-context>internal app state</app-context>",
             }],
           },
         },
@@ -343,6 +387,9 @@ describe("CodexReadAdapter", () => {
     ]);
     expect(JSON.stringify(normalized.events)).not.toContain("codex_internal_context");
     expect(JSON.stringify(normalized.events)).not.toContain("environment_context");
+    expect(JSON.stringify(normalized.events)).not.toContain("recommended_plugins");
+    expect(JSON.stringify(normalized.events)).not.toContain("system-reminder");
+    expect(JSON.stringify(normalized.events)).not.toContain("app-context");
     expect(JSON.stringify(normalized.events)).not.toContain("response-annotations");
   });
 

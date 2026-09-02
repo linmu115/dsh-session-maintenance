@@ -63,9 +63,6 @@ importers:
       '@linmu/dsh-adapter-codex-continuation':
         specifier: workspace:*
         version: link:../../packages/adapter-codex-continuation
-      '@linmu/dsh-adapter-codex-native':
-        specifier: workspace:*
-        version: link:../../packages/adapter-codex-native
       '@linmu/dsh-adapter-codex-read':
         specifier: workspace:*
         version: link:../../packages/adapter-codex-read
@@ -126,25 +123,6 @@ importers:
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts
-
-  packages/adapter-codex-native:
-    dependencies:
-      '@linmu/dsh-adapter-codex-read':
-        specifier: workspace:*
-        version: link:../adapter-codex-read
-      '@linmu/dsh-session-contracts':
-        specifier: workspace:*
-        version: link:../contracts
-      '@linmu/dsh-session-domain':
-        specifier: workspace:*
-        version: link:../session-domain
-      '@linmu/dsh-session-transaction-engine':
-        specifier: workspace:*
-        version: link:../transaction-engine
-    devDependencies:
-      '@linmu/dsh-session-test-support':
-        specifier: workspace:*
-        version: link:../test-support
 
   packages/adapter-codex-read:
     dependencies:

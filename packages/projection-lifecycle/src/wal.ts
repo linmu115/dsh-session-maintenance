@@ -23,7 +23,9 @@ function encoded(value: string): string {
 }
 
 function sameOperation(left: NativeAppendOperation, right: NativeAppendOperation): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
+  const { observedAt: _leftObservedAt, ...leftIdentity } = left;
+  const { observedAt: _rightObservedAt, ...rightIdentity } = right;
+  return JSON.stringify(leftIdentity) === JSON.stringify(rightIdentity);
 }
 
 async function durableWrite(path: string, value: unknown, exclusive: boolean): Promise<void> {
@@ -38,7 +40,11 @@ async function durableWrite(path: string, value: unknown, exclusive: boolean): P
     }
     return;
   }
-  const temporary = `${path}.${randomUUID()}.tmp`;
+  // The encoded operation ID can already approach NTFS's 255-character
+  // component limit. Appending a UUID to that basename makes the update fail
+  // only after the projection itself has been written. Keep the atomic sibling
+  // name short and independent from the operation ID.
+  const temporary = join(dirname(path), `.wal-${randomUUID()}.tmp`);
   const handle = await open(temporary, "wx");
   try {
     await handle.writeFile(`${JSON.stringify(value)}\n`, "utf8");
