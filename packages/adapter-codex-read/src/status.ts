@@ -3,6 +3,6 @@ export interface CodexReadStatusEvent {
   readonly state: "succeeded" | "retry";
   readonly instanceId: string;
   readonly sessionId: string | null;
-  readonly consistency: "sqlite-read-transaction" | "double-stat";
+  readonly consistency: "sqlite-read-transaction" | "double-stat" | "bounded-prefix";
   readonly detail: string;
 }

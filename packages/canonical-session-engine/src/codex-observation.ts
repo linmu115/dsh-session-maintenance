@@ -37,6 +37,12 @@ export interface CodexObservationInput {
   };
 }
 
+export interface CodexMirrorRetitleInput {
+  readonly logicalSessionId: LogicalSessionId;
+  readonly title: string;
+  readonly appliedAt: string;
+}
+
 export interface CanonicalVersionInput {
   readonly logicalSessionId: LogicalSessionId;
   readonly parentVersionIds: readonly SessionVersionId[];
@@ -218,6 +224,77 @@ export async function observeCodex(
     projectionReceipt: null,
     tombstone: current?.tombstone ?? null,
     observation,
+    receipt,
+  });
+}
+
+/**
+ * Applies Codex's lightweight catalog title without re-reading or rewriting its
+ * authoritative rollout. Conversation events and activity ordering stay fixed;
+ * only canonical metadata advances.
+ */
+export async function retitleCodexMirror(
+  store: CanonicalSessionEngineStore,
+  input: CodexMirrorRetitleInput,
+): Promise<CanonicalEngineReceipt | undefined> {
+  const title = input.title.trim();
+  if (title.length === 0) throw new TypeError("Codex mirror title must not be empty");
+  if (store.retitleCodexMirrorMetadata !== undefined) {
+    return store.retitleCodexMirrorMetadata({ ...input, title });
+  }
+  const current = await store.getSession(input.logicalSessionId);
+  if (current === undefined) return undefined;
+  if (current.session.authorityScope !== "codex" || current.session.originKind !== "codex-mirror") {
+    throw new Error(`Codex catalog title cannot update a Maintenance-owned session: ${input.logicalSessionId}`);
+  }
+  if (current.session.title === title) {
+    return {
+      outcome: "noop",
+      operationId: null,
+      logicalSessionId: input.logicalSessionId,
+      versionId: current.headVersionId,
+      tombstoneState: null,
+      committedAt: input.appliedAt,
+    };
+  }
+  if (current.headVersionId === null) throw new Error(`Codex mirror has no canonical head: ${input.logicalSessionId}`);
+  const head = await store.getVersion(current.headVersionId);
+  if (head === undefined) throw new Error(`Canonical head version is missing: ${current.headVersionId}`);
+  const version = buildCanonicalVersion({
+    logicalSessionId: input.logicalSessionId,
+    parentVersionIds: [head.id],
+    events: head.events,
+    workspaceId: current.workspaceId,
+    title,
+    tags: current.session.tags,
+    archivedAt: current.session.archivedAt,
+    createdAt: input.appliedAt,
+  });
+  const session: CanonicalSessionRecord = {
+    ...current.session,
+    headVersionId: version.id,
+    title,
+    // A catalog-only rename must not make an old conversation look recently active.
+    updatedAt: current.session.updatedAt,
+  };
+  const receipt: CanonicalEngineReceipt = {
+    outcome: "advanced",
+    operationId: null,
+    logicalSessionId: input.logicalSessionId,
+    versionId: version.id,
+    tombstoneState: null,
+    committedAt: input.appliedAt,
+  };
+  return store.commit({
+    kind: "codex-observation",
+    operationId: null,
+    session,
+    version,
+    membership: null,
+    derivation: null,
+    projectionReceipt: null,
+    tombstone: current.tombstone,
+    observation: null,
     receipt,
   });
 }

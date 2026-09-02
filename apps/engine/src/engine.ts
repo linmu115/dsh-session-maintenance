@@ -58,6 +58,7 @@ import {
   type AdapterId,
   type DshRuntimeBridgeV1,
   type NativeAppendOperation,
+  type NativeSessionId,
   type ProjectionOperationReceipt,
   type RuntimeBrokerAttachRunRequest,
   type RuntimeBrokerAttachedRun,
@@ -76,7 +77,15 @@ import type { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import type { StatusLog } from "@linmu/dsh-session-status-log";
 import type { AdapterRegistry } from "@linmu/dsh-session-adapter-host";
-import { readProjectionRuntimeSnapshot, type CanonicalProjectionSource, type ProjectionLifecycle, type ProjectionRuntimeSnapshot } from "@linmu/dsh-session-projection-lifecycle";
+import {
+  openProjectionRuntimeSessionStream,
+  openProjectionRuntimeStream,
+  readProjectionRuntimeSnapshot,
+  type CanonicalProjectionSource,
+  type ProjectionLifecycle,
+  type ProjectionRuntimeNdjsonStream,
+  type ProjectionRuntimeSnapshot,
+} from "@linmu/dsh-session-projection-lifecycle";
 import type { ProjectionRunRepository, RunId } from "@linmu/dsh-session-contracts";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
 import {
@@ -184,6 +193,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly canonicalEngine: CanonicalSessionEngine;
   readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
   readonly runtimeBroker: ProjectionRuntimeBroker;
+  private readonly beforeProjectionPrepare: () => Promise<void>;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
   private readonly clock: () => string;
@@ -216,6 +226,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly projectionRuntimeRoot: string;
     readonly canonicalEngine: CanonicalSessionEngine;
     readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
+    readonly beforeProjectionPrepare?: () => Promise<void>;
   }) {
     this.instances = input.instances;
     this.adapters = input.adapters;
@@ -242,6 +253,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.projectionRuntimeRoot = input.projectionRuntimeRoot;
     this.canonicalEngine = input.canonicalEngine;
     this.projectionLifecycleFactory = input.projectionLifecycleFactory;
+    this.beforeProjectionPrepare = input.beforeProjectionPrepare ?? (async () => undefined);
     this.runtimeBroker = new ProjectionRuntimeBroker({
       lifecycleFactory: input.projectionLifecycleFactory,
       statusLog: this.statusLog,
@@ -257,7 +269,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     });
   }
 
-  prepareProjectionRuntimeRun(input: RuntimeBrokerPrepareRunRequest): Promise<RuntimeBrokerPreparedRun> {
+  async prepareProjectionRuntimeRun(input: RuntimeBrokerPrepareRunRequest): Promise<RuntimeBrokerPreparedRun> {
+    await this.beforeProjectionPrepare();
     return this.runtimeBroker.prepareRun(input);
   }
 
@@ -286,11 +299,26 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   }
 
   async getProjectionRuntimeSnapshot(runId: RunId): Promise<ProjectionRuntimeSnapshot | undefined> {
-    const run = await this.projectionRunRepository.getProjectionRun(runId);
-    if (run === undefined || !["preparing", "running", "draining", "verifying"].includes(run.state)) {
-      return undefined;
-    }
+    if (!await this.projectionRunIsReadable(runId)) return undefined;
     return readProjectionRuntimeSnapshot(this.projectionRuntimeRoot, runId);
+  }
+
+  async getProjectionRuntimeStream(runId: RunId, hotLimit: number): Promise<ProjectionRuntimeNdjsonStream | undefined> {
+    if (!await this.projectionRunIsReadable(runId)) return undefined;
+    return openProjectionRuntimeStream(this.projectionRuntimeRoot, runId, hotLimit);
+  }
+
+  async getProjectionRuntimeSessionStream(
+    runId: RunId,
+    nativeSessionId: NativeSessionId,
+  ): Promise<ProjectionRuntimeNdjsonStream | undefined> {
+    if (!await this.projectionRunIsReadable(runId)) return undefined;
+    return openProjectionRuntimeSessionStream(this.projectionRuntimeRoot, runId, nativeSessionId);
+  }
+
+  private async projectionRunIsReadable(runId: RunId): Promise<boolean> {
+    const run = await this.projectionRunRepository.getProjectionRun(runId);
+    return run !== undefined && ["preparing", "running", "draining", "verifying"].includes(run.state);
   }
 
   async resolveStableReference(input: StableLogicalReference): Promise<StableLogicalReferenceResolution> {

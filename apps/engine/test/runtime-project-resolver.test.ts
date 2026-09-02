@@ -24,16 +24,24 @@ describe("SqliteRuntimeProjectResolver", () => {
         logical_session_id TEXT PRIMARY KEY,
         workspace_id TEXT
       );
+      CREATE TABLE session_derivations (
+        child_session_id TEXT PRIMARY KEY,
+        parent_session_id TEXT NOT NULL
+      );
       INSERT INTO logical_sessions VALUES ('logical-live');
+      INSERT INTO logical_sessions VALUES ('logical-derived');
       INSERT INTO logical_projects VALUES ('project-deepseek');
       INSERT INTO project_roots VALUES ('project-deepseek', 'd:\\ai\\deepseek');
       INSERT INTO workspace_memberships VALUES ('logical-live', 'workspace-independent');
+      INSERT INTO session_derivations VALUES ('logical-derived', 'logical-live');
     `);
     const resolver = new SqliteRuntimeProjectResolver(database);
 
     const projectId = await resolver.resolveProject("D:/AI/DeepSeek/");
     expect(projectId).toBe("project-deepseek");
     await resolver.assignProject("logical-live" as never, projectId!);
+
+    await expect(resolver.resolveInheritedProject("logical-derived" as never)).resolves.toBe("project-deepseek");
 
     expect(database.prepare("SELECT project_id FROM project_memberships").get()).toEqual({ project_id: "project-deepseek" });
     expect(database.prepare("SELECT workspace_id FROM workspace_memberships").get()).toEqual({ workspace_id: "workspace-independent" });

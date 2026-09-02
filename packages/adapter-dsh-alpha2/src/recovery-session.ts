@@ -1,7 +1,10 @@
 import type {
   JsonValue,
+  NativeSessionId,
   NativeRecoverySession,
   ProjectionSession,
+  RunId,
+  UnmappedNativeRecoverySession,
 } from "@linmu/dsh-session-adapter-sdk";
 
 function record(value: JsonValue, description: string): Readonly<Record<string, JsonValue>> {
@@ -48,4 +51,39 @@ export function recoverAlpha2ProjectionSession(
     header,
     committedEvents: session.events.slice(0, projection.nativeRevision),
   } as NativeRecoverySession;
+}
+
+export function recoverUnmappedAlpha2ProjectionSession(
+  _runId: RunId,
+  nativeSessionId: NativeSessionId,
+  payload: JsonValue,
+): UnmappedNativeRecoverySession {
+  const session = record(payload, "Alpha2 unmapped recovery session");
+  if (session.logicalSessionId === undefined || typeof session.logicalSessionId !== "string") {
+    throw new TypeError(`Alpha2 unmapped recovery logical session is invalid: ${nativeSessionId}`);
+  }
+  if (session.baseVersionId !== null) {
+    throw new TypeError(`Alpha2 unmapped recovery session has a committed base: ${nativeSessionId}`);
+  }
+  if (!Array.isArray(session.events) || session.events.length !== 0) {
+    throw new TypeError(`Alpha2 unmapped recovery session is not an empty registration: ${nativeSessionId}`);
+  }
+  const projection: ProjectionSession = {
+    schemaVersion: 1,
+    runId: _runId,
+    nativeSessionId,
+    logicalSessionId: session.logicalSessionId as ProjectionSession["logicalSessionId"],
+    baseVersionId: null,
+    mode: "maintenance-write",
+    nativeRevision: 0,
+    lastCommittedOperationId: null,
+    derivedChildSessionId: null,
+  };
+  return {
+    logicalSessionId: projection.logicalSessionId,
+    baseVersionId: null,
+    mode: "maintenance-write",
+    nativeRevision: 0,
+    recovered: recoverAlpha2ProjectionSession(projection, payload),
+  };
 }

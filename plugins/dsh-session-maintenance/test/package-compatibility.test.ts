@@ -13,7 +13,7 @@ describe("package compatibility policy", () => {
       dshWorkshop: { compatibility?: unknown };
     };
 
-    expect(packageJson.version).toBe("0.2.0");
+    expect(packageJson.version).toMatch(/^0\.2\.\d+$/u);
     expect(new Set(Object.values(packageJson.peerDependencies))).toEqual(new Set(["*"]));
     expect(packageJson.dsh.client.inject).toContain("@deepseek-ai/dsh-client-ui-slots");
     expect(packageJson.dsh.client.inject).toContain("@deepseek-ai/dsh-client-ui-settings");

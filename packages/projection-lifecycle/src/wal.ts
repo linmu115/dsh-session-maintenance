@@ -139,6 +139,12 @@ export class ProjectionWriteAheadLog {
     return this.replace({ ...current, state: "committed", receipt, updatedAt: at });
   }
 
+  async supersede(operationId: OperationId): Promise<void> {
+    const current = await this.required(operationId);
+    if (current.state !== "pending") throw new Error(`Only a pending WAL record can be superseded: ${operationId}`);
+    await rename(this.path(operationId), `${this.path(operationId)}.superseded-${randomUUID()}`);
+  }
+
   private async required(operationId: OperationId): Promise<ProjectionWalRecord> {
     const record = await this.get(operationId);
     if (record === undefined) throw new Error(`Projection WAL record not found: ${operationId}`);

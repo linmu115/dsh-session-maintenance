@@ -4,6 +4,7 @@ import type {
   LogicalProjectId,
   NativeSessionId,
   RunId,
+  SessionVersionId,
 } from "./canonical.js";
 import type { NativeAppendOperation } from "./adapter-sdk.js";
 import type { ProjectionOperationReceipt } from "./projection.js";
@@ -84,7 +85,7 @@ export interface RuntimeBrokerRegisteredSession {
   readonly runId: RunId;
   readonly nativeSessionId: NativeSessionId;
   readonly logicalSessionId: string;
-  readonly baseVersionId: null;
+  readonly baseVersionId: SessionVersionId | null;
 }
 
 export interface RuntimeBrokerAppendResponse {

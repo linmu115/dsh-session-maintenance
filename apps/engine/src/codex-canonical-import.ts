@@ -61,10 +61,21 @@ export interface CodexCanonicalImportOptions {
   readonly fixtureGuard?: (root: string) => void;
 }
 
+function isJsonRecord(value: JsonValue | undefined): value is Readonly<Record<string, JsonValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 function mappedKind(event: NormalizedEvent): CanonicalEventKind {
   if (event.kind === "attachment") return "attachment";
   if (event.kind === "metadata") return "system-metadata";
-  if (event.kind === "tool-import") return event.role === "tool" ? "tool-result" : "opaque-unknown";
+  if (event.kind === "tool-import") {
+    const tool = event.extensions.codexTool;
+    if (isJsonRecord(tool)) {
+      if (tool.phase === "call") return "tool-call";
+      if (tool.phase === "result") return "tool-result";
+    }
+    return event.role === "tool" ? "tool-result" : "opaque-unknown";
+  }
   if (event.role === "user") return "user-message";
   if (event.role === "assistant") return "assistant-message";
   if (event.role === "system") return "system-message";
@@ -80,14 +91,25 @@ export function canonicalCodexEvent(
   logicalSessionId: LogicalSessionId,
   event: NormalizedEvent,
 ): CanonicalEventV1 {
-  const content = {
-    text: event.content,
-    attachments: event.attachments.map((attachment) => ({
-      name: attachment.name,
-      ...(attachment.mediaType === undefined ? {} : { mediaType: attachment.mediaType }),
-      source: attachment.source,
-    })),
-  } as JsonValue;
+  const tool = event.extensions.codexTool;
+  const content = event.kind === "tool-import"
+    && isJsonRecord(tool)
+    ? {
+        callId: typeof tool.callId === "string" ? tool.callId : event.id,
+        name: typeof tool.name === "string" ? tool.name : "codex-tool",
+        protocol: typeof tool.protocol === "string" ? tool.protocol : "unknown",
+        ...(tool.phase === "call"
+          ? { arguments: typeof tool.arguments === "string" ? tool.arguments : event.content }
+          : { outputText: typeof tool.outputText === "string" ? tool.outputText : event.content }),
+      } as JsonValue
+    : {
+        text: event.content,
+        attachments: event.attachments.map((attachment) => ({
+          name: attachment.name,
+          ...(attachment.mediaType === undefined ? {} : { mediaType: attachment.mediaType }),
+          source: attachment.source,
+        })),
+      } as JsonValue;
   const sourceType = typeof event.extensions.sourceType === "string"
     ? event.extensions.sourceType
     : undefined;

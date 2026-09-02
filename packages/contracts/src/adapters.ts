@@ -44,9 +44,11 @@ import type {
   AdapterProbeResult,
   CanonicalAppendOperation,
   CanonicalProjectionInput,
+  CanonicalProjectionSessionInput,
   DshEnvironmentDescriptor,
   NativeAppendOperation,
   NativeRecoverySession,
+  UnmappedNativeRecoverySession,
   NativeSessionRegistration,
   NativeReferenceResolution,
   ProjectionInspection,
@@ -58,7 +60,7 @@ import type {
   AdapterVerificationResult,
   AdapterManifestV1,
 } from "./adapter-sdk.js";
-import type { NativeSessionId } from "./canonical.js";
+import type { NativeSessionId, RunId } from "./canonical.js";
 import type { ProjectionRun, ProjectionSession } from "./projection.js";
 
 export interface SessionReadAdapter {
@@ -148,11 +150,33 @@ export interface DshSessionAdapterV1 {
     reference: StableSessionReference,
     run: ProjectionRun,
   ): Promise<NativeReferenceResolution>;
+  /**
+   * Returns the native revision represented by the canonical prefix in one
+   * materialized payload. Implementations must validate that the payload begins
+   * with the canonical session; a divergent prefix must throw.
+   */
+  projectedNativeRevision?(
+    canonical: CanonicalProjectionSessionInput,
+    payload: JsonValue,
+  ): number;
   /** Decodes adapter-owned projection metadata during crash recovery. */
   recoverProjectionSession?(
     projection: ProjectionSession,
     payload: JsonValue,
   ): NativeRecoverySession;
+  /** Recovers only a payload left by an interrupted native-session registration. */
+  recoverUnmappedProjectionSession?(
+    runId: RunId,
+    nativeSessionId: NativeSessionId,
+    payload: JsonValue,
+  ): UnmappedNativeRecoverySession;
+  /**
+   * Identifies a pending crash-recovery WAL append that contains only native
+   * runtime preparation state and therefore has no canonical user mutation to
+   * replay. Returning true preserves the WAL as a superseded recovery artifact
+   * instead of committing it as a new logical-session version.
+   */
+  shouldSupersedeRecoveryAppend?(operation: NativeAppendOperation): boolean;
 }
 
 export interface DshRuntimeBridgeV1 {

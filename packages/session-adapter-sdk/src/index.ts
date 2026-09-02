@@ -10,6 +10,7 @@ export type {
   AdapterManifestV1,
   AdapterVerificationStatus,
   CanonicalEventV1,
+  CanonicalProjectionSessionInput,
   CanonicalSessionRecord,
   JsonValue,
   LogicalSessionId,
@@ -21,4 +22,9 @@ export type {
   ProjectionRun,
   RunId,
   SessionVersionId,
+} from "@linmu/dsh-session-contracts";
+
+export {
+  RUNTIME_MANAGED_PROJECT_DIRECTORY,
+  runtimeManagedProjectSegment,
 } from "@linmu/dsh-session-contracts";

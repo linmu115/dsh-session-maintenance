@@ -16,6 +16,10 @@ interface MembershipRow {
   readonly revision: number;
 }
 
+interface InheritedProjectRow {
+  readonly project_id: string | null;
+}
+
 function normalizeNativeProjectRoot(path: string): string {
   return path
     .replace(/^\\\\\?\\/u, "")
@@ -38,6 +42,16 @@ export class SqliteRuntimeProjectResolver implements RuntimeProjectResolver {
     return (rows[0]?.project_id ?? null) as LogicalProjectId | null;
   }
 
+  async resolveInheritedProject(logicalSessionId: LogicalSessionId): Promise<LogicalProjectId | null> {
+    const row = this.database.prepare(
+      `SELECT pm.project_id
+         FROM session_derivations d
+         JOIN project_memberships pm ON pm.logical_session_id = d.parent_session_id
+        WHERE d.child_session_id = ?`,
+    ).get(logicalSessionId) as InheritedProjectRow | undefined;
+    return (row?.project_id ?? null) as LogicalProjectId | null;
+  }
+
   async assignProject(logicalSessionId: LogicalSessionId, projectId: LogicalProjectId): Promise<void> {
     const existing = this.database.prepare(
       "SELECT project_id, revision FROM project_memberships WHERE logical_session_id = ?",
@@ -53,4 +67,3 @@ export class SqliteRuntimeProjectResolver implements RuntimeProjectResolver {
     ).run(logicalSessionId, projectId, revision);
   }
 }
-

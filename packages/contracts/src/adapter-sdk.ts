@@ -68,6 +68,8 @@ export interface CanonicalProjectionSessionInput {
   readonly workspaceId: LogicalWorkspaceId | null;
   /** Stable project grouping identity, distinct from workspace/cwd execution metadata. */
   readonly projectId?: LogicalProjectId | null;
+  /** Stable project display label used when a native runtime needs to rebuild its project list. */
+  readonly projectName?: string | null;
   /** Selected canonical project root; the version adapter may map it to native SessionHeader.cwd. */
   readonly projectRoot?: string | null;
 }
@@ -171,4 +173,18 @@ export interface NativeRecoverySession {
   readonly projectId: LogicalProjectId | null;
   readonly header: JsonValue;
   readonly committedEvents: readonly JsonValue[];
+}
+
+/**
+ * Adapter-owned reconstruction for the narrow crash window after a runtime
+ * session payload was written but before its projection mapping was durable.
+ * The payload must still represent an empty, newly registered native session;
+ * runtime events are recovered separately from the native persistence tail.
+ */
+export interface UnmappedNativeRecoverySession {
+  readonly logicalSessionId: LogicalSessionId;
+  readonly baseVersionId: null;
+  readonly mode: "maintenance-write";
+  readonly nativeRevision: 0;
+  readonly recovered: NativeRecoverySession;
 }

@@ -20,6 +20,7 @@ import {
   canonicalEventV1Schema,
   canonicalSessionRecordSchema,
   logicalWorkspaceSchema,
+  type ContentObjectStore,
 } from "@linmu/dsh-session-contracts";
 
 export interface CanonicalProjectionSource {
@@ -34,6 +35,22 @@ export interface ProjectionRuntimeSnapshot {
     readonly payload: JsonValue;
   }[];
 }
+
+export interface ProjectionRuntimeCatalogEntry {
+  readonly nativeSessionId: NativeSessionId;
+  readonly updatedAt: string;
+  readonly eventCount: number;
+  /** Complete projected session metadata with an empty events array. */
+  readonly payload: JsonValue;
+}
+
+export interface ProjectionRuntimeCatalogSidecar {
+  readonly schemaVersion: 1;
+  readonly runId: RunId;
+  readonly sessions: readonly ProjectionRuntimeCatalogEntry[];
+}
+
+const SESSION_CATALOG_FILE = "session-catalog.json";
 
 export function projectionRootFor(runtimeRoot: string, runId: RunId): string {
   const root = resolve(runtimeRoot);
@@ -60,10 +77,85 @@ function encoded(value: string): string {
   return Buffer.from(value, "utf8").toString("base64url");
 }
 
+function objectPayload(value: JsonValue): { readonly [key: string]: JsonValue } {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Projection session payload must be an object");
+  }
+  return value as { readonly [key: string]: JsonValue };
+}
+
+function catalogEntry(
+  nativeSessionId: NativeSessionId,
+  payload: JsonValue,
+  canonicalUpdatedAt?: string,
+): ProjectionRuntimeCatalogEntry {
+  const record = objectPayload(payload);
+  const updatedAt = typeof record.updatedAt === "string" ? record.updatedAt : canonicalUpdatedAt;
+  const events = record.events;
+  if (typeof updatedAt !== "string" || !Number.isFinite(Date.parse(updatedAt))) {
+    throw new TypeError(`Projection session ${nativeSessionId} has no valid updatedAt metadata`);
+  }
+  if (!Array.isArray(events)) {
+    throw new TypeError(`Projection session ${nativeSessionId} has no events array`);
+  }
+  return {
+    nativeSessionId,
+    updatedAt,
+    eventCount: events.length,
+    payload: { ...record, events: [] },
+  };
+}
+
+function sortCatalog(entries: readonly ProjectionRuntimeCatalogEntry[]): ProjectionRuntimeCatalogEntry[] {
+  return [...entries].sort((left, right) => {
+    const byUpdatedAt = Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+    return byUpdatedAt === 0
+      ? left.nativeSessionId.localeCompare(right.nativeSessionId)
+      : byUpdatedAt;
+  });
+}
+
+function parseCatalog(value: unknown, expectedRunId: RunId): ProjectionRuntimeCatalogSidecar {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError("Projection session catalog is invalid");
+  }
+  const record = value as { readonly schemaVersion?: unknown; readonly runId?: unknown; readonly sessions?: unknown };
+  if (record.schemaVersion !== 1 || record.runId !== expectedRunId || !Array.isArray(record.sessions)) {
+    throw new TypeError("Projection session catalog header is invalid");
+  }
+  const sessions = record.sessions.map((item) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      throw new TypeError("Projection session catalog entry is invalid");
+    }
+    const entry = item as {
+      readonly nativeSessionId?: unknown;
+      readonly updatedAt?: unknown;
+      readonly eventCount?: unknown;
+      readonly payload?: unknown;
+    };
+    if (
+      typeof entry.nativeSessionId !== "string"
+      || typeof entry.updatedAt !== "string"
+      || !Number.isFinite(Date.parse(entry.updatedAt))
+      || !Number.isSafeInteger(entry.eventCount)
+      || (entry.eventCount as number) < 0
+      || entry.payload === undefined
+    ) throw new TypeError("Projection session catalog entry fields are invalid");
+    return {
+      nativeSessionId: entry.nativeSessionId as NativeSessionId,
+      updatedAt: entry.updatedAt,
+      eventCount: entry.eventCount as number,
+      payload: entry.payload as JsonValue,
+    };
+  });
+  return { schemaVersion: 1, runId: expectedRunId, sessions: sortCatalog(sessions) };
+}
+
 export class JsonProjectionDirectory implements ProjectionWriter, ProjectionReader {
   readonly root: string;
   private readonly sessionIds = new Set<NativeSessionId>();
   private readonly workspaceIds = new Set<string>();
+  private catalogMutation: Promise<void> = Promise.resolve();
 
   constructor(root: string) {
     this.root = root;
@@ -86,12 +178,44 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
     await this.writeJson(join(this.root, "sessions", `${encoded(nativeSessionId)}.json`), payload);
     this.sessionIds.add(nativeSessionId);
     await this.writeJson(join(this.root, "session-index.json"), [...this.sessionIds].sort(), false);
+    await this.updateCatalogIfPresent(nativeSessionId, payload);
   }
 
   async replaceSession(nativeSessionId: NativeSessionId, payload: JsonValue): Promise<void> {
     const path = join(this.root, "sessions", `${encoded(nativeSessionId)}.json`);
     await this.writeJsonAtomically(path, payload);
     this.sessionIds.add(nativeSessionId);
+    await this.updateCatalogIfPresent(nativeSessionId, payload);
+  }
+
+  async rebuildSessionCatalog(
+    runId: RunId,
+    canonicalUpdatedAtByNativeSessionId: ReadonlyMap<string, string> = new Map(),
+  ): Promise<ProjectionRuntimeCatalogSidecar> {
+    const sessions: ProjectionRuntimeCatalogEntry[] = [];
+    for (const nativeSessionId of await this.listNativeSessionIds()) {
+      sessions.push(catalogEntry(
+        nativeSessionId,
+        await this.readSession(nativeSessionId),
+        canonicalUpdatedAtByNativeSessionId.get(nativeSessionId),
+      ));
+    }
+    const sidecar: ProjectionRuntimeCatalogSidecar = {
+      schemaVersion: 1,
+      runId,
+      sessions: sortCatalog(sessions),
+    };
+    await this.writeJsonAtomically(join(this.root, SESSION_CATALOG_FILE), sidecar as unknown as JsonValue);
+    return sidecar;
+  }
+
+  async readSessionCatalog(runId: RunId): Promise<ProjectionRuntimeCatalogSidecar> {
+    try {
+      return parseCatalog(JSON.parse(await readFile(join(this.root, SESSION_CATALOG_FILE), "utf8")), runId);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return this.rebuildSessionCatalog(runId);
+    }
   }
 
   async listNativeSessionIds(): Promise<readonly NativeSessionId[]> {
@@ -164,6 +288,31 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
       throw error;
     }
   }
+
+  private async updateCatalogIfPresent(nativeSessionId: NativeSessionId, payload: JsonValue): Promise<void> {
+    const mutation = this.catalogMutation.catch(() => undefined).then(async () => {
+      let current: ProjectionRuntimeCatalogSidecar;
+      try {
+        const raw = JSON.parse(await readFile(join(this.root, SESSION_CATALOG_FILE), "utf8")) as unknown;
+        if (raw === null || typeof raw !== "object" || Array.isArray(raw) || !("runId" in raw) || typeof raw.runId !== "string") {
+          throw new TypeError("Projection session catalog header is invalid");
+        }
+        current = parseCatalog(raw, raw.runId as RunId);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
+      }
+      const nextEntry = catalogEntry(nativeSessionId, payload);
+      const sessions = current.sessions.filter((entry) => entry.nativeSessionId !== nativeSessionId);
+      sessions.push(nextEntry);
+      await this.writeJsonAtomically(join(this.root, SESSION_CATALOG_FILE), {
+        ...current,
+        sessions: sortCatalog(sessions),
+      } as unknown as JsonValue);
+    });
+    this.catalogMutation = mutation;
+    await mutation;
+  }
 }
 
 interface SessionRow {
@@ -179,6 +328,7 @@ interface SessionRow {
   readonly updated_at: string;
   readonly workspace_id: string | null;
   readonly project_id: string | null;
+  readonly project_name: string | null;
   readonly project_root: string | null;
 }
 
@@ -196,9 +346,11 @@ interface EventRow { readonly event_json: string }
 
 export class SqliteCanonicalProjectionSource implements CanonicalProjectionSource {
   readonly database: DatabaseSync;
+  readonly objectStore: ContentObjectStore | undefined;
 
-  constructor(database: DatabaseSync) {
+  constructor(database: DatabaseSync, objectStore?: ContentObjectStore) {
     this.database = database;
+    this.objectStore = objectStore;
   }
 
   async load(run: ProjectionRun): Promise<CanonicalProjectionInput> {
@@ -222,6 +374,7 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
               s.head_version_id, s.archived_at, s.tombstoned_at, s.created_at, s.updated_at,
                m.workspace_id,
                p.id AS project_id,
+               p.name AS project_name,
                (SELECT r.root_path
                   FROM project_roots r
                  WHERE r.project_id = p.id
@@ -237,7 +390,7 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
          AND s.tombstoned_at IS NULL
        ORDER BY s.created_at, s.id`,
     ).all() as unknown as SessionRow[];
-    const sessions = sessionRows.map((row) => {
+    const sessions = await Promise.all(sessionRows.map(async (row) => {
       const session = canonicalSessionRecordSchema.parse({
         schemaVersion: 1,
         id: row.id,
@@ -251,13 +404,7 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
         createdAt: row.created_at,
         updatedAt: row.updated_at,
       }) as unknown as CanonicalSessionRecord;
-      const eventRows = this.database.prepare(
-        `SELECT event_json FROM canonical_events
-         WHERE logical_session_id = ? ORDER BY sequence`,
-      ).all(row.id) as unknown as EventRow[];
-      const events = eventRows.map((eventRow) => canonicalEventV1Schema.parse(
-        JSON.parse(eventRow.event_json),
-      ) as unknown as CanonicalEventV1);
+      const events = await this.loadHeadEvents(row.id, row.head_version_id);
       return {
         session,
         events,
@@ -265,9 +412,38 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
           ? row.workspace_id as never
           : null,
         projectId: row.project_id as never,
+        projectName: row.project_name,
         projectRoot: row.project_root,
       };
-    });
+    }));
     return { run, workspaces, sessions };
+  }
+
+  private async loadHeadEvents(
+    logicalSessionId: string,
+    headVersionId: string | null,
+  ): Promise<readonly CanonicalEventV1[]> {
+    if (headVersionId !== null && this.objectStore !== undefined) {
+      const version = this.database.prepare(
+        "SELECT body_object FROM session_versions WHERE id = ? AND logical_session_id = ?",
+      ).get(headVersionId, logicalSessionId) as { readonly body_object: string } | undefined;
+      if (version === undefined) {
+        throw new Error(`Canonical projection head is missing: ${logicalSessionId}/${headVersionId}`);
+      }
+      const body = JSON.parse(
+        Buffer.from(await this.objectStore.get(version.body_object)).toString("utf8"),
+      ) as { readonly schemaVersion?: unknown; readonly events?: unknown };
+      if (body.schemaVersion !== 1 || !Array.isArray(body.events)) {
+        throw new Error(`Canonical projection body is invalid: ${logicalSessionId}/${headVersionId}`);
+      }
+      return body.events.map((event) => canonicalEventV1Schema.parse(event) as unknown as CanonicalEventV1);
+    }
+    const eventRows = this.database.prepare(
+      `SELECT event_json FROM canonical_events
+       WHERE logical_session_id = ? ORDER BY sequence`,
+    ).all(logicalSessionId) as unknown as EventRow[];
+    return eventRows.map((eventRow) => canonicalEventV1Schema.parse(
+      JSON.parse(eventRow.event_json),
+    ) as unknown as CanonicalEventV1);
   }
 }

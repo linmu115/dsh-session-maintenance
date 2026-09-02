@@ -1,3 +1,5 @@
+import { isDeepStrictEqual } from "node:util";
+
 import type {
   DshRuntimeBridgeV1,
   JsonValue,
@@ -122,9 +124,11 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
     operation: NativeAppendOperation,
     projection: Alpha2MutableProjection,
   ): Promise<void> {
-    const { session, appendedEvents } = await this.validateAppend(handle, operation, projection);
+    const { session, appendedEvents, alreadyApplied } = await this.validateAppend(handle, operation, projection);
+    if (alreadyApplied) return;
     await projection.replaceSession(operation.nativeSessionId, {
       ...session,
+      updatedAt: operation.observedAt,
       events: [...session.events as readonly JsonValue[], ...appendedEvents],
     });
   }
@@ -138,17 +142,30 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
     if (projection.writeSession === undefined) throw new Error("Alpha2 projection cannot register a new native session");
     const header = record(registration.header, "Alpha2 new SessionHeader");
     if (header.id !== registration.nativeSessionId) throw new Error("Alpha2 new SessionHeader ID does not match nativeSessionId");
-    await projection.writeSession(registration.nativeSessionId, {
+    if (typeof header.createdAt !== "number" || !Number.isSafeInteger(header.createdAt) || header.createdAt < 0) {
+      throw new Error("Alpha2 new SessionHeader createdAt is invalid");
+    }
+    const expected = {
       schemaVersion: 1,
       logicalSessionId: registration.logicalSessionId,
       baseVersionId: null,
       workspaceId: registration.workspaceId,
       projectId: registration.projectId,
+      updatedAt: new Date(header.createdAt).toISOString(),
       title: registration.title,
       tags: [],
       header,
       events: [],
-    });
+    } as const;
+    try {
+      const existing = await projection.readSession(registration.nativeSessionId);
+      if (!isDeepStrictEqual(existing, expected)) {
+        throw new Error(`Alpha2 native registration payload already exists with different content: ${registration.nativeSessionId}`);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      await projection.writeSession(registration.nativeSessionId, expected);
+    }
   }
 
   async validateAppend(
@@ -158,6 +175,7 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
   ): Promise<{
     readonly session: { readonly [key: string]: JsonValue };
     readonly appendedEvents: readonly JsonValue[];
+    readonly alreadyApplied: boolean;
   }> {
     this.registration(handle);
     if (handle.runId !== operation.runId) throw new Error("Alpha2 append belongs to another runtime handle");
@@ -169,17 +187,40 @@ export class Alpha2RuntimeBridge implements DshRuntimeBridgeV1 {
     if (!Array.isArray(session.events) || !Array.isArray(payload.events)) {
       throw new TypeError("Alpha2 session and append require event arrays");
     }
-    const currentRevision = session.events.length;
-    if (operation.nativeRevision !== currentRevision + payload.events.length) {
+    const sessionEvents = session.events as readonly JsonValue[];
+    const payloadEvents = payload.events as readonly JsonValue[];
+    const currentRevision = sessionEvents.length;
+    if (payloadEvents.length > 0) {
+      const operationStartRevision = operation.nativeRevision - payloadEvents.length;
+      if (operationStartRevision >= 0
+        && currentRevision >= operationStartRevision
+        && currentRevision <= operation.nativeRevision) {
+        const alreadyAppliedCount = currentRevision - operationStartRevision;
+        const projectedPrefix = sessionEvents.slice(operationStartRevision, currentRevision);
+        const operationPrefix = payloadEvents.slice(0, alreadyAppliedCount);
+        if (projectedPrefix.length === operationPrefix.length
+          && projectedPrefix.every((event, index) => isDeepStrictEqual(event, operationPrefix[index]))) {
+          const appendedEvents = payloadEvents.slice(alreadyAppliedCount);
+          appendedEvents.forEach((eventValue, index) => {
+            const event = record(eventValue, "Alpha2 append event");
+            if (event.seq !== currentRevision + index) {
+              throw new Error(`Alpha2 append event sequence is not contiguous: ${String(event.seq)}`);
+            }
+          });
+          return { session, appendedEvents, alreadyApplied: appendedEvents.length === 0 };
+        }
+      }
+    }
+    if (operation.nativeRevision !== currentRevision + payloadEvents.length) {
       throw new Error(`Alpha2 native revision mismatch: ${currentRevision} -> ${operation.nativeRevision}`);
     }
-    payload.events.forEach((eventValue, index) => {
+    payloadEvents.forEach((eventValue, index) => {
       const event = record(eventValue, "Alpha2 append event");
       if (event.seq !== currentRevision + index) {
         throw new Error(`Alpha2 append event sequence is not contiguous: ${String(event.seq)}`);
       }
     });
-    return { session, appendedEvents: payload.events };
+    return { session, appendedEvents: payloadEvents, alreadyApplied: false };
   }
 
   async switchLogicalSession(

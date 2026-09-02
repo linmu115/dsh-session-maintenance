@@ -143,3 +143,4 @@ export * from "./probe.js";
 export * from "./projects.js";
 export * from "./stable-read.js";
 export * from "./status.js";
+export * from "./thread.js";

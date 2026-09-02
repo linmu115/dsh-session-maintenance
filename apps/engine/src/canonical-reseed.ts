@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { lstat, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, win32 } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
@@ -41,6 +42,7 @@ export type CanonicalReseedStage =
   | "reseed.dsh.read"
   | "reseed.dsh.import"
   | "reseed.codex.import"
+  | "reseed.codex.session"
   | "reseed.verify";
 
 export interface CanonicalReseedStatus {
@@ -213,7 +215,9 @@ function candidatePath(stateRoot: string, candidateFile: string): string {
 }
 
 async function fileDigest(path: string): Promise<string> {
-  return `sha256:${createHash("sha256").update(await readFile(path)).digest("hex")}`;
+  const digest = createHash("sha256");
+  for await (const chunk of createReadStream(path)) digest.update(chunk);
+  return `sha256:${digest.digest("hex")}`;
 }
 
 function verify(database: DatabaseSync, expectedSessions: number): CanonicalReseedManifest["counts"] {
@@ -356,7 +360,14 @@ export async function reseedCanonicalCandidate(input: CanonicalReseedInput): Pro
       canonicalEngine: engine,
       projectPort: new SqliteCodexProjectPort(repository),
       ...(input.fixtureGuard === undefined ? {} : { fixtureGuard: input.fixtureGuard }),
-    }).sync({ instance: input.codexInstance });
+    }).sync({
+      instance: input.codexInstance,
+      onStatus: (status) => input.onStatus?.({
+        stage: "reseed.codex.session",
+        state: status.state === "retry" ? "started" : "succeeded",
+        detail: `${status.stage}; session=${status.sessionId ?? "catalog"}; ${status.detail}`,
+      }),
+    });
     if (input.expectedCodexSessions !== undefined && codex.scanned !== input.expectedCodexSessions) {
       throw new Error(`Codex hot snapshot count changed: expected ${input.expectedCodexSessions}, got ${codex.scanned}`);
     }

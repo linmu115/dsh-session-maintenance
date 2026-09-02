@@ -9,8 +9,31 @@ import {
 
 import type { CodexThreadRow } from "./parser.js";
 import { resolveContainedRollout, withCodexReadSnapshot } from "./stable-read.js";
+import { codexDisplayTitle, isUserFacingCodexThread } from "./thread.js";
 import { codexWorkspaceId, codexWorkspaceLabel } from "./workspace.js";
 import type { CodexReadStatusEvent } from "./status.js";
+
+function readCatalogRows(instance: RegisteredInstance): readonly CodexThreadRow[] {
+  return withCodexReadSnapshot(instance.root, (database) =>
+    database
+      .prepare(
+        `SELECT id, rollout_path, source, agent_role, title, name, cwd, created_at, updated_at, updated_at_ms, archived, project_id
+         FROM threads ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC, id`,
+      )
+      .all() as unknown as CodexThreadRow[],
+  );
+}
+
+/** Internal Codex rows that an existing canonical store may need to unproject. */
+export function listInternalCodexThreadIds(
+  instance: RegisteredInstance,
+  fixtureGuard?: (root: string) => void,
+): readonly string[] {
+  fixtureGuard?.(instance.root);
+  return readCatalogRows(instance)
+    .filter((row) => !isUserFacingCodexThread(row))
+    .map((row) => row.id);
+}
 
 export async function* listCodexSessions(
   instance: RegisteredInstance,
@@ -26,21 +49,15 @@ export async function* listCodexSessions(
     );
   }
 
-  const rows = withCodexReadSnapshot(instance.root, (database) =>
-    database
-      .prepare(
-        `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived, project_id
-         FROM threads ORDER BY COALESCE(updated_at_ms, updated_at * 1000) DESC, id`,
-      )
-      .all() as unknown as CodexThreadRow[],
-  );
+  const rows = readCatalogRows(instance);
+  const visibleRows = rows.filter(isUserFacingCodexThread);
   await onStatus?.({
     stage: "catalog.snapshot",
     state: "succeeded",
     instanceId: instance.id,
     sessionId: null,
     consistency: "sqlite-read-transaction",
-    detail: `captured ${rows.length} thread rows without requiring Codex quiescence`,
+    detail: `captured ${visibleRows.length} user-facing threads; excluded ${rows.length - visibleRows.length} internal threads without requiring Codex quiescence`,
   });
 
   const seen = new Set<string>();
@@ -49,7 +66,7 @@ export async function* listCodexSessions(
     throw new TypeError(`Invalid Codex scan cursor: ${cursor?.opaque}`);
   }
 
-  for (const [index, row] of rows.entries()) {
+  for (const [index, row] of visibleRows.entries()) {
     if (seen.has(row.id)) {
       throw new SessionMaintenanceError("IDENTITY_CONFLICT", `Duplicate Codex thread ID: ${row.id}`);
     }
@@ -62,7 +79,7 @@ export async function* listCodexSessions(
     const info = await stat(path, { bigint: true });
     yield {
       key: { platform: "codex", instanceId: instance.id, sessionId: row.id },
-      title: row.title || row.name || row.id,
+      title: codexDisplayTitle(row),
       archived: Boolean(row.archived),
       workspaceId: codexWorkspaceId(row.cwd),
       workspaceLabel: codexWorkspaceLabel(row.cwd),

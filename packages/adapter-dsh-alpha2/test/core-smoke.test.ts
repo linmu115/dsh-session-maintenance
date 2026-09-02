@@ -15,6 +15,15 @@ import { adapter, alpha2NativeSessionId } from "../src/index.js";
 const at = "2026-08-31T00:00:00.000Z";
 
 describe("DSH Alpha2 Adapter Core Smoke", () => {
+  it("maps every logical id to a deterministic path-safe native session id", () => {
+    const logicalSessionId = "logical:alpha2/unsafe path" as never;
+    const nativeSessionId = alpha2NativeSessionId(logicalSessionId);
+
+    expect(nativeSessionId).toBe(alpha2NativeSessionId(logicalSessionId));
+    expect(nativeSessionId).toMatch(/^[a-zA-Z0-9_-]+$/u);
+    expect(nativeSessionId).not.toContain(":");
+  });
+
   it("materializes, verifies and normalizes one synthetic Alpha2 session without losing unknown events", async () => {
     const sessions = new Map<string, JsonValue>();
     const writer: ProjectionWriter = {
@@ -205,6 +214,229 @@ describe("DSH Alpha2 Adapter Core Smoke", () => {
     };
     expect(projected.header.cwd).toBe("D:\\fixture\\project-root");
     expect(projected.workspaceId).toBe("workspace-alpha2-smoke");
+    expect(projected.events[0]).toMatchObject({
+      type: "user/message",
+      data: {
+        id: "event-user",
+        role: "user",
+        source: { kind: "user" },
+      },
+    });
+    expect(projected.events[1]).toMatchObject({
+      type: "assistant/message",
+      data: {
+        message: {
+          id: "event-assistant",
+          role: "assistant",
+          source: { kind: "model", provider: "codex", model: "imported" },
+        },
+      },
+    });
     expect(projected.events[2]).toEqual(heldOut);
+  });
+
+  it("materializes Codex text and attachment rows as identified Alpha2 messages", async () => {
+    const sessions = new Map<string, JsonValue>();
+    const writer: ProjectionWriter = {
+      writeWorkspace: async () => undefined,
+      writeSession: async (id, payload) => { sessions.set(id, payload); },
+    };
+    const logicalSessionId = "logical-codex-message" as never;
+    await adapter.materialize({
+      run: {
+        schemaVersion: 1,
+        id: "run-codex-message" as never,
+        leaseId: "lease-codex-message" as never,
+        branchId: "main" as never,
+        instanceId: "launcher-codex-message",
+        profileId: "profile-codex-message",
+        dshVersion: "0.1.2-alpha.2",
+        adapterId: adapter.manifest.id as AdapterId,
+        state: "preparing",
+        startedAt: at,
+        heartbeatAt: at,
+        checkpointId: null,
+      },
+      workspaces: [],
+      sessions: [{
+        session: {
+          schemaVersion: 1,
+          id: logicalSessionId,
+          authorityScope: "codex",
+          originKind: "codex-mirror",
+          headVersionId: null,
+          title: "Imported Codex session",
+          tags: [],
+          archivedAt: null,
+          tombstonedAt: null,
+          createdAt: at,
+          updatedAt: at,
+        },
+        workspaceId: null,
+        projectId: null,
+        projectRoot: null,
+        events: [{
+          schemaVersion: 1,
+          id: "codex-user-event",
+          logicalSessionId,
+          sequence: 0,
+          kind: "user-message",
+          role: "user",
+          content: {
+            text: "read this file",
+            attachments: [{ name: "notes.md", source: "C:\\vault\\notes.md" }],
+          },
+          source: { platform: "codex", instanceId: "codex", sessionId: "thread", eventId: "0", cursor: "0" },
+          contentDigest: "sha256:codex-user",
+          rawPayload: null,
+          extensions: {},
+        }, {
+          schemaVersion: 1,
+          id: "codex-assistant-event",
+          logicalSessionId,
+          sequence: 1,
+          kind: "assistant-message",
+          role: "assistant",
+          content: { text: "done", attachments: [] },
+          source: { platform: "codex", instanceId: "codex", sessionId: "thread", eventId: "1", cursor: "1" },
+          contentDigest: "sha256:codex-assistant",
+          rawPayload: null,
+          extensions: {},
+        }],
+      }],
+    }, writer);
+
+    const projected = sessions.get(alpha2NativeSessionId(logicalSessionId)) as {
+      readonly events: readonly Array<{ readonly data: Record<string, unknown> }>;
+    };
+    expect(projected.events[0]?.data).toEqual({
+      id: "codex-user-event",
+      role: "user",
+      content: [
+        { type: "text", text: "read this file" },
+        { type: "text", text: "\n\n附件：notes.md" },
+      ],
+      source: { kind: "user" },
+    });
+    expect(projected.events[1]?.data).toEqual({
+      turn: 0,
+      step: 0,
+      message: {
+        id: "codex-assistant-event",
+        role: "assistant",
+        content: [{ type: "text", text: "done" }],
+        source: { kind: "model", provider: "codex", model: "imported" },
+      },
+    });
+  });
+
+  it("expands canonical Alpha2 packed rows back into contiguous native events", async () => {
+    const sessions = new Map<string, JsonValue>();
+    const writer: ProjectionWriter = {
+      writeWorkspace: async () => undefined,
+      writeSession: async (id, payload) => { sessions.set(id, payload); },
+    };
+    const logicalSessionId = "logical-alpha2-packed" as never;
+    await adapter.materialize({
+      run: {
+        schemaVersion: 1,
+        id: "run-alpha2-packed" as never,
+        leaseId: "lease-alpha2-packed" as never,
+        branchId: "main" as never,
+        instanceId: "launcher-alpha2-packed",
+        profileId: "profile-alpha2-packed",
+        dshVersion: "0.1.2-alpha.2",
+        adapterId: adapter.manifest.id as AdapterId,
+        state: "preparing",
+        startedAt: at,
+        heartbeatAt: at,
+        checkpointId: null,
+      },
+      workspaces: [],
+      sessions: [{
+        session: {
+          schemaVersion: 1,
+          id: logicalSessionId,
+          authorityScope: "maintenance",
+          originKind: "maintenance-native",
+          headVersionId: null,
+          title: "Packed Alpha2 session",
+          tags: [],
+          archivedAt: null,
+          tombstonedAt: null,
+          createdAt: at,
+          updatedAt: at,
+        },
+        workspaceId: null,
+        projectId: null,
+        projectRoot: null,
+        events: [{
+          schemaVersion: 1,
+          id: "event-chunk-start",
+          logicalSessionId,
+          sequence: 0,
+          kind: "reasoning",
+          role: "assistant",
+          content: { turn: 0, step: 0, chunk: { type: "block-start", index: 0, blockType: "reasoning" } },
+          source: { platform: "dsh", instanceId: "fixture", sessionId: "source", eventId: "0", cursor: "4" },
+          contentDigest: "sha256:chunk-start",
+          rawPayload: {
+            type: "assistant/chunk",
+            seq: 0,
+            time: Date.parse(at),
+            data: { turn: 0, step: 0, chunk: { type: "block-start", index: 0, blockType: "reasoning" } },
+          },
+          extensions: {},
+        }, {
+          schemaVersion: 1,
+          id: "event-packed",
+          logicalSessionId,
+          sequence: 1,
+          kind: "opaque-unknown",
+          role: "unknown",
+          content: { turn: 0, step: 0, index: 0, dt: [1, 2], texts: ["a", "b", "c"] },
+          source: { platform: "dsh", instanceId: "fixture", sessionId: "source", eventId: "1", cursor: "4" },
+          contentDigest: "sha256:packed",
+          rawPayload: {
+            type: "reasoning-chunks",
+            seq: 1,
+            time: Date.parse(at) + 1,
+            data: { turn: 0, step: 0, index: 0, dt: [1, 2], texts: ["a", "b", "c"] },
+          },
+          extensions: { heldOut: true },
+        }, {
+          schemaVersion: 1,
+          id: "event-message",
+          logicalSessionId,
+          sequence: 4,
+          kind: "assistant-message",
+          role: "assistant",
+          content: { turn: 0, step: 0, message: { role: "assistant", content: [{ type: "text", text: "abc" }] } },
+          source: { platform: "dsh", instanceId: "fixture", sessionId: "source", eventId: "4", cursor: "4" },
+          contentDigest: "sha256:message",
+          rawPayload: {
+            type: "assistant/message",
+            seq: 4,
+            time: Date.parse(at) + 5,
+            data: { turn: 0, step: 0, message: { role: "assistant", content: [{ type: "text", text: "abc" }] } },
+            sourceEventSeqs: [[0, 3]],
+            surfaceOp: "append",
+          },
+          extensions: {},
+        }],
+      }],
+    }, writer);
+
+    const projected = sessions.get(alpha2NativeSessionId(logicalSessionId)) as {
+      readonly events: readonly Array<{ readonly type: string; readonly seq: number; readonly sourceEventSeqs?: readonly number[] }>;
+    };
+    expect(projected.events.map((event) => [event.type, event.seq])).toEqual([
+      ["assistant/chunk", 0],
+      ["assistant/chunk", 1],
+      ["assistant/chunk", 2],
+      ["assistant/chunk", 3],
+      ["assistant/message", 4],
+    ]);
+    expect(projected.events[4]?.sourceEventSeqs).toEqual([0, 1, 2, 3]);
   });
 });

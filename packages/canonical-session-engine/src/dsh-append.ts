@@ -178,7 +178,11 @@ export async function appendDsh(
     tags,
     archivedAt,
     createdAt: input.observedAt,
-    allowForeignEventSessionIds: derivation !== null,
+    // A Codex-derived session permanently retains its frozen parent prefix.
+    // Later DSH appends must continue accepting those inherited event IDs;
+    // assertAppendTarget above still requires every newly appended event to
+    // target the derived logical session.
+    allowForeignEventSessionIds: derivation !== null || originKind === "codex-derived",
   });
   const session: CanonicalSessionRecord = {
     schemaVersion: 1,

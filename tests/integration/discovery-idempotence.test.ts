@@ -53,8 +53,8 @@ describe("discovery idempotence", () => {
       `${system.sandbox.codexHome}\\state_5.sqlite`,
     );
     database
-      .prepare("UPDATE threads SET title = ?, updated_at = ? WHERE id = ?")
-      .run("Renamed fixture", "2026-08-26T00:00:03.000Z", "thread-fixture");
+      .prepare("UPDATE threads SET name = ?, title = ?, updated_at = ? WHERE id = ?")
+      .run("Renamed fixture", "Renamed fixture", "2026-08-26T00:00:03.000Z", "thread-fixture");
     database.close();
 
     const changed = await system.discovery.scanInstance("codex-fixture");

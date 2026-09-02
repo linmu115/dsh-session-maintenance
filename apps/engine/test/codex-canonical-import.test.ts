@@ -4,6 +4,7 @@ import { logicalSessionIdFor } from "@linmu/dsh-session-domain";
 import { SqliteCanonicalRepository } from "@linmu/dsh-session-store";
 
 import {
+  canonicalCodexEvent,
   CodexCanonicalImportService,
   type CodexCanonicalImportStatusEvent,
   type CodexCanonicalProjectAssignment,
@@ -12,6 +13,34 @@ import { SqliteCodexProjectPort } from "../src/sqlite-codex-project-port.js";
 import { createEngineFixture, hashTree } from "./helpers.js";
 
 describe("Codex canonical hot import", () => {
+  it("promotes normalized Codex tool pairs into canonical tool events", () => {
+    const logicalSessionId = "ls-tool-fixture" as never;
+    const base = {
+      id: "event-tool",
+      parentId: null,
+      sequence: 0,
+      kind: "tool-import" as const,
+      content: "",
+      attachments: [],
+      source: { platform: "codex" as const, instanceId: "codex", sessionId: "thread", eventId: "row", sequence: 0 },
+    };
+    const call = canonicalCodexEvent(logicalSessionId, {
+      ...base,
+      role: "assistant",
+      extensions: { codexTool: { phase: "call", protocol: "custom", callId: "call-1", name: "exec", arguments: "do work" } },
+    });
+    const result = canonicalCodexEvent(logicalSessionId, {
+      ...base,
+      id: "event-result",
+      sequence: 1,
+      role: "tool",
+      source: { ...base.source, eventId: "result", sequence: 1 },
+      extensions: { codexTool: { phase: "result", protocol: "custom", callId: "call-1", name: "codex-tool", outputText: "done" } },
+    });
+    expect(call).toMatchObject({ kind: "tool-call", role: "assistant", content: { callId: "call-1", name: "exec", arguments: "do work" } });
+    expect(result).toMatchObject({ kind: "tool-result", role: "tool", content: { callId: "call-1", outputText: "done" } });
+  });
+
   it("imports directly into the canonical engine, preserves cwd and noops unchanged content", async () => {
     const fixture = await createEngineFixture("codex-canonical-import");
     const assignments: CodexCanonicalProjectAssignment[] = [];

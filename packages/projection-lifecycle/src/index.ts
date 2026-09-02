@@ -1,5 +1,6 @@
 export * from "./lease.js";
 export * from "./materialize.js";
+export * from "./runtime-stream.js";
 export * from "./wal.js";
 export * from "./append.js";
 export * from "./close.js";

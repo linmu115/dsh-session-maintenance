@@ -13,6 +13,7 @@ import type {
 
 import {
   Alpha2RuntimeTailRecoveryError,
+  isAlpha2PreparationOnlyAppend,
   recoverAlpha2RuntimeTail,
   type Alpha2CommittedRuntimeSession,
 } from "../src/runtime-tail-recovery.js";
@@ -91,11 +92,113 @@ async function recover(root: string, sessions: readonly Alpha2CommittedRuntimeSe
 }
 
 describe("recoverAlpha2RuntimeTail", () => {
+  it("classifies only pure Alpha2 restore-preparation WAL appends as supersedable", () => {
+    const operation = {
+      runId,
+      operationId: "operation-prelude" as never,
+      nativeSessionId,
+      nativeRevision: 3,
+      observedAt,
+      payload: {
+        logicalSessionId,
+        baseVersionId,
+        events: [
+          { type: "permission/preset", seq: 1, time: first.time + 1, data: { preset: "default" } },
+          { type: "sandbox/mode", seq: 2, time: first.time + 2, data: { mode: "workspace-write" } },
+        ],
+      },
+    } as const;
+
+    expect(isAlpha2PreparationOnlyAppend(operation)).toBe(true);
+    expect(isAlpha2PreparationOnlyAppend({
+      ...operation,
+      nativeRevision: 4,
+      payload: {
+        ...operation.payload,
+        events: [
+          ...operation.payload.events,
+          { type: "user/message", seq: 3, time: first.time + 3, data: { text: "continue" } },
+        ],
+      },
+    })).toBe(false);
+  });
+
+  it("treats an unmaterialized lazy session as having no runtime tail", async () => {
+    const root = await fixtureRoot();
+    await expect(recover(root, [mapping({
+      header: { version: 0, id: nativeSessionId, createdAt: header.createdAt, cwd: header.cwd },
+    })])).resolves.toEqual([]);
+  });
+
+  it("ignores an unmapped preparation-only composer shell but rejects an unmapped real continuation", async () => {
+    const emptyRoot = await fixtureRoot();
+    await writeArtifact(emptyRoot, []);
+    const ignored: NativeSessionId[] = [];
+    await expect(recoverAlpha2RuntimeTail({
+      runId,
+      persistenceRoot: emptyRoot,
+      sessions: [],
+      observedAt,
+      onIgnoredPreparationArtifact: (id) => { ignored.push(id); },
+    })).resolves.toEqual([]);
+    expect(ignored).toEqual([nativeSessionId]);
+
+    const preparedRoot = await fixtureRoot();
+    await writeArtifact(preparedRoot, [
+      { type: "permission/preset", seq: 0, time: first.time, data: { preset: "workspace-write" } },
+      { type: "sandbox/mode", seq: 1, time: first.time + 1, data: { mode: "workspace-write" } },
+      { type: "approval/policy", seq: 2, time: first.time + 2, data: { policy: "ask" } },
+    ]);
+    const preparedIgnored: NativeSessionId[] = [];
+    await expect(recoverAlpha2RuntimeTail({
+      runId,
+      persistenceRoot: preparedRoot,
+      sessions: [],
+      observedAt,
+      onIgnoredPreparationArtifact: (id) => { preparedIgnored.push(id); },
+    })).resolves.toEqual([]);
+    expect(preparedIgnored).toEqual([nativeSessionId]);
+
+    const nonemptyRoot = await fixtureRoot();
+    await writeArtifact(nonemptyRoot, [first]);
+    await expect(recover(nonemptyRoot, [])).rejects.toMatchObject({ code: "RECOVERY_MAPPING_MISSING" });
+  });
+
   it("is a no-op only when the committed Alpha2 prefix is exactly unchanged", async () => {
     const root = await fixtureRoot();
     await writeArtifact(root, [first], { compression: "none" });
 
     await expect(recover(root)).resolves.toEqual([]);
+  });
+
+  it("discards an Alpha2 restore prelude unless a real continuation follows it", async () => {
+    const root = await fixtureRoot();
+    const prelude = [
+      { type: "session/end-seed", seq: 1, time: first.time + 1, data: {} },
+      { type: "permission/preset", seq: 2, time: first.time + 2, data: { preset: "default" } },
+      { type: "sandbox/mode", seq: 3, time: first.time + 3, data: { mode: "workspace-write" } },
+      { type: "approval/policy", seq: 4, time: first.time + 4, data: { policy: "on-request" } },
+    ];
+    await writeArtifact(root, [first, ...prelude]);
+
+    await expect(recover(root)).resolves.toEqual([]);
+
+    const continuedRoot = await fixtureRoot();
+    const continuation = {
+      type: "user/message",
+      seq: 5,
+      time: first.time + 5,
+      data: { text: "continued in DSH" },
+    };
+    await writeArtifact(continuedRoot, [first, ...prelude, continuation]);
+
+    const operations = await recover(continuedRoot);
+    expect(operations).toHaveLength(1);
+    expect((operations[0]!.payload as { events: unknown[] }).events).toEqual([
+      ...prelude,
+      continuation,
+    ]);
+    expect(operations[0]!.nativeRevision).toBe(6);
   });
 
   it("decodes checksummed Zstandard frames and emits one contiguous missing-tail operation", async () => {

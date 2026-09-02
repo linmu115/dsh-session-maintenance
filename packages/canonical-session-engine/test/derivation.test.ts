@@ -148,5 +148,27 @@ describe("Codex delayed derivation", () => {
       [0, sourceId],
       [1, expectedChildId],
     ]);
+
+    const continued = await engine.appendDsh({
+      logicalSessionId: expectedChildId,
+      baseVersionId: derived.versionId!,
+      title: "Projected title",
+      tags: ["projected"],
+      archivedAt: null,
+      workspaceId: workspaceV1,
+      appendedEvents: [event(expectedChildId, 2, "DSH continued again", "dsh")],
+      observedAt: "2026-08-31T00:03:00.000Z",
+      projection: {
+        ...appendInput.projection,
+        operationId: "operation-derived-continuation" as OperationId,
+        nativeRevision: 3,
+      },
+    });
+    expect(continued).toMatchObject({ outcome: "advanced", logicalSessionId: expectedChildId });
+    expect(store.versions.get(continued.versionId!)?.events.map((item) => [item.sequence, item.logicalSessionId])).toEqual([
+      [0, sourceId],
+      [1, expectedChildId],
+      [2, expectedChildId],
+    ]);
   });
 });

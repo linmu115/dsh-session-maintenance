@@ -14,6 +14,7 @@ import {
   RuntimeBrokerPluginClient,
 } from "./projection-runtime.js";
 import { createRuntimeShutdownHandler } from "./runtime-shutdown.js";
+import { installLazyProjectionPersistence, type LazyHydrationStage, type LazyReadableSessionPersistence } from "./lazy-persistence.js";
 
 export const name = "dsh-session-maintenance";
 export type Config = PluginConfig;
@@ -31,9 +32,10 @@ export const Config = s.object({
 export const inject = ["webServer", "appExit", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery"] as const;
 
 interface HostContext extends CoreRuntimeContext {
-  readonly appExit: { exit(code: number): void };
+  readonly appExit: (code: number) => void;
   readonly sessions: CoreRuntimeContext["sessions"] & { flush(session: Session): Promise<void> };
   readonly webServer: { register(input: { kind: "prefix"; path: string; handler: ReturnType<typeof createProxyHandler> | ReturnType<typeof createCoreGatewayHandler> }): void | (() => void) };
+  readonly logger?: { info(message: string): void; warn(message: string): void };
   effect(callback: () => void | (() => void | Promise<void>), label?: string): void;
   on(event: "session/event", listener: (session: Session, event: SessionEvent) => void): () => void;
   on(event: "session/flush", listener: (session: Session) => Promise<void> | void): () => void;
@@ -54,7 +56,16 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       if (current.origin !== launchProfile.maintenanceEndpoint) throw new Error("Launcher Runtime Broker endpoint differs from the trusted Engine descriptor");
       return `Bearer ${current.token}`;
     });
-    const overlay = new Alpha2SessionPersistenceProjection(ctx as never, launchProfile.temporaryPersistenceRootId);
+    const overlay = new Alpha2SessionPersistenceProjection(
+      ctx as never,
+      launchProfile.temporaryPersistenceRootId,
+      (stage, detail) => {
+        const fields = Object.entries(detail).map(([key, value]) => `${key}=${String(value)}`).join(" ");
+        const message = `[dsh-session-maintenance] ${stage}${fields.length === 0 ? "" : ` ${fields}`}`;
+        if (ctx.logger === undefined) console.info(message);
+        else ctx.logger.info(message);
+      },
+    );
     const registrar = new ProjectionRuntimeRegistrar({ transport, overlay });
     const runtime = new RuntimeBrokerPluginClient({
       connection,
@@ -65,6 +76,24 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       maintenanceEndpoint: launchProfile.maintenanceEndpoint,
     });
     await runtime.attach();
+    const lazyStatus = (stage: LazyHydrationStage, sessionId?: string, error?: unknown) => {
+      const suffix = sessionId === undefined ? "" : ` session=${sessionId}`;
+      const message = `[dsh-session-maintenance] ${stage}${suffix}`;
+      if (stage === "lazy.materialize.failed") {
+        const failure = `${message} error=${error instanceof Error ? error.message : String(error)}`;
+        if (ctx.logger === undefined) console.warn(failure);
+        else ctx.logger.warn(failure);
+      } else if (ctx.logger === undefined) {
+        console.info(message);
+      } else {
+        ctx.logger.info(message);
+      }
+    };
+    const restorePersistence = installLazyProjectionPersistence(
+      ctx.sessionPersistence as unknown as LazyReadableSessionPersistence,
+      runtime,
+      lazyStatus,
+    );
     const observedSessions = new Map<string, Session>();
     const offEvent = ctx.on("session/event", (session, event) => {
       observedSessions.set(String(session.id), session);
@@ -92,10 +121,11 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
         connection,
         runId: launchProfile.runId,
         ownerClientId: launchProfile.ownerClientId,
-        exit: (code) => { ctx.appExit.exit(code); },
+        exit: (code) => { ctx.appExit(code); },
       }),
     });
     ctx.effect(() => () => {
+      restorePersistence();
       if (typeof unregisterShutdown === "function") unregisterShutdown();
     }, "dsh-session-maintenance: graceful runtime shutdown");
   }
@@ -124,3 +154,4 @@ export * from "./engine-proxy.js";
 export * from "./manager-actions.js";
 export * from "./projection-runtime.js";
 export * from "./runtime-shutdown.js";
+export * from "./lazy-persistence.js";

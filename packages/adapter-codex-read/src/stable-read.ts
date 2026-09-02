@@ -18,6 +18,7 @@ import {
   type CodexThreadRow,
 } from "./parser.js";
 import type { CodexReadStatusEvent } from "./status.js";
+import { isUserFacingCodexThread } from "./thread.js";
 
 export interface CodexReadHooks {
   readonly fixtureGuard?: (root: string) => void;
@@ -72,7 +73,7 @@ export function withCodexReadSnapshot<T>(
 export function readThread(database: DatabaseSync, id: string): CodexThreadRow | undefined {
   return database
     .prepare(
-      `SELECT id, rollout_path, title, name, cwd, created_at, updated_at, updated_at_ms, archived, project_id
+      `SELECT id, rollout_path, source, agent_role, title, name, cwd, created_at, updated_at, updated_at_ms, archived, project_id
        FROM threads WHERE id = ?`,
     )
     .get(id) as CodexThreadRow | undefined;
@@ -96,7 +97,7 @@ export async function observeCodexSession(
   const thread = withCodexReadSnapshot(instance.root, (database) =>
     readThread(database, key.sessionId),
   );
-  if (thread === undefined) {
+  if (thread === undefined || !isUserFacingCodexThread(thread)) {
     throw new SessionMaintenanceError(
       "ADAPTER_INCOMPATIBLE",
       `Codex thread is absent from the registered catalog: ${key.sessionId}`,
@@ -117,29 +118,31 @@ export async function observeCodexSession(
   ) {
     await hooks.onStatus?.({
       stage: "rollout.stability",
-      state: "retry",
+      state: "succeeded",
       instanceId: instance.id,
       sessionId: key.sessionId,
-      consistency: "double-stat",
-      detail: "catalog fingerprint changed before rollout read",
+      consistency: "bounded-prefix",
+      detail: "catalog advanced before capture; reading a fresh bounded prefix",
     });
-    return { kind: "unstable", key, reason: "Catalog fingerprint changed before read", retryable: true };
   }
 
   hooks.onBodyRead?.();
-  const parsed = await parseCodexJsonlChunks(createReadStream(path));
+  const parsed = await parseCodexJsonlChunks(createReadStream(path, {
+    start: 0,
+    end: Number(before.size) - 1,
+  }));
   await hooks.afterRead?.(path);
   const after = await stat(path, { bigint: true });
-  if (before.size !== after.size || before.mtimeNs !== after.mtimeNs) {
+  if (after.size < before.size || after.dev !== before.dev || after.ino !== before.ino) {
     await hooks.onStatus?.({
       stage: "rollout.stability",
       state: "retry",
       instanceId: instance.id,
       sessionId: key.sessionId,
-      consistency: "double-stat",
-      detail: "rollout changed during read; retry on the next incremental scan",
+      consistency: "bounded-prefix",
+      detail: "rollout was replaced or truncated during bounded-prefix capture",
     });
-    return { kind: "unstable", key, reason: "Rollout changed during read", retryable: true };
+    return { kind: "unstable", key, reason: "Rollout was replaced or truncated during read", retryable: true };
   }
 
   const envelopes = parsed.envelopes;
@@ -155,8 +158,8 @@ export async function observeCodexSession(
     state: "succeeded",
     instanceId: instance.id,
     sessionId: key.sessionId,
-    consistency: "double-stat",
-    detail: `streamed ${parsed.bytesRead} stable rollout bytes`,
+    consistency: "bounded-prefix",
+    detail: `streamed ${parsed.bytesRead} stable rollout bytes from an append-safe prefix`,
   });
   return {
     kind: "stable",

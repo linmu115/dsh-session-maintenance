@@ -1,5 +1,5 @@
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
-import { isAbsolute, join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 
 import type {
@@ -11,12 +11,19 @@ import type {
   RunId,
   SessionVersionId,
 } from "@linmu/dsh-session-adapter-sdk";
+import { RUNTIME_MANAGED_PROJECT_DIRECTORY } from "@linmu/dsh-session-adapter-sdk";
 
 const MAX_ARTIFACT_BYTES = 64 * 1024 * 1024;
 const MAX_DECOMPRESSED_BYTES = 256 * 1024 * 1024;
 const MAX_JSONL_LINES = 1_000_001;
 const MAX_JSONL_LINE_BYTES = 8 * 1024 * 1024;
 const ZSTD_MAGIC = 0xfd2fb528;
+const DEFERRED_SESSION_PRELUDE_TYPES = new Set([
+  "session/end-seed",
+  "permission/preset",
+  "sandbox/mode",
+  "approval/policy",
+]);
 
 type JsonRecord = { readonly [key: string]: JsonValue };
 
@@ -64,6 +71,8 @@ export interface Alpha2RuntimeTailRecoveryInput {
   readonly persistenceRoot: string;
   readonly sessions: readonly Alpha2CommittedRuntimeSession[];
   readonly observedAt: string;
+  /** Records an unmapped, preparation-only Alpha2 shell that is intentionally ignored. */
+  readonly onIgnoredPreparationArtifact?: (nativeSessionId: NativeSessionId) => void | Promise<void>;
 }
 
 interface RuntimeArtifact {
@@ -86,6 +95,25 @@ function fail(
 
 function isRecord(value: unknown): value is JsonRecord {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isDeferredSessionPrelude(value: JsonValue): boolean {
+  return isRecord(value)
+    && typeof value.type === "string"
+    && DEFERRED_SESSION_PRELUDE_TYPES.has(value.type);
+}
+
+/**
+ * Alpha2 writes these preparation rows while restoring a projected session,
+ * before any user or assistant continuation exists. They must not create a
+ * canonical branch when recovered from the projection WAL.
+ */
+export function isAlpha2PreparationOnlyAppend(operation: NativeAppendOperation): boolean {
+  if (!isRecord(operation.payload)) return false;
+  const events = operation.payload.events;
+  return Array.isArray(events)
+    && events.length > 0
+    && events.every((event) => isDeferredSessionPrelude(event));
 }
 
 function exactJson(value: JsonValue): string {
@@ -478,7 +506,7 @@ async function decodeArtifact(artifact: RuntimeArtifact): Promise<DecodedRuntime
   return decodeArtifactJsonl(decodeArtifactBytes(bytes, artifact.compression));
 }
 
-function validateMapping(mapping: Alpha2CommittedRuntimeSession): void {
+function normalizeMapping(mapping: Alpha2CommittedRuntimeSession): Alpha2CommittedRuntimeSession {
   if (!Number.isSafeInteger(mapping.nativeRevision) || mapping.nativeRevision < 0
     || mapping.committedEvents.length !== mapping.nativeRevision) {
     fail("RECOVERY_MAPPING_INVALID", `Committed revision/prefix mismatch for ${mapping.nativeSessionId}`);
@@ -486,12 +514,32 @@ function validateMapping(mapping: Alpha2CommittedRuntimeSession): void {
   if (!isRecord(mapping.header) || mapping.header.id !== mapping.nativeSessionId || mapping.header.version !== 0) {
     fail("RECOVERY_MAPPING_INVALID", `Invalid Alpha2 SessionHeader mapping for ${mapping.nativeSessionId}`);
   }
+  const header: JsonRecord = {
+    ...mapping.header,
+    ...(mapping.header.delegationDepth === undefined ? { delegationDepth: 0 } : {}),
+  };
   try {
-    parseHeader({ type: "session", ...mapping.header });
+    parseHeader({ type: "session", ...header });
   } catch (error) {
     fail("RECOVERY_MAPPING_INVALID", `Invalid Alpha2 SessionHeader mapping for ${mapping.nativeSessionId}`, error);
   }
   for (let seq = 0; seq < mapping.committedEvents.length; seq += 1) validateEvent(mapping.committedEvents[seq]!, seq);
+  return { ...mapping, header };
+}
+
+function isControlledManagedCwd(root: string, cwd: JsonValue | undefined): cwd is string {
+  if (typeof cwd !== "string" || cwd.length === 0 || !isAbsolute(cwd)) return false;
+  const managedRoot = resolve(root, "..", RUNTIME_MANAGED_PROJECT_DIRECTORY);
+  const child = relative(managedRoot, resolve(cwd));
+  return child.length > 0 && !child.startsWith("..") && !isAbsolute(child);
+}
+
+function sameRuntimeHeader(root: string, runtime: JsonRecord, mapping: JsonValue): boolean {
+  if (sameJson(runtime, mapping)) return true;
+  if (!isRecord(mapping) || !isControlledManagedCwd(root, runtime.cwd)) return false;
+  const { cwd: _runtimeCwd, ...runtimeRest } = runtime;
+  const { cwd: _mappingCwd, ...mappingRest } = mapping;
+  return sameJson(runtimeRest, mappingRest);
 }
 
 /**
@@ -514,8 +562,8 @@ export async function recoverAlpha2RuntimeTail(
   if (!Number.isFinite(Date.parse(input.observedAt))) fail("RECOVERY_MAPPING_INVALID", "Recovery observedAt must be an ISO timestamp");
 
   const mappings = new Map<string, Alpha2CommittedRuntimeSession>();
-  for (const mapping of input.sessions) {
-    validateMapping(mapping);
+  for (const rawMapping of input.sessions) {
+    const mapping = normalizeMapping(rawMapping);
     if (mappings.has(mapping.nativeSessionId)) fail("RECOVERY_MAPPING_INVALID", `Duplicate native session mapping: ${mapping.nativeSessionId}`);
     mappings.set(mapping.nativeSessionId, mapping);
   }
@@ -526,14 +574,24 @@ export async function recoverAlpha2RuntimeTail(
     const decoded = await decodeArtifact(artifact);
     const nativeId = decoded.header.id;
     if (typeof nativeId !== "string") fail("RECOVERY_ARTIFACT_CORRUPT", "Alpha2 header ID is missing");
-    const mapping = mappings.get(nativeId);
-    if (mapping === undefined) fail("RECOVERY_MAPPING_MISSING", `No committed mapping exists for Alpha2 session ${nativeId}`);
     if (seen.has(nativeId)) fail("RECOVERY_LAYOUT_UNSUPPORTED", `Duplicate Alpha2 artifact for native session ${nativeId}`);
     seen.add(nativeId);
     if (!samePath(artifact.path, expectedArtifactPath(root, decoded.header, artifact.compression))) {
       fail("RECOVERY_HEADER_MISMATCH", `Alpha2 artifact path does not match SessionHeader for ${nativeId}`);
     }
-    if (!sameJson(nativeHeader(decoded.header), mapping.header)) {
+    const mapping = mappings.get(nativeId);
+    if (mapping === undefined) {
+      // Alpha2 creates an unmapped composer shell and writes only permission,
+      // sandbox and approval preparation before the user sends anything. It is
+      // not a user session. Preserve fail-closed behavior as soon as any real
+      // continuation event exists.
+      if (decoded.events.every(isDeferredSessionPrelude)) {
+        await input.onIgnoredPreparationArtifact?.(nativeId as NativeSessionId);
+        continue;
+      }
+      fail("RECOVERY_MAPPING_MISSING", `No committed mapping exists for Alpha2 session ${nativeId}`);
+    }
+    if (!sameRuntimeHeader(root, nativeHeader(decoded.header), mapping.header)) {
       fail("RECOVERY_HEADER_MISMATCH", `Alpha2 SessionHeader was rewritten for ${nativeId}`);
     }
     if (decoded.events.length < mapping.nativeRevision) {
@@ -546,6 +604,14 @@ export async function recoverAlpha2RuntimeTail(
     }
     const tail = decoded.events.slice(mapping.nativeRevision);
     if (tail.length === 0) continue;
+    // Alpha2 restores a projected session by appending an internal seed marker
+    // followed by permission/sandbox preparation. These events do not mean the
+    // user continued the session and the live plugin deliberately defers them.
+    // Crash recovery must make the same distinction or merely opening a Codex
+    // mirror creates a false branch and can strand the run behind a revision
+    // mismatch. When a real continuation follows, the complete contiguous tail
+    // (including its prelude) is still recovered below.
+    if (tail.every(isDeferredSessionPrelude)) continue;
     const lastSeq = decoded.events.length - 1;
     operations.push({
       runId: input.runId,
@@ -562,10 +628,9 @@ export async function recoverAlpha2RuntimeTail(
     });
   }
 
-  for (const mapping of mappings.values()) {
-    if (!seen.has(mapping.nativeSessionId) && mapping.nativeRevision !== 0) {
-      fail("RECOVERY_PREFIX_REWRITTEN", `Alpha2 artifact is missing for committed session ${mapping.nativeSessionId}`);
-    }
-  }
+  // Lazy Alpha2 projection deliberately registers every canonical header but
+  // materializes only hot or explicitly opened sessions. An absent artifact
+  // therefore means there is no runtime tail to recover; the committed prefix
+  // remains authoritative in Maintenance and is rebuilt on the next run.
   return operations;
 }

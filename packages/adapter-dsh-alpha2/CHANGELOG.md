@@ -2,6 +2,49 @@
 
 ## Unreleased
 
+- Keep live append metadata synchronized with each durable receipt so the next
+  Alpha2 event targets the derived logical session and current canonical base.
+  Recovery supersedes stale-metadata WAL evidence before replaying the proven
+  native tail, whether the stopped run is still held in memory or restored
+  after an Engine restart.
+- Recover a partially applied native batch by proving its identical committed
+  prefix and appending only the missing suffix.
+- Align crash-tail recovery with Alpha2's restore lifecycle: a tail containing
+  only `session/end-seed`, permission, sandbox and approval preparation is not
+  treated as a user continuation. If a real continuation follows, the entire
+  contiguous prelude and continuation are recovered together.
+- Expose the same deterministic preparation-only classifier through the public
+  adapter contract so projection recovery can retain an interrupted WAL record
+  as superseded evidence instead of replaying it as a false canonical branch.
+- Ignore Alpha2's unmapped composer shell when it contains only permission,
+  sandbox and approval preparation during shutdown recovery. Any real event
+  remains fail-closed. The ignored shell emits an
+  `unmapped-preparation-shell-superseded` breakpoint.
+- Make native session registration idempotent and recover a crash-window
+  registration that exists only in the temporary Alpha2 projection. The
+  recovered session is created as Maintenance-native, assigned to its project
+  and then accepts the pending native tail through the normal WAL path.
+- Preserve the nested Alpha2 recovery failure in the lifecycle diagnostic and
+  allow the bounded finalization request to run for the same large-projection
+  window as preparation.
+- Replay the exact immutable canonical head body, including the frozen Codex
+  base of a DSH-derived session, before validating Alpha2's contiguous native
+  sequence.
+
+- Project canonical Codex tool calls and results as native Alpha2 `tool/call`
+  and `tool/result` events with correlated call IDs and identified tool-result
+  messages. Imported tools now render as tools rather than user-authored text.
+
+- Materialize canonical Codex turns as current Alpha2 identified message
+  objects (`id`, `role`, `source`, `content`) instead of passing the Codex
+  `{ text, attachments }` storage shape to `Session.create()`.
+- Preserve uncorrelated foreign tool records under ignorable Maintenance event
+  types rather than emitting malformed native `tool/result` events.
+
+- Encode Maintenance logical IDs into deterministic, path-safe Alpha2 native
+  session IDs. This matches Alpha2's `per-record` storage contract and prevents
+  projection-cache startup failure on the former colon-prefixed IDs.
+
 - Add fail-closed Alpha2 crash-tail recovery for the official per-run JSONL and
   checksummed zstd persistence layouts. Recovery proves the committed prefix
   and contiguous native sequence before emitting a deterministic append.

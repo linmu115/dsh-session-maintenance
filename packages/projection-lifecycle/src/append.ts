@@ -52,6 +52,10 @@ export interface ProjectionAppendContext {
   readonly directory: JsonProjectionDirectory;
   readonly wal: ProjectionWriteAheadLog;
   readonly sessions: Map<string, ActiveProjectionSession>;
+  readonly recoveredRegistrations?: readonly {
+    readonly logicalSessionId: LogicalSessionId;
+    readonly projectId: import("@linmu/dsh-session-contracts").LogicalProjectId | null;
+  }[];
   acceptingAppends: boolean;
 }
 

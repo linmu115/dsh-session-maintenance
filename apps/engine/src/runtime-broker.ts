@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+
+import {
+  RUNTIME_MANAGED_PROJECT_DIRECTORY,
+  runtimeManagedProjectSegment,
+} from "@linmu/dsh-session-contracts";
 
 import type {
   AdapterId,
@@ -39,6 +44,7 @@ import type {
   ProjectionRunHandle,
 } from "@linmu/dsh-session-projection-lifecycle";
 import {
+  JsonProjectionDirectory,
   projectionRootFor,
   readProjectionRecoveryDescriptor,
 } from "@linmu/dsh-session-projection-lifecycle";
@@ -56,6 +62,7 @@ export type RuntimeBrokerAdapterSelector = (
 
 export interface RuntimeProjectResolver {
   resolveProject(cwd: string): Promise<LogicalProjectId | null>;
+  resolveInheritedProject?(logicalSessionId: LogicalSessionId): Promise<LogicalProjectId | null>;
   assignProject(logicalSessionId: LogicalSessionId, projectId: LogicalProjectId): Promise<void>;
 }
 
@@ -72,6 +79,8 @@ interface BrokerRun {
   drainedAt: string | null;
   readonly pendingBySession: Map<NativeSessionId, Set<Promise<unknown>>>;
   readonly dynamicProjects: Map<NativeSessionId, LogicalProjectId>;
+  catalogProjectsByNativeSession: Map<NativeSessionId, LogicalProjectId> | null;
+  managedProjectsByCwd: Map<string, LogicalProjectId> | null;
 }
 
 class BrokerRuntimeRegistrar implements Alpha2RuntimeRegistrar {
@@ -167,6 +176,7 @@ export class ProjectionRuntimeBroker {
       },
     });
     const temporaryPersistenceRootId = `projection:${prepared.run.id}`;
+    const persistenceRoot = join(prepared.projectionRoot, "runtime-sessions");
     this.runs.set(prepared.run.id, {
       ownerClientId: input.client.id,
       runtimeClientId: input.runtimeClientId,
@@ -180,13 +190,15 @@ export class ProjectionRuntimeBroker {
       drainedAt: null,
       pendingBySession: new Map(),
       dynamicProjects: new Map(),
+      catalogProjectsByNativeSession: null,
+      managedProjectsByCwd: null,
     });
     return {
       schemaVersion: 1,
       runId: prepared.run.id,
       leaseId: prepared.run.leaseId,
       adapterId,
-      persistenceRoot: join(prepared.projectionRoot, "runtime-sessions"),
+      persistenceRoot,
       temporaryPersistenceRootId,
       runtimeClientId: input.runtimeClientId,
       state: "preparing",
@@ -218,18 +230,24 @@ export class ProjectionRuntimeBroker {
     const pending = run.pendingBySession.get(operation.nativeSessionId) ?? new Set<Promise<unknown>>();
     pending.add(promise);
     run.pendingBySession.set(operation.nativeSessionId, pending);
+    let receipt: ProjectionOperationReceipt;
     try {
-      const receipt = await promise;
-      const projectId = run.dynamicProjects.get(operation.nativeSessionId);
-      if (projectId !== undefined) {
-        await this.projectResolver.assignProject(receipt.logicalSessionId, projectId);
-        run.dynamicProjects.delete(operation.nativeSessionId);
-      }
-      return receipt;
+      receipt = await promise;
     } finally {
       pending.delete(promise);
       if (pending.size === 0) run.pendingBySession.delete(operation.nativeSessionId);
     }
+    const dynamicProjectId = run.dynamicProjects.get(operation.nativeSessionId);
+    const catalogProjectId = (await this.catalogProjectMap(run)).get(operation.nativeSessionId);
+    const projectId = dynamicProjectId
+      ?? catalogProjectId
+      ?? await this.projectResolver.resolveInheritedProject?.(receipt.logicalSessionId)
+      ?? null;
+    if (projectId !== null) {
+      await this.projectResolver.assignProject(receipt.logicalSessionId, projectId);
+      if (dynamicProjectId !== undefined) run.dynamicProjects.delete(operation.nativeSessionId);
+    }
+    return receipt;
   }
 
   async registerSession(input: RuntimeBrokerRegisterSessionRequest): Promise<RuntimeBrokerRegisteredSession> {
@@ -237,7 +255,9 @@ export class ProjectionRuntimeBroker {
     assertRuntime(run, input.clientId);
     if (run.closing || run.active === null) throw new Error(`Runtime Broker run cannot register sessions: ${input.runId}`);
     const header = runtimeHeader(input.header);
-    const projectId = await this.projectResolver.resolveProject(header.cwd);
+    const projectId = await this.projectResolver.resolveProject(header.cwd)
+      ?? (await this.managedProjectMap(run)).get(resolve(header.cwd))
+      ?? null;
     if (projectId === null) {
       throw new Error(`Live-created DSH session cwd has no canonical project root: ${header.cwd}`);
     }
@@ -252,13 +272,13 @@ export class ProjectionRuntimeBroker {
       workspaceId: null,
       projectId,
     });
-    run.dynamicProjects.set(input.nativeSessionId, projectId);
+    await this.projectResolver.assignProject(projection.logicalSessionId, projectId);
     return {
       schemaVersion: 1,
       runId: input.runId,
       nativeSessionId: input.nativeSessionId,
       logicalSessionId: projection.logicalSessionId,
-      baseVersionId: null,
+      baseVersionId: projection.baseVersionId,
     };
   }
 
@@ -333,16 +353,12 @@ export class ProjectionRuntimeBroker {
       try {
         const runtimeWasAttached = existing.active !== null;
         if (!runtimeWasAttached) {
-          existing.registrar.acknowledge({
-            schemaVersion: 1,
-            clientId: existing.runtimeClientId,
-            runId: input.runId,
-            temporaryPersistenceRootId: existing.temporaryPersistenceRootId,
-            attachedAt: this.clock(),
-          });
+          const receipt = await existing.lifecycle.discardPreparedRun(input.runId);
+          this.runs.delete(input.runId);
+          return { schemaVersion: 1, runId: input.runId, state: receipt.state, removedProjection: true };
         }
         await this.flushAll(existing);
-        const receipt = await this.recoverLifecycle(existing.lifecycle, input.runId, runtimeWasAttached);
+        const receipt = await this.recoverLifecycle(existing.lifecycle, input.runId);
         this.runs.delete(input.runId);
         return { schemaVersion: 1, runId: input.runId, state: receipt.state, removedProjection: true };
       } catch (error) {
@@ -354,6 +370,11 @@ export class ProjectionRuntimeBroker {
     const registrar = new BrokerRuntimeRegistrar();
     const bridge = new Alpha2RuntimeBridge(registrar);
     const lifecycle = this.lifecycleFactory({ adapterId: alpha2Manifest.id, bridge });
+    const persistedRun = await lifecycle.runRepository.getProjectionRun(input.runId);
+    if (persistedRun?.state === "preparing") {
+      const receipt = await lifecycle.discardPreparedRun(input.runId);
+      return { schemaVersion: 1, runId: input.runId, state: receipt.state, removedProjection: true };
+    }
     const projectionRoot = projectionRootFor(lifecycle.runtimeRoot, input.runId);
     const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
     if (descriptor.runtimeBroker === undefined) {
@@ -387,8 +408,9 @@ export class ProjectionRuntimeBroker {
     }
   }
 
-  private recoverLifecycle(lifecycle: ProjectionLifecycle, runId: RunId, recoverRuntimeTail = true) {
+  private async recoverLifecycle(lifecycle: ProjectionLifecycle, runId: RunId, recoverRuntimeTail = true) {
     if (!recoverRuntimeTail) return lifecycle.recover(runId);
+    const projectionRun = await lifecycle.runRepository?.getProjectionRun(runId);
     return lifecycle.recover(
       runId,
       async ({ projectionRoot, sessions }) => recoverAlpha2RuntimeTail({
@@ -403,11 +425,74 @@ export class ProjectionRuntimeBroker {
           header: session.header,
           committedEvents: session.committedEvents,
         })),
+        ...(projectionRun === undefined ? {} : { onIgnoredPreparationArtifact: async (nativeSessionId: NativeSessionId) => {
+          const span = await this.statusLog.start({
+            runId,
+            leaseId: projectionRun.leaseId,
+            profileId: projectionRun.profileId,
+            adapterId: projectionRun.adapterId,
+            dshVersion: projectionRun.dshVersion,
+            stage: "run.shutdown-recovery",
+            logicalSessionId: null,
+            nativeSessionId,
+            operationId: null,
+            diagnosticDetailRef: "diag:unmapped-preparation-shell-superseded",
+          });
+          await this.statusLog.succeed(span, {
+            diagnosticDetailRef: "diag:unmapped-preparation-shell-superseded",
+          });
+        } }),
       }),
       async ({ receipt, projectId }) => {
-        if (projectId !== null) await this.projectResolver.assignProject(receipt.logicalSessionId, projectId);
+        const resolvedProjectId = projectId
+          ?? await this.projectResolver.resolveInheritedProject?.(receipt.logicalSessionId)
+          ?? null;
+        if (resolvedProjectId !== null) {
+          await this.projectResolver.assignProject(receipt.logicalSessionId, resolvedProjectId);
+        }
+      },
+      async ({ logicalSessionId, projectId }) => {
+        if (projectId !== null) await this.projectResolver.assignProject(logicalSessionId, projectId);
       },
     );
+  }
+
+  private async managedProjectMap(run: BrokerRun): Promise<Map<string, LogicalProjectId>> {
+    await this.loadCatalogProjectMaps(run);
+    return run.managedProjectsByCwd!;
+  }
+
+  private async catalogProjectMap(run: BrokerRun): Promise<Map<NativeSessionId, LogicalProjectId>> {
+    await this.loadCatalogProjectMaps(run);
+    return run.catalogProjectsByNativeSession!;
+  }
+
+  private async loadCatalogProjectMaps(run: BrokerRun): Promise<void> {
+    if (run.managedProjectsByCwd !== null && run.catalogProjectsByNativeSession !== null) return;
+    let catalog: Awaited<ReturnType<JsonProjectionDirectory["readSessionCatalog"]>>;
+    try {
+      catalog = await new JsonProjectionDirectory(run.prepared.projectionRoot).readSessionCatalog(run.prepared.run.id);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      run.catalogProjectsByNativeSession = new Map();
+      run.managedProjectsByCwd = new Map();
+      return;
+    }
+    const byCwd = new Map<string, LogicalProjectId>();
+    const byNativeSession = new Map<NativeSessionId, LogicalProjectId>();
+    for (const session of catalog.sessions) {
+      if (session.payload === null || typeof session.payload !== "object" || Array.isArray(session.payload)) continue;
+      const projectId = (session.payload as { readonly projectId?: unknown }).projectId;
+      if (typeof projectId !== "string" || projectId.length === 0) continue;
+      byNativeSession.set(session.nativeSessionId, projectId as LogicalProjectId);
+      byCwd.set(resolve(
+        run.prepared.projectionRoot,
+        RUNTIME_MANAGED_PROJECT_DIRECTORY,
+        runtimeManagedProjectSegment(projectId),
+      ), projectId as LogicalProjectId);
+    }
+    run.catalogProjectsByNativeSession = byNativeSession;
+    run.managedProjectsByCwd = byCwd;
   }
 
   private startSpan(

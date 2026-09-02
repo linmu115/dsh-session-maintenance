@@ -21,6 +21,8 @@ export interface CodexEnvelope {
 export interface CodexThreadRow {
   readonly id: string;
   readonly rollout_path: string;
+  readonly source: string;
+  readonly agent_role: string | null;
   readonly title: string;
   readonly name: string | null;
   readonly cwd: string;

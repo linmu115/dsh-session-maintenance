@@ -48,6 +48,12 @@ class MemoryRuns implements ProjectionRunRepository {
     this.runs.set(id, { ...current, state });
   }
 
+  async setProjectionRunCheckpoint(id: RunId, checkpointId: string): Promise<void> {
+    const current = this.runs.get(id);
+    if (current === undefined) throw new Error("run not found");
+    this.runs.set(id, { ...current, checkpointId });
+  }
+
   async upsertProjectionSession(_input: ProjectionSession): Promise<void> {}
   async saveOperationReceipt(_input: ProjectionOperationReceipt): Promise<void> {}
   async getOperationReceipt(_operationId: OperationId): Promise<ProjectionOperationReceipt | undefined> { return undefined; }
@@ -144,5 +150,74 @@ describe("ProjectionLifecycle.openRun", () => {
       "run.lease:started",
       "run.lease:failed",
     ]);
+  });
+
+  it("discards a verified pre-attach projection after an Engine restart without a second inspection", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const root = await mkdtemp(join(tmpdir(), "dsh-sm-discard-prepared-"));
+    roots.push(root);
+    const runtimeRoot = join(root, "maintenance-runtime");
+    const runRepository = new MemoryRuns();
+    const statusAdapter = new MemoryStatusEventAdapter();
+    const checkpoints: string[] = [];
+    let nextId = 0;
+    const input = {
+      runRepository,
+      statusLog: new StatusLog(statusAdapter, {
+        clock: () => at,
+        idFactory: (kind: string) => `${kind}-${String(++nextId).padStart(3, "0")}`,
+      }),
+      source: {
+        load: async (run: ProjectionRun) => ({
+          run,
+          workspaces: [],
+          sessions: [{
+            session: {
+              schemaVersion: 1 as const,
+              id: "logical-discard-prepared" as never,
+              authorityScope: "maintenance" as const,
+              originKind: "maintenance-native" as const,
+              headVersionId: null,
+              title: "Discard before attach",
+              tags: [],
+              archivedAt: null,
+              tombstonedAt: null,
+              createdAt: at,
+              updatedAt: at,
+            },
+            events: [],
+            workspaceId: null,
+          }],
+        }),
+      },
+      adapter,
+      bridge: {
+        attach: async () => { throw new Error("runtime must not attach"); },
+        drain: async () => { throw new Error("runtime must not drain"); },
+        detach: async () => { throw new Error("runtime must not detach"); },
+      },
+      checkpointRepository: {
+        saveCheckpoint: async (checkpoint: { readonly id: string }) => { checkpoints.push(checkpoint.id); },
+      },
+      runtimeRoot,
+      clock: () => at,
+      idFactory: (kind: string) => `${kind}-${String(++nextId).padStart(3, "0")}`,
+    };
+    const original = new ProjectionLifecycle(input as never);
+    const prepared = await original.prepareRun({
+      instanceId: "launcher-alpha2",
+      profileId: "web",
+      dshVersion: "0.1.2-alpha.2",
+      branchId: "main" as never,
+      maintenanceEndpoint: "http://127.0.0.1:41781",
+    });
+    await access(prepared.projectionRoot);
+
+    const restarted = new ProjectionLifecycle(input as never);
+    const receipt = await restarted.discardPreparedRun(prepared.run.id);
+    expect(receipt).toMatchObject({ state: "recovered", removedProjection: true });
+    expect(checkpoints).toEqual([receipt.checkpointId]);
+    expect(runRepository.runs.get(prepared.run.id)).toMatchObject({ state: "recovered", checkpointId: receipt.checkpointId });
+    await expect(access(prepared.projectionRoot)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

@@ -128,9 +128,11 @@ describe("Maintenance external lifecycle provider", () => {
     });
     if (!("enabled" in response) || !response.enabled || response.launch === null) throw new Error("prepare failed");
     expect(Object.keys(response).sort()).toEqual(["enabled", "handle", "launch", "schemaVersion"]);
-    expect(response.launch.args[0]).toBe("--patch");
-    expect(response.launch.args).toHaveLength(2);
-    const patchPath = response.launch.args[1]!;
+    expect(response.launch.launcherArgs?.[0]).toBe("--patch");
+    expect(response.launch.launcherArgs).toHaveLength(2);
+    expect(response.launch.args).toEqual([]);
+    const patchPath = response.launch.launcherArgs?.[1];
+    if (patchPath === undefined) throw new Error("launcher patch path is missing");
     expect(parse(await readFile(patchPath, "utf8"))).toEqual([{
       id: "session-persistence-jsonl",
       config: { root: persistenceRoot },

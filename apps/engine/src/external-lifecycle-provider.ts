@@ -24,6 +24,14 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9@/._:-]{0,255}$/u;
 const SAFE_HANDLE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 const MAX_INPUT_BYTES = 1024 * 1024;
 const BROKER_TIMEOUT_MS = 15_000;
+// Canonical projection materialization is intentionally bounded by the outer
+// Launcher provider timeout, but it can legitimately take longer than an
+// ordinary Broker RPC for large canonical stores.
+const BROKER_PREPARE_TIMEOUT_MS = 240_000;
+// Final verification and crash-tail recovery may need to inspect the same
+// bounded canonical projection as prepare. A 15 second RPC deadline causes the
+// provider to report failure while the Engine is still safely recovering.
+const BROKER_FINALIZE_TIMEOUT_MS = 240_000;
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 15_000;
 const ENGINE_START_TIMEOUT_MS = 5_000;
 const HANDLE_DIRECTORY = "external-lifecycle-handles";
@@ -265,6 +273,7 @@ export class MaintenanceExternalLifecycleProvider {
       connection,
       "/v1/runtime-broker/runs/prepare",
       body,
+      BROKER_PREPARE_TIMEOUT_MS,
     );
     const run = preparedEnvelope.run;
     if (
@@ -329,7 +338,8 @@ export class MaintenanceExternalLifecycleProvider {
       enabled: true,
       handle,
       launch: {
-        args: ["--patch", patchPath],
+        launcherArgs: ["--patch", patchPath],
+        args: [],
         env: {
           DSH_SESSION_MAINTENANCE_LAUNCH_PROFILE: JSON.stringify(metadata),
           DSH_SESSION_MAINTENANCE_CONNECTION_PRIMARY: join(this.stateRoot, "connection.json"),
@@ -468,10 +478,15 @@ export class MaintenanceExternalLifecycleProvider {
       clientId: stored.ownerClientId,
       runId: stored.runId as RuntimeBrokerCloseRunRequest["runId"],
       reason,
-    } satisfies RuntimeBrokerCloseRunRequest);
+    } satisfies RuntimeBrokerCloseRunRequest, BROKER_FINALIZE_TIMEOUT_MS);
   }
 
-  private async brokerRequest<T>(connection: EngineConnection, path: string, body: unknown): Promise<T> {
+  private async brokerRequest<T>(
+    connection: EngineConnection,
+    path: string,
+    body: unknown,
+    timeoutMs = BROKER_TIMEOUT_MS,
+  ): Promise<T> {
     const response = await this.fetchImpl(`${connection.origin}${path}`, {
       method: "POST",
       headers: {
@@ -480,7 +495,7 @@ export class MaintenanceExternalLifecycleProvider {
         "content-type": "application/json",
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(BROKER_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     const text = await response.text();
     if (!response.ok) {

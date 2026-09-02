@@ -13,6 +13,7 @@ export * from "./operations.js";
 export * from "./plans.js";
 export * from "./projection.js";
 export * from "./runtime-broker.js";
+export * from "./runtime-project-path.js";
 export * from "./schemas.js";
 export * from "./status.js";
 export * from "./store.js";

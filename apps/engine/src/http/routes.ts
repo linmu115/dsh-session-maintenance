@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { once } from "node:events";
 import { z, ZodError } from "zod";
 
 import {
@@ -33,6 +34,7 @@ import {
   type StatusEventQuery,
   type CanonicalSessionMaintenancePatch,
 } from "@linmu/dsh-session-contracts";
+import { ProjectionRuntimeStreamError } from "@linmu/dsh-session-projection-lifecycle";
 
 import type { SessionMaintenanceEngine } from "../engine.js";
 import type { JobRunner } from "../jobs/job-runner.js";
@@ -69,6 +71,15 @@ function send(response: ServerResponse, status: number, value: unknown): void {
   response.statusCode = status;
   response.setHeader("content-type", "application/json; charset=utf-8");
   response.end(`${JSON.stringify(value)}\n`);
+}
+
+async function sendNdjson(response: ServerResponse, frames: AsyncIterable<string>): Promise<void> {
+  response.statusCode = 200;
+  response.setHeader("content-type", "application/x-ndjson; charset=utf-8");
+  for await (const frame of frames) {
+    if (!response.write(frame)) await once(response, "drain");
+  }
+  response.end();
 }
 
 function errorBody(code: string, message: string): JsonValue {
@@ -130,6 +141,7 @@ const runtimeBrokerDrainSchema = z.strictObject({
   schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
   runId: runtimeBrokerIdSchema, runtimeFlushCompletedAt: z.iso.datetime(),
 });
+const projectionHotLimitSchema = z.coerce.number().int().min(0).max(1_000);
 const stableReferenceRequestSchema = z.strictObject({
   referenceType: z.enum(["annotation", "sticker", "obsidian-reference"]),
   logicalSessionId: z.string().min(1).nullable(),
@@ -307,6 +319,24 @@ export async function routeRequest(
       const snapshot = await context.engine.getProjectionRuntimeSnapshot(runId);
       if (snapshot === undefined) send(response, 404, { error: "projection run not found" });
       else send(response, 200, snapshot);
+      return;
+    }
+    const projectionRuntimeStream = /^\/v1\/projection-runs\/([^/]+)\/runtime\/stream$/u.exec(url.pathname);
+    if (request.method === "GET" && projectionRuntimeStream !== null) {
+      const runId = decodeURIComponent(projectionRuntimeStream[1]!) as never;
+      const hotLimit = projectionHotLimitSchema.parse(url.searchParams.get("hotLimit") ?? 200);
+      const stream = await context.engine.getProjectionRuntimeStream(runId, hotLimit);
+      if (stream === undefined) send(response, 404, errorBody("PROJECTION_RUN_NOT_FOUND", "Projection run not found"));
+      else await sendNdjson(response, stream.frames);
+      return;
+    }
+    const projectionRuntimeSessionStream = /^\/v1\/projection-runs\/([^/]+)\/runtime\/sessions\/([^/]+)\/stream$/u.exec(url.pathname);
+    if (request.method === "GET" && projectionRuntimeSessionStream !== null) {
+      const runId = decodeURIComponent(projectionRuntimeSessionStream[1]!) as never;
+      const nativeSessionId = pathId(projectionRuntimeSessionStream[2]!) as never;
+      const stream = await context.engine.getProjectionRuntimeSessionStream(runId, nativeSessionId);
+      if (stream === undefined) send(response, 404, errorBody("PROJECTION_SESSION_NOT_FOUND", "Projection session not found"));
+      else await sendNdjson(response, stream.frames);
       return;
     }
     if (request.method === "POST" && url.pathname === "/v1/session-resolution") {
@@ -680,8 +710,11 @@ export async function routeRequest(
     }
     send(response, 404, errorBody("NOT_FOUND", "Route not found"));
   } catch (error) {
-    if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
+    if (response.headersSent) {
+      response.destroy(error instanceof Error ? error : undefined);
+    } else if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
     else if (error instanceof ZodError) send(response, 400, errorBody("INVALID_REQUEST", "Request does not match the API schema"));
+    else if (error instanceof ProjectionRuntimeStreamError) send(response, 422, errorBody(error.code, error.message));
     else if (error instanceof SessionMaintenanceError) {
       const status = error.code === "CAPABILITY_NOT_AVAILABLE"
         ? 501

@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 
 import type {
   AdapterVerificationResult,
   BranchId,
+  CanonicalProjectionSessionInput,
   CheckpointRepository,
   DshRuntimeBridgeV1,
   DshSessionAdapterV1,
@@ -19,8 +20,13 @@ import type {
   LogicalProjectId,
   RuntimeHandle,
   RunId,
+  JsonValue,
 } from "@linmu/dsh-session-contracts";
-import type { DshAppendCommitter } from "@linmu/dsh-canonical-session-engine";
+import type {
+  CanonicalEngineReceipt,
+  DshAppendCommitter,
+  DshNativeImportInput,
+} from "@linmu/dsh-canonical-session-engine";
 import type { StatusLog, StatusSpanHandle } from "@linmu/dsh-session-status-log";
 
 import {
@@ -84,6 +90,15 @@ export type ProjectionRecoveryOperationSource = (
   },
 ) => Promise<readonly NativeAppendOperation[]>;
 
+export type ProjectionRecoveredRegistrationHandler = (input: {
+  readonly logicalSessionId: import("@linmu/dsh-session-contracts").LogicalSessionId;
+  readonly projectId: LogicalProjectId | null;
+}) => Promise<void>;
+
+type ProjectionCanonicalEngine = DshAppendCommitter & {
+  importDshNative?: (input: DshNativeImportInput) => Promise<CanonicalEngineReceipt>;
+};
+
 interface PreparedProjectionContext {
   readonly handle: PreparedProjectionRunHandle;
   readonly directory: JsonProjectionDirectory;
@@ -102,6 +117,45 @@ export class ProjectionLifecycleError extends Error {
   }
 }
 
+function projectedNativeRevision(
+  adapter: DshSessionAdapterV1,
+  canonical: CanonicalProjectionSessionInput,
+  payload: JsonValue,
+): number {
+  const revision = adapter.projectedNativeRevision?.(canonical, payload) ?? canonical.events.length;
+  if (!Number.isSafeInteger(revision) || revision < 0) {
+    throw new TypeError(`Adapter returned an invalid native revision for ${canonical.session.id}`);
+  }
+  return revision;
+}
+
+function recoveryAppendUsesStaleMetadata(
+  active: ActiveProjectionSession | undefined,
+  operation: NativeAppendOperation,
+): boolean {
+  if (active === undefined || typeof operation.payload !== "object" || operation.payload === null || Array.isArray(operation.payload)) {
+    return false;
+  }
+  const payload = operation.payload as Readonly<Record<string, JsonValue>>;
+  const logicalSessionId = typeof payload.logicalSessionId === "string" ? payload.logicalSessionId : undefined;
+  const baseVersionId = payload.baseVersionId === null || typeof payload.baseVersionId === "string"
+    ? payload.baseVersionId
+    : undefined;
+  return logicalSessionId !== undefined
+    && baseVersionId !== undefined
+    && (logicalSessionId !== active.projection.logicalSessionId
+      || baseVersionId !== active.projection.baseVersionId);
+}
+
+function nativeRegistrationOperationId(runId: RunId, nativeSessionId: string) {
+  return `${runId}:native-register:${createHash("sha256").update(nativeSessionId).digest("hex").slice(0, 32)}` as import("@linmu/dsh-session-contracts").OperationId;
+}
+
+function boundedErrorMessage(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.replace(/[\r\n]+/gu, " ").slice(0, 500);
+}
+
 type IdKind = "run" | "lease";
 
 export class ProjectionLifecycle {
@@ -111,7 +165,7 @@ export class ProjectionLifecycle {
   readonly adapter: DshSessionAdapterV1;
   readonly bridge: DshRuntimeBridgeV1;
   readonly runtimeRoot: string;
-  readonly canonicalEngine: DshAppendCommitter | undefined;
+  readonly canonicalEngine: ProjectionCanonicalEngine | undefined;
   readonly checkpointRepository: Pick<CheckpointRepository, "saveCheckpoint"> | undefined;
   private readonly lease: ProjectionLease;
   private readonly clock: () => string;
@@ -125,7 +179,7 @@ export class ProjectionLifecycle {
     readonly source: CanonicalProjectionSource;
     readonly adapter: DshSessionAdapterV1;
     readonly bridge: DshRuntimeBridgeV1;
-    readonly canonicalEngine?: DshAppendCommitter;
+    readonly canonicalEngine?: ProjectionCanonicalEngine;
     readonly checkpointRepository?: Pick<CheckpointRepository, "saveCheckpoint">;
     readonly runtimeRoot: string;
     readonly clock?: () => string;
@@ -183,6 +237,7 @@ export class ProjectionLifecycle {
     let inspection: ProjectionInspection;
     let verification: AdapterVerificationResult;
     const sessions = new Map<string, ActiveProjectionSession>();
+    const catalogUpdatedAt = new Map<string, string>();
     const materializeSpan = await this.startSpan(preparing, "projection.materialize");
     try {
       projectionInput = await this.source.load(preparing);
@@ -201,6 +256,11 @@ export class ProjectionLifecycle {
         if (reference.nativeSessionId === null || reference.status !== "resolved") {
           throw new Error(`Adapter did not resolve native identity for ${item.session.id}`);
         }
+        const nativeRevision = projectedNativeRevision(
+          this.adapter,
+          item,
+          await directory.readSession(reference.nativeSessionId),
+        );
         const projection = {
           schemaVersion: 1,
           runId,
@@ -208,11 +268,12 @@ export class ProjectionLifecycle {
           logicalSessionId: item.session.id,
           baseVersionId: item.session.headVersionId,
           mode: item.session.authorityScope === "codex" ? "codex-read-until-write" : "maintenance-write",
-          nativeRevision: item.events.length,
+          nativeRevision,
           lastCommittedOperationId: null,
           derivedChildSessionId: null,
         } as const;
         await this.runRepository.upsertProjectionSession(projection);
+        catalogUpdatedAt.set(reference.nativeSessionId, item.session.updatedAt);
         sessions.set(reference.nativeSessionId, {
           projection,
           title: item.session.title,
@@ -222,6 +283,7 @@ export class ProjectionLifecycle {
           authorityScope: item.session.authorityScope,
         });
       }
+      await directory.rebuildSessionCatalog(runId, catalogUpdatedAt);
       await writeProjectionRecoveryDescriptor(projectionRoot, {
         schemaVersion: 1,
         runId,
@@ -310,6 +372,52 @@ export class ProjectionLifecycle {
     return this.attachRun(await this.prepareRun(input));
   }
 
+  /**
+   * Disposes a projection that was fully materialized but never attached to a
+   * DSH runtime. No native process could have appended to this projection, so
+   * the verified materialization snapshot is the final snapshot and does not
+   * need an expensive second inspection pass.
+   */
+  async discardPreparedRun(runId: RunId): Promise<ProjectionCloseReceipt> {
+    const context = this.preparedRuns.get(runId);
+    const run = context?.handle.run ?? await this.runRepository.getProjectionRun(runId);
+    if (run === undefined || (context === undefined && run.state !== "preparing")) {
+      throw new ProjectionLifecycleError("RUN_NOT_PREPARED", runId, "Projection run is not safely discardable before runtime attach");
+    }
+    const projectionRoot = context?.handle.projectionRoot ?? projectionRootFor(this.runtimeRoot, runId);
+    const inspection = context?.handle.inspection ?? await this.preparedInspection(projectionRoot);
+    const span = await this.startShutdownSpan(run);
+    let cleanupStarted = false;
+    try {
+      await this.lease.setState(runId, "recovering");
+      const checkpoint = await this.saveCloseCheckpoint(run, inspection);
+      cleanupStarted = true;
+      await removeProjectionRun(projectionRoot);
+      await this.lease.setState(runId, "recovered");
+      this.preparedRuns.delete(runId);
+      await this.statusLog.succeed(span, { diagnosticDetailRef: "diag:prepared-projection-discarded" });
+      return {
+        runId,
+        checkpointId: checkpoint.id,
+        finalCatalogDigest: inspection.catalogDigest,
+        removedProjection: true,
+        state: "recovered",
+      };
+    } catch (error) {
+      await this.lease.setState(runId, cleanupStarted ? "cleanup-pending" : "recovery-required").catch(() => undefined);
+      await this.statusLog.fail(span, {
+        errorCode: cleanupStarted ? "CLEANUP_PENDING" : "RUN_RECOVERY_FAILED",
+        diagnosticDetailRef: "diag:prepared-projection-discard-failed",
+      });
+      throw new ProjectionLifecycleError(
+        cleanupStarted ? "CLEANUP_PENDING" : "RUN_RECOVERY_FAILED",
+        runId,
+        "Prepared projection could not be discarded",
+        { cause: error },
+      );
+    }
+  }
+
   async append(
     handle: ProjectionRunHandle,
     operation: NativeAppendOperation,
@@ -350,13 +458,38 @@ export class ProjectionLifecycle {
     if (this.bridge.registerSession === undefined) {
       throw new ProjectionLifecycleError("RUNTIME_SESSION_REGISTER_UNSUPPORTED", handle.run.id, "Runtime bridge cannot register a new native session");
     }
+    if (this.canonicalEngine?.importDshNative === undefined) {
+      throw new ProjectionLifecycleError("CANONICAL_ENGINE_UNAVAILABLE", handle.run.id, "Canonical session engine is required to register a native session");
+    }
     await this.bridge.registerSession(handle.runtime, registration, context.directory);
+    const operationId = nativeRegistrationOperationId(handle.run.id, registration.nativeSessionId);
+    const canonical = await this.canonicalEngine.importDshNative({
+      operationId,
+      logicalSessionId: registration.logicalSessionId,
+      nativeSessionId: registration.nativeSessionId,
+      title: registration.title,
+      tags: [],
+      archivedAt: null,
+      workspaceId: registration.workspaceId,
+      events: [],
+      importedAt: this.clock(),
+    });
+    if (!("switchLogicalSession" in this.bridge) || typeof this.bridge.switchLogicalSession !== "function") {
+      throw new ProjectionLifecycleError("RUNTIME_APPEND_UNSUPPORTED", handle.run.id, "Runtime bridge cannot finish native session registration");
+    }
+    await (this.bridge as MutableNativeProjectionBridge).switchLogicalSession(
+      handle.runtime,
+      registration.nativeSessionId,
+      registration.logicalSessionId,
+      canonical.versionId,
+      context.directory,
+    );
     const projection: ProjectionSession = {
       schemaVersion: 1,
       runId: handle.run.id,
       nativeSessionId: registration.nativeSessionId,
       logicalSessionId: registration.logicalSessionId,
-      baseVersionId: null,
+      baseVersionId: canonical.versionId,
       mode: "maintenance-write",
       nativeRevision: 0,
       lastCommittedOperationId: null,
@@ -442,6 +575,7 @@ export class ProjectionLifecycle {
       readonly receipt: ProjectionOperationReceipt;
       readonly projectId: LogicalProjectId | null;
     }) => Promise<void>,
+    onRecoveredRegistration?: ProjectionRecoveredRegistrationHandler,
   ): Promise<ProjectionCloseReceipt> {
     const run = await this.runRepository.getProjectionRun(runId);
     if (run === undefined) throw new ProjectionLifecycleError("RUN_NOT_FOUND", runId, "Projection run does not exist");
@@ -452,6 +586,10 @@ export class ProjectionLifecycle {
       await this.lease.setState(runId, "recovering");
       context ??= await this.restoreRecoveryContext(run);
       context.acceptingAppends = false;
+      for (const registration of context.recoveredRegistrations ?? []) {
+        await onRecoveredRegistration?.(registration);
+      }
+      await this.supersedeStalePending(context);
       await this.replayPending(context);
       if (operationSource !== undefined) {
         if (this.canonicalEngine === undefined) throw new Error("Canonical session engine is unavailable during recovery");
@@ -487,7 +625,12 @@ export class ProjectionLifecycle {
       const state = cleanupStarted ? "cleanup-pending" : corrupt ? "quarantined" : "recovery-required";
       await this.lease.setState(runId, state).catch(() => undefined);
       await this.statusLog.fail(span, { errorCode: cleanupStarted ? "CLEANUP_PENDING" : corrupt ? "RECOVERY_QUARANTINED" : "RUN_RECOVERY_FAILED" });
-      throw new ProjectionLifecycleError(cleanupStarted ? "CLEANUP_PENDING" : corrupt ? "RECOVERY_QUARANTINED" : "RUN_RECOVERY_FAILED", runId, "Projection recovery did not complete", { cause: error });
+      throw new ProjectionLifecycleError(
+        cleanupStarted ? "CLEANUP_PENDING" : corrupt ? "RECOVERY_QUARANTINED" : "RUN_RECOVERY_FAILED",
+        runId,
+        `Projection recovery did not complete: ${boundedErrorMessage(error)}`,
+        { cause: error },
+      );
     }
   }
 
@@ -519,6 +662,38 @@ export class ProjectionLifecycle {
     }
   }
 
+  private async supersedeStalePending(context: ProjectionAppendContext): Promise<void> {
+    for (const record of await context.wal.pending()) {
+      const active = context.sessions.get(record.operation.nativeSessionId);
+      if (!record.projectionApplied || !recoveryAppendUsesStaleMetadata(active, record.operation)) continue;
+      const run = context.handle.run;
+      const supersedeSpan = await this.statusLog.start({
+        runId: run.id,
+        leaseId: run.leaseId,
+        profileId: run.profileId,
+        adapterId: run.adapterId,
+        dshVersion: run.dshVersion,
+        stage: "runtime.wal.durable",
+        logicalSessionId: active?.projection.logicalSessionId ?? null,
+        nativeSessionId: record.operation.nativeSessionId,
+        operationId: record.operation.operationId,
+        diagnosticDetailRef: "diag:recovery-stale-metadata-superseded",
+      });
+      try {
+        await context.wal.supersede(record.operation.operationId);
+        await this.statusLog.succeed(supersedeSpan, {
+          diagnosticDetailRef: "diag:recovery-stale-metadata-superseded",
+        });
+      } catch (error) {
+        await this.statusLog.fail(supersedeSpan, {
+          errorCode: "RECOVERY_WAL_SUPERSEDE_FAILED",
+          diagnosticDetailRef: "diag:recovery-stale-metadata-supersede-failed",
+        });
+        throw error;
+      }
+    }
+  }
+
   private async verifyCheckpointAndDetach(
     context: ProjectionAppendContext,
   ): Promise<Omit<ProjectionCloseReceipt, "removedProjection" | "state">> {
@@ -535,7 +710,17 @@ export class ProjectionLifecycle {
     const verification = await this.adapter.verify(finalManifest, inspection);
     if (!verification.ok) throw new Error("Projection close verification failed");
     await context.directory.replaceManifest(finalManifest);
-    const checkpoint = projectionCloseCheckpoint(context.handle.run, inspection, this.clock());
+    const checkpoint = await this.saveCloseCheckpoint(context.handle.run, inspection);
+    await this.bridge.detach(context.handle.runtime);
+    return {
+      runId: context.handle.run.id,
+      checkpointId: checkpoint.id,
+      finalCatalogDigest: inspection.catalogDigest,
+    };
+  }
+
+  private async saveCloseCheckpoint(run: ProjectionRun, inspection: ProjectionInspection) {
+    const checkpoint = projectionCloseCheckpoint(run, inspection, this.clock());
     if (this.checkpointRepository === undefined) {
       throw new Error("Checkpoint repository is required to finalize a projection run");
     }
@@ -546,12 +731,18 @@ export class ProjectionLifecycle {
     if (checkpointRuns.setProjectionRunCheckpoint === undefined) {
       throw new Error("Projection repository cannot link the close checkpoint");
     }
-    await checkpointRuns.setProjectionRunCheckpoint(context.handle.run.id, checkpoint.id);
-    await this.bridge.detach(context.handle.runtime);
+    await checkpointRuns.setProjectionRunCheckpoint(run.id, checkpoint.id);
+    return checkpoint;
+  }
+
+  private async preparedInspection(projectionRoot: string): Promise<ProjectionInspection> {
+    const manifest = await new JsonProjectionDirectory(projectionRoot).readManifest();
     return {
-      runId: context.handle.run.id,
-      checkpointId: checkpoint.id,
-      finalCatalogDigest: inspection.catalogDigest,
+      sessionCount: manifest.sessionCount,
+      workspaceCount: manifest.workspaceCount,
+      catalogDigest: manifest.catalogDigest,
+      sessionDigests: manifest.sessionDigests,
+      issues: [],
     };
   }
 
@@ -561,6 +752,7 @@ export class ProjectionLifecycle {
     const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
     if (descriptor.runId !== run.id) throw new TypeError("Projection recovery run ID mismatch");
     const manifest = await directory.readManifest();
+    await directory.readSessionCatalog(run.id);
     const inspection = await this.adapter.inspect(directory);
     const verification = await this.adapter.verify(manifest, inspection);
     const recoveryRuns = this.runRepository as ProjectionRunRepository & {
@@ -571,9 +763,28 @@ export class ProjectionLifecycle {
     const source = await this.source.load(run);
     const sourceById = new Map(source.sessions.map((item) => [item.session.id, item]));
     const sessions = new Map<string, ActiveProjectionSession>();
-    for (const mapping of mappings) {
+    const recoveredRegistrations: Array<{
+      readonly logicalSessionId: import("@linmu/dsh-session-contracts").LogicalSessionId;
+      readonly projectId: LogicalProjectId | null;
+    }> = [];
+    const wal = new ProjectionWriteAheadLog(projectionRoot);
+    const correctedInitialRevisions = new Map<string, number>();
+    for (const persistedMapping of mappings) {
+      let mapping = persistedMapping;
       const item = sourceById.get(mapping.logicalSessionId);
       if (item !== undefined) {
+        const payload = await directory.readSession(mapping.nativeSessionId);
+        if (mapping.lastCommittedOperationId === null && this.adapter.projectedNativeRevision !== undefined) {
+          const canonicalRevision = projectedNativeRevision(this.adapter, item, payload);
+          if (canonicalRevision < mapping.nativeRevision) {
+            throw new TypeError(`Canonical native revision regressed for ${mapping.nativeSessionId}`);
+          }
+          if (canonicalRevision > mapping.nativeRevision) {
+            mapping = { ...mapping, nativeRevision: canonicalRevision };
+            await this.runRepository.upsertProjectionSession(mapping);
+            correctedInitialRevisions.set(mapping.nativeSessionId, canonicalRevision);
+          }
+        }
         sessions.set(mapping.nativeSessionId, {
           projection: mapping,
           title: item.session.title,
@@ -603,6 +814,154 @@ export class ProjectionLifecycle {
       projectionRoot,
       maintenanceEndpoint: descriptor.maintenanceEndpoint,
     });
+    const persistedNativeIds = new Set(mappings.map((mapping) => mapping.nativeSessionId));
+    for (const nativeSessionId of await directory.listNativeSessionIds()) {
+      if (persistedNativeIds.has(nativeSessionId)) continue;
+      if (this.adapter.recoverUnmappedProjectionSession === undefined) {
+        throw new TypeError(`Recovery projection contains an unmapped native session: ${nativeSessionId}`);
+      }
+      const orphanSpan = await this.statusLog.start({
+        runId: run.id,
+        leaseId: run.leaseId,
+        profileId: run.profileId,
+        adapterId: run.adapterId,
+        dshVersion: run.dshVersion,
+        stage: "run.shutdown-recovery",
+        logicalSessionId: null,
+        nativeSessionId,
+        operationId: null,
+        diagnosticDetailRef: "diag:unmapped-native-registration-detected",
+      });
+      try {
+        const recovered = this.adapter.recoverUnmappedProjectionSession(
+          run.id,
+          nativeSessionId,
+          await directory.readSession(nativeSessionId),
+        );
+        if (this.canonicalEngine?.importDshNative === undefined) {
+          throw new TypeError("Canonical session engine is unavailable for unmapped native registration recovery");
+        }
+        const operationId = nativeRegistrationOperationId(run.id, nativeSessionId);
+        const canonical = await this.canonicalEngine.importDshNative({
+          operationId,
+          logicalSessionId: recovered.logicalSessionId,
+          nativeSessionId,
+          title: recovered.recovered.title,
+          tags: recovered.recovered.tags,
+          archivedAt: recovered.recovered.archivedAt,
+          workspaceId: recovered.recovered.workspaceId,
+          events: [],
+          importedAt: this.clock(),
+        });
+        if (!("switchLogicalSession" in this.bridge) || typeof this.bridge.switchLogicalSession !== "function") {
+          throw new TypeError("Runtime bridge cannot finish unmapped native registration recovery");
+        }
+        await (this.bridge as MutableNativeProjectionBridge).switchLogicalSession(
+          runtime,
+          nativeSessionId,
+          recovered.logicalSessionId,
+          canonical.versionId,
+          directory,
+        );
+        const projection: ProjectionSession = {
+          schemaVersion: 1,
+          runId: run.id,
+          nativeSessionId,
+          logicalSessionId: recovered.logicalSessionId,
+          baseVersionId: canonical.versionId,
+          mode: recovered.mode,
+          nativeRevision: recovered.nativeRevision,
+          lastCommittedOperationId: null,
+          derivedChildSessionId: null,
+        };
+        await this.runRepository.upsertProjectionSession(projection);
+        sessions.set(nativeSessionId, {
+          projection,
+          title: recovered.recovered.title,
+          tags: recovered.recovered.tags,
+          archivedAt: recovered.recovered.archivedAt,
+          workspaceId: recovered.recovered.workspaceId,
+          authorityScope: recovered.recovered.authorityScope,
+        });
+        recoveredRegistrations.push({
+          logicalSessionId: recovered.logicalSessionId,
+          projectId: recovered.recovered.projectId,
+        });
+        await this.statusLog.succeed(orphanSpan, {
+          diagnosticDetailRef: "diag:unmapped-native-registration-recovered",
+        });
+      } catch (error) {
+        await this.statusLog.fail(orphanSpan, {
+          errorCode: "UNMAPPED_NATIVE_RECOVERY_FAILED",
+          diagnosticDetailRef: "diag:unmapped-native-registration-invalid",
+        });
+        throw error;
+      }
+    }
+    for (const record of await wal.pending()) {
+      const active = sessions.get(record.operation.nativeSessionId);
+      if (record.projectionApplied && recoveryAppendUsesStaleMetadata(active, record.operation)) {
+        const supersedeSpan = await this.statusLog.start({
+          runId: run.id,
+          leaseId: run.leaseId,
+          profileId: run.profileId,
+          adapterId: run.adapterId,
+          dshVersion: run.dshVersion,
+          stage: "runtime.wal.durable",
+          logicalSessionId: active?.projection.logicalSessionId ?? null,
+          nativeSessionId: record.operation.nativeSessionId,
+          operationId: record.operation.operationId,
+          diagnosticDetailRef: "diag:recovery-stale-metadata-superseded",
+        });
+        try {
+          await wal.supersede(record.operation.operationId);
+          await this.statusLog.succeed(supersedeSpan, {
+            diagnosticDetailRef: "diag:recovery-stale-metadata-superseded",
+          });
+        } catch (error) {
+          await this.statusLog.fail(supersedeSpan, {
+            errorCode: "RECOVERY_WAL_SUPERSEDE_FAILED",
+            diagnosticDetailRef: "diag:recovery-stale-metadata-supersede-failed",
+          });
+          throw error;
+        }
+        continue;
+      }
+      if (this.adapter.shouldSupersedeRecoveryAppend?.(record.operation) === true) {
+        const supersedeSpan = await this.statusLog.start({
+          runId: run.id,
+          leaseId: run.leaseId,
+          profileId: run.profileId,
+          adapterId: run.adapterId,
+          dshVersion: run.dshVersion,
+          stage: "runtime.wal.durable",
+          logicalSessionId: active?.projection.logicalSessionId ?? null,
+          nativeSessionId: record.operation.nativeSessionId,
+          operationId: record.operation.operationId,
+          diagnosticDetailRef: "diag:recovery-prelude-superseded",
+        });
+        try {
+          await wal.supersede(record.operation.operationId);
+          await this.statusLog.succeed(supersedeSpan, {
+            diagnosticDetailRef: "diag:recovery-prelude-superseded",
+          });
+        } catch (error) {
+          await this.statusLog.fail(supersedeSpan, {
+            errorCode: "RECOVERY_WAL_SUPERSEDE_FAILED",
+            diagnosticDetailRef: "diag:recovery-prelude-supersede-failed",
+          });
+          throw error;
+        }
+        continue;
+      }
+      const correctedRevision = correctedInitialRevisions.get(record.operation.nativeSessionId);
+      if (correctedRevision !== undefined
+        && record.projectionApplied
+        && record.operation.operationId.includes(":tail-recovery:")
+        && record.operation.nativeRevision <= correctedRevision) {
+        await wal.supersede(record.operation.operationId);
+      }
+    }
     const handle: ProjectionRunHandle = {
       run: { ...run, state: "running" },
       projectionRoot,
@@ -614,8 +973,9 @@ export class ProjectionLifecycle {
     const context: ProjectionAppendContext = {
       handle,
       directory,
-      wal: new ProjectionWriteAheadLog(projectionRoot),
+      wal,
       sessions,
+      recoveredRegistrations,
       acceptingAppends: false,
     };
     this.activeRuns.set(run.id, context);

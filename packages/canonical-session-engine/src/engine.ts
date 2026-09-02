@@ -15,7 +15,12 @@ import type {
   WorkspaceMembership,
 } from "@linmu/dsh-session-contracts";
 
-import { observeCodex, type CodexObservationInput } from "./codex-observation.js";
+import {
+  observeCodex,
+  retitleCodexMirror,
+  type CodexMirrorRetitleInput,
+  type CodexObservationInput,
+} from "./codex-observation.js";
 import { appendDsh, type DshAppendInput } from "./dsh-append.js";
 import { importDshNative, type DshNativeImportInput } from "./dsh-native-import.js";
 import {
@@ -96,6 +101,12 @@ export interface CanonicalSessionEngineStore {
   getVersion(id: SessionVersionId): Promise<CanonicalVersionRecord | undefined>;
   getOperationReceipt(operationId: OperationId): Promise<CanonicalEngineReceipt | undefined>;
   recordCodexObservation(input: CodexObservationRecord): Promise<void>;
+  /** Optional storage-native metadata-only advance that reuses the current body object. */
+  retitleCodexMirrorMetadata?(input: {
+    readonly logicalSessionId: LogicalSessionId;
+    readonly title: string;
+    readonly appliedAt: string;
+  }): Promise<CanonicalEngineReceipt | undefined>;
   /** Commits the content object, version head, membership, lineage and receipt atomically. */
   commit(input: CanonicalEngineMutation): Promise<CanonicalEngineReceipt>;
 }
@@ -109,6 +120,10 @@ export class CanonicalSessionEngine {
 
   async observeCodex(input: CodexObservationInput): Promise<CanonicalEngineReceipt> {
     return observeCodex(this.store, input);
+  }
+
+  retitleCodexMirror(input: CodexMirrorRetitleInput): Promise<CanonicalEngineReceipt | undefined> {
+    return retitleCodexMirror(this.store, input);
   }
 
   async appendDsh(input: DshAppendInput): Promise<CanonicalEngineReceipt> {

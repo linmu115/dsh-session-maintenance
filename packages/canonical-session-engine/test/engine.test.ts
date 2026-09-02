@@ -105,6 +105,39 @@ function projection(operationId: string) {
 }
 
 describe("CanonicalSessionEngine", () => {
+  it("retitles a Codex mirror without changing its events or activity timestamp", async () => {
+    const store = new MemoryEngineStore();
+    const engine = new CanonicalSessionEngine(store);
+    const logicalSessionId = "logical-codex-retitle" as LogicalSessionId;
+    const created = await engine.observeCodex({
+      logicalSessionId,
+      title: "完整首问污染标题",
+      tags: [],
+      archivedAt: null,
+      workspaceId: "workspace-codex" as LogicalWorkspaceId,
+      events: [event(logicalSessionId, "event-title-1", 0, "question")],
+      sourceCursor: "cursor-title-1",
+      observedAt: at,
+    });
+
+    const renamed = await engine.retitleCodexMirror({
+      logicalSessionId,
+      title: "精炼任务名",
+      appliedAt: "2026-09-01T00:00:00.000Z",
+    });
+
+    expect(renamed).toMatchObject({ outcome: "advanced", logicalSessionId });
+    expect(renamed?.versionId).not.toBe(created.versionId);
+    expect(store.mutations.at(-1)?.version).toMatchObject({
+      parentVersionIds: [created.versionId],
+      events: [expect.objectContaining({ id: "event-title-1" })],
+    });
+    expect(store.sessions.get(logicalSessionId)?.session).toMatchObject({
+      title: "精炼任务名",
+      updatedAt: at,
+    });
+  });
+
   it("records a changed Codex cursor as a no-op without creating a version", async () => {
     const store = new MemoryEngineStore();
     const engine = new CanonicalSessionEngine(store);

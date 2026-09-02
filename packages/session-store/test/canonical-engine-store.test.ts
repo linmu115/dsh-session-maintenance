@@ -38,6 +38,89 @@ afterEach(async () => {
 });
 
 describe("SQLite canonical engine store", () => {
+  it("rebuilds the latest event index after adapter renormalization while preserving old version bodies", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dsh-sm-canonical-renormalize-"));
+    roots.push(root);
+    const database = openMaintenanceDatabase(join(root, "metadata.sqlite"));
+    databases.push(database);
+    const store = new SqliteCanonicalSessionEngineStore(database, new ZstdContentObjectStore(root));
+    const engine = new CanonicalSessionEngine(store);
+    const logicalSessionId = "logical-codex-renormalize" as LogicalSessionId;
+    const originalEvent = event("stable-source-event", logicalSessionId, 0, "codex");
+    const original = await engine.observeCodex({
+      logicalSessionId,
+      title: "Adapter migration fixture",
+      tags: [],
+      archivedAt: null,
+      workspaceId: null,
+      events: [originalEvent],
+      sourceCursor: "before-normalizer-upgrade",
+      observedAt: at,
+    });
+    const toolEvent = {
+      ...originalEvent,
+      kind: "tool-call",
+      role: "assistant",
+      content: { callId: "call-1", name: "fixture", protocol: "custom", arguments: "{}" },
+      contentDigest: "sha256:renormalized-tool-call",
+    } as unknown as CanonicalEventV1;
+    const advanced = await engine.observeCodex({
+      logicalSessionId,
+      title: "Adapter migration fixture",
+      tags: [],
+      archivedAt: null,
+      workspaceId: null,
+      events: [toolEvent],
+      sourceCursor: "after-normalizer-upgrade",
+      observedAt: "2026-09-01T00:00:01.000Z",
+    });
+
+    expect(advanced.outcome).toBe("advanced");
+    expect((await store.getVersion(original.versionId!))?.events).toEqual([originalEvent]);
+    expect((await store.getVersion(advanced.versionId!))?.events).toEqual([toolEvent]);
+    expect(database.prepare(
+      "SELECT id, kind FROM canonical_events WHERE logical_session_id = ? ORDER BY sequence",
+    ).all(logicalSessionId)).toEqual([{ id: "stable-source-event", kind: "tool-call" }]);
+  });
+
+  it("retitles a Codex mirror by reusing its body object and activity timestamp", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dsh-sm-canonical-retitle-"));
+    roots.push(root);
+    const database = openMaintenanceDatabase(join(root, "metadata.sqlite"));
+    databases.push(database);
+    const store = new SqliteCanonicalSessionEngineStore(database, new ZstdContentObjectStore(root));
+    const engine = new CanonicalSessionEngine(store);
+    const logicalSessionId = "logical-codex-retitle" as LogicalSessionId;
+    const observed = await engine.observeCodex({
+      logicalSessionId,
+      title: "raw prompt title",
+      tags: ["fixture"],
+      archivedAt: null,
+      workspaceId: null,
+      events: [event("event-retitle", logicalSessionId, 0, "codex")],
+      sourceCursor: "1",
+      observedAt: at,
+    });
+    const original = database.prepare(
+      "SELECT body_object, body_hash FROM session_versions WHERE id = ?",
+    ).get(observed.versionId) as { readonly body_object: string; readonly body_hash: string };
+
+    const receipt = await engine.retitleCodexMirror({
+      logicalSessionId,
+      title: "Concise task name",
+      appliedAt: "2026-09-01T01:00:00.000Z",
+    });
+    const renamed = await store.getSession(logicalSessionId);
+    const retitledVersion = database.prepare(
+      "SELECT body_object, body_hash FROM session_versions WHERE id = ?",
+    ).get(receipt?.versionId) as { readonly body_object: string; readonly body_hash: string };
+
+    expect(receipt?.outcome).toBe("advanced");
+    expect(renamed?.session).toMatchObject({ title: "Concise task name", updatedAt: at });
+    expect(retitledVersion).toEqual(original);
+    expect((await store.getVersion(receipt!.versionId!))?.events.map((item) => item.id)).toEqual(["event-retitle"]);
+  });
+
   it("persists a Codex head then atomically creates the first DSH-derived child", async () => {
     const root = await mkdtemp(join(tmpdir(), "dsh-sm-canonical-store-"));
     roots.push(root);

@@ -47,6 +47,7 @@ import {
   type DshGatewayTarget,
 } from "./dsh-gateway-connection.js";
 import { WriteService } from "./write-service.js";
+import { CodexCatalogTitleSyncService } from "./codex-catalog-title-sync.js";
 
 const resolveModule = createRequire(import.meta.url).resolve;
 const alpha2WorkerEntryPoint = join(
@@ -180,10 +181,16 @@ async function createComposition(
     enabled: true,
   });
   const projectionRunRepository = new SqliteProjectionRunRepository(repository.database);
-  const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database);
+  const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
   const canonicalEngine = new CanonicalSessionEngine(
     new SqliteCanonicalSessionEngineStore(repository.database, objectStore),
   );
+  const codexCatalogTitleSync = new CodexCatalogTitleSyncService({
+    instances,
+    adapters: readAdapters,
+    canonicalEngine,
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+  });
   const sessionAliases = new SqliteSessionAliasRepository(repository.database);
   let writeService: WriteService | undefined;
   const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
@@ -243,6 +250,7 @@ async function createComposition(
     objectStore,
     continuations,
     canonicalEngine,
+    beforeProjectionPrepare: async () => { await codexCatalogTitleSync.sync(); },
     projectionLifecycleFactory: ({ adapterId, bridge }) => {
       const adapter = adapterId === alpha2Adapter.manifest.id
         ? alpha2Adapter

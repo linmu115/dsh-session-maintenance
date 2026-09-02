@@ -43,6 +43,9 @@ export interface ExternalLifecyclePrepareResponse {
   readonly enabled: boolean;
   readonly handle: string | null;
   readonly launch: {
+    /** DSH launcher options inserted before `--profile`. */
+    readonly launcherArgs?: readonly string[];
+    /** Selected profile application options appended after Launcher-owned app arguments. */
     readonly args: readonly string[];
     readonly env: Readonly<Record<string, string>>;
   } | null;
