@@ -98,7 +98,7 @@ class UnchangedSource implements IncrementalCanonicalProjectionSource {
   }
   async loadSessions(run: ProjectionRun, ids: readonly string[]): Promise<CanonicalProjectionInput> {
     this.selectedLoads += 1;
-    return ids.includes("logical-retained") ? this.payload(run) : { run, workspaces: [], sessions: [] };
+    return this.payload(run, new Set(ids));
   }
   commit(events: readonly CanonicalEventV1[]): void {
     this.revision += 1;
@@ -113,30 +113,52 @@ class UnchangedSource implements IncrementalCanonicalProjectionSource {
       changedAt: this.updatedAt,
     });
   }
-  private payload(run: ProjectionRun): CanonicalProjectionInput {
+  private payload(run: ProjectionRun, selected?: ReadonlySet<string>): CanonicalProjectionInput {
+    const sessions: CanonicalProjectionInput["sessions"] = [{
+      session: {
+        schemaVersion: 1,
+        id: "logical-retained" as never,
+        authorityScope: "maintenance",
+        originKind: "maintenance-native",
+        headVersionId: this.headVersionId as never,
+        title: "Retained projection",
+        tags: [],
+        archivedAt: null,
+        tombstonedAt: null,
+        createdAt: at,
+        updatedAt: this.updatedAt,
+      },
+      events: this.events,
+      workspaceId: null,
+      projectId: null,
+      projectName: null,
+      projectRoot: null,
+    }, {
+      session: {
+        schemaVersion: 1,
+        id: "logical-unchanged" as never,
+        authorityScope: "maintenance",
+        originKind: "maintenance-native",
+        headVersionId: null,
+        title: "Unchanged projection",
+        tags: [],
+        archivedAt: null,
+        tombstonedAt: null,
+        createdAt: at,
+        updatedAt: at,
+      },
+      events: [],
+      workspaceId: null,
+      projectId: null,
+      projectName: null,
+      projectRoot: null,
+    }];
     return {
       run,
       workspaces: [],
-      sessions: [{
-        session: {
-          schemaVersion: 1,
-          id: "logical-retained" as never,
-          authorityScope: "maintenance",
-          originKind: "maintenance-native",
-          headVersionId: this.headVersionId as never,
-          title: "Retained projection",
-          tags: [],
-          archivedAt: null,
-          tombstonedAt: null,
-          createdAt: at,
-          updatedAt: this.updatedAt,
-        },
-        events: this.events,
-        workspaceId: null,
-        projectId: null,
-        projectName: null,
-        projectRoot: null,
-      }],
+      sessions: selected === undefined
+        ? sessions
+        : sessions.filter((item) => selected.has(item.session.id)),
     };
   }
 }
@@ -245,6 +267,13 @@ describe("persistent ProjectionLifecycle", () => {
     const identity = projectionCacheIdentity(adapter, { branchId: "main" });
     const cacheRoot = projectionCacheRootFor(runtimeRoot, adapter.manifest.id, identity.configurationDigest);
     const nativeSessionId = alpha2NativeSessionId("logical-retained" as never);
+    const unchangedNativeSessionId = alpha2NativeSessionId("logical-unchanged" as never);
+    const unchangedPath = join(
+      cacheRoot,
+      "sessions",
+      `${Buffer.from(unchangedNativeSessionId, "utf8").toString("base64url")}.json`,
+    );
+    const unchangedMtime = (await stat(unchangedPath, { bigint: true })).mtimeNs;
     const operation: NativeAppendOperation = {
       runId: handle.run.id,
       operationId: "operation-retained-append" as never,
@@ -273,6 +302,7 @@ describe("persistent ProjectionLifecycle", () => {
     await lifecycle.closeRun(handle);
     const baseAfterClose = await new JsonProjectionDirectory(cacheRoot).readSession(nativeSessionId) as { readonly events: readonly unknown[] };
     expect(baseAfterClose.events).toHaveLength(1);
+    expect((await stat(unchangedPath, { bigint: true })).mtimeNs).toBe(unchangedMtime);
     expect(source.fullLoads).toBe(1);
     expect(source.selectedLoads).toBe(1);
     await expect(access(dirname(handle.projectionRoot))).rejects.toMatchObject({ code: "ENOENT" });

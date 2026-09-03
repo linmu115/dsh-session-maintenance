@@ -2,7 +2,7 @@
 
 > 日期：2026-09-03
 >
-> 状态：已获用户批准，施工中
+> 状态：已完成
 >
 > 目标分支：`codex/canonical-session-projection`
 >
@@ -147,6 +147,8 @@
 
 ### M06：最小 Alpha2 验收
 
+状态：已完成（本任务提交：`test: accept MCSF Alpha2 projection`）。
+
 只检查：
 
 1. 首次基线；
@@ -157,6 +159,11 @@
 6. `other` 不进入模型上下文；
 7. 正常停止后缓存仍在；
 8. Codex fixture 摘要在测试前后不变。
+
+验收结果：5 个聚焦文件、13 项测试全部通过。项目/工作区目标化更新使用
+真实 Schema v16 Change Journal 与 SQLite Projection Source，确认只重写目标
+会话和目标工作区；运行追加测试另有未涉及会话作为零改写对照。Codex 只读
+边界通过合成 Home 的前后整树 SHA-256 摘要验证。
 
 用户点击验收只在这些自动断点通过之后进行。本任务不构建 Generation，也不推送远端。
 
