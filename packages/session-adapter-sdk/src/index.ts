@@ -5,6 +5,10 @@ export * from "./conformance.js";
 export * from "./logical-digest.js";
 
 export type {
+  AdapterEvidenceInputV1,
+  AdapterEvidencePort,
+  AdapterEvidenceRecordV1,
+  AdapterEvidenceRef,
   AdapterCapability,
   AdapterId,
   AdapterManifestV1,

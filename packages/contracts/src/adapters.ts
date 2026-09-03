@@ -41,6 +41,7 @@ import type {
 } from "./plans.js";
 import type { Checkpoint, TransactionRecord, TransactionRef } from "./model.js";
 import type {
+  AdapterEvidencePort,
   AdapterProbeResult,
   CanonicalAppendOperation,
   CanonicalProjectionInput,
@@ -140,7 +141,10 @@ export interface DshSessionAdapterV1 {
     input: CanonicalProjectionInput,
     output: ProjectionWriter,
   ): Promise<ProjectionManifest>;
-  normalizeAppend(operation: NativeAppendOperation): Promise<CanonicalAppendOperation>;
+  normalizeAppend(
+    operation: NativeAppendOperation,
+    evidencePort?: AdapterEvidencePort,
+  ): Promise<CanonicalAppendOperation>;
   inspect(projection: ProjectionReader): Promise<ProjectionInspection>;
   verify(
     expected: ProjectionManifest,

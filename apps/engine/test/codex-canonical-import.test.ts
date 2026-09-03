@@ -1,7 +1,10 @@
+import { appendFile } from "node:fs/promises";
+import { join } from "node:path";
+
 import { describe, expect, it } from "vitest";
 
 import { logicalSessionIdFor } from "@linmu/dsh-session-domain";
-import { SqliteCanonicalRepository } from "@linmu/dsh-session-store";
+import { SqliteAdapterEvidenceStore, SqliteCanonicalRepository } from "@linmu/dsh-session-store";
 
 import {
   canonicalCodexEvent,
@@ -75,6 +78,14 @@ describe("Codex canonical hot import", () => {
 
   it("imports directly into the canonical engine, preserves cwd and noops unchanged content", async () => {
     const fixture = await createEngineFixture("codex-canonical-import");
+    await appendFile(
+      join(fixture.codexHome, "rollouts", "thread-fixture.jsonl"),
+      `${JSON.stringify({
+        timestamp: "2026-08-26T00:00:03.000Z",
+        type: "response_item",
+        payload: { type: "unsupported_fixture_event", private: "adapter-owned" },
+      })}\n`,
+    );
     const assignments: CodexCanonicalProjectAssignment[] = [];
     const status: CodexCanonicalImportStatusEvent[] = [];
     const canonicalRepository = new SqliteCanonicalRepository(fixture.engine.repository.database);
@@ -89,6 +100,11 @@ describe("Codex canonical hot import", () => {
         },
       },
       fixtureGuard: fixture.fixturePolicy,
+      evidencePort: new SqliteAdapterEvidenceStore(
+        fixture.engine.repository.database,
+        fixture.engine.objectStore,
+        { clock: () => "2026-08-26T00:00:03.000Z" },
+      ),
     });
     const instance = fixture.engine.instances.find((item) => item.platform === "codex")!;
     const before = await hashTree(fixture.codexHome);
@@ -135,7 +151,19 @@ describe("Codex canonical hot import", () => {
         expect.objectContaining({ stage: "rollout.stability", state: "succeeded" }),
         expect.objectContaining({ stage: "canonical.import", outcome: "created" }),
         expect.objectContaining({ stage: "canonical.import", outcome: "noop" }),
+        expect.objectContaining({ stage: "adapter.evidence", state: "succeeded" }),
       ]));
+      const imported = await fixture.engine.canonicalEngine.store.getSession(logicalSessionId);
+      const importedVersion = imported?.headVersionId === null || imported?.headVersionId === undefined
+        ? undefined
+        : await fixture.engine.canonicalEngine.store.getVersion(imported.headVersionId);
+      const other = importedVersion?.events.find((event) => event.kind === "other");
+      expect(other).toMatchObject({
+        role: "unknown",
+        rawPayload: null,
+        content: { evidenceRef: expect.stringMatching(/^evidence:sha256:/u) },
+      });
+      expect(JSON.stringify(other)).not.toContain("adapter-owned");
       expect(await hashTree(fixture.codexHome)).toBe(before);
     } finally {
       await fixture.cleanupAll();

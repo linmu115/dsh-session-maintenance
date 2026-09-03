@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 
 import type {
   AdapterVerificationResult,
+  AdapterEvidencePort,
   BranchId,
   CanonicalProjectionSessionInput,
   CheckpointRepository,
@@ -166,6 +167,7 @@ export class ProjectionLifecycle {
   readonly bridge: DshRuntimeBridgeV1;
   readonly runtimeRoot: string;
   readonly canonicalEngine: ProjectionCanonicalEngine | undefined;
+  readonly evidencePort: AdapterEvidencePort | undefined;
   readonly checkpointRepository: Pick<CheckpointRepository, "saveCheckpoint"> | undefined;
   private readonly lease: ProjectionLease;
   private readonly clock: () => string;
@@ -180,6 +182,7 @@ export class ProjectionLifecycle {
     readonly adapter: DshSessionAdapterV1;
     readonly bridge: DshRuntimeBridgeV1;
     readonly canonicalEngine?: ProjectionCanonicalEngine;
+    readonly evidencePort?: AdapterEvidencePort;
     readonly checkpointRepository?: Pick<CheckpointRepository, "saveCheckpoint">;
     readonly runtimeRoot: string;
     readonly clock?: () => string;
@@ -191,6 +194,7 @@ export class ProjectionLifecycle {
     this.adapter = input.adapter;
     this.bridge = input.bridge;
     this.canonicalEngine = input.canonicalEngine;
+    this.evidencePort = input.evidencePort;
     this.checkpointRepository = input.checkpointRepository;
     this.runtimeRoot = resolve(input.runtimeRoot);
     this.lease = new ProjectionLease(input.runRepository);
@@ -445,6 +449,7 @@ export class ProjectionLifecycle {
       runRepository: this.runRepository,
       statusLog: this.statusLog,
       adapter: this.adapter,
+      ...(this.evidencePort === undefined ? {} : { evidencePort: this.evidencePort }),
       bridge: this.bridge,
       canonicalEngine: this.canonicalEngine,
       clock: this.clock,
@@ -613,6 +618,7 @@ export class ProjectionLifecycle {
             runRepository: this.runRepository,
             statusLog: this.statusLog,
             adapter: this.adapter,
+            ...(this.evidencePort === undefined ? {} : { evidencePort: this.evidencePort }),
             bridge: this.bridge,
             canonicalEngine: this.canonicalEngine,
             clock: this.clock,
@@ -662,6 +668,7 @@ export class ProjectionLifecycle {
         runRepository: this.runRepository,
         statusLog: this.statusLog,
         adapter: this.adapter,
+        ...(this.evidencePort === undefined ? {} : { evidencePort: this.evidencePort }),
         bridge: this.bridge,
         canonicalEngine: this.canonicalEngine!,
         clock: this.clock,

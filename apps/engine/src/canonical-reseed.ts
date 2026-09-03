@@ -15,6 +15,7 @@ import { normalizeAlpha2Append } from "@linmu/dsh-session-adapter-alpha2";
 import { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import type {
   CanonicalEventV1,
+  AdapterEvidencePort,
   JsonValue,
   LogicalProjectId,
   LogicalSessionId,
@@ -29,6 +30,7 @@ import {
   openMaintenanceDatabase,
   SqliteCanonicalRepository,
   SqliteCanonicalSessionEngineStore,
+  SqliteAdapterEvidenceStore,
   ZstdContentObjectStore,
 } from "@linmu/dsh-session-store";
 
@@ -161,13 +163,14 @@ function normalizedAlpha2Envelope(event: DshSessionEvent): JsonValue {
   };
 }
 
-function canonicalEvents(input: {
+async function canonicalEvents(input: {
   readonly logicalSessionId: LogicalSessionId;
   readonly nativeSessionId: NativeSessionId;
   readonly events: readonly DshSessionEvent[];
   readonly importedAt: string;
-}): readonly CanonicalEventV1[] {
-  return normalizeAlpha2Append({
+  readonly evidencePort: AdapterEvidencePort;
+}): Promise<readonly CanonicalEventV1[]> {
+  return (await normalizeAlpha2Append({
     runId: "run-canonical-reseed" as RunId,
     operationId: `operation-reseed-${input.nativeSessionId}` as OperationId,
     nativeSessionId: input.nativeSessionId,
@@ -178,7 +181,7 @@ function canonicalEvents(input: {
       instanceId: "dsh-alpha2",
       events: input.events.map(normalizedAlpha2Envelope),
     },
-  }).events;
+  }, input.evidencePort)).events;
 }
 
 function eventTitle(events: readonly DshSessionEvent[], fallback: string): string {
@@ -271,6 +274,7 @@ export async function reseedCanonicalCandidate(input: CanonicalReseedInput): Pro
   await input.onStatus?.({ stage: "reseed.candidate.open", state: "started", detail: path });
   const database = openMaintenanceDatabase(path);
   const objectStore = new ZstdContentObjectStore(input.stateRoot);
+  const evidenceStore = new SqliteAdapterEvidenceStore(database, objectStore, { clock: () => createdAt });
   const store = new SqliteCanonicalSessionEngineStore(database, objectStore);
   const engine = new CanonicalSessionEngine(store);
   const repository = new SqliteCanonicalRepository(database);
@@ -336,11 +340,12 @@ export async function reseedCanonicalCandidate(input: CanonicalReseedInput): Pro
         tags: ["maintenance-native", "dsh-obsidian-test"],
         archivedAt: null,
         workspaceId,
-        events: canonicalEvents({
+        events: await canonicalEvents({
           logicalSessionId,
           nativeSessionId: item.nativeSessionId as NativeSessionId,
           events: decoded.events,
           importedAt: createdAt,
+          evidencePort: evidenceStore,
         }),
         importedAt: createdAt,
       });
@@ -359,6 +364,7 @@ export async function reseedCanonicalCandidate(input: CanonicalReseedInput): Pro
     const codex = await new CodexCanonicalImportService({
       canonicalEngine: engine,
       projectPort: new SqliteCodexProjectPort(repository),
+      evidencePort: evidenceStore,
       ...(input.fixtureGuard === undefined ? {} : { fixtureGuard: input.fixtureGuard }),
     }).sync({
       instance: input.codexInstance,

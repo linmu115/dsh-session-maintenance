@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { CanonicalSessionEngine } from "../packages/canonical-session-engine/dist/index.js";
 import {
   openMaintenanceDatabase,
+  SqliteAdapterEvidenceStore,
   SqliteCanonicalRepository,
   SqliteCanonicalSessionEngineStore,
   ZstdContentObjectStore,
@@ -20,14 +21,16 @@ if (!stateRootValue || !databaseValue || !codexHomeValue) {
 const stateRoot = resolve(stateRootValue);
 const database = openMaintenanceDatabase(resolve(databaseValue));
 const repository = new SqliteCanonicalRepository(database);
+const objectStore = new ZstdContentObjectStore(stateRoot);
 const canonicalEngine = new CanonicalSessionEngine(
-  new SqliteCanonicalSessionEngineStore(database, new ZstdContentObjectStore(stateRoot)),
+  new SqliteCanonicalSessionEngineStore(database, objectStore),
 );
 let completed = 0;
 try {
   const result = await new CodexCanonicalImportService({
     canonicalEngine,
     projectPort: new SqliteCodexProjectPort(repository),
+    evidencePort: new SqliteAdapterEvidenceStore(database, objectStore),
   }).sync({
     instance: {
       id: instanceId,

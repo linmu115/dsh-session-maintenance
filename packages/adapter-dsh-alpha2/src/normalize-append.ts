@@ -1,4 +1,6 @@
 import type {
+  AdapterEvidencePort,
+  AdapterEvidenceRef,
   CanonicalAppendOperation,
   CanonicalEventV1,
   JsonValue,
@@ -8,6 +10,7 @@ import type {
 } from "@linmu/dsh-session-adapter-sdk";
 
 import { digest } from "./materialize.js";
+import { manifest } from "./manifest.js";
 
 interface NativeEvent {
   readonly type: string;
@@ -43,25 +46,51 @@ function parseEvent(value: JsonValue): NativeEvent {
   return value as unknown as NativeEvent;
 }
 
-export function normalizeAlpha2Append(operation: NativeAppendOperation): CanonicalAppendOperation {
+export async function normalizeAlpha2Append(
+  operation: NativeAppendOperation,
+  evidencePort?: AdapterEvidencePort,
+): Promise<CanonicalAppendOperation> {
   const payload = operation.payload;
   if (!isRecord(payload) || typeof payload.logicalSessionId !== "string" || !Array.isArray(payload.events)) {
     throw new TypeError("Alpha2 append payload requires logicalSessionId and events");
   }
   const logicalSessionId = payload.logicalSessionId as LogicalSessionId;
   const instanceId = typeof payload.instanceId === "string" ? payload.instanceId : "dsh-alpha2";
-  const events = payload.events.map((value) => {
+  const events: CanonicalEventV1[] = [];
+  for (const value of payload.events) {
     const event = parseEvent(value);
     const identity = eventIdentity(event.type);
     const heldOut = identity.kind === "opaque-unknown";
-    return {
+    let evidenceRef: AdapterEvidenceRef | null = null;
+    if (heldOut && evidencePort !== undefined) {
+      evidenceRef = (await evidencePort.putEvidence({
+        schemaVersion: 1,
+        adapterId: manifest.id,
+        nativeFormatId: "dsh/0.1.2-alpha.2/session-event-v1",
+        sourceKind: `dsh-alpha2/${event.type}`,
+        payload: value,
+        observedAt: operation.observedAt,
+      })).ref;
+    }
+    const content: JsonValue = heldOut
+      ? {
+          schemaVersion: 1,
+          type: "other",
+          reason: "unsupported-source-event",
+          sourceKind: `dsh-alpha2/${event.type}`,
+          label: "未映射的 Alpha2 记录",
+          summary: `MCSF v1 没有 ${event.type} 的公共语义；该记录仅作为维护卡片展示。`,
+          evidenceRef,
+        }
+      : event.data;
+    events.push({
       schemaVersion: 1 as const,
       id: `dsh-alpha2:${operation.nativeSessionId}:${event.seq}`,
       logicalSessionId,
       sequence: event.seq,
-      kind: identity.kind,
+      kind: heldOut ? "other" : identity.kind,
       role: identity.role,
-      content: event.data,
+      content,
       source: {
         platform: "dsh" as const,
         instanceId,
@@ -69,14 +98,14 @@ export function normalizeAlpha2Append(operation: NativeAppendOperation): Canonic
         eventId: String(event.seq),
         cursor: String(operation.nativeRevision),
       },
-      contentDigest: digest(value),
-      rawPayload: value,
+      contentDigest: digest(content),
+      rawPayload: heldOut ? null : value,
       extensions: {
         dshEventType: event.type,
         ...(heldOut ? { heldOut: true } : {}),
       },
-    };
-  });
+    });
+  }
   return {
     runId: operation.runId,
     operationId: operation.operationId,
@@ -89,8 +118,12 @@ export function normalizeAlpha2Append(operation: NativeAppendOperation): Canonic
     metadata: {
       observedAt: operation.observedAt,
       nativeRevision: operation.nativeRevision,
-      heldOutEventTypes: events.filter((event) => event.kind === "opaque-unknown")
-        .map((event) => event.extensions.dshEventType),
+      heldOutEventTypes: events.filter((event) => event.kind === "other")
+        .map((event) => event.extensions.dshEventType)
+        .filter((type): type is string => typeof type === "string"),
+      evidenceRefs: events.filter((event) => event.kind === "other")
+        .map((event) => (event.content as { readonly evidenceRef?: JsonValue }).evidenceRef)
+        .filter((ref): ref is string => typeof ref === "string"),
     },
   };
 }

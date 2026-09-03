@@ -17,6 +17,7 @@ export type LeaseId = BrandedId<"LeaseId">;
 export type BranchId = BrandedId<"BranchId">;
 export type OperationId = BrandedId<"OperationId">;
 export type AdapterId = BrandedId<"AdapterId">;
+export type AdapterEvidenceRef = BrandedId<"AdapterEvidenceRef">;
 export type NativeSessionId = BrandedId<"NativeSessionId">;
 export type CheckpointId = BrandedId<"CheckpointId">;
 export type StatusEventId = BrandedId<"StatusEventId">;
@@ -82,7 +83,7 @@ export interface CanonicalOtherContentV1 {
   readonly sourceKind: string;
   readonly label: string;
   readonly summary: string;
-  readonly evidenceRef: string | null;
+  readonly evidenceRef: AdapterEvidenceRef | null;
 }
 
 /**

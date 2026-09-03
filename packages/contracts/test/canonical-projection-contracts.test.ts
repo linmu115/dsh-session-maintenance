@@ -164,6 +164,7 @@ describe("canonical projection contracts", () => {
     expect(canonicalEventV1Schema.parse(event)).toEqual(event);
     expect(canonicalEventV1Schema.safeParse({ ...event, role: "user" }).success).toBe(false);
     expect(canonicalEventV1Schema.safeParse({ ...event, content: { unsafe: true } }).success).toBe(false);
+    expect(canonicalEventV1Schema.safeParse({ ...event, rawPayload: { private: true } }).success).toBe(false);
   });
 
   it("round-trips projection, receipt, status and adapter manifest records", () => {

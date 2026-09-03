@@ -1,4 +1,7 @@
 import type {
+  AdapterEvidenceInputV1,
+  AdapterEvidencePort,
+  AdapterEvidenceRecordV1,
   CanonicalAppendOperation,
   CanonicalProjectionInput,
   CanonicalProjectionSessionInput,
@@ -27,6 +30,9 @@ export function defineDshSessionAdapter<T extends DshSessionAdapterV1>(adapter: 
 }
 
 export type {
+  AdapterEvidenceInputV1,
+  AdapterEvidencePort,
+  AdapterEvidenceRecordV1,
   AdapterProbeResult,
   AdapterVerificationResult,
   CanonicalAppendOperation,

@@ -1291,7 +1291,10 @@ export class SqliteSessionRepository {
     const continuationRows = this.database
       .prepare("SELECT DISTINCT handoff_object_id AS body_object FROM continuation_jobs ORDER BY handoff_object_id")
       .all() as unknown as ObjectRow[];
-    return [...new Set([...rows, ...continuationRows].map((row) => row.body_object))].sort();
+    const evidenceRows = this.database
+      .prepare("SELECT DISTINCT object_id AS body_object FROM adapter_evidence ORDER BY object_id")
+      .all() as unknown as ObjectRow[];
+    return [...new Set([...rows, ...continuationRows, ...evidenceRows].map((row) => row.body_object))].sort();
   }
 
   async savePlan(plan: SyncPlan): Promise<void> {

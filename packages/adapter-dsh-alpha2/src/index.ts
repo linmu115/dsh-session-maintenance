@@ -31,7 +31,7 @@ export const adapter = defineDshSessionAdapter({
   manifest,
   probe: async (environment) => probeAlpha2(environment),
   materialize: materializeAlpha2,
-  normalizeAppend: async (operation) => normalizeAlpha2Append(operation),
+  normalizeAppend: (operation, evidencePort) => normalizeAlpha2Append(operation, evidencePort),
   inspect: inspectAlpha2,
   verify: async (expected, actual) => verifyAlpha2(expected, actual),
   resolveReference: async (reference, run) => resolveAlpha2Reference(reference, run),

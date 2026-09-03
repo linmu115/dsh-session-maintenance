@@ -22,6 +22,7 @@ export const STATUS_STAGES = [
   "projection.cross-version.verify",
   "reference.roundtrip.verify",
   "run.shutdown-recovery",
+  "adapter.evidence",
 ] as const;
 
 export type StatusStage = (typeof STATUS_STAGES)[number];

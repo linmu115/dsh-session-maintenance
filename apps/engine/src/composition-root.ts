@@ -27,7 +27,7 @@ import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
 import { ProjectionLifecycle, SqliteCanonicalProjectionSource } from "@linmu/dsh-session-projection-lifecycle";
-import { SqliteAdapterRegistryRepository, SqliteCanonicalSessionEngineStore, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { SqliteAdapterEvidenceStore, SqliteAdapterRegistryRepository, SqliteCanonicalSessionEngineStore, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
@@ -153,6 +153,11 @@ async function createComposition(
     new SqliteStatusEventAdapter(new SqliteStatusEventRepository(repository.database)),
     options.clock === undefined ? {} : { clock: options.clock },
   );
+  const evidenceStore = new SqliteAdapterEvidenceStore(
+    repository.database,
+    objectStore,
+    options.clock === undefined ? {} : { clock: options.clock },
+  );
   const adapterRegistry = new AdapterRegistry({
     host: new AdapterHost(new NodeAdapterWorkerFactory()),
     repository: new SqliteAdapterRegistryRepository(repository.database),
@@ -251,6 +256,7 @@ async function createComposition(
         adapter,
         bridge,
         canonicalEngine,
+        evidencePort: evidenceStore,
         checkpointRepository: repository,
         runtimeRoot: join(options.stateRoot, "projection-runtime"),
         ...(options.clock === undefined ? {} : { clock: options.clock }),

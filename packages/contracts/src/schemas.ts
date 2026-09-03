@@ -75,6 +75,24 @@ export const canonicalOtherContentV1Schema = z.strictObject({
   summary: z.string().min(1),
   evidenceRef: z.string().min(1).nullable(),
 });
+export const adapterEvidenceInputV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  adapterId: idSchema,
+  nativeFormatId: z.string().min(1),
+  sourceKind: z.string().min(1),
+  payload: jsonValueSchema,
+  observedAt: timestampSchema,
+});
+export const adapterEvidenceRecordV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  ref: z.string().regex(/^evidence:sha256:[0-9a-f]{64}$/u),
+  adapterId: idSchema,
+  nativeFormatId: z.string().min(1),
+  sourceKind: z.string().min(1),
+  objectId: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+  byteLength: nonNegativeIntegerSchema,
+  createdAt: timestampSchema,
+});
 export const canonicalEventRoleSchema = z.enum([
   "user",
   "assistant",
@@ -108,6 +126,13 @@ export const canonicalEventV1Schema = z.strictObject({
       code: "custom",
       path: ["role"],
       message: "MCSF other events must use the unknown role",
+    });
+  }
+  if (event.rawPayload !== null) {
+    context.addIssue({
+      code: "custom",
+      path: ["rawPayload"],
+      message: "MCSF other events must keep Adapter evidence outside the public event",
     });
   }
   const parsed = canonicalOtherContentV1Schema.safeParse(event.content);

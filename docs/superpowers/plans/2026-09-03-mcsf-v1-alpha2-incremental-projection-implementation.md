@@ -64,6 +64,8 @@
 
 ### M02：建立 Adapter Evidence Port
 
+状态：已实现，待本任务提交。
+
 目标：把 Harness 原始证据从 MCSF 公共事件中解耦。
 
 实现：
@@ -72,6 +74,8 @@
 - `other.evidenceRef` 指向证据对象，不内嵌原始 payload；
 - Codex 导入器和 Alpha2 Adapter 仅保存各自来源证据；
 - 读取失败只影响诊断展开，不得扩大为模型可见内容。
+
+落地说明：当前只接入 Codex Read 与 DSH Alpha2 两条新未知事件入口；RC2 和历史 `rawPayload` 不在本阶段迁移范围内。
 
 断点：`adapter.evidence`。只记录 Adapter、摘要和结果。
 

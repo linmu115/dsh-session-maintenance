@@ -58,7 +58,7 @@ describe("migration 009 logical projects", () => {
     const database = openMaintenanceDatabase(path);
     databases.push(database);
 
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 12 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 13 });
     expect(database.prepare(
       `SELECT name FROM sqlite_master WHERE type = 'table'
        AND name IN ('logical_projects', 'project_roots', 'project_memberships') ORDER BY name`,

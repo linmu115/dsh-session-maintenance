@@ -1,5 +1,6 @@
 import type {
   CanonicalSessionRecord,
+  AdapterEvidencePort,
   DshSessionAdapterV1,
   DshRuntimeBridgeV1,
   LogicalSessionId,
@@ -113,6 +114,7 @@ export async function commitProjectionAppend(input: {
   readonly runRepository: ProjectionRunRepository;
   readonly statusLog: StatusLog;
   readonly adapter: Pick<DshSessionAdapterV1, "normalizeAppend">;
+  readonly evidencePort?: AdapterEvidencePort;
   readonly bridge: DshRuntimeBridgeV1;
   readonly canonicalEngine: DshAppendCommitter;
   readonly clock: () => string;
@@ -214,6 +216,7 @@ export async function commitProjectionAppend(input: {
   let derivationSpan: StatusSpanHandle | undefined;
   let walSpan: StatusSpanHandle | undefined;
   let canonicalSpan: StatusSpanHandle | undefined;
+  let evidenceSpan: StatusSpanHandle | undefined;
   try {
     const bridge = appendBridge(input.bridge);
     let walRecord = await context.wal.get(operation.operationId);
@@ -253,7 +256,30 @@ export async function commitProjectionAppend(input: {
       );
       walRecord = await context.wal.markProjectionApplied(operation.operationId, input.clock());
     }
-    const normalized = await input.adapter.normalizeAppend(walRecord.operation);
+    evidenceSpan = await input.statusLog.start({
+      runId: context.handle.run.id,
+      leaseId: context.handle.run.leaseId,
+      profileId: context.handle.run.profileId,
+      adapterId: context.handle.run.adapterId,
+      dshVersion: context.handle.run.dshVersion,
+      stage: "adapter.evidence",
+      logicalSessionId: session.projection.logicalSessionId,
+      nativeSessionId: operation.nativeSessionId,
+      operationId: operation.operationId,
+    });
+    const normalized = await input.adapter.normalizeAppend(walRecord.operation, input.evidencePort);
+    const metadata = typeof normalized.metadata === "object"
+      && normalized.metadata !== null
+      && !Array.isArray(normalized.metadata)
+      ? normalized.metadata as Readonly<Record<string, import("@linmu/dsh-session-contracts").JsonValue>>
+      : undefined;
+    const evidenceCount = Array.isArray(metadata?.evidenceRefs)
+      ? metadata.evidenceRefs.length
+      : 0;
+    await input.statusLog.succeed(evidenceSpan, {
+      diagnosticDetailRef: `diag:adapter-evidence:${evidenceCount}`,
+    });
+    evidenceSpan = undefined;
     if (normalized.logicalSessionId !== session.projection.logicalSessionId) {
       throw new ProjectionAppendError("LOGICAL_SESSION_MISMATCH", "Adapter append resolved another logical session");
     }
@@ -352,6 +378,9 @@ export async function commitProjectionAppend(input: {
     });
     return receipt;
   } catch (error) {
+    if (evidenceSpan !== undefined) {
+      await input.statusLog.fail(evidenceSpan, { errorCode: "ADAPTER_EVIDENCE_FAILED" });
+    }
     if (error instanceof ProjectionAppendError) failureCode = error.code;
     if (walSpan !== undefined) await input.statusLog.fail(walSpan, { errorCode: failureCode });
     if (canonicalSpan !== undefined) await input.statusLog.fail(canonicalSpan, { errorCode: failureCode });

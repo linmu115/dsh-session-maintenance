@@ -9,6 +9,9 @@ import {
 } from "@linmu/dsh-adapter-codex-read";
 import type { CanonicalEngineReceipt, CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import type {
+  AdapterEvidencePort,
+  AdapterEvidenceRef,
+  AdapterId,
   CanonicalEventKind,
   CanonicalEventRole,
   CanonicalEventV1,
@@ -28,6 +31,16 @@ export type CodexCanonicalImportStatusEvent = CodexReadStatusEvent | {
   readonly sessionId: string;
   readonly logicalSessionId: string;
   readonly outcome: CanonicalEngineReceipt["outcome"] | "unstable";
+  readonly detail: string;
+} | {
+  readonly stage: "adapter.evidence";
+  readonly state: "started" | "succeeded" | "failed";
+  readonly instanceId: string;
+  readonly sessionId: string;
+  readonly logicalSessionId: string;
+  readonly adapterId: string;
+  readonly sourceKind: string;
+  readonly evidenceRef: string | null;
   readonly detail: string;
 };
 
@@ -59,6 +72,7 @@ export interface CodexCanonicalImportResult {
 export interface CodexCanonicalImportOptions {
   readonly canonicalEngine: CanonicalSessionEngine;
   readonly projectPort: CodexCanonicalProjectPort;
+  readonly evidencePort?: AdapterEvidencePort;
   readonly fixtureGuard?: (root: string) => void;
 }
 
@@ -90,7 +104,7 @@ function mappedRole(event: NormalizedEvent): CanonicalEventRole {
   return mappedKind(event) === "other" ? "unknown" : event.role;
 }
 
-function codexOtherContent(event: NormalizedEvent): CanonicalOtherContentV1 {
+function codexOtherSourceKind(event: NormalizedEvent): string {
   const envelope = isJsonRecord(event.extensions.codexEnvelope)
     ? event.extensions.codexEnvelope
     : undefined;
@@ -99,7 +113,14 @@ function codexOtherContent(event: NormalizedEvent): CanonicalOtherContentV1 {
     : undefined;
   const envelopeType = typeof envelope?.type === "string" ? envelope.type : "unknown-envelope";
   const payloadType = typeof payload?.type === "string" ? payload.type : undefined;
-  const sourceKind = `codex/${envelopeType}${payloadType === undefined ? "" : `:${payloadType}`}`;
+  return `codex/${envelopeType}${payloadType === undefined ? "" : `:${payloadType}`}`;
+}
+
+function codexOtherContent(
+  event: NormalizedEvent,
+  evidenceRef: AdapterEvidenceRef | null,
+): CanonicalOtherContentV1 {
+  const sourceKind = codexOtherSourceKind(event);
   return {
     schemaVersion: 1,
     type: "other",
@@ -107,18 +128,19 @@ function codexOtherContent(event: NormalizedEvent): CanonicalOtherContentV1 {
     sourceKind,
     label: "未映射的 Codex 记录",
     summary: `MCSF v1 没有 ${sourceKind} 的公共语义；该记录仅作为维护卡片展示。`,
-    evidenceRef: sha256Canonical(event.extensions as unknown as JsonValue),
+    evidenceRef,
   };
 }
 
 export function canonicalCodexEvent(
   logicalSessionId: LogicalSessionId,
   event: NormalizedEvent,
+  evidenceRef: AdapterEvidenceRef | null = null,
 ): CanonicalEventV1 {
   const kind = mappedKind(event);
   const tool = event.extensions.codexTool;
   const content: JsonValue = kind === "other"
-    ? codexOtherContent(event) as unknown as JsonValue
+    ? codexOtherContent(event, evidenceRef) as unknown as JsonValue
     : event.kind === "tool-import"
     && isJsonRecord(tool)
     ? {
@@ -240,13 +262,68 @@ export class CodexCanonicalImportService {
         observedAt: normalized.provenance.observedAt,
       };
       await this.options.projectPort.ensureWorkspace(assignment);
+      const canonicalEvents: CanonicalEventV1[] = [];
+      for (const event of normalized.events) {
+        let evidenceRef: AdapterEvidenceRef | null = null;
+        if (mappedKind(event) === "other" && this.options.evidencePort !== undefined) {
+          const adapterId = probe.contract.adapter as AdapterId;
+          const sourceKind = codexOtherSourceKind(event);
+          await input.onStatus?.({
+            stage: "adapter.evidence",
+            state: "started",
+            instanceId: input.instance.id,
+            sessionId: summary.key.sessionId,
+            logicalSessionId,
+            adapterId,
+            sourceKind,
+            evidenceRef: null,
+            detail: `persisting ${sha256Canonical(event.extensions as unknown as JsonValue)}`,
+          });
+          try {
+            const record = await this.options.evidencePort.putEvidence({
+              schemaVersion: 1,
+              adapterId,
+              nativeFormatId: probe.contract.schemaFingerprint,
+              sourceKind,
+              payload: event.extensions as unknown as JsonValue,
+              observedAt: normalized.provenance.observedAt,
+            });
+            evidenceRef = record.ref;
+            await input.onStatus?.({
+              stage: "adapter.evidence",
+              state: "succeeded",
+              instanceId: input.instance.id,
+              sessionId: summary.key.sessionId,
+              logicalSessionId,
+              adapterId,
+              sourceKind,
+              evidenceRef,
+              detail: `stored ${record.objectId}`,
+            });
+          } catch (error) {
+            await input.onStatus?.({
+              stage: "adapter.evidence",
+              state: "failed",
+              instanceId: input.instance.id,
+              sessionId: summary.key.sessionId,
+              logicalSessionId,
+              adapterId,
+              sourceKind,
+              evidenceRef: null,
+              detail: error instanceof Error ? error.message.slice(0, 240) : "evidence write failed",
+            });
+            throw error;
+          }
+        }
+        canonicalEvents.push(canonicalCodexEvent(logicalSessionId, event, evidenceRef));
+      }
       const receipt = await this.options.canonicalEngine.observeCodex({
         logicalSessionId,
         title: normalized.title,
         tags: [],
         archivedAt: normalized.archived ? normalized.provenance.observedAt : null,
         workspaceId: normalized.workspaceId as LogicalWorkspaceId | null,
-        events: normalized.events.map((event) => canonicalCodexEvent(logicalSessionId, event)),
+        events: canonicalEvents,
         sourceCursor: canonicalJson(observation.fingerprint as unknown as JsonValue),
         observedAt: normalized.provenance.observedAt,
         authorityBinding: {

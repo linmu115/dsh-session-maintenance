@@ -68,7 +68,7 @@ describe("migration 010 runtime status stages", () => {
 
     const database = openMaintenanceDatabase(path);
     databases.push(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 12 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 13 });
     expect(database.prepare("SELECT id, stage FROM run_status_events ORDER BY sequence").all()).toEqual([
       { id: "status-v9", stage: "run.lease" },
     ]);
@@ -82,5 +82,16 @@ describe("migration 010 runtime status stages", () => {
         "runtime.wal.durable", "succeeded", null, "native", "operation", "status-v9", "span-v9", null, 1, null, "{}");
     expect(database.prepare("SELECT stage, parent_event_id FROM run_status_events WHERE id = ?").get("status-runtime"))
       .toEqual({ stage: "runtime.wal.durable", parent_event_id: "status-v9" });
+    database.prepare(`INSERT INTO run_status_events
+      (id, run_id, sequence, at, lease_id, profile_id, adapter_id, dsh_version,
+       stage, state, logical_session_id, native_session_id, operation_id,
+       parent_event_id, span_id, error_code, duration_ms, diagnostic_detail_ref,
+       event_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run("status-evidence", "run-v9", 2, at, "lease-v9", "web", "dsh-alpha2", "0.1.2-alpha.2",
+        "adapter.evidence", "succeeded", null, "native", "operation", null, "span-evidence", null, 1,
+        "diag:adapter-evidence:1", "{}");
+    expect(database.prepare("SELECT stage, diagnostic_detail_ref FROM run_status_events WHERE id = ?").get("status-evidence"))
+      .toEqual({ stage: "adapter.evidence", diagnostic_detail_ref: "diag:adapter-evidence:1" });
   }, 15_000);
 });

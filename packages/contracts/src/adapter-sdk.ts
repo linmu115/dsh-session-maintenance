@@ -1,4 +1,5 @@
 import type {
+  AdapterEvidenceRef,
   AdapterId,
   CanonicalEventV1,
   CanonicalSessionRecord,
@@ -13,6 +14,41 @@ import type {
 } from "./canonical.js";
 import type { CompatibilityIssue, JsonValue } from "./model.js";
 import type { ProjectionOperationReceipt, ProjectionRun } from "./projection.js";
+
+/** Adapter-private payload that has no portable MCSF meaning. */
+export interface AdapterEvidenceInputV1 {
+  readonly schemaVersion: 1;
+  readonly adapterId: AdapterId;
+  readonly nativeFormatId: string;
+  readonly sourceKind: string;
+  readonly payload: JsonValue;
+  readonly observedAt: string;
+}
+
+/** Content-addressed receipt. The payload itself is intentionally absent. */
+export interface AdapterEvidenceRecordV1 {
+  readonly schemaVersion: 1;
+  readonly ref: AdapterEvidenceRef;
+  readonly adapterId: AdapterId;
+  readonly nativeFormatId: string;
+  readonly sourceKind: string;
+  readonly objectId: string;
+  readonly byteLength: number;
+  readonly createdAt: string;
+}
+
+/**
+ * Narrow capability passed to an Adapter when private native evidence needs to
+ * survive. Reads are scoped to the owning Adapter; MCSF and UI callers never
+ * receive the raw payload implicitly.
+ */
+export interface AdapterEvidencePort {
+  putEvidence(input: AdapterEvidenceInputV1): Promise<AdapterEvidenceRecordV1>;
+  readEvidence(
+    ref: AdapterEvidenceRef,
+    expectedAdapterId: AdapterId,
+  ): Promise<AdapterEvidenceInputV1 | undefined>;
+}
 
 export type AdapterCapability =
   | "session-persistence"

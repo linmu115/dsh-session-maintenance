@@ -64,6 +64,8 @@ AdapterEvidencePort
 
 原生事件类型、Schema fingerprint、原始 payload 和 replay policy 不应扩散进 MCSF 公共字段。MCSF 的 `other.evidenceRef` 只保存不可变引用。当前历史记录中的 `rawPayload` 是迁移前兼容字段；新 `other` 事件不得依靠它投影到模型消息面。
 
+M02 已把这个边界落成 `AdapterEvidencePort`：证据使用 Canonical JSON 编码后写入现有内容寻址对象库，SQLite 只登记 `evidence:sha256:<digest>`、所属 Adapter、原生格式族和摘要。`readEvidence` 必须同时给出拥有者 Adapter ID；其他 Adapter 得到 `undefined`，公共会话读取接口没有自动展开证据的能力。证据对象进入 GC 可达集合，但不成为第二份会话真源。
+
 ## 4. 会话身份与“Source Binding”
 
 真源内容没有拆成 Codex、DSH 两类。平台会话 ID 只是索引，不拥有内容。
@@ -241,11 +243,12 @@ Revision、逻辑会话 ID、变化类别和时间；Projection Lifecycle 接入
 只保留高价值断点，并给每个断点提供状态日志入口：
 
 1. `canonical.normalize`：来源事件被分类为公共语义或 `other`；
-2. `adapter.materialize`：`other` 生成 `maintenance/other`；
-3. `projection.surface-audit`：`other` 没有 `surfaceOp`，也没有 `tool/result`；
-4. `client.card`：DSH UI 能显示折叠维护卡片；
-5. `model-history.audit`：派生请求中不存在 `other` 内容；
-6. `legacy.read`：旧 `opaque-unknown` 仍能读取。
+2. `adapter.evidence`：只记录 Adapter、证据摘要、数量和成功/失败，不记录 payload；
+3. `adapter.materialize`：`other` 生成 `maintenance/other`；
+4. `projection.surface-audit`：`other` 没有 `surfaceOp`，也没有 `tool/result`；
+5. `client.card`：DSH UI 能显示折叠维护卡片；
+6. `model-history.audit`：派生请求中不存在 `other` 内容；
+7. `legacy.read`：旧 `opaque-unknown` 仍能读取。
 
 只有某个断点失败时，才在相邻断点之间增加更细日志与测试。
 

@@ -10,6 +10,8 @@ export * from "./migrations/009-logical-projects.js";
 export * from "./migrations/010-runtime-status-stages.js";
 export * from "./migrations/011-mcsf-other-events.js";
 export * from "./migrations/012-canonical-change-journal.js";
+export * from "./migrations/013-adapter-evidence.js";
+export * from "./adapter-evidence-store.js";
 export * from "./canonical-repository.js";
 export * from "./canonical-engine-store.js";
 export * from "./canonical-migration.js";
