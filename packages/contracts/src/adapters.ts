@@ -141,6 +141,10 @@ export interface DshSessionAdapterV1 {
     input: CanonicalProjectionInput,
     output: ProjectionWriter,
   ): Promise<ProjectionManifest>;
+  /** Rebuilds a full manifest from cached digests without rereading session bodies. */
+  composeProjectionManifest?(
+    input: import("./adapter-sdk.js").ProjectionManifestCompositionInput,
+  ): ProjectionManifest;
   normalizeAppend(
     operation: NativeAppendOperation,
     evidencePort?: AdapterEvidencePort,

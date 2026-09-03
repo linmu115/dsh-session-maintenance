@@ -241,8 +241,16 @@ Adapter 只重投影发生变化的会话；未变化会话文件不读取、不
 
 第一段已实现为 Schema v12 的 `canonical_change_log` 和
 `CanonicalSessionRepository.listChanges({ afterRevision, limit })`。日志只保存
-Revision、逻辑会话 ID、变化类别和时间；Projection Lifecycle 接入持久缓存由
-后续 M04/M05 完成。
+Revision、逻辑会话 ID、变化类别和时间。
+
+M04 已建立 Alpha2 持久投影缓存：缓存身份由 `Adapter format-family ID +
+projection configuration digest` 决定，runId 不参与；Manifest 保存最后已应用
+Revision、Adapter 指纹、native digest、native revision 和恢复运行所需的轻量
+会话元数据，不保存会话正文。无变化启动不加载 Canonical 正文，也不打开或改写
+原生会话文件；有变化时先按 Journal 分页得到受影响逻辑 ID，再只加载和重投影
+这些会话。Adapter 指纹变化、Revision 回退或 Manifest 无法验证时，旧缓存不被
+原地猜测修补，而是在 staging 目录建立新基线后原子替换。M05 再把正式运行
+生命周期切换到该缓存并处理保留、WAL 与恢复规则。
 
 ## 12. 第一版验收断点
 
@@ -257,6 +265,7 @@ Revision、逻辑会话 ID、变化类别和时间；Projection Lifecycle 接入
 7. `legacy.read`：旧 `opaque-unknown` 仍能读取。
 8. `canonical.change-journal`：只返回 Revision 和受影响逻辑会话 ID；
 9. `reference.index`：来源、当前投影和历史链接统一解析，且无会话正文。
+10. `projection.delta-apply`：记录起止 Revision、受影响数、实际改写数、删除数和未改动数，不记录标题或正文。
 
 只有某个断点失败时，才在相邻断点之间增加更细日志与测试。
 

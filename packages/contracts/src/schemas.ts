@@ -420,6 +420,66 @@ export const projectionOperationReceiptSchema = z.strictObject({
   projectionRevision: nonNegativeIntegerSchema,
   committedAt: timestampSchema.nullable(),
 });
+export const projectionCacheSessionStateV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  nativeSessionId: idSchema,
+  canonicalHeadVersionId: idSchema.nullable(),
+  canonicalUpdatedAt: timestampSchema,
+  title: z.string(),
+  tags: z.array(z.string()),
+  archivedAt: timestampSchema.nullable(),
+  workspaceId: idSchema.nullable(),
+  projectId: idSchema.nullable(),
+  authorityScope: authorityScopeSchema,
+  nativeRevision: nonNegativeIntegerSchema,
+  nativeDigest: z.string().min(1),
+});
+export const projectionCacheWorkspaceStateV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  nativeWorkspaceId: idSchema,
+  nativeDigest: z.string().min(1),
+});
+export const persistentProjectionCacheManifestV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  cacheKey: z.string().min(1),
+  adapterId: idSchema,
+  adapterFingerprint: z.string().min(1),
+  configurationDigest: z.string().min(1),
+  lastAppliedRevision: nonNegativeIntegerSchema,
+  sessions: z.array(projectionCacheSessionStateV1Schema),
+  workspaces: z.array(projectionCacheWorkspaceStateV1Schema),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+}).superRefine((manifest, context) => {
+  const logicalIds = new Set(manifest.sessions.map((session) => session.logicalSessionId));
+  const nativeIds = new Set(manifest.sessions.map((session) => session.nativeSessionId));
+  const workspaceIds = new Set(manifest.workspaces.map((workspace) => workspace.nativeWorkspaceId));
+  if (logicalIds.size !== manifest.sessions.length || nativeIds.size !== manifest.sessions.length) {
+    context.addIssue({ code: "custom", path: ["sessions"], message: "Projection cache session identities must be unique" });
+  }
+  if (workspaceIds.size !== manifest.workspaces.length) {
+    context.addIssue({ code: "custom", path: ["workspaces"], message: "Projection cache workspace identities must be unique" });
+  }
+});
+export const projectionDeltaApplyReceiptV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  cacheKey: z.string().min(1),
+  baseline: z.boolean(),
+  fromRevision: nonNegativeIntegerSchema,
+  throughRevision: nonNegativeIntegerSchema,
+  currentRevision: nonNegativeIntegerSchema,
+  changedSessions: nonNegativeIntegerSchema,
+  rewrittenSessions: nonNegativeIntegerSchema,
+  removedSessions: nonNegativeIntegerSchema,
+  unchangedSessions: nonNegativeIntegerSchema,
+  rewrittenWorkspaces: nonNegativeIntegerSchema,
+  removedWorkspaces: nonNegativeIntegerSchema,
+}).superRefine((receipt, context) => {
+  if (receipt.fromRevision > receipt.throughRevision || receipt.throughRevision > receipt.currentRevision) {
+    context.addIssue({ code: "custom", path: ["throughRevision"], message: "Projection delta revisions must be monotonic" });
+  }
+});
 
 export const statusStageSchema = z.enum(STATUS_STAGES);
 export const statusEventStateSchema = z.enum(["started", "succeeded", "failed"]);

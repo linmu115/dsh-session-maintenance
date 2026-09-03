@@ -81,7 +81,7 @@ describe("migration 012 canonical change journal", () => {
     const database = openMaintenanceDatabase(path);
     databases.push(database);
     const repository = new SqliteCanonicalRepository(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 14 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 15 });
     expect(await repository.listChanges({ afterRevision: 0, limit: 100 })).toMatchObject({
       throughRevision: 1,
       currentRevision: 1,
@@ -199,6 +199,28 @@ describe("migration 012 canonical change journal", () => {
       ["logical-parent", "session-created"],
       ["logical-child", "session-created"],
       ["logical-child", "branch-created"],
+    ]);
+    await repository.upsertLogicalWorkspace({
+      schemaVersion: 1,
+      id: "workspace-one" as LogicalWorkspaceId,
+      parentId: null,
+      name: "Workspace renamed",
+      sortKey: "0001",
+      deletedAt: null,
+      createdAt: at,
+      updatedAt: "2026-09-03T00:03:00.000Z",
+    });
+    await repository.replaceProjectRoots("project-one" as LogicalProjectId, [{
+      schemaVersion: 1,
+      projectId: "project-one" as LogicalProjectId,
+      path: "D:/AI/Project-Renamed",
+      normalizedPath: "d:/ai/project-renamed",
+      ordinal: 0,
+    }]);
+    const definitionPage = await repository.listChanges({ afterRevision: branchPage.throughRevision, limit: 10 });
+    expect(definitionPage.changes.map((change) => [change.logicalSessionId, change.kind])).toEqual([
+      ["logical-existing", "workspace-updated"],
+      ["logical-existing", "project-updated"],
     ]);
   }, 20_000);
 });

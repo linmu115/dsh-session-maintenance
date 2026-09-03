@@ -2,7 +2,11 @@ import { defineDshSessionAdapter } from "@linmu/dsh-session-adapter-sdk";
 
 import { inspectAlpha2, verifyAlpha2 } from "./inspect.js";
 import { manifest } from "./manifest.js";
-import { alpha2ProjectedNativeRevision, materializeAlpha2 } from "./materialize.js";
+import {
+  alpha2ProjectedNativeRevision,
+  composeAlpha2ProjectionManifest,
+  materializeAlpha2,
+} from "./materialize.js";
 import { normalizeAlpha2Append } from "./normalize-append.js";
 import { probeAlpha2 } from "./probe.js";
 import { resolveAlpha2Reference } from "./references.js";
@@ -16,6 +20,7 @@ export { manifest } from "./manifest.js";
 export {
   alpha2NativeSessionId,
   alpha2ProjectedNativeRevision,
+  composeAlpha2ProjectionManifest,
   materializeAlpha2,
   materializeEvent,
 } from "./materialize.js";
@@ -31,6 +36,7 @@ export const adapter = defineDshSessionAdapter({
   manifest,
   probe: async (environment) => probeAlpha2(environment),
   materialize: materializeAlpha2,
+  composeProjectionManifest: composeAlpha2ProjectionManifest,
   normalizeAppend: (operation, evidencePort) => normalizeAlpha2Append(operation, evidencePort),
   inspect: inspectAlpha2,
   verify: async (expected, actual) => verifyAlpha2(expected, actual),

@@ -9,6 +9,7 @@ import type {
   LogicalSessionId,
   NativeSessionId,
   ProjectionManifest,
+  ProjectionManifestCompositionInput,
   ProjectionWriter,
 } from "@linmu/dsh-session-adapter-sdk";
 
@@ -503,6 +504,20 @@ export function catalogDigest(
   });
 }
 
+export function composeAlpha2ProjectionManifest(
+  input: ProjectionManifestCompositionInput,
+): ProjectionManifest {
+  return {
+    schemaVersion: 1,
+    runId: input.run.id,
+    adapterId: manifest.id,
+    sessionCount: Object.keys(input.sessionDigests).length,
+    workspaceCount: new Set(input.workspaceIds).size,
+    catalogDigest: catalogDigest(input.sessionDigests, input.workspaceIds),
+    sessionDigests: input.sessionDigests,
+  };
+}
+
 export async function materializeAlpha2(
   input: CanonicalProjectionInput,
   output: ProjectionWriter,
@@ -558,13 +573,5 @@ export async function materializeAlpha2(
       );
     }
   }
-  return {
-    schemaVersion: 1,
-    runId: input.run.id,
-    adapterId: manifest.id,
-    sessionCount: input.sessions.length,
-    workspaceCount: input.workspaces.length,
-    catalogDigest: catalogDigest(sessionDigests, workspaceIds),
-    sessionDigests,
-  };
+  return composeAlpha2ProjectionManifest({ run: input.run, sessionDigests, workspaceIds });
 }

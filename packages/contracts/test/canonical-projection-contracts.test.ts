@@ -13,6 +13,8 @@ import {
   canonicalSessionRecordSchema,
   logicalWorkspaceSchema,
   projectionOperationReceiptSchema,
+  persistentProjectionCacheManifestV1Schema,
+  projectionDeltaApplyReceiptV1Schema,
   projectionRunSchema,
   projectionSessionSchema,
   sessionDerivationSchema,
@@ -265,6 +267,53 @@ describe("canonical projection contracts", () => {
     expect(canonicalChangePageSchema.safeParse({ ...page, throughRevision: 39 }).success).toBe(false);
     expect(canonicalChangePageSchema.safeParse({ ...page, changes: [...page.changes].reverse() }).success).toBe(false);
     expect(JSON.stringify(page)).not.toContain("events");
+  });
+
+  it("validates persistent projection cache identity and monotonic delta receipts", () => {
+    const cache = {
+      schemaVersion: 1 as const,
+      cacheKey: "sha256:cache",
+      adapterId: "dsh-alpha2",
+      adapterFingerprint: "sha256:adapter",
+      configurationDigest: "sha256:configuration",
+      lastAppliedRevision: 42,
+      sessions: [{
+        schemaVersion: 1 as const,
+        logicalSessionId: "logical-a",
+        nativeSessionId: "native-a",
+        canonicalHeadVersionId: "version-a",
+        canonicalUpdatedAt: at,
+        title: "Session A",
+        tags: ["fixture"],
+        archivedAt: null,
+        workspaceId: "workspace-a",
+        projectId: "project-a",
+        authorityScope: "maintenance" as const,
+        nativeRevision: 3,
+        nativeDigest: "sha256:native-a",
+      }],
+      workspaces: [{ schemaVersion: 1 as const, nativeWorkspaceId: "workspace-a", nativeDigest: "sha256:workspace-a" }],
+      createdAt: at,
+      updatedAt: at,
+    };
+    expect(persistentProjectionCacheManifestV1Schema.parse(cache)).toEqual(cache);
+    expect(persistentProjectionCacheManifestV1Schema.safeParse({ ...cache, sessions: [...cache.sessions, cache.sessions[0]] }).success).toBe(false);
+    const receipt = {
+      schemaVersion: 1 as const,
+      cacheKey: cache.cacheKey,
+      baseline: false,
+      fromRevision: 40,
+      throughRevision: 42,
+      currentRevision: 42,
+      changedSessions: 1,
+      rewrittenSessions: 1,
+      removedSessions: 0,
+      unchangedSessions: 5,
+      rewrittenWorkspaces: 0,
+      removedWorkspaces: 0,
+    };
+    expect(projectionDeltaApplyReceiptV1Schema.parse(receipt)).toEqual(receipt);
+    expect(projectionDeltaApplyReceiptV1Schema.safeParse({ ...receipt, throughRevision: 39 }).success).toBe(false);
   });
 
   it("rejects unknown authority, status stages and adapter interface majors", () => {

@@ -126,6 +126,12 @@ export interface ProjectionManifest {
   readonly sessionDigests: Readonly<Record<string, string>>;
 }
 
+export interface ProjectionManifestCompositionInput {
+  readonly run: ProjectionRun;
+  readonly sessionDigests: Readonly<Record<string, string>>;
+  readonly workspaceIds: readonly string[];
+}
+
 export interface NativeAppendOperation {
   readonly runId: RunId;
   readonly operationId: OperationId;

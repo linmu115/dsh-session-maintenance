@@ -7,6 +7,9 @@ Implement `DshSessionAdapterV1` with:
 - `probe`: inspect the supplied environment descriptor and report verified,
   compatible, experimental, or failed;
 - `materialize`: write canonical workspaces/sessions through `ProjectionWriter`;
+- `composeProjectionManifest` (required by persistent caches): compose a full
+  manifest from cached per-session digests and workspace IDs without reading
+  unchanged native session bodies;
 - `normalizeAppend`: convert one native append into canonical events;
 - `inspect`: read a completed projection through `ProjectionReader`;
 - `verify`: compare the materialization manifest and inspection;
@@ -37,3 +40,8 @@ be safe after a successful attach even when drain fails.
 
 All calls are DTO-based. Filesystem layout and transport are private to the
 Adapter Host and are not part of this interface.
+
+The Adapter manifest ID identifies a compatible native-format family, not an
+individual product patch release. When the native persistence schema or
+lifecycle becomes incompatible, publish a new Adapter ID and review its exact
+field mapping; do not silently reinterpret an existing cache.

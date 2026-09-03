@@ -68,7 +68,7 @@ describe("migration 010 runtime status stages", () => {
 
     const database = openMaintenanceDatabase(path);
     databases.push(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 14 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 15 });
     expect(database.prepare("SELECT id, stage FROM run_status_events ORDER BY sequence").all()).toEqual([
       { id: "status-v9", stage: "run.lease" },
     ]);
@@ -104,5 +104,16 @@ describe("migration 010 runtime status stages", () => {
         "diag:reference-index", "{}");
     expect(database.prepare("SELECT stage, diagnostic_detail_ref FROM run_status_events WHERE id = ?").get("status-reference-index"))
       .toEqual({ stage: "reference.index", diagnostic_detail_ref: "diag:reference-index" });
+    database.prepare(`INSERT INTO run_status_events
+      (id, run_id, sequence, at, lease_id, profile_id, adapter_id, dsh_version,
+       stage, state, logical_session_id, native_session_id, operation_id,
+       parent_event_id, span_id, error_code, duration_ms, diagnostic_detail_ref,
+       event_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run("status-projection-delta", "run-v9", 4, at, "lease-v9", "web", "dsh-alpha2", "0.1.2-alpha.2",
+        "projection.delta-apply", "succeeded", null, null, null, null, "span-projection-delta", null, 1,
+        "diag:projection-delta:0:2:2:2:0:0", "{}");
+    expect(database.prepare("SELECT stage, diagnostic_detail_ref FROM run_status_events WHERE id = ?").get("status-projection-delta"))
+      .toEqual({ stage: "projection.delta-apply", diagnostic_detail_ref: "diag:projection-delta:0:2:2:2:0:0" });
   }, 15_000);
 });

@@ -5,7 +5,7 @@ import { Badge, EmptyState, LoadingState, Surface, statusTone } from "@linmu/dsh
 
 export interface RunCenterApi { listProjectionRuns(signal?: AbortSignal): Promise<readonly RunCenterItem[]> }
 
-const stages = ["run.lease", "projection.materialize", "runtime.persistence.attach", "session.append.commit", "session.derivation.create", "projection.cross-version.verify", "reference.index", "reference.roundtrip.verify", "run.shutdown-recovery"] as const;
+const stages = ["run.lease", "projection.materialize", "projection.delta-apply", "runtime.persistence.attach", "session.append.commit", "session.derivation.create", "projection.cross-version.verify", "reference.index", "reference.roundtrip.verify", "run.shutdown-recovery"] as const;
 
 export function RunCenterPage(props: { readonly api: RunCenterApi }) {
   const [runs, setRuns] = useState<readonly RunCenterItem[]>();

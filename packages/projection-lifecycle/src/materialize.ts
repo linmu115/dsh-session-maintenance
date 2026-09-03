@@ -15,8 +15,16 @@ import type {
   ProjectionRun,
   ProjectionWriter,
 } from "@linmu/dsh-session-adapter-sdk";
-import type { RunId } from "@linmu/dsh-session-contracts";
+import type {
+  CanonicalChangePage,
+  CanonicalChangeQuery,
+  CanonicalChangeV1,
+  LogicalSessionId,
+  RunId,
+} from "@linmu/dsh-session-contracts";
 import {
+  canonicalChangePageSchema,
+  canonicalChangeQuerySchema,
   canonicalEventV1Schema,
   canonicalSessionRecordSchema,
   logicalWorkspaceSchema,
@@ -25,6 +33,12 @@ import {
 
 export interface CanonicalProjectionSource {
   load(run: ProjectionRun): Promise<CanonicalProjectionInput>;
+}
+
+export interface IncrementalCanonicalProjectionSource extends CanonicalProjectionSource {
+  currentRevision(): Promise<number>;
+  listChanges(input: CanonicalChangeQuery): Promise<CanonicalChangePage>;
+  loadSessions(run: ProjectionRun, logicalSessionIds: readonly LogicalSessionId[]): Promise<CanonicalProjectionInput>;
 }
 
 export interface ProjectionRuntimeSnapshot {
@@ -174,6 +188,24 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
     await this.writeJson(join(this.root, "workspace-index.json"), [...this.workspaceIds].sort(), false);
   }
 
+  async replaceWorkspace(nativeWorkspaceId: string, payload: JsonValue): Promise<void> {
+    await this.listNativeWorkspaceIds();
+    const existed = this.workspaceIds.has(nativeWorkspaceId);
+    await this.writeJsonAtomically(join(this.root, "workspaces", `${encoded(nativeWorkspaceId)}.json`), payload);
+    this.workspaceIds.add(nativeWorkspaceId);
+    if (!existed) {
+      await this.writeJsonAtomically(join(this.root, "workspace-index.json"), [...this.workspaceIds].sort());
+    }
+  }
+
+  async removeWorkspace(nativeWorkspaceId: string): Promise<boolean> {
+    await this.listNativeWorkspaceIds();
+    if (!this.workspaceIds.delete(nativeWorkspaceId)) return false;
+    await rm(join(this.root, "workspaces", `${encoded(nativeWorkspaceId)}.json`), { force: true });
+    await this.writeJsonAtomically(join(this.root, "workspace-index.json"), [...this.workspaceIds].sort());
+    return true;
+  }
+
   async writeSession(nativeSessionId: NativeSessionId, payload: JsonValue): Promise<void> {
     await this.writeJson(join(this.root, "sessions", `${encoded(nativeSessionId)}.json`), payload);
     this.sessionIds.add(nativeSessionId);
@@ -182,10 +214,24 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
   }
 
   async replaceSession(nativeSessionId: NativeSessionId, payload: JsonValue): Promise<void> {
+    await this.listNativeSessionIds();
+    const existed = this.sessionIds.has(nativeSessionId);
     const path = join(this.root, "sessions", `${encoded(nativeSessionId)}.json`);
     await this.writeJsonAtomically(path, payload);
     this.sessionIds.add(nativeSessionId);
+    if (!existed) {
+      await this.writeJsonAtomically(join(this.root, "session-index.json"), [...this.sessionIds].sort());
+    }
     await this.updateCatalogIfPresent(nativeSessionId, payload);
+  }
+
+  async removeSession(nativeSessionId: NativeSessionId): Promise<boolean> {
+    await this.listNativeSessionIds();
+    if (!this.sessionIds.delete(nativeSessionId)) return false;
+    await rm(join(this.root, "sessions", `${encoded(nativeSessionId)}.json`), { force: true });
+    await this.writeJsonAtomically(join(this.root, "session-index.json"), [...this.sessionIds].sort());
+    await this.removeCatalogEntryIfPresent(nativeSessionId);
+    return true;
   }
 
   async rebuildSessionCatalog(
@@ -218,6 +264,22 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
     }
   }
 
+  async rebindSessionCatalog(runId: RunId): Promise<ProjectionRuntimeCatalogSidecar> {
+    try {
+      const raw = JSON.parse(await readFile(join(this.root, SESSION_CATALOG_FILE), "utf8")) as unknown;
+      if (raw === null || typeof raw !== "object" || Array.isArray(raw) || !("runId" in raw) || typeof raw.runId !== "string") {
+        throw new TypeError("Projection session catalog header is invalid");
+      }
+      const current = parseCatalog(raw, raw.runId as RunId);
+      const rebound = { ...current, runId };
+      await this.writeJsonAtomically(join(this.root, SESSION_CATALOG_FILE), rebound as unknown as JsonValue);
+      return rebound;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return this.rebuildSessionCatalog(runId);
+    }
+  }
+
   async listNativeSessionIds(): Promise<readonly NativeSessionId[]> {
     if (this.sessionIds.size === 0) {
       try {
@@ -236,6 +298,12 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
   async readSession(nativeSessionId: NativeSessionId): Promise<JsonValue> {
     return JSON.parse(
       await readFile(join(this.root, "sessions", `${encoded(nativeSessionId)}.json`), "utf8"),
+    ) as JsonValue;
+  }
+
+  async readWorkspace(nativeWorkspaceId: string): Promise<JsonValue> {
+    return JSON.parse(
+      await readFile(join(this.root, "workspaces", `${encoded(nativeWorkspaceId)}.json`), "utf8"),
     ) as JsonValue;
   }
 
@@ -313,6 +381,28 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
     this.catalogMutation = mutation;
     await mutation;
   }
+
+  private async removeCatalogEntryIfPresent(nativeSessionId: NativeSessionId): Promise<void> {
+    const mutation = this.catalogMutation.catch(() => undefined).then(async () => {
+      let current: ProjectionRuntimeCatalogSidecar;
+      try {
+        const raw = JSON.parse(await readFile(join(this.root, SESSION_CATALOG_FILE), "utf8")) as unknown;
+        if (raw === null || typeof raw !== "object" || Array.isArray(raw) || !("runId" in raw) || typeof raw.runId !== "string") {
+          throw new TypeError("Projection session catalog header is invalid");
+        }
+        current = parseCatalog(raw, raw.runId as RunId);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+        throw error;
+      }
+      await this.writeJsonAtomically(join(this.root, SESSION_CATALOG_FILE), {
+        ...current,
+        sessions: current.sessions.filter((entry) => entry.nativeSessionId !== nativeSessionId),
+      } as unknown as JsonValue);
+    });
+    this.catalogMutation = mutation;
+    await mutation;
+  }
 }
 
 interface SessionRow {
@@ -344,7 +434,7 @@ interface WorkspaceRow {
 
 interface EventRow { readonly event_json: string }
 
-export class SqliteCanonicalProjectionSource implements CanonicalProjectionSource {
+export class SqliteCanonicalProjectionSource implements IncrementalCanonicalProjectionSource {
   readonly database: DatabaseSync;
   readonly objectStore: ContentObjectStore | undefined;
 
@@ -354,6 +444,63 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
   }
 
   async load(run: ProjectionRun): Promise<CanonicalProjectionInput> {
+    return this.loadSelection(run);
+  }
+
+  async loadSessions(
+    run: ProjectionRun,
+    logicalSessionIds: readonly LogicalSessionId[],
+  ): Promise<CanonicalProjectionInput> {
+    return this.loadSelection(run, logicalSessionIds);
+  }
+
+  async currentRevision(): Promise<number> {
+    const row = this.database.prepare(
+      "SELECT COALESCE(MAX(revision), 0) AS revision FROM canonical_change_log",
+    ).get() as { readonly revision: number };
+    return row.revision;
+  }
+
+  async listChanges(input: CanonicalChangeQuery): Promise<CanonicalChangePage> {
+    canonicalChangeQuerySchema.parse(input);
+    const currentRevision = await this.currentRevision();
+    if (input.afterRevision > currentRevision) {
+      throw new Error(`Canonical change cursor ${input.afterRevision} exceeds current revision ${currentRevision}`);
+    }
+    const rows = this.database.prepare(
+      `SELECT revision, logical_session_id, change_kind, changed_at
+       FROM canonical_change_log
+       WHERE revision > ? AND revision <= ?
+       ORDER BY revision
+       LIMIT ?`,
+    ).all(input.afterRevision, currentRevision, input.limit) as unknown as Array<{
+      readonly revision: number;
+      readonly logical_session_id: string;
+      readonly change_kind: CanonicalChangeV1["kind"];
+      readonly changed_at: string;
+    }>;
+    const changes: CanonicalChangeV1[] = rows.map((row) => ({
+      schemaVersion: 1,
+      revision: row.revision,
+      logicalSessionId: row.logical_session_id as LogicalSessionId,
+      kind: row.change_kind,
+      changedAt: row.changed_at,
+    }));
+    const throughRevision = changes.at(-1)?.revision ?? input.afterRevision;
+    return canonicalChangePageSchema.parse({
+      schemaVersion: 1,
+      afterRevision: input.afterRevision,
+      throughRevision,
+      currentRevision,
+      hasMore: throughRevision < currentRevision,
+      changes,
+    }) as unknown as CanonicalChangePage;
+  }
+
+  private async loadSelection(
+    run: ProjectionRun,
+    logicalSessionIds?: readonly LogicalSessionId[],
+  ): Promise<CanonicalProjectionInput> {
     const workspaceRows = this.database.prepare(
       `SELECT id, parent_id, name, sort_key, deleted_at, created_at, updated_at
        FROM logical_workspaces WHERE deleted_at IS NULL ORDER BY sort_key, id`,
@@ -369,6 +516,12 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
       updatedAt: row.updated_at,
     }) as unknown as LogicalWorkspace);
     const existingWorkspaces = new Set(workspaces.map((workspace) => workspace.id));
+    if (logicalSessionIds !== undefined && logicalSessionIds.length === 0) {
+      return { run, workspaces, sessions: [] };
+    }
+    const selectionClause = logicalSessionIds === undefined
+      ? ""
+      : ` AND s.id IN (${logicalSessionIds.map(() => "?").join(",")})`;
     const sessionRows = this.database.prepare(
       `SELECT s.id, s.display_title, s.labels_json, s.authority_scope, s.origin_kind,
               s.head_version_id, s.archived_at, s.tombstoned_at, s.created_at, s.updated_at,
@@ -388,8 +541,9 @@ export class SqliteCanonicalProjectionSource implements CanonicalProjectionSourc
          AND s.origin_kind IS NOT NULL
          AND s.updated_at IS NOT NULL
          AND s.tombstoned_at IS NULL
+         ${selectionClause}
        ORDER BY s.created_at, s.id`,
-    ).all() as unknown as SessionRow[];
+    ).all(...(logicalSessionIds ?? [])) as unknown as SessionRow[];
     const sessions = await Promise.all(sessionRows.map(async (row) => {
       const session = canonicalSessionRecordSchema.parse({
         schemaVersion: 1,

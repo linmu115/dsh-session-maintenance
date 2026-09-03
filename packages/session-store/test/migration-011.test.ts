@@ -67,7 +67,7 @@ describe("migration 011 MCSF other events", () => {
 
     const database = openMaintenanceDatabase(path);
     databases.push(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 14 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 15 });
     expect(database.prepare("SELECT id, kind FROM canonical_events ORDER BY sequence").all()).toEqual([
       { id: "legacy-opaque", kind: "opaque-unknown" },
     ]);

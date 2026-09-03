@@ -81,7 +81,7 @@
 
 ### M03：统一 Native Session Reference 读模型
 
-状态：已完成（本任务提交：`feat: unify native session references`）。
+状态：已完成。提交：`c3b2f3d feat: unify native session references`。
 
 目标：把 source、active projection 和 historical alias 作为一张身份索引展示，不复制会话正文。
 
@@ -100,6 +100,8 @@
 
 ### M04：建立持久 Alpha2 投影缓存
 
+状态：已完成（本任务提交：`feat: add persistent projection cache`）。
+
 目标：一个不兼容原生格式族对应一个独立、长期保留的可重建投影空间。
 
 实现：
@@ -110,6 +112,12 @@
 - 后续启动调用 `listChanges(after=lastAppliedRevision)`，按受影响会话去重；
 - 新增/正文/元数据/工作区/项目/派生/墓碑分别应用最小必要变化；
 - 未变化会话文件不读取、不改写。
+
+落地说明：缓存目录由 Adapter 格式族 ID 与投影配置摘要唯一确定，runId
+不参与身份；Adapter manifest 指纹变化时在同级 staging 目录完整重建并原子
+替换。缓存 Manifest 除每会话 native digest 外只保存运行恢复所需的轻量元数据
+和 native revision，不保存消息、工具调用或附件正文。Schema v15 为工作区定义、
+项目定义及项目根变化补齐变更日志触发器。
 
 断点：`projection.delta-apply`。记录起止 Revision、变化 ID 数、实际改写数、删除数和未改动数。
 

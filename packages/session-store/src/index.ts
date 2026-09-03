@@ -12,6 +12,7 @@ export * from "./migrations/011-mcsf-other-events.js";
 export * from "./migrations/012-canonical-change-journal.js";
 export * from "./migrations/013-adapter-evidence.js";
 export * from "./migrations/014-native-reference-index.js";
+export * from "./migrations/015-projection-delta-stage.js";
 export * from "./adapter-evidence-store.js";
 export * from "./canonical-repository.js";
 export * from "./canonical-engine-store.js";

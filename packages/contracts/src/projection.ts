@@ -1,9 +1,12 @@
 import type {
   AdapterId,
+  AuthorityScope,
   BranchId,
   CheckpointId,
   LeaseId,
+  LogicalProjectId,
   LogicalSessionId,
+  LogicalWorkspaceId,
   NativeSessionId,
   OperationId,
   RunId,
@@ -67,4 +70,57 @@ export interface ProjectionOperationReceipt {
   readonly canonicalVersionId: SessionVersionId | null;
   readonly projectionRevision: number;
   readonly committedAt: string | null;
+}
+
+export interface ProjectionCacheSessionStateV1 {
+  readonly schemaVersion: 1;
+  readonly logicalSessionId: LogicalSessionId;
+  readonly nativeSessionId: NativeSessionId;
+  readonly canonicalHeadVersionId: SessionVersionId | null;
+  readonly canonicalUpdatedAt: string;
+  /** Lightweight runtime metadata; never contains message or tool-call bodies. */
+  readonly title: string;
+  readonly tags: readonly string[];
+  readonly archivedAt: string | null;
+  readonly workspaceId: LogicalWorkspaceId | null;
+  readonly projectId: LogicalProjectId | null;
+  readonly authorityScope: AuthorityScope;
+  /** Native prefix already represented by the cached canonical head. */
+  readonly nativeRevision: number;
+  readonly nativeDigest: string;
+}
+
+export interface ProjectionCacheWorkspaceStateV1 {
+  readonly schemaVersion: 1;
+  readonly nativeWorkspaceId: string;
+  readonly nativeDigest: string;
+}
+
+/** Durable metadata for a rebuildable native-format projection cache. */
+export interface PersistentProjectionCacheManifestV1 {
+  readonly schemaVersion: 1;
+  readonly cacheKey: string;
+  readonly adapterId: AdapterId;
+  readonly adapterFingerprint: string;
+  readonly configurationDigest: string;
+  readonly lastAppliedRevision: number;
+  readonly sessions: readonly ProjectionCacheSessionStateV1[];
+  readonly workspaces: readonly ProjectionCacheWorkspaceStateV1[];
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface ProjectionDeltaApplyReceiptV1 {
+  readonly schemaVersion: 1;
+  readonly cacheKey: string;
+  readonly baseline: boolean;
+  readonly fromRevision: number;
+  readonly throughRevision: number;
+  readonly currentRevision: number;
+  readonly changedSessions: number;
+  readonly rewrittenSessions: number;
+  readonly removedSessions: number;
+  readonly unchangedSessions: number;
+  readonly rewrittenWorkspaces: number;
+  readonly removedWorkspaces: number;
 }
