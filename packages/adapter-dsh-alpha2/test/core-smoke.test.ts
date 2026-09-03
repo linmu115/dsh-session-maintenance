@@ -193,9 +193,15 @@ describe("DSH Alpha2 Adapter Core Smoke", () => {
         events: [
           expect.objectContaining({ kind: "user-message", sequence: 3 }),
           expect.objectContaining({
-            kind: "opaque-unknown",
+            kind: "other",
             sequence: 4,
-            rawPayload: expect.objectContaining({ type: "plugin/unknown-required" }),
+            role: "unknown",
+            rawPayload: null,
+            content: expect.objectContaining({
+              type: "other",
+              reason: "unsupported-source-event",
+              sourceKind: "dsh-alpha2/plugin/unknown-required",
+            }),
           }),
         ],
       },
