@@ -17,6 +17,7 @@ import { MIGRATION_012 } from "./migrations/012-canonical-change-journal.js";
 import { MIGRATION_013 } from "./migrations/013-adapter-evidence.js";
 import { MIGRATION_014 } from "./migrations/014-native-reference-index.js";
 import { MIGRATION_015 } from "./migrations/015-projection-delta-stage.js";
+import { MIGRATION_016 } from "./migrations/016-projection-cache-retained-stage.js";
 
 interface VersionRow {
   readonly version: number | null;
@@ -321,6 +322,25 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
       database
         .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
         .run(15, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // Preserve the migration failure.
+      }
+      database.close();
+      throw error;
+    }
+  }
+
+  if (currentVersion < 16) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_016);
+      database
+        .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+        .run(16, new Date().toISOString());
       database.exec("COMMIT");
     } catch (error) {
       try {

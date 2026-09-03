@@ -21,6 +21,7 @@ export const STATUS_STAGES = [
   "session.derivation.create",
   "projection.cross-version.verify",
   "projection.delta-apply",
+  "projection.cache-retained",
   "reference.index",
   "reference.roundtrip.verify",
   "run.shutdown-recovery",

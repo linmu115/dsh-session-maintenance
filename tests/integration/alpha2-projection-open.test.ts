@@ -155,6 +155,8 @@ describe("Alpha2 projection open integration", () => {
       "run.lease:started",
       "run.lease:succeeded",
       "projection.materialize:started",
+      "projection.delta-apply:started",
+      "projection.delta-apply:succeeded",
       "projection.materialize:succeeded",
       "runtime.persistence.attach:started",
       "runtime.persistence.attach:succeeded",

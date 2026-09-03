@@ -49,7 +49,7 @@ describe("Adapter evidence store", () => {
       expect(await new SqliteSessionRepository(database, objectStore).listReachableObjectIds())
         .toContain(first.objectId);
       expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get())
-        .toEqual({ version: 15 });
+        .toEqual({ version: 16 });
     } finally {
       database.close();
     }

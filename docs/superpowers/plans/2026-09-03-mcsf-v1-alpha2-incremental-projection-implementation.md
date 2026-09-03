@@ -48,6 +48,8 @@
 
 ### M01：建立 Canonical Change Journal
 
+状态：已完成。提交：`ae8331a feat: add canonical change journal`。
+
 目标：为启动差量查询提供稳定、单调递增的 Maintenance Revision，不扫描会话正文。
 
 实现：
@@ -100,7 +102,7 @@
 
 ### M04：建立持久 Alpha2 投影缓存
 
-状态：已完成（本任务提交：`feat: add persistent projection cache`）。
+状态：已完成。提交：`f29efcd feat: add persistent projection cache`。
 
 目标：一个不兼容原生格式族对应一个独立、长期保留的可重建投影空间。
 
@@ -123,16 +125,23 @@
 
 ### M05：把运行生命周期切到持久缓存
 
+状态：已完成（本任务提交：`feat: retain Alpha2 projection cache`）。
+
 目标：保留现有实时 WAL 回写，正常停止不再删除已验证的 Alpha2 投影。
 
 实现：
 
 - run lease 与 WAL 仍然按运行隔离；
-- DSH 使用已完成差量更新的缓存；
-- durable receipt 后同步推进缓存中的会话摘要；
+- DSH 通过每次运行的稀疏可写覆盖层读取已完成差量更新的只读基础缓存；
+- durable receipt 先推进 Canonical；停止或恢复时再按 Change Journal 刷新基础缓存；
 - 正常停止 flush、校验、Checkpoint、释放租约并保留缓存；
 - 异常停止保留待恢复状态，恢复完成后再更新缓存 Revision；
 - 不允许未确认 WAL 被下次启动的 Canonical 差量覆盖。
+
+落地说明：基础缓存不在运行中接收 DSH 写入，避免 Codex 来源会话首次续写时
+覆盖原始分支。所有运行期新增和修改只进入 run-local overlay 与 WAL；关闭或恢复
+必须先取得 Maintenance durable receipt，再刷新基础缓存，最后只清理 overlay。
+无变化重启连基础目录 sidecar 也不改写。
 
 断点：沿用 P1-P5、P8，并增加 `projection.cache-retained` 终点。
 

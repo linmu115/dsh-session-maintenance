@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -65,6 +65,12 @@ export interface ProjectionRuntimeCatalogSidecar {
 }
 
 const SESSION_CATALOG_FILE = "session-catalog.json";
+const BASE_PROJECTION_FILE = "base-projection.json";
+
+interface BaseProjectionPointer {
+  readonly schemaVersion: 1;
+  readonly root: string;
+}
 
 export function projectionRootFor(runtimeRoot: string, runId: RunId): string {
   const root = resolve(runtimeRoot);
@@ -170,6 +176,7 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
   private readonly sessionIds = new Set<NativeSessionId>();
   private readonly workspaceIds = new Set<string>();
   private catalogMutation: Promise<void> = Promise.resolve();
+  private baseRoot: string | null | undefined;
 
   constructor(root: string) {
     this.root = root;
@@ -180,6 +187,35 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
       mkdir(join(this.root, "sessions"), { recursive: true }),
       mkdir(join(this.root, "workspaces"), { recursive: true }),
     ]);
+  }
+
+  /** Makes this run-local directory a sparse writable overlay over a retained cache. */
+  async bindBaseProjection(baseRoot: string): Promise<void> {
+    const normalized = resolve(baseRoot);
+    if (normalized === this.root) throw new TypeError("Projection overlay cannot reference itself as its base");
+    await access(normalized);
+    await this.writeJsonAtomically(join(this.root, BASE_PROJECTION_FILE), {
+      schemaVersion: 1,
+      root: normalized,
+    });
+    this.baseRoot = normalized;
+  }
+
+  async baseProjectionRoot(): Promise<string | null> {
+    if (this.baseRoot !== undefined) return this.baseRoot;
+    try {
+      const value = JSON.parse(await readFile(join(this.root, BASE_PROJECTION_FILE), "utf8")) as BaseProjectionPointer;
+      if (value.schemaVersion !== 1 || typeof value.root !== "string" || value.root.length === 0) {
+        throw new TypeError("Projection base pointer is invalid");
+      }
+      const normalized = resolve(value.root);
+      if (normalized === this.root) throw new TypeError("Projection overlay base pointer is recursive");
+      this.baseRoot = normalized;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      this.baseRoot = null;
+    }
+    return this.baseRoot;
   }
 
   async writeWorkspace(nativeWorkspaceId: string, payload: JsonValue): Promise<void> {
@@ -260,8 +296,24 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
       return parseCatalog(JSON.parse(await readFile(join(this.root, SESSION_CATALOG_FILE), "utf8")), runId);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      return this.rebuildSessionCatalog(runId);
+      const base = await this.baseDirectory();
+      return base === undefined ? this.rebuildSessionCatalog(runId) : base.readSessionCatalog(runId);
     }
+  }
+
+  async replaceSessionCatalog(sidecar: ProjectionRuntimeCatalogSidecar): Promise<void> {
+    const validated = parseCatalog(sidecar, sidecar.runId);
+    await this.writeJsonAtomically(join(this.root, SESSION_CATALOG_FILE), validated as unknown as JsonValue);
+  }
+
+  /** Returns a run-bound catalog copy without mutating this retained projection. */
+  async snapshotSessionCatalog(runId: RunId): Promise<ProjectionRuntimeCatalogSidecar> {
+    const raw = JSON.parse(await readFile(join(this.root, SESSION_CATALOG_FILE), "utf8")) as unknown;
+    if (raw === null || typeof raw !== "object" || Array.isArray(raw) || !("runId" in raw) || typeof raw.runId !== "string") {
+      throw new TypeError("Projection session catalog header is invalid");
+    }
+    const current = parseCatalog(raw, raw.runId as RunId);
+    return { ...current, runId };
   }
 
   async rebindSessionCatalog(runId: RunId): Promise<ProjectionRuntimeCatalogSidecar> {
@@ -292,19 +344,37 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
     }
-    return [...this.sessionIds].sort();
+    const base = await this.baseDirectory();
+    return [...new Set([
+      ...this.sessionIds,
+      ...(base === undefined ? [] : await base.listNativeSessionIds()),
+    ])].sort();
   }
 
   async readSession(nativeSessionId: NativeSessionId): Promise<JsonValue> {
-    return JSON.parse(
-      await readFile(join(this.root, "sessions", `${encoded(nativeSessionId)}.json`), "utf8"),
-    ) as JsonValue;
+    try {
+      return JSON.parse(
+        await readFile(join(this.root, "sessions", `${encoded(nativeSessionId)}.json`), "utf8"),
+      ) as JsonValue;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const base = await this.baseDirectory();
+      if (base === undefined) throw error;
+      return base.readSession(nativeSessionId);
+    }
   }
 
   async readWorkspace(nativeWorkspaceId: string): Promise<JsonValue> {
-    return JSON.parse(
-      await readFile(join(this.root, "workspaces", `${encoded(nativeWorkspaceId)}.json`), "utf8"),
-    ) as JsonValue;
+    try {
+      return JSON.parse(
+        await readFile(join(this.root, "workspaces", `${encoded(nativeWorkspaceId)}.json`), "utf8"),
+      ) as JsonValue;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const base = await this.baseDirectory();
+      if (base === undefined) throw error;
+      return base.readWorkspace(nativeWorkspaceId);
+    }
   }
 
   async listNativeWorkspaceIds(): Promise<readonly string[]> {
@@ -319,7 +389,11 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
     }
-    return [...this.workspaceIds].sort();
+    const base = await this.baseDirectory();
+    return [...new Set([
+      ...this.workspaceIds,
+      ...(base === undefined ? [] : await base.listNativeWorkspaceIds()),
+    ])].sort();
   }
 
   async writeManifest(manifest: ProjectionManifest): Promise<void> {
@@ -331,7 +405,19 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
   }
 
   async readManifest(): Promise<ProjectionManifest> {
-    return JSON.parse(await readFile(join(this.root, "projection-manifest.json"), "utf8")) as ProjectionManifest;
+    try {
+      return JSON.parse(await readFile(join(this.root, "projection-manifest.json"), "utf8")) as ProjectionManifest;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      const base = await this.baseDirectory();
+      if (base === undefined) throw error;
+      return base.readManifest();
+    }
+  }
+
+  private async baseDirectory(): Promise<JsonProjectionDirectory | undefined> {
+    const baseRoot = await this.baseProjectionRoot();
+    return baseRoot === null ? undefined : new JsonProjectionDirectory(baseRoot);
   }
 
   private async writeJson(path: string, value: JsonValue, exclusive = true): Promise<void> {

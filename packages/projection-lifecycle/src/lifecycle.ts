@@ -38,7 +38,17 @@ import {
 } from "./append.js";
 import { projectionCloseCheckpoint, removeProjectionRun, type ProjectionCloseReceipt } from "./close.js";
 import { ProjectionLease, ProjectionLeaseError } from "./lease.js";
-import { JsonProjectionDirectory, projectionRootFor, type CanonicalProjectionSource } from "./materialize.js";
+import {
+  JsonProjectionDirectory,
+  projectionRootFor,
+  type CanonicalProjectionSource,
+  type IncrementalCanonicalProjectionSource,
+} from "./materialize.js";
+import {
+  PersistentProjectionCache,
+  projectionCacheIdentity,
+  projectionCacheRootFor,
+} from "./persistent-cache.js";
 import { ProjectionWriteAheadLog } from "./wal.js";
 import {
   readProjectionRecoveryDescriptor,
@@ -104,7 +114,18 @@ interface PreparedProjectionContext {
   readonly handle: PreparedProjectionRunHandle;
   readonly directory: JsonProjectionDirectory;
   readonly sessions: Map<string, ActiveProjectionSession>;
+  readonly persistentCache: PersistentCacheContext | null;
 }
+
+interface PersistentCacheContext {
+  readonly manager: PersistentProjectionCache;
+  readonly cacheRoot: string;
+  readonly configuration: JsonValue;
+}
+
+type LifecycleProjectionContext = ProjectionAppendContext & {
+  readonly persistentCache: PersistentCacheContext | null;
+};
 
 export class ProjectionLifecycleError extends Error {
   readonly code: string;
@@ -128,6 +149,15 @@ function projectedNativeRevision(
     throw new TypeError(`Adapter returned an invalid native revision for ${canonical.session.id}`);
   }
   return revision;
+}
+
+function incrementalProjectionSource(
+  source: CanonicalProjectionSource,
+): source is IncrementalCanonicalProjectionSource {
+  const candidate = source as Partial<IncrementalCanonicalProjectionSource>;
+  return typeof candidate.currentRevision === "function"
+    && typeof candidate.listChanges === "function"
+    && typeof candidate.loadSessions === "function";
 }
 
 function recoveryAppendUsesStaleMetadata(
@@ -173,7 +203,7 @@ export class ProjectionLifecycle {
   private readonly clock: () => string;
   private readonly idFactory: (kind: IdKind) => string;
   private readonly preparedRuns = new Map<RunId, PreparedProjectionContext>();
-  private readonly activeRuns = new Map<RunId, ProjectionAppendContext>();
+  private readonly activeRuns = new Map<RunId, LifecycleProjectionContext>();
 
   constructor(input: {
     readonly runRepository: ProjectionRunRepository;
@@ -236,62 +266,101 @@ export class ProjectionLifecycle {
     const preparing = { ...candidate, state: "preparing" as const };
     const projectionRoot = projectionRootFor(this.runtimeRoot, runId);
     const directory = new JsonProjectionDirectory(projectionRoot);
-    let projectionInput: Awaited<ReturnType<CanonicalProjectionSource["load"]>>;
     let manifest: ProjectionManifest;
     let inspection: ProjectionInspection;
     let verification: AdapterVerificationResult;
+    let persistentCache: PersistentCacheContext | null = null;
     const sessions = new Map<string, ActiveProjectionSession>();
-    const catalogUpdatedAt = new Map<string, string>();
     const materializeSpan = await this.startSpan(preparing, "projection.materialize");
     try {
-      projectionInput = await this.source.load(preparing);
-      await directory.initialize();
-      manifest = await this.adapter.materialize(projectionInput, directory);
-      await directory.writeManifest(manifest);
-      inspection = await this.adapter.inspect(directory);
-      verification = await this.adapter.verify(manifest, inspection);
-      if (!verification.ok) throw new Error("Projection verification failed");
-      for (const item of projectionInput.sessions) {
-        const reference = await this.adapter.resolveReference({
-          logicalSessionId: item.session.id,
-          logicalAnchorId: null,
-          legacyNativeSessionId: null,
-        }, preparing);
-        if (reference.nativeSessionId === null || reference.status !== "resolved") {
-          throw new Error(`Adapter did not resolve native identity for ${item.session.id}`);
+      const cacheManager = this.persistentCacheManager();
+      if (cacheManager !== undefined) {
+        const configuration: JsonValue = { branchId: preparing.branchId };
+        const cached = await cacheManager.apply({ run: preparing, configuration });
+        persistentCache = { manager: cacheManager, cacheRoot: cached.cacheRoot, configuration };
+        const baseDirectory = new JsonProjectionDirectory(cached.cacheRoot);
+        const catalog = await baseDirectory.snapshotSessionCatalog(runId);
+        await directory.initialize();
+        await directory.bindBaseProjection(cached.cacheRoot);
+        await directory.replaceSessionCatalog(catalog);
+        manifest = cached.projectionManifest;
+        inspection = cached.inspection;
+        verification = cached.verification;
+        await directory.writeManifest(manifest);
+        for (const state of cached.cacheManifest.sessions) {
+          const projection = {
+            schemaVersion: 1,
+            runId,
+            nativeSessionId: state.nativeSessionId,
+            logicalSessionId: state.logicalSessionId,
+            baseVersionId: state.canonicalHeadVersionId,
+            mode: state.authorityScope === "codex" ? "codex-read-until-write" : "maintenance-write",
+            nativeRevision: state.nativeRevision,
+            lastCommittedOperationId: null,
+            derivedChildSessionId: null,
+          } as const;
+          await this.runRepository.upsertProjectionSession(projection);
+          sessions.set(state.nativeSessionId, {
+            projection,
+            title: state.title,
+            tags: state.tags,
+            archivedAt: state.archivedAt,
+            workspaceId: state.workspaceId,
+            authorityScope: state.authorityScope,
+          });
         }
-        const nativeRevision = projectedNativeRevision(
-          this.adapter,
-          item,
-          await directory.readSession(reference.nativeSessionId),
-        );
-        const projection = {
-          schemaVersion: 1,
-          runId,
-          nativeSessionId: reference.nativeSessionId,
-          logicalSessionId: item.session.id,
-          baseVersionId: item.session.headVersionId,
-          mode: item.session.authorityScope === "codex" ? "codex-read-until-write" : "maintenance-write",
-          nativeRevision,
-          lastCommittedOperationId: null,
-          derivedChildSessionId: null,
-        } as const;
-        await this.runRepository.upsertProjectionSession(projection);
-        catalogUpdatedAt.set(reference.nativeSessionId, item.session.updatedAt);
-        sessions.set(reference.nativeSessionId, {
-          projection,
-          title: item.session.title,
-          tags: item.session.tags,
-          archivedAt: item.session.archivedAt,
-          workspaceId: item.workspaceId,
-          authorityScope: item.session.authorityScope,
-        });
+      } else {
+        const projectionInput = await this.source.load(preparing);
+        const catalogUpdatedAt = new Map<string, string>();
+        await directory.initialize();
+        manifest = await this.adapter.materialize(projectionInput, directory);
+        await directory.writeManifest(manifest);
+        inspection = await this.adapter.inspect(directory);
+        verification = await this.adapter.verify(manifest, inspection);
+        if (!verification.ok) throw new Error("Projection verification failed");
+        for (const item of projectionInput.sessions) {
+          const reference = await this.adapter.resolveReference({
+            logicalSessionId: item.session.id,
+            logicalAnchorId: null,
+            legacyNativeSessionId: null,
+          }, preparing);
+          if (reference.nativeSessionId === null || reference.status !== "resolved") {
+            throw new Error(`Adapter did not resolve native identity for ${item.session.id}`);
+          }
+          const nativeRevision = projectedNativeRevision(
+            this.adapter,
+            item,
+            await directory.readSession(reference.nativeSessionId),
+          );
+          const projection = {
+            schemaVersion: 1,
+            runId,
+            nativeSessionId: reference.nativeSessionId,
+            logicalSessionId: item.session.id,
+            baseVersionId: item.session.headVersionId,
+            mode: item.session.authorityScope === "codex" ? "codex-read-until-write" : "maintenance-write",
+            nativeRevision,
+            lastCommittedOperationId: null,
+            derivedChildSessionId: null,
+          } as const;
+          await this.runRepository.upsertProjectionSession(projection);
+          catalogUpdatedAt.set(reference.nativeSessionId, item.session.updatedAt);
+          sessions.set(reference.nativeSessionId, {
+            projection,
+            title: item.session.title,
+            tags: item.session.tags,
+            archivedAt: item.session.archivedAt,
+            workspaceId: item.workspaceId,
+            authorityScope: item.session.authorityScope,
+          });
+        }
+        await directory.rebuildSessionCatalog(runId, catalogUpdatedAt);
       }
-      await directory.rebuildSessionCatalog(runId, catalogUpdatedAt);
       await writeProjectionRecoveryDescriptor(projectionRoot, {
         schemaVersion: 1,
         runId,
         maintenanceEndpoint: input.maintenanceEndpoint,
+        ...(persistentCache === null ? {} : { baseProjectionRoot: persistentCache.cacheRoot }),
         ...(input.runtimeBroker === undefined ? {} : {
           runtimeBroker: {
             ...input.runtimeBroker,
@@ -321,7 +390,7 @@ export class ProjectionLifecycle {
       verification,
       maintenanceEndpoint: input.maintenanceEndpoint,
     };
-    this.preparedRuns.set(runId, { handle, directory, sessions });
+    this.preparedRuns.set(runId, { handle, directory, sessions, persistentCache });
     return handle;
   }
 
@@ -348,11 +417,12 @@ export class ProjectionLifecycle {
         verification: prepared.verification,
         runtime,
       };
-      const activeContext: ProjectionAppendContext = {
+      const activeContext: LifecycleProjectionContext = {
         handle,
         directory: context.directory,
         wal: new ProjectionWriteAheadLog(prepared.projectionRoot),
         sessions: context.sessions,
+        persistentCache: context.persistentCache,
         acceptingAppends: true,
       };
       this.preparedRuns.delete(prepared.run.id);
@@ -567,6 +637,7 @@ export class ProjectionLifecycle {
       await this.lease.setState(handle.run.id, "draining");
       await this.drainPending(context);
       const result = await this.verifyCheckpointAndDetach(context);
+      await this.refreshPersistentCache(context);
       cleanupStarted = true;
       await removeProjectionRun(context.handle.projectionRoot);
       await this.lease.setState(handle.run.id, "closed");
@@ -627,6 +698,7 @@ export class ProjectionLifecycle {
         }
       }
       const result = await this.verifyCheckpointAndDetach(context);
+      await this.refreshPersistentCache(context);
       cleanupStarted = true;
       await removeProjectionRun(context.handle.projectionRoot);
       await this.lease.setState(runId, "recovered");
@@ -760,11 +832,32 @@ export class ProjectionLifecycle {
     };
   }
 
-  private async restoreRecoveryContext(run: ProjectionRun): Promise<ProjectionAppendContext> {
+  private async restoreRecoveryContext(run: ProjectionRun): Promise<LifecycleProjectionContext> {
     const projectionRoot = projectionRootFor(this.runtimeRoot, run.id);
     const directory = new JsonProjectionDirectory(projectionRoot);
     const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
     if (descriptor.runId !== run.id) throw new TypeError("Projection recovery run ID mismatch");
+    const configuration: JsonValue = { branchId: run.branchId };
+    const cacheManager = this.persistentCacheManager();
+    let persistentCache: PersistentCacheContext | null = null;
+    if (descriptor.baseProjectionRoot !== undefined) {
+      if (cacheManager === undefined) {
+        throw new TypeError("Persistent projection recovery requires an incremental source and cache-capable Adapter");
+      }
+      const identity = projectionCacheIdentity(this.adapter, configuration);
+      const expectedRoot = projectionCacheRootFor(
+        this.runtimeRoot,
+        this.adapter.manifest.id,
+        identity.configurationDigest,
+      );
+      if (resolve(descriptor.baseProjectionRoot) !== resolve(expectedRoot)) {
+        throw new TypeError("Projection recovery base cache identity mismatch");
+      }
+      if (await cacheManager.readCacheManifest(expectedRoot) === undefined) {
+        throw new TypeError("Projection recovery base cache manifest is unavailable");
+      }
+      persistentCache = { manager: cacheManager, cacheRoot: expectedRoot, configuration };
+    }
     const manifest = await directory.readManifest();
     await directory.readSessionCatalog(run.id);
     const inspection = await this.adapter.inspect(directory);
@@ -984,12 +1077,13 @@ export class ProjectionLifecycle {
       verification,
       runtime,
     };
-    const context: ProjectionAppendContext = {
+    const context: LifecycleProjectionContext = {
       handle,
       directory,
       wal,
       sessions,
       recoveredRegistrations,
+      persistentCache,
       acceptingAppends: false,
     };
     this.activeRuns.set(run.id, context);
@@ -1018,6 +1112,54 @@ export class ProjectionLifecycle {
       });
     }
     return snapshots;
+  }
+
+  private persistentCacheManager(): PersistentProjectionCache | undefined {
+    if (!incrementalProjectionSource(this.source) || this.adapter.composeProjectionManifest === undefined) {
+      return undefined;
+    }
+    return new PersistentProjectionCache({
+      runtimeRoot: this.runtimeRoot,
+      source: this.source,
+      adapter: this.adapter,
+      statusLog: this.statusLog,
+      clock: this.clock,
+    });
+  }
+
+  private async refreshPersistentCache(context: LifecycleProjectionContext): Promise<void> {
+    if (context.persistentCache === null) return;
+    const run = context.handle.run;
+    const span = await this.statusLog.start({
+      runId: run.id,
+      leaseId: run.leaseId,
+      profileId: run.profileId,
+      adapterId: run.adapterId,
+      dshVersion: run.dshVersion,
+      stage: "projection.cache-retained",
+      logicalSessionId: null,
+      nativeSessionId: null,
+      operationId: null,
+      diagnosticDetailRef: "diag:projection-cache-refresh-started",
+    });
+    try {
+      const refreshed = await context.persistentCache.manager.apply({
+        run,
+        configuration: context.persistentCache.configuration,
+      });
+      if (resolve(refreshed.cacheRoot) !== resolve(context.persistentCache.cacheRoot)) {
+        throw new TypeError("Projection cache identity changed while the run was active");
+      }
+      await this.statusLog.succeed(span, {
+        diagnosticDetailRef: `diag:projection-cache-retained:${refreshed.receipt.throughRevision}:${refreshed.receipt.rewrittenSessions}:${refreshed.receipt.removedSessions}`,
+      });
+    } catch (error) {
+      await this.statusLog.fail(span, {
+        errorCode: "PROJECTION_CACHE_REFRESH_FAILED",
+        diagnosticDetailRef: "diag:projection-cache-refresh-failed",
+      });
+      throw error;
+    }
   }
 
   private startShutdownSpan(run: ProjectionRun): Promise<StatusSpanHandle> {

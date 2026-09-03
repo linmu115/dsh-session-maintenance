@@ -226,7 +226,7 @@ export class PersistentProjectionCache {
     const cacheRoot = projectionCacheRootFor(this.runtimeRoot, this.adapter.manifest.id, identity.configurationDigest);
     const span = await this.startSpan(input.run);
     try {
-      const existing = await this.readManifest(cacheRoot);
+      const existing = await this.readCacheManifest(cacheRoot);
       const currentRevision = await this.source.currentRevision();
       const result = existing === undefined
         || existing.cacheKey !== identity.cacheKey
@@ -536,7 +536,7 @@ export class PersistentProjectionCache {
     });
   }
 
-  private async readManifest(cacheRoot: string): Promise<PersistentProjectionCacheManifestV1 | undefined> {
+  async readCacheManifest(cacheRoot: string): Promise<PersistentProjectionCacheManifestV1 | undefined> {
     try {
       return persistentProjectionCacheManifestV1Schema.parse(
         JSON.parse(await readFile(join(cacheRoot, CACHE_MANIFEST_FILE), "utf8")),

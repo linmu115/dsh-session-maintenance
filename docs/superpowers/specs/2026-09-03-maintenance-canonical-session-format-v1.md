@@ -249,8 +249,15 @@ Revision、Adapter 指纹、native digest、native revision 和恢复运行所�
 会话元数据，不保存会话正文。无变化启动不加载 Canonical 正文，也不打开或改写
 原生会话文件；有变化时先按 Journal 分页得到受影响逻辑 ID，再只加载和重投影
 这些会话。Adapter 指纹变化、Revision 回退或 Manifest 无法验证时，旧缓存不被
-原地猜测修补，而是在 staging 目录建立新基线后原子替换。M05 再把正式运行
-生命周期切换到该缓存并处理保留、WAL 与恢复规则。
+原地猜测修补，而是在 staging 目录建立新基线后原子替换。
+
+M05 已把正式运行生命周期切换为“两层投影”：格式族缓存是长期保留且运行中
+只读的基础层；每个 run 拥有独立的稀疏可写覆盖层、WAL 和恢复描述。目录读取
+先查覆盖层，未命中才回退基础层；DSH 追加只写覆盖层。正常关闭和异常恢复都
+必须先 drain、取得 durable receipt、完成 Canonical commit 和 Checkpoint，再按
+Change Journal 刷新基础层，最后仅删除 run-local 覆盖层。这样 Codex 来源会话的
+第一次 DSH 续写不会覆盖缓存中的原始分支，未确认 WAL 也不会被后续差量刷新
+吞掉。无变化启动只复制轻量目录到覆盖层，不改写基础缓存的会话或目录文件。
 
 ## 12. 第一版验收断点
 
@@ -266,6 +273,7 @@ Revision、Adapter 指纹、native digest、native revision 和恢复运行所�
 8. `canonical.change-journal`：只返回 Revision 和受影响逻辑会话 ID；
 9. `reference.index`：来源、当前投影和历史链接统一解析，且无会话正文。
 10. `projection.delta-apply`：记录起止 Revision、受影响数、实际改写数、删除数和未改动数，不记录标题或正文。
+11. `projection.cache-retained`：关闭或恢复完成后记录缓存已刷新并保留，不记录会话内容。
 
 只有某个断点失败时，才在相邻断点之间增加更细日志与测试。
 
