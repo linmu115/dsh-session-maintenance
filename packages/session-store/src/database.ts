@@ -13,6 +13,7 @@ import { MIGRATION_008 } from "./migrations/008-projection-runtime.js";
 import { MIGRATION_009 } from "./migrations/009-logical-projects.js";
 import { MIGRATION_010 } from "./migrations/010-runtime-status-stages.js";
 import { MIGRATION_011 } from "./migrations/011-mcsf-other-events.js";
+import { MIGRATION_012 } from "./migrations/012-canonical-change-journal.js";
 
 interface VersionRow {
   readonly version: number | null;
@@ -241,6 +242,25 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
       database
         .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
         .run(11, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) {
+      try {
+        database.exec("ROLLBACK");
+      } catch {
+        // Preserve the migration failure.
+      }
+      database.close();
+      throw error;
+    }
+  }
+
+  if (currentVersion < 12) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_012);
+      database
+        .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
+        .run(12, new Date().toISOString());
       database.exec("COMMIT");
     } catch (error) {
       try {

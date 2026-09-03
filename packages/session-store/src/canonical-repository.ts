@@ -1,11 +1,16 @@
 import type { DatabaseSync } from "node:sqlite";
 
 import {
+  canonicalChangePageSchema,
+  canonicalChangeQuerySchema,
   canonicalEventV1Schema,
   canonicalSessionRecordSchema,
   sessionDerivationSchema,
   sessionTombstoneSchema,
   type CanonicalEventV1,
+  type CanonicalChangePage,
+  type CanonicalChangeQuery,
+  type CanonicalChangeV1,
   type CanonicalSessionRecord,
   type CanonicalSessionRepository,
   type JsonValue,
@@ -37,6 +42,13 @@ interface CanonicalSessionRow {
 
 interface CanonicalEventRow {
   readonly event_json: string;
+}
+
+interface CanonicalChangeRow {
+  readonly revision: number;
+  readonly logical_session_id: string;
+  readonly change_kind: CanonicalChangeV1["kind"];
+  readonly changed_at: string;
 }
 
 interface DerivationRow {
@@ -178,21 +190,69 @@ export class SqliteCanonicalRepository implements CanonicalSessionRepository {
       }
       return false;
     }
-    this.database
-      .prepare(
-        `INSERT INTO canonical_events
-          (id, logical_session_id, sequence, kind, content_digest, event_json)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .run(
-        input.id,
-        input.logicalSessionId,
-        input.sequence,
-        input.kind,
-        input.contentDigest,
-        serialized,
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.database
+        .prepare(
+          `INSERT INTO canonical_events
+            (id, logical_session_id, sequence, kind, content_digest, event_json)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          input.id,
+          input.logicalSessionId,
+          input.sequence,
+          input.kind,
+          input.contentDigest,
+          serialized,
+        );
+      this.database.prepare(
+        `INSERT INTO canonical_change_log (logical_session_id, change_kind, changed_at)
+         VALUES (?, 'content-updated', strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))`,
+      ).run(input.logicalSessionId);
+      this.database.exec("COMMIT");
+      return true;
+    } catch (error) {
+      this.rollbackPreserving(error);
+    }
+  }
+
+  async listChanges(input: CanonicalChangeQuery): Promise<CanonicalChangePage> {
+    canonicalChangeQuerySchema.parse(input);
+    const revisionRow = this.database.prepare(
+      "SELECT COALESCE(MAX(revision), 0) AS revision FROM canonical_change_log",
+    ).get() as { readonly revision: number };
+    const currentRevision = revisionRow.revision;
+    if (input.afterRevision > currentRevision) {
+      throw new Error(
+        `Canonical change cursor ${input.afterRevision} exceeds current revision ${currentRevision}`,
       );
-    return true;
+    }
+    const rows = this.database.prepare(
+      `SELECT revision, logical_session_id, change_kind, changed_at
+       FROM canonical_change_log
+       WHERE revision > ? AND revision <= ?
+       ORDER BY revision
+       LIMIT ?`,
+    ).all(input.afterRevision, currentRevision, input.limit) as unknown as CanonicalChangeRow[];
+    const changes: CanonicalChangeV1[] = rows.map((row) => ({
+      schemaVersion: 1,
+      revision: row.revision,
+      logicalSessionId: row.logical_session_id as CanonicalChangeV1["logicalSessionId"],
+      kind: row.change_kind,
+      changedAt: row.changed_at,
+    }));
+    const throughRevision = changes.at(-1)?.revision ?? input.afterRevision;
+    const page: CanonicalChangePage = {
+      schemaVersion: 1,
+      afterRevision: input.afterRevision,
+      throughRevision,
+      currentRevision,
+      hasMore: throughRevision < currentRevision,
+      changes,
+    };
+    canonicalChangePageSchema.parse(page);
+    return page;
   }
 
   async recordDerivation(input: SessionDerivation): Promise<boolean> {

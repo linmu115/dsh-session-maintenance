@@ -132,6 +132,64 @@ export const canonicalSessionRecordSchema = z.strictObject({
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
+export const canonicalChangeKindSchema = z.enum([
+  "session-created",
+  "content-updated",
+  "metadata-updated",
+  "workspace-updated",
+  "project-updated",
+  "branch-created",
+  "tombstone-updated",
+]);
+export const canonicalChangeV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  revision: z.number().int().positive(),
+  logicalSessionId: idSchema,
+  kind: canonicalChangeKindSchema,
+  changedAt: timestampSchema,
+});
+export const canonicalChangeQuerySchema = z.strictObject({
+  afterRevision: nonNegativeIntegerSchema,
+  limit: z.number().int().positive().max(1_000),
+});
+export const canonicalChangePageSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  afterRevision: nonNegativeIntegerSchema,
+  throughRevision: nonNegativeIntegerSchema,
+  currentRevision: nonNegativeIntegerSchema,
+  hasMore: z.boolean(),
+  changes: z.array(canonicalChangeV1Schema),
+}).superRefine((page, context) => {
+  if (page.throughRevision < page.afterRevision || page.currentRevision < page.throughRevision) {
+    context.addIssue({
+      code: "custom",
+      path: ["throughRevision"],
+      message: "Canonical change revisions must be monotonic",
+    });
+  }
+  if (page.changes.some((change) => change.revision <= page.afterRevision || change.revision > page.throughRevision)) {
+    context.addIssue({
+      code: "custom",
+      path: ["changes"],
+      message: "Canonical changes must fall inside the page revision window",
+    });
+  }
+  if (page.changes.some((change, index) => index > 0 && change.revision <= page.changes[index - 1]!.revision)) {
+    context.addIssue({
+      code: "custom",
+      path: ["changes"],
+      message: "Canonical changes must be strictly ordered by revision",
+    });
+  }
+  const expectedThrough = page.changes.at(-1)?.revision ?? page.afterRevision;
+  if (page.throughRevision !== expectedThrough || page.hasMore !== (page.throughRevision < page.currentRevision)) {
+    context.addIssue({
+      code: "custom",
+      path: ["throughRevision"],
+      message: "Canonical change page cursor does not match its rows",
+    });
+  }
+});
 export const sessionDerivationSchema = z.strictObject({
   schemaVersion: z.literal(1),
   childSessionId: idSchema,

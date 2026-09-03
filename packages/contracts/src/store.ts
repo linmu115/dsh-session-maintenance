@@ -167,6 +167,7 @@ export interface CanonicalSessionRepository {
   setProjectMembership(input: ProjectMembership): Promise<void>;
   saveTombstone(input: SessionTombstone): Promise<void>;
   getTombstone(logicalSessionId: LogicalSessionId): Promise<SessionTombstone | undefined>;
+  listChanges(input: import("./canonical.js").CanonicalChangeQuery): Promise<import("./canonical.js").CanonicalChangePage>;
 }
 
 export interface ProjectionRunRepository {

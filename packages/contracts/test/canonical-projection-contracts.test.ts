@@ -4,6 +4,8 @@ import {
   adapterManifestV1Schema,
   canonicalEventProjectionPolicy,
   canonicalEventV1Schema,
+  canonicalChangePageSchema,
+  canonicalChangeQuerySchema,
   canonicalOtherContentV1Schema,
   logicalProjectSchema,
   projectMembershipSchema,
@@ -242,6 +244,26 @@ describe("canonical projection contracts", () => {
     expect(projectionOperationReceiptSchema.parse(receipt)).toEqual(receipt);
     expect(statusEventV1Schema.parse(status)).toEqual(status);
     expect(adapterManifestV1Schema.parse(manifest)).toEqual(manifest);
+  });
+
+  it("defines a bounded monotonic change-journal page without session bodies", () => {
+    const page = {
+      schemaVersion: 1 as const,
+      afterRevision: 40,
+      throughRevision: 42,
+      currentRevision: 44,
+      hasMore: true,
+      changes: [
+        { schemaVersion: 1 as const, revision: 41, logicalSessionId: "logical-a", kind: "content-updated" as const, changedAt: at },
+        { schemaVersion: 1 as const, revision: 42, logicalSessionId: "logical-b", kind: "workspace-updated" as const, changedAt: at },
+      ],
+    };
+    expect(canonicalChangeQuerySchema.parse({ afterRevision: 40, limit: 200 })).toEqual({ afterRevision: 40, limit: 200 });
+    expect(canonicalChangePageSchema.parse(page)).toEqual(page);
+    expect(canonicalChangeQuerySchema.safeParse({ afterRevision: 0, limit: 1_001 }).success).toBe(false);
+    expect(canonicalChangePageSchema.safeParse({ ...page, throughRevision: 39 }).success).toBe(false);
+    expect(canonicalChangePageSchema.safeParse({ ...page, changes: [...page.changes].reverse() }).success).toBe(false);
+    expect(JSON.stringify(page)).not.toContain("events");
   });
 
   it("rejects unknown authority, status stages and adapter interface majors", () => {

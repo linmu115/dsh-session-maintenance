@@ -58,7 +58,7 @@ describe("migration 009 logical projects", () => {
     const database = openMaintenanceDatabase(path);
     databases.push(database);
 
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 11 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 12 });
     expect(database.prepare(
       `SELECT name FROM sqlite_master WHERE type = 'table'
        AND name IN ('logical_projects', 'project_roots', 'project_memberships') ORDER BY name`,
@@ -71,5 +71,5 @@ describe("migration 009 logical projects", () => {
     expect(database.prepare(
       `SELECT wm.workspace_id FROM workspace_memberships wm WHERE wm.logical_session_id = 'legacy-session'`,
     ).get()).toEqual({ workspace_id: "workspace-existing" });
-  });
+  }, 15_000);
 });

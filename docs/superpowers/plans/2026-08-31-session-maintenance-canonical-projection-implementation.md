@@ -2,13 +2,15 @@
 
 > 日期：2026-08-31
 >
-> 状态：计划待用户审核，尚未施工
+> 状态：历史计划；2026-09-03 起由 `2026-09-03-mcsf-v1-alpha2-incremental-projection-implementation.md` 取代
 >
 > 目标分支：codex/canonical-session-projection
 >
 > 规格：../specs/2026-08-31-session-maintenance-canonical-projection-design.md
 >
 > 执行要求：批准后使用 executing-plans 技能逐任务施工；不得跳过阶段门或把多个任务合并成一次不可审查的大改。
+
+> 取代原因：后续已经确认只实施 Alpha2 格式族、保留本地投影，并在每次启动时按 Maintenance Revision 拉取差量；本文件中的“全量物化后删除”、RC2 和 Generation 步骤不再代表当前决定。
 
 ## 1. 目标
 

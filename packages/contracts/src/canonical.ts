@@ -157,6 +157,40 @@ export interface CanonicalSessionRecord {
   readonly updatedAt: string;
 }
 
+/** Lightweight, monotonically ordered reason that a native projection may be stale. */
+export type CanonicalChangeKind =
+  | "session-created"
+  | "content-updated"
+  | "metadata-updated"
+  | "workspace-updated"
+  | "project-updated"
+  | "branch-created"
+  | "tombstone-updated";
+
+export interface CanonicalChangeV1 {
+  readonly schemaVersion: 1;
+  readonly revision: number;
+  readonly logicalSessionId: LogicalSessionId;
+  readonly kind: CanonicalChangeKind;
+  readonly changedAt: string;
+}
+
+export interface CanonicalChangeQuery {
+  /** Last revision already applied by the caller. Zero requests the baseline. */
+  readonly afterRevision: number;
+  /** Bounded raw journal rows. Callers coalesce by logicalSessionId per page. */
+  readonly limit: number;
+}
+
+export interface CanonicalChangePage {
+  readonly schemaVersion: 1;
+  readonly afterRevision: number;
+  readonly throughRevision: number;
+  readonly currentRevision: number;
+  readonly hasMore: boolean;
+  readonly changes: readonly CanonicalChangeV1[];
+}
+
 export interface SessionDerivation {
   readonly schemaVersion: 1;
   readonly childSessionId: LogicalSessionId;

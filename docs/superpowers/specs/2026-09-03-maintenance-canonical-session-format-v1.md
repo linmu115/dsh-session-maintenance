@@ -231,6 +231,11 @@ Maintenance currentRevision = 20509
 
 Adapter 只重投影发生变化的会话；未变化会话文件不读取、不改写。运行期间新增事件仍先取得 Maintenance durable receipt，再确认本地写入。该策略称为“启动差量投影”，不改变 Maintenance 的唯一真源地位。
 
+第一段已实现为 Schema v12 的 `canonical_change_log` 和
+`CanonicalSessionRepository.listChanges({ afterRevision, limit })`。日志只保存
+Revision、逻辑会话 ID、变化类别和时间；Projection Lifecycle 接入持久缓存由
+后续 M04/M05 完成。
+
 ## 12. 第一版验收断点
 
 只保留高价值断点，并给每个断点提供状态日志入口：
