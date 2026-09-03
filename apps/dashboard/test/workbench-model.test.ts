@@ -15,7 +15,9 @@ describe("session workbench model", () => {
         return {
           schemaVersion: 1,
           session: { schemaVersion: 1, id: "logical-1", authorityScope: "codex", originKind: "codex-mirror", headVersionId: null, title: "fixture", tags: [], archivedAt: null, tombstonedAt: null, createdAt: at, updatedAt: at },
-          membership: null, workspace: null, events: [], parent: null, children: [],
+          membership: null, workspace: null, projectMembership: null, project: null, projectRoots: [],
+          nativeReferences: { schemaVersion: 1, logicalSessionId: "logical-1", references: [] },
+          events: [], parent: null, children: [],
         };
       },
     } as unknown as WorkbenchApi;

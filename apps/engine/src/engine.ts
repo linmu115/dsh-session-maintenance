@@ -326,6 +326,21 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     if (resolution.runId === null) return resolution;
     const run = await this.projectionRunRepository.getProjectionRun(resolution.runId);
     if (run === undefined) return resolution;
+    const indexSpan = await this.statusLog.start({
+      runId: run.id,
+      leaseId: run.leaseId,
+      profileId: run.profileId,
+      adapterId: run.adapterId,
+      dshVersion: run.dshVersion,
+      stage: "reference.index",
+      logicalSessionId: resolution.logicalSessionId,
+      nativeSessionId: resolution.nativeSessionId,
+      operationId: null,
+      diagnosticDetailRef: `diag:reference-index-${input.referenceType}-${resolution.status}`,
+    });
+    await this.statusLog.succeed(indexSpan, {
+      diagnosticDetailRef: `diag:reference-index-${input.referenceType}-${resolution.status}`,
+    });
     const span = await this.statusLog.start({
       runId: run.id,
       leaseId: run.leaseId,

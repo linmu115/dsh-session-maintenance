@@ -31,7 +31,10 @@ import {
   type SessionDerivation,
   type WorkspaceMembership,
 } from "@linmu/dsh-session-contracts";
-import { SqliteCanonicalRepository } from "@linmu/dsh-session-store";
+import {
+  SqliteCanonicalRepository,
+  SqliteNativeSessionReferenceRepository,
+} from "@linmu/dsh-session-store";
 
 const ASSET = /^\/dashboard\/assets\/([A-Za-z0-9][A-Za-z0-9._-]{0,255})$/u;
 
@@ -298,6 +301,11 @@ export async function readCanonicalDashboardSession(
   const canonical = new SqliteCanonicalRepository(database);
   const session = await canonical.getCanonicalSession(logicalSessionId as never);
   if (session === undefined) return undefined;
+  const nativeReferences = await new SqliteNativeSessionReferenceRepository(database)
+    .getReferenceIndex(logicalSessionId as never);
+  if (nativeReferences === undefined) {
+    throw new Error(`Native reference index lost canonical session ${logicalSessionId}`);
+  }
   const membership = getMembership(database, logicalSessionId);
   const projectMembership = getProjectMembership(database, logicalSessionId);
   const events = (database.prepare(
@@ -329,6 +337,7 @@ export async function readCanonicalDashboardSession(
     projectMembership,
     project: getProject(database, projectMembership?.projectId ?? null),
     projectRoots: getProjectRoots(database, projectMembership?.projectId ?? null),
+    nativeReferences,
     events: events as never,
     parent,
     children,

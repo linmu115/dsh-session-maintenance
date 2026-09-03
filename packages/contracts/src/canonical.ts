@@ -280,3 +280,26 @@ export interface StableLogicalReferenceResolution {
   readonly runId: RunId | null;
   readonly status: "resolved" | "unavailable";
 }
+
+export type NativeSessionReferenceUse = "source" | "active-projection" | "historical-alias";
+
+/**
+ * Read-only native identity associated with one logical MCSF session. It is an
+ * index entry only and never owns or duplicates canonical session content.
+ */
+export interface NativeSessionReferenceV1 {
+  readonly schemaVersion: 1;
+  readonly logicalSessionId: LogicalSessionId;
+  readonly platform: PlatformKind;
+  readonly instanceId: string;
+  readonly nativeSessionId: NativeSessionId;
+  readonly adapterId: AdapterId | null;
+  readonly referenceUse: NativeSessionReferenceUse;
+  readonly runId: RunId | null;
+}
+
+export interface NativeSessionReferenceIndexV1 {
+  readonly schemaVersion: 1;
+  readonly logicalSessionId: LogicalSessionId;
+  readonly references: readonly NativeSessionReferenceV1[];
+}

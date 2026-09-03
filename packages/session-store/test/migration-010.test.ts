@@ -68,7 +68,7 @@ describe("migration 010 runtime status stages", () => {
 
     const database = openMaintenanceDatabase(path);
     databases.push(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 13 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 14 });
     expect(database.prepare("SELECT id, stage FROM run_status_events ORDER BY sequence").all()).toEqual([
       { id: "status-v9", stage: "run.lease" },
     ]);
@@ -93,5 +93,16 @@ describe("migration 010 runtime status stages", () => {
         "diag:adapter-evidence:1", "{}");
     expect(database.prepare("SELECT stage, diagnostic_detail_ref FROM run_status_events WHERE id = ?").get("status-evidence"))
       .toEqual({ stage: "adapter.evidence", diagnostic_detail_ref: "diag:adapter-evidence:1" });
+    database.prepare(`INSERT INTO run_status_events
+      (id, run_id, sequence, at, lease_id, profile_id, adapter_id, dsh_version,
+       stage, state, logical_session_id, native_session_id, operation_id,
+       parent_event_id, span_id, error_code, duration_ms, diagnostic_detail_ref,
+       event_json)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run("status-reference-index", "run-v9", 3, at, "lease-v9", "web", "dsh-alpha2", "0.1.2-alpha.2",
+        "reference.index", "succeeded", null, "native", null, null, "span-reference-index", null, 1,
+        "diag:reference-index", "{}");
+    expect(database.prepare("SELECT stage, diagnostic_detail_ref FROM run_status_events WHERE id = ?").get("status-reference-index"))
+      .toEqual({ stage: "reference.index", diagnostic_detail_ref: "diag:reference-index" });
   }, 15_000);
 });

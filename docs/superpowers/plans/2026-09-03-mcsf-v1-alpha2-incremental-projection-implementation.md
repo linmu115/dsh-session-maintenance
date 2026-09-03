@@ -64,7 +64,7 @@
 
 ### M02：建立 Adapter Evidence Port
 
-状态：已实现，待本任务提交。
+状态：已完成。提交：`2092d8d feat: isolate adapter evidence`。
 
 目标：把 Harness 原始证据从 MCSF 公共事件中解耦。
 
@@ -81,6 +81,8 @@
 
 ### M03：统一 Native Session Reference 读模型
 
+状态：已完成（本任务提交：`feat: unify native session references`）。
+
 目标：把 source、active projection 和 historical alias 作为一张身份索引展示，不复制会话正文。
 
 实现：
@@ -89,6 +91,10 @@
 - 聚合现有 binding、projection mapping 和 alias；
 - WebUI 与 Adapter SDK 只消费统一读模型；
 - 不在本任务中合并物理表，不改 Codex 真源。
+
+落地说明：Schema v14 只扩展状态断点；引用数据继续由现有三张生命周期表
+分别拥有，统一 Repository 仅在读取时组合。Maintenance 会话详情页与稳定链接
+解析共用该索引，Adapter SDK 导出同一 DTO 与只读接口。
 
 断点：`reference.index`。验证一个逻辑会话可以解析来源、当前投影和历史链接。
 

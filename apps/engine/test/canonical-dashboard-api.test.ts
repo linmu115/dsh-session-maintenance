@@ -61,6 +61,7 @@ describe("canonical dashboard API", () => {
     expect(parent.project?.name).toBe("Skill 管理");
     expect(parent.workspace?.name).toBe("研究");
     expect(parent.events.map((event) => event.content)).toEqual(["静态正文"]);
+    expect(parent.nativeReferences).toEqual({ schemaVersion: 1, logicalSessionId: "logical-parent", references: [] });
     expect(parent.children[0]?.session.id).toBe("logical-child");
     const child = await client.getCanonicalSession("logical-child");
     expect(child.parent?.session.id).toBe("logical-parent");

@@ -76,6 +76,11 @@ export function SessionWorkbench(props: {
         <div><dt>工作区</dt><dd>{detail.workspace?.name ?? "未归类"}</dd></div>
         <div><dt>项目</dt><dd>{detail.project?.name ?? "待指定项目"}</dd></div>
         <div><dt>项目根</dt><dd>{detail.projectRoots.length === 0 ? "无" : detail.projectRoots.map((root) => root.path).join("、")}</dd></div>
+        <div><dt>原生会话引用</dt><dd>{detail.nativeReferences.references.length === 0 ? "无" : <ul className="native-session-references">{detail.nativeReferences.references.map((reference) => <li key={`${reference.referenceUse}:${reference.platform}:${reference.instanceId}:${reference.nativeSessionId}:${reference.runId ?? ""}`}>
+          <Badge>{reference.referenceUse === "source" ? "来源" : reference.referenceUse === "active-projection" ? "当前实例" : "历史链接"}</Badge>{" "}
+          {reference.platform} / {reference.instanceId} / <code>{reference.nativeSessionId}</code>
+          {reference.adapterId === null ? null : <> / <code>{reference.adapterId}</code></>}
+        </li>)}</ul>}</dd></div>
         <div><dt>标签</dt><dd>{detail.session.tags.length === 0 ? "无" : detail.session.tags.join("、")}</dd></div>
         <div><dt>更新时间</dt><dd><time dateTime={detail.session.updatedAt}>{new Date(detail.session.updatedAt).toLocaleString()}</time></dd></div>
       </dl> : null}

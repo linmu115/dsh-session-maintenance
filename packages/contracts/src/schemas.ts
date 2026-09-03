@@ -157,6 +157,38 @@ export const canonicalSessionRecordSchema = z.strictObject({
   createdAt: timestampSchema,
   updatedAt: timestampSchema,
 });
+export const nativeSessionReferenceUseSchema = z.enum(["source", "active-projection", "historical-alias"]);
+export const nativeSessionReferenceV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  platform: platformKindSchema,
+  instanceId: idSchema,
+  nativeSessionId: idSchema,
+  adapterId: idSchema.nullable(),
+  referenceUse: nativeSessionReferenceUseSchema,
+  runId: idSchema.nullable(),
+}).superRefine((reference, context) => {
+  if ((reference.referenceUse === "active-projection") !== (reference.runId !== null)) {
+    context.addIssue({
+      code: "custom",
+      path: ["runId"],
+      message: "Only active projection references carry a run ID",
+    });
+  }
+});
+export const nativeSessionReferenceIndexV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  references: z.array(nativeSessionReferenceV1Schema),
+}).superRefine((index, context) => {
+  if (index.references.some((reference) => reference.logicalSessionId !== index.logicalSessionId)) {
+    context.addIssue({
+      code: "custom",
+      path: ["references"],
+      message: "Native session references must belong to the indexed logical session",
+    });
+  }
+});
 export const canonicalChangeKindSchema = z.enum([
   "session-created",
   "content-updated",
@@ -309,6 +341,7 @@ export const canonicalDashboardSessionDetailSchema = z.strictObject({
   projectMembership: projectMembershipSchema.nullable(),
   project: logicalProjectSchema.nullable(),
   projectRoots: z.array(projectRootSchema),
+  nativeReferences: nativeSessionReferenceIndexV1Schema,
   events: z.array(canonicalEventV1Schema),
   parent: canonicalLineageRelationSchema.nullable(),
   children: z.array(canonicalLineageRelationSchema),

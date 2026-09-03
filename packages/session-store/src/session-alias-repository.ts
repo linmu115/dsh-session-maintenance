@@ -7,6 +7,8 @@ import type {
   StableLogicalReferenceResolution,
 } from "@linmu/dsh-session-contracts";
 
+import { SqliteNativeSessionReferenceRepository } from "./native-session-reference-repository.js";
+
 export type SessionAliasKind = "dsh-session" | "dsh-workspace" | "legacy-reference";
 
 export type SessionAliasTarget =
@@ -156,22 +158,18 @@ export class SqliteSessionAliasRepository {
         status: "unavailable",
       };
     }
-    const active = this.database.prepare(
-      `SELECT ps.run_id, ps.logical_session_id, ps.native_session_id
-       FROM projection_sessions ps
-       JOIN projection_runs pr ON pr.id = ps.run_id
-       WHERE ps.logical_session_id = ? AND pr.state IN ('preparing', 'running', 'draining', 'verifying')
-       ORDER BY pr.heartbeat_at DESC, pr.id DESC LIMIT 1`,
-    ).get(logicalSessionId) as ActiveProjectionRow | undefined;
+    const index = await new SqliteNativeSessionReferenceRepository(this.database)
+      .getReferenceIndex(logicalSessionId);
+    const active = index?.references.find((reference) => reference.referenceUse === "active-projection");
     return {
       referenceType: input.referenceType,
       logicalSessionId,
       logicalAnchorId: input.logicalAnchorId,
-      nativeSessionId: (active?.native_session_id as StableLogicalReferenceResolution["nativeSessionId"] | undefined) ?? null,
+      nativeSessionId: active?.nativeSessionId ?? null,
       nativeAnchorId: active === undefined
         ? null
         : input.logicalAnchorId ?? input.legacyNativeAnchorId,
-      runId: (active?.run_id as StableLogicalReferenceResolution["runId"] | undefined) ?? null,
+      runId: active?.runId ?? null,
       status: active === undefined ? "unavailable" : "resolved",
     };
   }

@@ -42,6 +42,7 @@ import type {
   WorkspaceMembership,
   ProjectMembership,
   ProjectRoot,
+  NativeSessionReferenceIndexV1,
 } from "./canonical.js";
 import type {
   ProjectionOperationReceipt,
@@ -152,6 +153,11 @@ export interface ContinuationRepository {
   findContinuationByRequestHash(requestHash: string): Promise<ContinuationJob | undefined>;
   transitionContinuationJob(id: string, transition: ContinuationTransition): Promise<ContinuationJob>;
   listRecoverableContinuations(): Promise<readonly ContinuationJob[]>;
+}
+
+/** Unified read model over source bindings, live projections and old aliases. */
+export interface NativeSessionReferenceRepository {
+  getReferenceIndex(logicalSessionId: LogicalSessionId): Promise<NativeSessionReferenceIndexV1 | undefined>;
 }
 
 export interface CanonicalSessionRepository {

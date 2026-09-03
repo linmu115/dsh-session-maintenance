@@ -90,6 +90,12 @@ runId?       = 仅活动投影需要
 
 三者可以在数据库内部因生命周期和事务约束使用不同表，但 WebUI、Adapter SDK 和概念模型只展示一张引用索引。它们不复制 MCSF 会话正文，也不形成第二真源。
 
+M03 已将该概念落成 `NativeSessionReferenceIndexV1`。只读 Repository
+聚合 `platform_bindings`、可导航的活动 `projection_sessions` 和会话级
+`session_aliases`；Maintenance 会话详情页、稳定链接解析以及 Adapter SDK
+使用同一 DTO。索引不包含标题、事件、消息正文或工具数据。Schema v14 新增
+`reference.index` 状态断点，用于确认索引被消费，但诊断记录同样不保存正文。
+
 ## 5. MCSF v1 公共事件交集
 
 首版稳定种类：
@@ -249,6 +255,8 @@ Revision、逻辑会话 ID、变化类别和时间；Projection Lifecycle 接入
 5. `client.card`：DSH UI 能显示折叠维护卡片；
 6. `model-history.audit`：派生请求中不存在 `other` 内容；
 7. `legacy.read`：旧 `opaque-unknown` 仍能读取。
+8. `canonical.change-journal`：只返回 Revision 和受影响逻辑会话 ID；
+9. `reference.index`：来源、当前投影和历史链接统一解析，且无会话正文。
 
 只有某个断点失败时，才在相邻断点之间增加更细日志与测试。
 

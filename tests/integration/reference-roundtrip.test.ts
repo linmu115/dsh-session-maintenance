@@ -35,6 +35,18 @@ describe("logical reference round trip", () => {
       createdAt: at,
       updatedAt: at,
     });
+    fixture.engine.repository.database.prepare(
+      `INSERT INTO platform_bindings
+        (id, logical_session_id, platform, instance_id, session_id, adapter_contract_json,
+         last_common_version_id, status)
+       VALUES (?, ?, 'codex', ?, ?, ?, NULL, 'read-only')`,
+    ).run(
+      "binding-reference-roundtrip",
+      logicalSessionId,
+      "codex-local",
+      "codex-thread-reference-roundtrip",
+      JSON.stringify({ adapter: "adapter-codex-read", platformVersion: "1", schemaFingerprint: "codex-v1" }),
+    );
     const runs = new SqliteProjectionRunRepository(fixture.engine.repository.database);
     await runs.createProjectionRun({
       schemaVersion: 1,
@@ -71,6 +83,18 @@ describe("logical reference round trip", () => {
     });
 
     const server = await fixture.startServer();
+    const detailResponse = await fetch(`${server.origin}/v1/canonical/sessions/${logicalSessionId}`, {
+      headers: { authorization: `Bearer ${server.token}` },
+    });
+    expect(detailResponse.status).toBe(200);
+    const detail = await detailResponse.json() as {
+      readonly session: { readonly nativeReferences: { readonly references: readonly Array<{ readonly referenceUse: string; readonly nativeSessionId: string }> } };
+    };
+    expect(detail.session.nativeReferences.references.map((reference) => [reference.referenceUse, reference.nativeSessionId])).toEqual([
+      ["source", "codex-thread-reference-roundtrip"],
+      ["active-projection", nativeSessionId],
+      ["historical-alias", "session-alpha1-old"],
+    ]);
     const logical = await resolveMaintenanceLogicalLocation({
       endpoint: server.origin,
       authorization: `Bearer ${server.token}`,
@@ -119,6 +143,14 @@ describe("logical reference round trip", () => {
       "succeeded:diag:reference-sticker-resolved",
     ]);
     expect(JSON.stringify(status.items)).not.toContain("Synthetic reference fixture");
+    const indexStatus = await fixture.engine.listStatusEvents({ runId, stage: "reference.index" });
+    expect(indexStatus.items.map((event) => `${event.state}:${event.diagnosticDetailRef}`)).toEqual([
+      "started:diag:reference-index-annotation-resolved",
+      "succeeded:diag:reference-index-annotation-resolved",
+      "started:diag:reference-index-sticker-resolved",
+      "succeeded:diag:reference-index-sticker-resolved",
+    ]);
+    expect(JSON.stringify(indexStatus.items)).not.toContain("Synthetic reference fixture");
 
     await runs.setProjectionRunState(runId, "closed");
     expect(await fixture.engine.resolveStableReference({

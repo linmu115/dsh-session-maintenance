@@ -31,6 +31,7 @@ import type {
   CanonicalSessionRecord,
   LogicalWorkspace,
   LogicalProject,
+  NativeSessionReferenceIndexV1,
   ProjectMembership,
   ProjectRoot,
   SessionDerivation,
@@ -212,6 +213,7 @@ export interface CanonicalDashboardSessionDetail {
   readonly projectMembership: ProjectMembership | null;
   readonly project: LogicalProject | null;
   readonly projectRoots: readonly ProjectRoot[];
+  readonly nativeReferences: NativeSessionReferenceIndexV1;
   readonly events: readonly CanonicalEventV1[];
   readonly parent: CanonicalLineageRelation | null;
   readonly children: readonly CanonicalLineageRelation[];

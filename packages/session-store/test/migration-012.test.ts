@@ -81,7 +81,7 @@ describe("migration 012 canonical change journal", () => {
     const database = openMaintenanceDatabase(path);
     databases.push(database);
     const repository = new SqliteCanonicalRepository(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 13 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 14 });
     expect(await repository.listChanges({ afterRevision: 0, limit: 100 })).toMatchObject({
       throughRevision: 1,
       currentRevision: 1,

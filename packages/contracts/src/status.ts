@@ -20,6 +20,7 @@ export const STATUS_STAGES = [
   "session.append.commit",
   "session.derivation.create",
   "projection.cross-version.verify",
+  "reference.index",
   "reference.roundtrip.verify",
   "run.shutdown-recovery",
   "adapter.evidence",
