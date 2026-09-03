@@ -25,6 +25,7 @@ export type {
 } from "@linmu/dsh-session-contracts";
 
 export {
+  canonicalEventProjectionPolicy,
   RUNTIME_MANAGED_PROJECT_DIRECTORY,
   runtimeManagedProjectSegment,
 } from "@linmu/dsh-session-contracts";

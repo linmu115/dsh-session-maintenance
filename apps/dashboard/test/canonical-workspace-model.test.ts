@@ -51,6 +51,22 @@ describe("canonical dashboard workspace model", () => {
     const html = renderToStaticMarkup(createElement(CanonicalEventView, { event: message }));
     expect(html).not.toContain("onerror");
     expect(html).not.toContain("<img src=x");
+
+    const other = {
+      ...unknown,
+      id: "event-other",
+      kind: "other",
+      content: {
+        schemaVersion: 1,
+        type: "other",
+        reason: "no-common-semantics",
+        sourceKind: "codex/unknown",
+        label: "未映射记录",
+        summary: "仅作为维护记录展示。",
+        evidenceRef: null,
+      },
+    } as CanonicalEventV1;
+    expect(canonicalEventPresentation(other)).toEqual({ heldOut: true, text: "仅作为维护记录展示。" });
   });
 
   it("groups sessions by project while preserving workspace as separate detail", () => {

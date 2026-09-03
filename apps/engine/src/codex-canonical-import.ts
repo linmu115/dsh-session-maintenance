@@ -12,6 +12,7 @@ import type {
   CanonicalEventKind,
   CanonicalEventRole,
   CanonicalEventV1,
+  CanonicalOtherContentV1,
   JsonValue,
   LogicalSessionId,
   LogicalWorkspaceId,
@@ -67,32 +68,58 @@ function isJsonRecord(value: JsonValue | undefined): value is Readonly<Record<st
 
 function mappedKind(event: NormalizedEvent): CanonicalEventKind {
   if (event.kind === "attachment") return "attachment";
-  if (event.kind === "metadata") return "system-metadata";
+  if (event.kind === "metadata") {
+    return isJsonRecord(event.extensions.codexEnvelope) ? "other" : "system-metadata";
+  }
   if (event.kind === "tool-import") {
     const tool = event.extensions.codexTool;
     if (isJsonRecord(tool)) {
       if (tool.phase === "call") return "tool-call";
       if (tool.phase === "result") return "tool-result";
     }
-    return event.role === "tool" ? "tool-result" : "opaque-unknown";
+    return event.role === "tool" ? "tool-result" : "other";
   }
   if (event.role === "user") return "user-message";
   if (event.role === "assistant") return "assistant-message";
   if (event.role === "system") return "system-message";
   if (event.role === "tool") return "tool-result";
-  return "opaque-unknown";
+  return "other";
 }
 
 function mappedRole(event: NormalizedEvent): CanonicalEventRole {
-  return event.role;
+  return mappedKind(event) === "other" ? "unknown" : event.role;
+}
+
+function codexOtherContent(event: NormalizedEvent): CanonicalOtherContentV1 {
+  const envelope = isJsonRecord(event.extensions.codexEnvelope)
+    ? event.extensions.codexEnvelope
+    : undefined;
+  const payload = envelope !== undefined && isJsonRecord(envelope.payload)
+    ? envelope.payload
+    : undefined;
+  const envelopeType = typeof envelope?.type === "string" ? envelope.type : "unknown-envelope";
+  const payloadType = typeof payload?.type === "string" ? payload.type : undefined;
+  const sourceKind = `codex/${envelopeType}${payloadType === undefined ? "" : `:${payloadType}`}`;
+  return {
+    schemaVersion: 1,
+    type: "other",
+    reason: "unsupported-source-event",
+    sourceKind,
+    label: "未映射的 Codex 记录",
+    summary: `MCSF v1 没有 ${sourceKind} 的公共语义；该记录仅作为维护卡片展示。`,
+    evidenceRef: sha256Canonical(event.extensions as unknown as JsonValue),
+  };
 }
 
 export function canonicalCodexEvent(
   logicalSessionId: LogicalSessionId,
   event: NormalizedEvent,
 ): CanonicalEventV1 {
+  const kind = mappedKind(event);
   const tool = event.extensions.codexTool;
-  const content = event.kind === "tool-import"
+  const content: JsonValue = kind === "other"
+    ? codexOtherContent(event) as unknown as JsonValue
+    : event.kind === "tool-import"
     && isJsonRecord(tool)
     ? {
         callId: typeof tool.callId === "string" ? tool.callId : event.id,
@@ -118,7 +145,7 @@ export function canonicalCodexEvent(
     id: event.id,
     logicalSessionId,
     sequence: event.sequence,
-    kind: mappedKind(event),
+    kind,
     role: mappedRole(event),
     content,
     source: {

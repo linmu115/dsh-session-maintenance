@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.2.13 - 2026-09-03
+
+- Introduce the first executable MCSF v1 semantic contract. Unsupported Codex
+  records now enter the canonical `other` class instead of being guessed into
+  user, assistant or tool history.
+- Project `other` as an ignorable Alpha2 `maintenance/other` event with no
+  `surfaceOp`. Even adapter evidence shaped like `user/message` is prevented
+  from widening into model-visible history.
+- Render MCSF `other` records in DSH as collapsible Maintenance tool-style
+  cards. The card is presentation only and is deliberately not a native
+  `tool/result`, so it cannot break provider tool-call pairing.
+- Add schema migration 011. Existing `opaque-unknown` records remain readable;
+  new imports can persist `other` without rewriting prior canonical versions.
+
 ## 0.2.12 - 2026-09-02
 
 - Batch contiguous Alpha2 stream events behind one stable Runtime Broker append

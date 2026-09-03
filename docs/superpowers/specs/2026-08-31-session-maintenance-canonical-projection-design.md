@@ -272,6 +272,8 @@ session_versions 继续保存不可变版本。正常推进的 version_parents �
 
 ### 10.4 canonical_events 与内容对象
 
+事件公共语义与 Alpha2 映射的后续收敛以 [MCSF v1](./2026-09-03-maintenance-canonical-session-format-v1.md) 为准。本节保留为最初数据库设计背景。
+
 Maintenance 保存规范事件，而不是直接保存某一版 DSH 的事件对象。
 
 CanonicalEventV1 至少包含：
@@ -299,21 +301,21 @@ CanonicalEventV1 至少包含：
 - Obsidian 引用关系；
 - 附件；
 - 系统元数据；
-- opaque unknown event。
+- `other`（无法在来源与目标之间等价翻译的安全容器）。
 
-未知事件必须保留原始载荷和来源。当前适配器无法等价投影时，在 WebUI 和兼容性报告中标记 held-out，不得静默删除。
+历史 `opaque-unknown` 仍可读取。新未知事件必须降级为 `other`，原生载荷由来源 Adapter 的证据接口保存；在 WebUI 和兼容性报告中标记 held-out，不得静默删除，也不得进入模型上下文。
 
 事件内容对象采用不可变引用和摘要。派生会话首版可以复用来源版本的不可变内容对象，再追加自身事件，因此删除或继续更新来源会话不会改变派生会话视图。
 
-### 10.5 平台绑定、投影映射与历史别名
+### 10.5 原生会话引用索引
 
-三类关系必须分开：
+真源正文始终只有 Maintenance 中的一份 MCSF 会话。以下三类记录都是 ID 引用，不是三类内容真源：
 
 1. Authority binding：Codex thread ID 到 codex_mirror logical session。
 2. Projection mapping：runId 下 logical session ID 到当前 DSH native session ID。
 3. Historical alias：旧 DSH session ID、workspace ID 或旧深链接到 logical session ID。
 
-DSH 投影映射只在活动运行和恢复期存在，不代表内容所有权。
+数据库内部可以按生命周期与事务约束分表；对 WebUI 和 Adapter SDK 统一暴露为 Native Session Reference Index。DSH 投影映射只在活动运行和恢复期存在，不代表内容所有权。
 
 新生成的跨应用引用优先携带 logicalSessionId。旧引用仍可携带 sessionId，Maintenance 通过历史别名解析到逻辑会话，再映射到当前活动投影。这样 Obsidian、Annotation 和 Sticker 深链接不会因切换 DSH 版本失效。
 

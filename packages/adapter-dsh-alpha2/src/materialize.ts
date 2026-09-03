@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { canonicalEventProjectionPolicy } from "@linmu/dsh-session-adapter-sdk";
 import type {
   CanonicalEventV1,
   CanonicalProjectionInput,
@@ -294,7 +295,10 @@ function canonicalToolResult(event: CanonicalEventV1): { readonly [key: string]:
 }
 
 export function materializeEvent(event: CanonicalEventV1, createdAt: number): Alpha2SessionEvent {
-  const raw = rawEnvelope(event);
+  // MCSF `other` is a hard safety boundary. Adapter evidence may contain a
+  // source event that happens to look like a model-facing Alpha2 message, but
+  // replaying that envelope would widen log-only evidence into model history.
+  const raw = event.kind === "other" ? undefined : rawEnvelope(event);
   if (raw !== undefined) return raw;
   const time = createdAt + event.sequence;
   if (event.kind === "user-message") {
@@ -337,11 +341,16 @@ export function materializeEvent(event: CanonicalEventV1, createdAt: number): Al
       surfaceOp: "append",
     };
   }
+  const policy = event.kind === "other" ? canonicalEventProjectionPolicy(event.kind) : undefined;
   return {
-    type: `maintenance/${event.kind}`,
+    type: event.kind === "other" ? "maintenance/other" : `maintenance/${event.kind}`,
     seq: event.sequence,
     time,
-    data: { canonicalContent: event.content, extensions: event.extensions },
+    data: {
+      canonicalContent: event.content,
+      extensions: event.extensions,
+      ...(policy === undefined ? {} : policy),
+    },
     ignorable: true,
   };
 }
@@ -368,13 +377,13 @@ function rebaseSurfaceOp(surfaceOp: JsonValue, sequenceMap: ReadonlyMap<number, 
 function materializeEvents(events: readonly CanonicalEventV1[], createdAt: number): readonly Alpha2SessionEvent[] {
   const drafts: MaterializedDraft[] = [];
   for (const event of events) {
-    const packed = packedStorageEvents(event);
+    const packed = event.kind === "other" ? undefined : packedStorageEvents(event);
     if (packed !== undefined) {
       drafts.push(...packed.map((item) => ({ event: item, originSequence: item.seq })));
       continue;
     }
 
-    const raw = rawEnvelope(event);
+    const raw = event.kind === "other" ? undefined : rawEnvelope(event);
     if (raw === undefined && event.kind === "tool-call") {
       const call = canonicalToolCall(event);
       drafts.push({

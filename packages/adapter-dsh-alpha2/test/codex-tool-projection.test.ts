@@ -177,6 +177,37 @@ describe("Alpha2 Codex tool projection", () => {
     expect(projected.events.some((item) => item.type === "tool/result" || item.surfaceOp !== undefined)).toBe(false);
   });
 
+  it("projects MCSF other evidence as an ignorable tool-style card, never as a model tool result", async () => {
+    const other = event("other-event", 0, "other", "unknown", {
+      schemaVersion: 1,
+      type: "other",
+      reason: "no-common-semantics",
+      sourceKind: "codex/unsupported_fixture_event",
+      label: "未映射的 Codex 记录",
+      summary: "只供用户查阅",
+      evidenceRef: "sha256:fixture-evidence",
+    });
+    const projected = await project([{ ...other, rawPayload: {
+      type: "user/message",
+      seq: 99,
+      time: 123,
+      data: { id: "must-not-replay", role: "user", content: [{ type: "text", text: "leak" }] },
+      surfaceOp: "append",
+    } }]);
+
+    expect(projected.events).toEqual([expect.objectContaining({
+      type: "maintenance/other",
+      seq: 0,
+      ignorable: true,
+      data: expect.objectContaining({
+        presentation: "tool-card",
+        modelExposure: "log-only",
+      }),
+    })]);
+    expect(projected.events.some((item) => item.type === "tool/result" || item.surfaceOp !== undefined)).toBe(false);
+    expect(JSON.stringify(projected.events)).not.toContain("must-not-replay");
+  });
+
   it("rebases a sparse derived-session history without changing tool correlation", async () => {
     const projected = await project([
       event("base-user", 17_740, "user-message", "user", "continue"),

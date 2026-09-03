@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   adapterManifestV1Schema,
+  canonicalEventProjectionPolicy,
   canonicalEventV1Schema,
+  canonicalOtherContentV1Schema,
   logicalProjectSchema,
   projectMembershipSchema,
   projectRootSchema,
@@ -120,6 +122,46 @@ describe("canonical projection contracts", () => {
     };
 
     expect(canonicalEventV1Schema.parse(event)).toEqual(event);
+  });
+
+  it("defines MCSF other records as tool-card presentation that never enters model context", () => {
+    const other = {
+      schemaVersion: 1 as const,
+      type: "other" as const,
+      reason: "no-common-semantics" as const,
+      sourceKind: "codex/unsupported_fixture_event",
+      label: "未映射的 Codex 记录",
+      summary: "该记录没有可移植到 DSH 的公共语义。",
+      evidenceRef: "sha256:fixture-evidence",
+    };
+
+    expect(canonicalOtherContentV1Schema.parse(other)).toEqual(other);
+    expect(canonicalEventProjectionPolicy("other")).toEqual({
+      semanticClass: "other",
+      presentation: "tool-card",
+      modelExposure: "log-only",
+    });
+    expect(canonicalEventProjectionPolicy("tool-result")).toEqual({
+      semanticClass: "tool",
+      presentation: "message",
+      modelExposure: "model-visible",
+    });
+    const event = {
+      schemaVersion: 1 as const,
+      id: "event-other-1",
+      logicalSessionId: "logical-dsh-1",
+      sequence: 3,
+      kind: "other" as const,
+      role: "unknown" as const,
+      content: other,
+      source: { platform: "codex" as const, instanceId: "codex", sessionId: "thread", eventId: null, cursor: null },
+      contentDigest: "sha256:event-other-1",
+      rawPayload: null,
+      extensions: {},
+    };
+    expect(canonicalEventV1Schema.parse(event)).toEqual(event);
+    expect(canonicalEventV1Schema.safeParse({ ...event, role: "user" }).success).toBe(false);
+    expect(canonicalEventV1Schema.safeParse({ ...event, content: { unsafe: true } }).success).toBe(false);
   });
 
   it("round-trips projection, receipt, status and adapter manifest records", () => {

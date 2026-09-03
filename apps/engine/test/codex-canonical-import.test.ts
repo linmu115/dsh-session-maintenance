@@ -41,6 +41,38 @@ describe("Codex canonical hot import", () => {
     expect(result).toMatchObject({ kind: "tool-result", role: "tool", content: { callId: "call-1", outputText: "done" } });
   });
 
+  it("places unsupported Codex semantics in MCSF other instead of a user or assistant message", () => {
+    const event = canonicalCodexEvent("ls-other-fixture" as never, {
+      id: "event-unsupported",
+      parentId: null,
+      sequence: 0,
+      kind: "metadata",
+      role: "unknown",
+      content: "",
+      attachments: [],
+      source: { platform: "codex", instanceId: "codex", sessionId: "thread", eventId: "row", sequence: 0 },
+      extensions: {
+        codexEnvelope: {
+          type: "response_item",
+          payload: { type: "unsupported_fixture_event", private: "adapter-owned" },
+        },
+      },
+    });
+
+    expect(event).toMatchObject({
+      kind: "other",
+      role: "unknown",
+      content: {
+        schemaVersion: 1,
+        type: "other",
+        reason: "unsupported-source-event",
+        sourceKind: "codex/response_item:unsupported_fixture_event",
+      },
+    });
+    expect(event.rawPayload).toBeNull();
+    expect(JSON.stringify(event.content)).not.toContain("adapter-owned");
+  });
+
   it("imports directly into the canonical engine, preserves cwd and noops unchanged content", async () => {
     const fixture = await createEngineFixture("codex-canonical-import");
     const assignments: CodexCanonicalProjectAssignment[] = [];

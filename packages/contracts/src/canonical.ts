@@ -1,5 +1,7 @@
 import type { JsonValue, PlatformKind } from "./model.js";
 
+export const MCSF_SCHEMA_VERSION = 1 as const;
+
 declare const identifierBrand: unique symbol;
 
 export type BrandedId<Name extends string> = string & {
@@ -36,7 +38,81 @@ export type CanonicalEventKind =
   | "obsidian-reference"
   | "attachment"
   | "system-metadata"
+  | "other"
+  /** @deprecated Historical pre-MCSF catch-all. New imports must use `other`. */
   | "opaque-unknown";
+
+/**
+ * Stable, cross-Harness semantics owned by Maintenance Canonical Session
+ * Format v1 (MCSF v1). Native replay details remain Adapter-owned evidence.
+ */
+export type CanonicalEventSemanticClass =
+  | "message"
+  | "reasoning"
+  | "tool"
+  | "reference"
+  | "attachment"
+  | "metadata"
+  | "other";
+
+export type CanonicalEventPresentation = "message" | "tool-card" | "hidden";
+export type CanonicalModelExposure = "model-visible" | "log-only";
+
+export interface CanonicalEventProjectionPolicy {
+  readonly semanticClass: CanonicalEventSemanticClass;
+  readonly presentation: CanonicalEventPresentation;
+  readonly modelExposure: CanonicalModelExposure;
+}
+
+export type CanonicalOtherReason =
+  | "no-common-semantics"
+  | "unsupported-source-event"
+  | "orphan-tool-result"
+  | "adapter-evidence";
+
+/**
+ * Portable summary of source data that has no lossless shared meaning.
+ * `evidenceRef` points at Adapter-owned evidence when available; it is not a
+ * second session truth and must never be expanded into model-facing history.
+ */
+export interface CanonicalOtherContentV1 {
+  readonly schemaVersion: 1;
+  readonly type: "other";
+  readonly reason: CanonicalOtherReason;
+  readonly sourceKind: string;
+  readonly label: string;
+  readonly summary: string;
+  readonly evidenceRef: string | null;
+}
+
+/**
+ * MCSF fixes the default exposure policy by semantic kind. Adapters may lose
+ * presentation fidelity, but they must never widen `log-only` to model-visible.
+ */
+export function canonicalEventProjectionPolicy(kind: CanonicalEventKind): CanonicalEventProjectionPolicy {
+  switch (kind) {
+    case "user-message":
+    case "assistant-message":
+    case "system-message":
+      return { semanticClass: "message", presentation: "message", modelExposure: "model-visible" };
+    case "tool-call":
+    case "tool-result":
+      return { semanticClass: "tool", presentation: "message", modelExposure: "model-visible" };
+    case "reasoning":
+      return { semanticClass: "reasoning", presentation: "hidden", modelExposure: "log-only" };
+    case "annotation":
+    case "sticker":
+    case "obsidian-reference":
+      return { semanticClass: "reference", presentation: "tool-card", modelExposure: "log-only" };
+    case "attachment":
+      return { semanticClass: "attachment", presentation: "tool-card", modelExposure: "log-only" };
+    case "system-metadata":
+      return { semanticClass: "metadata", presentation: "hidden", modelExposure: "log-only" };
+    case "other":
+    case "opaque-unknown":
+      return { semanticClass: "other", presentation: "tool-card", modelExposure: "log-only" };
+  }
+}
 
 export type CanonicalEventRole =
   | "user"

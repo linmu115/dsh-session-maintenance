@@ -18,14 +18,25 @@ export interface SettingsSectionRegistration {
   readonly inject?: () => Readonly<Record<string, unknown>>;
 }
 
+export interface ConversationNodeRegistration {
+  readonly name: "conversation.chat.node";
+  readonly key: string;
+  readonly inject?: (sessionId: string) => Readonly<Record<string, unknown>>;
+}
+
 export interface ClientSlots {
-  inject(name: "settings.section", callback: () => () => void): () => void;
-  register(registration: SettingsSectionRegistration, component: unknown): () => void;
+  inject(name: string, callback: () => () => void): () => void;
+  register(registration: SettingsSectionRegistration | ConversationNodeRegistration, component: unknown): () => void;
+}
+
+export interface ClientConversationEvents {
+  register(definition: unknown): () => void;
 }
 
 export interface ClientContext {
   readonly sessions: { readonly list: ObservableSnapshot<SessionListSnapshot> };
   readonly slots: ClientSlots;
+  readonly uiConversation: { readonly events: ClientConversationEvents };
   inject(names: readonly string[], callback: (ctx: ClientContext) => void | Promise<void> | (() => void)): { dispose(): void | Promise<void> };
   effect(callback: () => void | (() => void), label?: string): void;
   get(name: string): unknown;

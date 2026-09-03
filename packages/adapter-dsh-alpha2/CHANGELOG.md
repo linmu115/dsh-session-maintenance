@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add the MCSF v1 `other` projection. Unsupported cross-Harness semantics are
+  emitted as `maintenance/other`, `ignorable: true`, tool-card presentation
+  with no message-surface operation.
+- Refuse to replay `rawPayload` or packed native rows for an `other` event.
+  This is a fail-closed exposure rule: Adapter evidence cannot masquerade as
+  an Alpha2 `user/message`, `assistant/message` or `tool/result`.
+
 ## 0.1.2-alpha.2 sparse derived sequence hotfix - 2026-09-02
 
 - Rebase strictly increasing but non-contiguous canonical event sequences into

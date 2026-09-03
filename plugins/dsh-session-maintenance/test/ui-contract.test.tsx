@@ -7,6 +7,7 @@ function context(): ClientContext {
   return {
     sessions: { list: { getSnapshot: () => ({ current: "session-1", byId: { "session-1": { title: "Fixture session" } } }), subscribe: () => () => undefined } },
     slots: { inject: (_name, callback) => callback(), register: () => () => undefined },
+    uiConversation: { events: { register: () => () => undefined } },
     inject: () => ({ dispose: () => undefined }),
     effect: () => undefined,
     get: () => undefined,

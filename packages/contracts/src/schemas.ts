@@ -57,8 +57,24 @@ export const canonicalEventKindSchema = z.enum([
   "obsidian-reference",
   "attachment",
   "system-metadata",
+  "other",
   "opaque-unknown",
 ]);
+export const canonicalOtherReasonSchema = z.enum([
+  "no-common-semantics",
+  "unsupported-source-event",
+  "orphan-tool-result",
+  "adapter-evidence",
+]);
+export const canonicalOtherContentV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  type: z.literal("other"),
+  reason: canonicalOtherReasonSchema,
+  sourceKind: z.string().min(1),
+  label: z.string().min(1),
+  summary: z.string().min(1),
+  evidenceRef: z.string().min(1).nullable(),
+});
 export const canonicalEventRoleSchema = z.enum([
   "user",
   "assistant",
@@ -85,6 +101,23 @@ export const canonicalEventV1Schema = z.strictObject({
   contentDigest: idSchema,
   rawPayload: jsonValueSchema.nullable(),
   extensions: z.record(z.string(), jsonValueSchema),
+}).superRefine((event, context) => {
+  if (event.kind !== "other") return;
+  if (event.role !== "unknown") {
+    context.addIssue({
+      code: "custom",
+      path: ["role"],
+      message: "MCSF other events must use the unknown role",
+    });
+  }
+  const parsed = canonicalOtherContentV1Schema.safeParse(event.content);
+  if (!parsed.success) {
+    context.addIssue({
+      code: "custom",
+      path: ["content"],
+      message: "MCSF other events require CanonicalOtherContentV1",
+    });
+  }
 });
 export const canonicalSessionRecordSchema = z.strictObject({
   schemaVersion: z.literal(1),

@@ -11,11 +11,22 @@ function stableText(content: JsonValue): string {
   return typeof content === "string" ? content : JSON.stringify(content, null, 2);
 }
 
+function jsonRecord(content: JsonValue): content is Readonly<Record<string, JsonValue>> {
+  return typeof content === "object" && content !== null && !Array.isArray(content);
+}
+
 export function canonicalEventPresentation(event: CanonicalEventV1): CanonicalEventPresentation {
-  const heldOut = event.kind === "opaque-unknown";
+  const heldOut = event.kind === "opaque-unknown" || event.kind === "other";
+  const other = event.kind === "other" && jsonRecord(event.content)
+    ? event.content
+    : undefined;
   return {
     heldOut,
-    text: heldOut ? "此事件类型未被当前适配器解释，原始数据已留置且不会执行。" : stableText(event.content),
+    text: heldOut
+      ? typeof other?.summary === "string"
+        ? other.summary
+        : "此事件类型未被当前适配器解释，原始数据已留置且不会执行。"
+      : stableText(event.content),
   };
 }
 
