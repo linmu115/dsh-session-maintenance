@@ -23,6 +23,20 @@ import type {
 } from "./operations.js";
 import type { JobRef } from "./jobs.js";
 import type { SyncPlan } from "./plans.js";
+import type { StatusEventState, StatusEventV1, StatusStage } from "./status.js";
+import type { AdapterManifestV1, AdapterProbeResult } from "./adapter-sdk.js";
+import type { ProjectionRun, ProjectionSessionMode } from "./projection.js";
+import type {
+  CanonicalEventV1,
+  CanonicalSessionRecord,
+  LogicalWorkspace,
+  LogicalProject,
+  NativeSessionReferenceIndexV1,
+  ProjectMembership,
+  ProjectRoot,
+  SessionDerivation,
+  WorkspaceMembership,
+} from "./canonical.js";
 
 export interface ApiErrorBody {
   readonly code: string;
@@ -86,3 +100,200 @@ export interface OverviewResponse { readonly overview: DashboardOverview }
 export interface DashboardLaunchResponse { readonly launch: DashboardLaunchInfo }
 export interface DashboardUiSessionResponse { readonly session: DashboardUiSession }
 export interface PlatformSessionResolutionResponse { readonly resolution: PlatformSessionResolution }
+export interface ProjectionRunResponse { readonly run: ProjectionRun }
+export interface StatusEventListResponse { readonly page: Page<StatusEventV1> }
+export interface AdapterManifestResponse { readonly manifest: AdapterManifestV1 }
+
+export type CanonicalMigrationDisposition =
+  | "codex-mirror"
+  | "maintenance-native"
+  | "codex-mirror-with-derived-child"
+  | "review-required"
+  | "unclassified";
+
+export interface CanonicalMigrationSourceFile {
+  readonly path: string;
+  readonly digest: string;
+  readonly size: number;
+}
+
+export interface CanonicalMigrationClassification {
+  readonly logicalSessionId: string;
+  readonly disposition: CanonicalMigrationDisposition;
+  readonly reasonCode:
+    | "CODEX_ONLY"
+    | "DSH_ONLY"
+    | "MIRROR_EQUAL"
+    | "CODEX_AHEAD"
+    | "DSH_AHEAD_DERIVE"
+    | "DIVERGED_REQUIRES_REVIEW"
+    | "NO_NATIVE_MIRROR"
+    | "INCOMPLETE_MIRROR_STATE";
+  readonly proposedSessionIds: readonly string[];
+  readonly workspaceIds: readonly string[];
+}
+
+export interface CanonicalMigrationPreview {
+  readonly sourceSchemaVersion: number;
+  readonly sourceDigest: string;
+  readonly sourceFiles: readonly CanonicalMigrationSourceFile[];
+  readonly candidate: {
+    readonly path: string;
+    readonly exists: boolean;
+    readonly created: false;
+  };
+  readonly rollback: {
+    readonly sourcePreserved: true;
+    readonly activationRequired: true;
+    readonly strategy: "candidate-copy-and-pointer-swap";
+  };
+  readonly counts: {
+    readonly sourceLogicalSessions: number;
+    readonly codexMirror: number;
+    readonly maintenanceNative: number;
+    readonly codexDerived: number;
+    readonly reviewRequired: number;
+    readonly unclassified: number;
+  };
+  readonly classifications: readonly CanonicalMigrationClassification[];
+}
+
+export interface CanonicalMigrationPreviewResponse {
+  readonly preview: CanonicalMigrationPreview;
+}
+
+/** Stable, read-only model consumed by the standalone Maintenance dashboard. */
+export interface CanonicalDashboardSessionSummary {
+  readonly session: CanonicalSessionRecord;
+  readonly membership: WorkspaceMembership | null;
+}
+
+export interface CanonicalDashboardWorkspace {
+  readonly workspace: LogicalWorkspace;
+  readonly sessions: readonly CanonicalDashboardSessionSummary[];
+}
+
+export interface CanonicalWorkspaceDirectory {
+  readonly schemaVersion: 1;
+  readonly workspaces: readonly CanonicalDashboardWorkspace[];
+  readonly unclassified: readonly CanonicalDashboardSessionSummary[];
+}
+
+export interface CanonicalWorkspaceDirectoryResponse {
+  readonly directory: CanonicalWorkspaceDirectory;
+}
+
+export interface CanonicalDashboardProject {
+  readonly project: LogicalProject;
+  readonly roots: readonly ProjectRoot[];
+  readonly sessions: readonly CanonicalDashboardSessionSummary[];
+}
+
+/** Top-level session directory. Workspace remains independent session execution metadata. */
+export interface CanonicalProjectDirectory {
+  readonly schemaVersion: 1;
+  readonly projects: readonly CanonicalDashboardProject[];
+  readonly unclassified: readonly CanonicalDashboardSessionSummary[];
+}
+
+export interface CanonicalProjectDirectoryResponse {
+  readonly directory: CanonicalProjectDirectory;
+}
+
+export interface CanonicalLineageRelation {
+  readonly derivation: SessionDerivation;
+  readonly session: CanonicalSessionRecord;
+}
+
+export interface CanonicalDashboardSessionDetail {
+  readonly schemaVersion: 1;
+  readonly session: CanonicalSessionRecord;
+  readonly membership: WorkspaceMembership | null;
+  readonly workspace: LogicalWorkspace | null;
+  readonly projectMembership: ProjectMembership | null;
+  readonly project: LogicalProject | null;
+  readonly projectRoots: readonly ProjectRoot[];
+  readonly nativeReferences: NativeSessionReferenceIndexV1;
+  readonly events: readonly CanonicalEventV1[];
+  readonly parent: CanonicalLineageRelation | null;
+  readonly children: readonly CanonicalLineageRelation[];
+}
+
+export interface CanonicalDashboardSessionResponse {
+  readonly session: CanonicalDashboardSessionDetail;
+}
+
+export interface CanonicalSessionMaintenancePatch {
+  readonly title?: string;
+  readonly tags?: readonly string[];
+  readonly workspaceId?: string | null;
+  readonly displayOrder?: number;
+  readonly pinned?: boolean;
+  readonly archived?: boolean;
+}
+
+export interface CanonicalSessionMaintenanceResult {
+  readonly session: CanonicalDashboardSessionDetail;
+}
+
+export interface CanonicalSessionDeleteResult {
+  readonly logicalSessionId: string;
+  readonly state: "deleted" | "pending-delete";
+  readonly checkpointId: string | null;
+  readonly pendingOperations: number;
+}
+
+export interface CanonicalSessionRestoreResult {
+  readonly logicalSessionId: string;
+  readonly state: "restored";
+  readonly workspaceId: string | null;
+}
+
+export interface RecentlyDeletedSession {
+  readonly session: CanonicalSessionRecord;
+  readonly tombstone: import("./canonical.js").SessionTombstone | null;
+  readonly pendingOperations: number;
+}
+
+export interface RecentlyDeletedResponse {
+  readonly sessions: readonly RecentlyDeletedSession[];
+}
+
+export interface RunCenterItem {
+  readonly run: ProjectionRun;
+  readonly projectedSessions: number;
+  readonly hiddenSessions: number;
+  readonly pendingOperations: number;
+  readonly modes: Readonly<Partial<Record<ProjectionSessionMode, number>>>;
+  readonly latestStages: Readonly<Partial<Record<StatusStage, {
+    readonly state: StatusEventState;
+    readonly at: string;
+    readonly errorCode: string | null;
+    readonly diagnosticDetailRef: string | null;
+  }>>>;
+}
+
+export interface RunCenterResponse {
+  readonly runs: readonly RunCenterItem[];
+}
+
+export interface AdapterDashboardRecord {
+  readonly manifest: AdapterManifestV1;
+  readonly enabled: boolean;
+  readonly sourceKind: "npm" | "local" | "generation";
+  readonly sourceLabel: string;
+}
+
+export interface AdapterDashboardResponse {
+  readonly adapters: readonly AdapterDashboardRecord[];
+}
+
+export interface AdapterExperimentalSelectionResponse {
+  readonly selection: {
+    readonly adapterId: string;
+    readonly manifest: AdapterManifestV1;
+    readonly probe: AdapterProbeResult;
+    readonly reason: "pinned" | "verified" | "probe-compatible" | "experimental";
+    readonly verificationRunId: string;
+  };
+}

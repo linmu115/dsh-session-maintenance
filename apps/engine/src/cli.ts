@@ -16,6 +16,7 @@ import {
   probeAndAddInstance,
   type CompositionOptions,
 } from "./composition-root.js";
+import { reseedCanonicalCandidate } from "./canonical-reseed.js";
 import type { DshGatewayTarget } from "./dsh-gateway-connection.js";
 import {
   addCodexTarget,
@@ -25,16 +26,24 @@ import {
   registeredInstances,
 } from "./config.js";
 import { startMaintenanceServer } from "./http/server.js";
+import { MaintenanceExternalLifecycleProvider, runExternalLifecycleStdio } from "./external-lifecycle-provider.js";
 
 export interface CliOptions {
   readonly fixturePolicy?: (root: string) => void;
   readonly stdout?: (text: string) => void;
   readonly stderr?: (text: string) => void;
   readonly clock?: () => string;
+  readonly stdin?: () => Promise<string>;
 }
 
 function output(write: (text: string) => void, value: unknown): void {
   write(`${JSON.stringify(value)}\n`);
+}
+
+async function readStandardInput(): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function collect(value: string, previous: readonly string[]): readonly string[] {
@@ -110,7 +119,6 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
 
   const compositionOptions = (): CompositionOptions => ({
     stateRoot: resolve(program.opts<{ stateRoot: string }>().stateRoot),
-    enableCodexNativeWrites: options.fixturePolicy === undefined,
     ...(options.fixturePolicy === undefined ? {} : { fixturePolicy: options.fixturePolicy }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
@@ -236,6 +244,56 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     try { output(stdout, { status: await engine.status() }); } finally { engine.close(); }
   });
 
+  const canonical = program.command("canonical");
+  canonical.command("reseed-alpha2")
+    .requiredOption("--candidate-file <name>")
+    .requiredOption("--dsh-home <path>")
+    .option("--dsh-instance-id <id>", "stable source identity", "dsh-alpha2")
+    .requiredOption("--retain-dsh <id>", "DSH session to retain; repeatable", collect, [])
+    .option("--maintenance-project <name>", "project for retained DSH sessions", "DeepSeek")
+    .requiredOption("--maintenance-project-root <path>")
+    .option("--codex-instance <id>")
+    .option("--expected-codex <count>")
+    .option("--json")
+    .action(async (value: {
+      candidateFile: string;
+      dshHome: string;
+      dshInstanceId: string;
+      retainDsh: readonly string[];
+      maintenanceProject: string;
+      maintenanceProjectRoot: string;
+      codexInstance?: string;
+      expectedCodex?: string;
+    }) => {
+      const config = await loadConfig(compositionOptions().stateRoot);
+      const instances = registeredInstances(config);
+      const codex = value.codexInstance === undefined
+        ? instances.filter((item) => item.platform === "codex")
+        : instances.filter((item) => item.platform === "codex" && item.id === value.codexInstance);
+      if (codex.length !== 1) {
+        throw new TypeError(`Canonical reseed requires exactly one selected Codex instance; found ${codex.length}`);
+      }
+      const expectedCodexSessions = value.expectedCodex === undefined
+        ? undefined
+        : Number.parseInt(value.expectedCodex, 10);
+      if (expectedCodexSessions !== undefined && (!Number.isSafeInteger(expectedCodexSessions) || expectedCodexSessions < 0)) {
+        throw new TypeError(`Invalid expected Codex session count: ${value.expectedCodex}`);
+      }
+      const manifest = await reseedCanonicalCandidate({
+        stateRoot: compositionOptions().stateRoot,
+        candidateFile: value.candidateFile,
+        dshHome: resolve(value.dshHome),
+        dshInstanceId: value.dshInstanceId,
+        retainedDshSessionIds: value.retainDsh,
+        maintenanceProjectName: value.maintenanceProject,
+        maintenanceProjectRoot: resolve(value.maintenanceProjectRoot),
+        codexInstance: codex[0]!,
+        ...(expectedCodexSessions === undefined ? {} : { expectedCodexSessions }),
+        onStatus: (status) => output(stderr, status),
+      });
+      output(stdout, { manifest });
+    });
+
   const continuation = program.command("continuation");
   const addContinuationOptions = (command: Command): Command => command
     .requiredOption("--logical-session <id>")
@@ -312,6 +370,17 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     const engine = await createReadOnlyComposition(compositionOptions());
     try { output(stdout, { continuation: await engine.recoverContinuation(value.id) }); } finally { engine.close(); }
   });
+
+  program.command("external-lifecycle")
+    .description("Run one schema-v1 external lifecycle request from JSON stdin")
+    .action(async () => {
+      const input = options.stdin === undefined ? await readStandardInput() : await options.stdin();
+      const provider = new MaintenanceExternalLifecycleProvider(compositionOptions().stateRoot, {
+        ...(options.clock === undefined ? {} : { clock: options.clock }),
+      });
+      const response = await runExternalLifecycleStdio(input, provider);
+      output(stdout, response);
+    });
 
   program.command("serve")
     .option("--host <host>", "loopback host", "127.0.0.1")

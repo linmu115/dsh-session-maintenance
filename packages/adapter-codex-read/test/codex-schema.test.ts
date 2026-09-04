@@ -13,6 +13,11 @@ import {
 } from "@linmu/dsh-session-test-support";
 
 import { CodexReadAdapter } from "../src/index.js";
+import {
+  MAX_CODEX_LINE_BYTES,
+  MAX_CODEX_ROLLOUT_BYTES,
+  parseCodexJsonlChunks,
+} from "../src/parser.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -37,6 +42,24 @@ afterEach(async () => {
 });
 
 describe("Codex adapter schema boundaries", () => {
+  it("parses JSONL incrementally across arbitrary chunk boundaries", async () => {
+    const bytes = Buffer.from(
+      '{"type":"session_meta","payload":{"id":"thread-stream"}}\r\n' +
+      '{"type":"response_item","payload":{"type":"message","role":"user","content":[]}}\n',
+    );
+    async function* chunks(): AsyncIterable<Uint8Array> {
+      yield bytes.subarray(0, 17);
+      yield bytes.subarray(17, 73);
+      yield bytes.subarray(73);
+    }
+    const parsed = await parseCodexJsonlChunks(chunks());
+    expect(parsed.envelopes.map((item) => item.type)).toEqual(["session_meta", "response_item"]);
+    expect(parsed.bytesRead).toBe(bytes.byteLength);
+    expect(parsed.digest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(MAX_CODEX_ROLLOUT_BYTES).toBeGreaterThan(233_361_735);
+    expect(MAX_CODEX_LINE_BYTES).toBeGreaterThan(9_805_006);
+  });
+
   it("reports unknown platform versions and schema fingerprints as unsupported", async () => {
     const sandbox = await createFixtureSandbox("codex-schema");
     cleanups.push(sandbox.cleanup);

@@ -6,6 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  MIGRATION_001,
+  MIGRATION_002,
   SqliteSessionRepository,
   ZstdContentObjectStore,
   openMaintenanceDatabase,
@@ -27,25 +29,29 @@ describe("SqliteSessionRepository", () => {
   it("upgrades a schema-2 database through the latest schema exactly once", async () => {
     const root = await temporaryRoot();
     const dbPath = join(root, "metadata.sqlite");
-    openMaintenanceDatabase(dbPath).close();
     const schemaTwo = new DatabaseSync(dbPath);
     schemaTwo.exec(`
-      DROP TABLE continuation_jobs;
-      DROP TABLE checkpoint_transactions;
-      DROP TABLE confirmation_nonces;
-      DROP TABLE backup_manifests;
-      DROP TABLE transaction_steps;
-      DROP TABLE transactions;
-      DROP TABLE native_mirrors;
-      DROP TABLE binding_workspaces;
-      DELETE FROM schema_migrations WHERE version IN (3, 4, 5, 6);
+      PRAGMA foreign_keys = ON;
+      CREATE TABLE schema_migrations (
+        version INTEGER PRIMARY KEY,
+        applied_at TEXT NOT NULL
+      ) STRICT;
+      ${MIGRATION_001}
+      ${MIGRATION_002}
     `);
+    schemaTwo
+      .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?), (?, ?)")
+      .run(1, "2026-08-26T00:00:00.000Z", 2, "2026-08-26T00:00:00.000Z");
     schemaTwo.close();
 
     let upgraded = openMaintenanceDatabase(dbPath);
     expect(
       upgraded.prepare("SELECT version FROM schema_migrations ORDER BY version").all(),
-    ).toEqual([{ version: 1 }, { version: 2 }, { version: 3 }, { version: 4 }, { version: 5 }, { version: 6 }]);
+    ).toEqual([
+      { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 },
+      { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 },
+      { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 },
+    ]);
     expect(
       upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transactions'").get(),
     ).toEqual({ name: "transactions" });
@@ -61,10 +67,10 @@ describe("SqliteSessionRepository", () => {
     upgraded.close();
     upgraded = openMaintenanceDatabase(dbPath);
     expect(
-      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 6").get(),
+      upgraded.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 8").get(),
     ).toEqual({ count: 1 });
     upgraded.close();
-  });
+  }, 15_000);
 
   it("persists immutable versions and observed refs across reopen", async () => {
     const root = await temporaryRoot();
@@ -170,7 +176,7 @@ describe("SqliteSessionRepository", () => {
     const database = openMaintenanceDatabase(dbPath);
     database
       .prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)")
-      .run(7, "2026-08-26T00:00:00.000Z");
+      .run(17, "2026-08-26T00:00:00.000Z");
     database.close();
     expect(() => openMaintenanceDatabase(dbPath)).toThrow(/newer schema/iu);
 

@@ -52,7 +52,7 @@ const staging = join(out, ".staging");
 const plugin = join(staging, "plugin");
 const engine = join(staging, "engine", "dsh-session-maintenance");
 await mkdir(join(plugin, "lib", "client"), { recursive: true });
-await mkdir(join(engine, "engine"), { recursive: true });
+await mkdir(join(engine, "engine", "adapters"), { recursive: true });
 
 const pluginHost = await build({
   absWorkingDir: root,
@@ -94,13 +94,14 @@ const pluginClient = await build({
 await copyFile(join(root, "packages", "dsh-core-extension", "dist", "rc2-host.js"), join(plugin, "lib", "rc2-host.js"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "cordis.patch.yml"), join(plugin, "cordis.patch.yml"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "README.md"), join(plugin, "README.md"));
+await copyFile(join(root, "plugins", "dsh-session-maintenance", "CHANGELOG.md"), join(plugin, "CHANGELOG.md"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "LICENSE"), join(plugin, "LICENSE"));
 await cp(join(root, "plugins", "dsh-session-maintenance", "dsh-management"), join(plugin, "dsh-management"), { recursive: true });
 await writeFile(join(plugin, "lib", "index.d.ts"), "export declare const name = \"dsh-session-maintenance\";\nexport declare function apply(ctx: unknown, config: unknown): void;\n");
 await writeFile(join(plugin, "lib", "client", "index.d.ts"), "export declare function apply(ctx: unknown): void;\n");
 const packagedPluginManifest = {
   ...sourcePluginManifest,
-  files: ["lib", "dsh-management", "cordis.patch.yml", "README.md", "LICENSE"],
+  files: ["lib", "dsh-management", "cordis.patch.yml", "CHANGELOG.md", "README.md", "LICENSE"],
   dependencies: {},
 };
 delete packagedPluginManifest.devDependencies;
@@ -120,6 +121,42 @@ const engineBundle = await build({
   banner: {
     js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);',
   },
+  metafile: true,
+});
+const alpha2WorkerBundle = await build({
+  absWorkingDir: root,
+  entryPoints: ["packages/adapter-dsh-alpha2/src/rpc-worker.ts"],
+  outfile: join(engine, "engine", "adapters", "dsh-alpha2-rpc-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  conditions: ["development"],
+  legalComments: "none",
+  metafile: true,
+});
+const rc1WorkerBundle = await build({
+  absWorkingDir: root,
+  entryPoints: ["packages/adapter-dsh-rc1/src/rpc-worker.ts"],
+  outfile: join(engine, "engine", "adapters", "dsh-rc1-rpc-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  conditions: ["development"],
+  legalComments: "none",
+  metafile: true,
+});
+const rc2WorkerBundle = await build({
+  absWorkingDir: root,
+  entryPoints: ["packages/adapter-dsh-rc2/src/rpc-worker.ts"],
+  outfile: join(engine, "engine", "adapters", "dsh-rc2-rpc-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  conditions: ["development"],
+  legalComments: "none",
   metafile: true,
 });
 await cp(join(root, "apps", "dashboard", "dist"), join(engine, "dashboard"), { recursive: true });
@@ -154,13 +191,18 @@ const manifest = {
   version,
   sourceCommit,
   sourceDirty,
-  supportedContracts: { dsh: "0.1.1-rc.2", cordis: "4.0.1", codexRead: "0.146.0" },
+  supportedContracts: { dsh: "0.1.1-rc.2", dshRc1: "0.1.2-rc.1", cordis: "4.0.2", codexRead: "0.146.0" },
   artifacts: [
     { name: engineName, sha256: sha256(engineBytes), bytes: engineBytes.byteLength, kind: "engine-dashboard" },
     { name: pluginName, sha256: sha256(pluginBytes), bytes: pluginBytes.byteLength, kind: "dsh-plugin" },
   ],
   dependencyInputs: {
     engine: portableInputs(engineBundle.metafile),
+    adapterWorkers: {
+      alpha2: portableInputs(alpha2WorkerBundle.metafile),
+      rc1: portableInputs(rc1WorkerBundle.metafile),
+      rc2: portableInputs(rc2WorkerBundle.metafile),
+    },
     pluginHost: portableInputs(pluginHost.metafile),
     pluginClient: portableInputs(pluginClient.metafile),
   },

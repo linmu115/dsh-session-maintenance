@@ -6,9 +6,6 @@ import {
   type EngineStatus,
   type InstanceStatus,
   type NormalizedEvent,
-  type NativeMirrorActionPreview,
-  type NativeMirrorActionRequest,
-  type NativeMirrorRecord,
   type NormalizedSession,
   type Page,
   type PlanRequest,
@@ -55,18 +52,68 @@ import {
   type PlanSummary,
   type PlatformSessionKey,
   type PlatformSessionResolution,
+  type CanonicalMigrationPreview,
+  type StatusEventQuery,
+  type StatusEventV1,
+  type AdapterId,
+  type DshRuntimeBridgeV1,
+  type NativeAppendOperation,
+  type NativeSessionId,
+  type ProjectionOperationReceipt,
+  type RuntimeBrokerAttachRunRequest,
+  type RuntimeBrokerAttachedRun,
+  type RuntimeBrokerClosedRun,
+  type RuntimeBrokerCloseRunRequest,
+  type RuntimeBrokerFlushRequest,
+  type RuntimeBrokerFlushResponse,
+  type RuntimeBrokerPrepareRunRequest,
+  type RuntimeBrokerPreparedRun,
+  type RuntimeBrokerDrainRunRequest,
+  type RuntimeBrokerDrainedRun,
+  type RuntimeBrokerRegisterSessionRequest,
+  type RuntimeBrokerRegisteredSession,
 } from "@linmu/dsh-session-contracts";
+import type { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import type { ContinuationService } from "@linmu/dsh-session-continuation-engine";
-import type { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
+import type { StatusLog } from "@linmu/dsh-session-status-log";
+import type { AdapterRegistry } from "@linmu/dsh-session-adapter-host";
+import {
+  openProjectionRuntimeSessionStream,
+  openProjectionRuntimeStream,
+  readProjectionRuntimeSnapshot,
+  type CanonicalProjectionSource,
+  type ProjectionLifecycle,
+  type ProjectionRuntimeNdjsonStream,
+  type ProjectionRuntimeSnapshot,
+} from "@linmu/dsh-session-projection-lifecycle";
+import type { ProjectionRunRepository, RunId } from "@linmu/dsh-session-contracts";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
-import type { SqliteSessionRepository } from "@linmu/dsh-session-store";
+import {
+  activateCanonicalMigration,
+  previewCanonicalMigration,
+  SqliteSessionAliasRepository,
+  type CanonicalMigrationActivation,
+  type SqliteSessionRepository,
+} from "@linmu/dsh-session-store";
+import type { StableLogicalReference, StableLogicalReferenceResolution } from "@linmu/dsh-session-contracts";
 
 import type { WriteService } from "./write-service.js";
+import { ProjectionRuntimeBroker } from "./runtime-broker.js";
+import { SqliteRuntimeProjectResolver } from "./runtime-project-resolver.js";
 
 export interface EngineSettingsPort {
   get(): Promise<MaintenanceSettings>;
   patch(input: MaintenanceSettingsPatch): Promise<MaintenanceSettings>;
 }
+
+export interface EngineMigrationPort {
+  activateDatabaseFile(databaseFile: string): Promise<void>;
+}
+
+export type ProjectionLifecycleFactory = (input: {
+  readonly adapterId: AdapterId;
+  readonly bridge: DshRuntimeBridgeV1;
+}) => ProjectionLifecycle;
 
 const DEFAULT_SETTINGS: MaintenanceSettings = {
   codexInstanceId: null,
@@ -137,13 +184,26 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly adapters: readonly SessionReadAdapter[];
   readonly repository: SqliteSessionRepository;
   readonly objectStore: ContentObjectStore;
+  readonly statusLog: StatusLog;
+  readonly adapterRegistry: AdapterRegistry;
+  readonly projectionRunRepository: ProjectionRunRepository;
+  readonly canonicalProjectionSource: CanonicalProjectionSource;
+  readonly sessionAliases: SqliteSessionAliasRepository;
+  readonly projectionRuntimeRoot: string;
+  readonly canonicalEngine: CanonicalSessionEngine;
+  readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
+  readonly runtimeBroker: ProjectionRuntimeBroker;
+  private readonly beforeProjectionPrepare: () => Promise<void>;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
   private readonly clock: () => string;
   private readonly continuations: ContinuationService;
   private readonly writeService: WriteService | undefined;
-  private readonly mirrors: NativeMirrorService;
   private readonly settingsPort: EngineSettingsPort;
+  private readonly migrationPort: EngineMigrationPort;
+  private readonly migrationSourcePath: string;
+  private readonly migrationCandidatePath: string;
+  private readonly migrationArchivePath: string;
 
   constructor(input: {
     readonly instances: readonly RegisteredInstance[];
@@ -153,8 +213,20 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly continuations: ContinuationService;
     readonly clock?: () => string;
     readonly writeService?: WriteService;
-    readonly mirrors: NativeMirrorService;
     readonly settingsPort?: EngineSettingsPort;
+    readonly migrationPort: EngineMigrationPort;
+    readonly migrationSourcePath: string;
+    readonly migrationCandidatePath: string;
+    readonly migrationArchivePath: string;
+    readonly statusLog: StatusLog;
+    readonly adapterRegistry: AdapterRegistry;
+    readonly projectionRunRepository: ProjectionRunRepository;
+    readonly canonicalProjectionSource: CanonicalProjectionSource;
+    readonly sessionAliases?: SqliteSessionAliasRepository;
+    readonly projectionRuntimeRoot: string;
+    readonly canonicalEngine: CanonicalSessionEngine;
+    readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
+    readonly beforeProjectionPrepare?: () => Promise<void>;
   }) {
     this.instances = input.instances;
     this.adapters = input.adapters;
@@ -164,11 +236,157 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.clock = input.clock ?? (() => new Date().toISOString());
     this.discovery = new DiscoveryService(input);
     this.writeService = input.writeService;
-    this.mirrors = input.mirrors;
     this.settingsPort = input.settingsPort ?? {
       get: async () => DEFAULT_SETTINGS,
       patch: async (patch) => ({ ...DEFAULT_SETTINGS, ...patch }),
     };
+    this.migrationSourcePath = input.migrationSourcePath;
+    this.migrationCandidatePath = input.migrationCandidatePath;
+    this.migrationArchivePath = input.migrationArchivePath;
+    this.migrationPort = input.migrationPort;
+    this.statusLog = input.statusLog;
+    this.adapterRegistry = input.adapterRegistry;
+    this.projectionRunRepository = input.projectionRunRepository;
+    this.canonicalProjectionSource = input.canonicalProjectionSource;
+    this.sessionAliases = input.sessionAliases
+      ?? new SqliteSessionAliasRepository(input.repository.database);
+    this.projectionRuntimeRoot = input.projectionRuntimeRoot;
+    this.canonicalEngine = input.canonicalEngine;
+    this.projectionLifecycleFactory = input.projectionLifecycleFactory;
+    this.beforeProjectionPrepare = input.beforeProjectionPrepare ?? (async () => undefined);
+    this.runtimeBroker = new ProjectionRuntimeBroker({
+      lifecycleFactory: input.projectionLifecycleFactory,
+      statusLog: this.statusLog,
+      projectResolver: new SqliteRuntimeProjectResolver(input.repository.database),
+      selectAdapter: async (request) => (await this.adapterRegistry.select({
+        environment: {
+          dshVersion: request.dshVersion,
+          packageVersions: request.environment.packageVersions,
+          runtimeCapabilities: request.environment.runtimeCapabilities,
+        },
+        ...(request.pinnedAdapterId === null ? {} : { pinnedAdapterId: request.pinnedAdapterId }),
+      })).adapterId,
+    });
+  }
+
+  async prepareProjectionRuntimeRun(input: RuntimeBrokerPrepareRunRequest): Promise<RuntimeBrokerPreparedRun> {
+    await this.beforeProjectionPrepare();
+    return this.runtimeBroker.prepareRun(input);
+  }
+
+  attachProjectionRuntimeRun(input: RuntimeBrokerAttachRunRequest): Promise<RuntimeBrokerAttachedRun> {
+    return this.runtimeBroker.attachRun(input);
+  }
+
+  appendProjectionRuntimeEvent(clientId: string, operation: NativeAppendOperation): Promise<ProjectionOperationReceipt> {
+    return this.runtimeBroker.append(clientId, operation);
+  }
+
+  registerProjectionRuntimeSession(input: RuntimeBrokerRegisterSessionRequest): Promise<RuntimeBrokerRegisteredSession> {
+    return this.runtimeBroker.registerSession(input);
+  }
+
+  flushProjectionRuntimeSession(input: RuntimeBrokerFlushRequest): Promise<RuntimeBrokerFlushResponse> {
+    return this.runtimeBroker.flush(input);
+  }
+
+  drainProjectionRuntimeRun(input: RuntimeBrokerDrainRunRequest): Promise<RuntimeBrokerDrainedRun> {
+    return this.runtimeBroker.drainRun(input);
+  }
+
+  closeProjectionRuntimeRun(input: RuntimeBrokerCloseRunRequest): Promise<RuntimeBrokerClosedRun> {
+    return this.runtimeBroker.closeRun(input);
+  }
+
+  async getProjectionRuntimeSnapshot(runId: RunId): Promise<ProjectionRuntimeSnapshot | undefined> {
+    if (!await this.projectionRunIsReadable(runId)) return undefined;
+    return readProjectionRuntimeSnapshot(this.projectionRuntimeRoot, runId);
+  }
+
+  async getProjectionRuntimeStream(runId: RunId, hotLimit: number): Promise<ProjectionRuntimeNdjsonStream | undefined> {
+    if (!await this.projectionRunIsReadable(runId)) return undefined;
+    return openProjectionRuntimeStream(this.projectionRuntimeRoot, runId, hotLimit);
+  }
+
+  async getProjectionRuntimeSessionStream(
+    runId: RunId,
+    nativeSessionId: NativeSessionId,
+  ): Promise<ProjectionRuntimeNdjsonStream | undefined> {
+    if (!await this.projectionRunIsReadable(runId)) return undefined;
+    return openProjectionRuntimeSessionStream(this.projectionRuntimeRoot, runId, nativeSessionId);
+  }
+
+  private async projectionRunIsReadable(runId: RunId): Promise<boolean> {
+    const run = await this.projectionRunRepository.getProjectionRun(runId);
+    return run !== undefined && ["preparing", "running", "draining", "verifying"].includes(run.state);
+  }
+
+  async resolveStableReference(input: StableLogicalReference): Promise<StableLogicalReferenceResolution> {
+    const resolution = await this.sessionAliases.resolveStableReference(input);
+    if (resolution.runId === null) return resolution;
+    const run = await this.projectionRunRepository.getProjectionRun(resolution.runId);
+    if (run === undefined) return resolution;
+    const indexSpan = await this.statusLog.start({
+      runId: run.id,
+      leaseId: run.leaseId,
+      profileId: run.profileId,
+      adapterId: run.adapterId,
+      dshVersion: run.dshVersion,
+      stage: "reference.index",
+      logicalSessionId: resolution.logicalSessionId,
+      nativeSessionId: resolution.nativeSessionId,
+      operationId: null,
+      diagnosticDetailRef: `diag:reference-index-${input.referenceType}-${resolution.status}`,
+    });
+    await this.statusLog.succeed(indexSpan, {
+      diagnosticDetailRef: `diag:reference-index-${input.referenceType}-${resolution.status}`,
+    });
+    const span = await this.statusLog.start({
+      runId: run.id,
+      leaseId: run.leaseId,
+      profileId: run.profileId,
+      adapterId: run.adapterId,
+      dshVersion: run.dshVersion,
+      stage: "reference.roundtrip.verify",
+      logicalSessionId: resolution.logicalSessionId,
+      nativeSessionId: resolution.nativeSessionId,
+      operationId: null,
+      diagnosticDetailRef: `diag:reference-${input.referenceType}-${resolution.status}`,
+    });
+    await this.statusLog.succeed(span, {
+      diagnosticDetailRef: `diag:reference-${input.referenceType}-${resolution.status}`,
+    });
+    return resolution;
+  }
+
+  previewCanonicalMigration(): Promise<CanonicalMigrationPreview> {
+    return previewCanonicalMigration({
+      database: this.repository.database,
+      sourceDatabasePath: this.migrationSourcePath,
+      candidateDatabasePath: this.migrationCandidatePath,
+    });
+  }
+
+  async activateCanonicalMigration(expectedSourceDigest: string): Promise<CanonicalMigrationActivation & {
+    readonly activeDatabaseFile: string;
+    readonly restartRequired: true;
+  }> {
+    const activation = await activateCanonicalMigration({
+      database: this.repository.database,
+      sourceDatabasePath: this.migrationSourcePath,
+      candidateDatabasePath: this.migrationCandidatePath,
+      archiveDatabasePath: this.migrationArchivePath,
+      expectedSourceDigest,
+    });
+    const activeDatabaseFile = this.migrationCandidatePath.slice(
+      Math.max(this.migrationCandidatePath.lastIndexOf("/"), this.migrationCandidatePath.lastIndexOf("\\")) + 1,
+    );
+    await this.migrationPort.activateDatabaseFile(activeDatabaseFile);
+    return { ...activation, activeDatabaseFile, restartRequired: true };
+  }
+
+  listStatusEvents(query: StatusEventQuery): Promise<Page<StatusEventV1>> {
+    return this.statusLog.list(query);
   }
 
   async listInstances(): Promise<readonly InstanceStatus[]> {
@@ -270,15 +488,6 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   getSettings(): Promise<MaintenanceSettings> { return this.settingsPort.get(); }
   patchSettings(input: MaintenanceSettingsPatch): Promise<MaintenanceSettings> { return this.settingsPort.patch(input); }
 
-  listNativeMirrors(): Promise<readonly NativeMirrorRecord[]> { return this.mirrors.list(); }
-  getNativeMirror(logicalSessionId: string): Promise<NativeMirrorRecord | undefined> { return this.mirrors.get(logicalSessionId); }
-  previewNativeMirrorAction(logicalSessionId: string, request: NativeMirrorActionRequest): Promise<NativeMirrorActionPreview> {
-    return this.mirrors.preview(logicalSessionId, request);
-  }
-  applyNativeMirrorAction(logicalSessionId: string, request: NativeMirrorActionRequest): Promise<NativeMirrorRecord> {
-    return this.mirrors.apply(logicalSessionId, request);
-  }
-
   async resolvePlatformSession(key: PlatformSessionKey): Promise<PlatformSessionResolution | undefined> {
     const binding = await this.repository.findBinding(key);
     if (binding === undefined) return undefined;
@@ -358,7 +567,6 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     const targetSnapshot = { bindingId: pair.target.id, key: pair.target.key, versionId: pair.targetHead.versionId, fingerprints: [pair.targetHead.fingerprint] };
     const adapterContracts = [pair.source.adapterContract, pair.target.adapterContract];
     if (this.writeService !== undefined && this.writeService.executor.adapters.get(pair.target.key.platform) !== undefined) {
-      if (pair.target.key.platform === "codex") await this.mirrors.requireWritable(request.logicalSessionId);
       const instance = this.instances.find((item) => item.id === pair.target.key.instanceId);
       if (instance === undefined) throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", "Plan target instance is unavailable");
       adapterContracts.push((await this.writeService.probe(instance)).contract);
@@ -383,15 +591,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   }
 
   async applyPlan(request: ApplyPlanRequest): Promise<TransactionRef> {
-    const result = await this.writer().applyPlan(request);
-    if (result.status === "completed") {
-      const plan = await this.repository.getPlan(request.planId);
-      const targetPlatform = plan?.target?.key.platform ?? (plan?.source.key.platform === "dsh" ? "codex" : "dsh");
-      if (plan !== undefined && targetPlatform === "codex") {
-        await this.mirrors.recordCompletedTransaction(plan.logicalSessionId, result.id);
-      }
-    }
-    return result;
+    return this.writer().applyPlan(request);
   }
 
   getTransaction(id: string): Promise<TransactionRecord | undefined> {

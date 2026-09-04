@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -37,6 +37,14 @@ if (engine !== undefined) {
   const engineBundle = engine.get("dsh-session-maintenance/engine/dsh-session-maint.mjs")?.toString("utf8");
   if (engineBundle === undefined) failures.push("Engine bundle is missing");
   else {
+    const workerEntries = [
+      "dsh-session-maintenance/engine/adapters/dsh-alpha2-rpc-worker.mjs",
+      "dsh-session-maintenance/engine/adapters/dsh-rc1-rpc-worker.mjs",
+      "dsh-session-maintenance/engine/adapters/dsh-rc2-rpc-worker.mjs",
+    ];
+    for (const entry of workerEntries) {
+      if (engine.get(entry) === undefined) failures.push(`Packaged Adapter worker is missing: ${entry}`);
+    }
     const hashbang = "#!/usr/bin/env node\n";
     if (!engineBundle.startsWith(hashbang) || engineBundle.slice(hashbang.length).startsWith("#!")) {
       failures.push("Engine bundle must contain exactly one leading Node hashbang");
@@ -45,6 +53,23 @@ if (engine !== undefined) {
       const smokeEntry = join(smokeRoot, "dsh-session-maint.mjs");
       try {
         await writeFile(smokeEntry, engineBundle);
+        await mkdir(join(smokeRoot, "adapters"), { recursive: true });
+        for (const entry of workerEntries) {
+          const bytes = engine.get(entry);
+          if (bytes === undefined) continue;
+          const workerPath = join(smokeRoot, "adapters", entry.split("/").at(-1));
+          await writeFile(workerPath, bytes);
+          const worker = spawnSync(process.execPath, [workerPath], {
+            input: `${JSON.stringify({ id: 1, method: "probe", payload: {} })}\n`,
+            encoding: "utf8",
+            shell: false,
+            windowsHide: true,
+            timeout: 15_000,
+          });
+          if (worker.error !== undefined || worker.status !== 0 || !worker.stdout.includes('"id":1')) {
+            failures.push(`Packaged Adapter worker is not executable: ${entry}`);
+          }
+        }
         const result = spawnSync(process.execPath, [smokeEntry, "--help"], {
           encoding: "utf8",
           shell: false,

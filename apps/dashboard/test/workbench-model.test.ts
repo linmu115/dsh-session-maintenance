@@ -10,24 +10,19 @@ describe("session workbench model", () => {
   it("loads graph metadata but keeps version bodies and diffs lazy", async () => {
     const calls: string[] = [];
     const api = {
-      getSession: async () => {
-        calls.push("session");
+      getCanonicalSession: async () => {
+        calls.push("canonical-session");
         return {
-          summary: { logicalSessionId: "logical-1", title: "fixture", archived: false, platforms: ["codex"], status: "unmapped", updatedAt: at },
-          bindings: [], heads: [],
+          schemaVersion: 1,
+          session: { schemaVersion: 1, id: "logical-1", authorityScope: "codex", originKind: "codex-mirror", headVersionId: null, title: "fixture", tags: [], archivedAt: null, tombstonedAt: null, createdAt: at, updatedAt: at },
+          membership: null, workspace: null, projectMembership: null, project: null, projectRoots: [],
+          nativeReferences: { schemaVersion: 1, logicalSessionId: "logical-1", references: [] },
+          events: [], parent: null, children: [],
         };
       },
-      getGraph: async () => {
-        calls.push("graph");
-        return { nodes: [], refs: [] };
-      },
-      listCheckpoints: async () => { calls.push("checkpoints"); return []; },
-      getNativeMirror: async () => { calls.push("mirror"); return undefined; },
-      getVersion: async () => { calls.push("version"); throw new Error("not expected"); },
-      getDiff: async () => { calls.push("diff"); throw new Error("not expected"); },
     } as unknown as WorkbenchApi;
     await loadWorkbenchInitial(api, "logical-1");
-    expect(calls.sort()).toEqual(["checkpoints", "graph", "mirror", "session"]);
+    expect(calls).toEqual(["canonical-session"]);
   });
 
   it("enables only confirmation-free safe plans", () => {

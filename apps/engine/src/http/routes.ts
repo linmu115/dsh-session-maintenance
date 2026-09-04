@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { once } from "node:events";
 import { z, ZodError } from "zod";
 
 import {
@@ -10,13 +11,13 @@ import {
   checkpointRestoreBodySchema,
   createCheckpointRequestSchema,
   maintenanceSettingsPatchSchema,
-  nativeMirrorActionRequestSchema,
   planQuerySchema,
   planRequestSchema,
   restoreOperationRequestSchema,
   platformSessionResolutionRequestSchema,
   scanRequestSchema,
   sessionQuerySchema,
+  statusEventQuerySchema,
   transactionQuerySchema,
   type DiffRequest,
   type ContinuationPreviewRequest,
@@ -28,18 +29,34 @@ import {
   type CheckpointRestoreRequest,
   type CreateCheckpointRequest,
   type MaintenanceSettingsPatch,
-  type NativeMirrorActionRequest,
   type TransactionQuery,
   type PlanQuery,
+  type StatusEventQuery,
+  type CanonicalSessionMaintenancePatch,
 } from "@linmu/dsh-session-contracts";
+import { ProjectionRuntimeStreamError } from "@linmu/dsh-session-projection-lifecycle";
 
 import type { SessionMaintenanceEngine } from "../engine.js";
 import type { JobRunner } from "../jobs/job-runner.js";
 import type { JobStore } from "../jobs/job-store.js";
 import { allowedOrigin, authorized } from "./auth.js";
 import { HttpBodyError, readJsonBody } from "./body.js";
-import { streamJobEvents } from "./sse.js";
+import { streamJobEvents, streamStatusEvents } from "./sse.js";
 import { hasUiSessionCookie, type UiSessionManager } from "./ui-session.js";
+import {
+  DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH,
+  DASHBOARD_CANONICAL_WORKSPACES_PATH,
+  DASHBOARD_CANONICAL_PROJECTS_PATH,
+  readCanonicalDashboardSession,
+  readCanonicalWorkspaceDirectory,
+  readCanonicalProjectDirectory,
+  updateCanonicalDashboardSession,
+  deleteCanonicalDashboardSession,
+  restoreCanonicalDashboardSession,
+  deleteLogicalWorkspace,
+  readRecentlyDeleted,
+  readRunCenter,
+} from "./dashboard.js";
 
 export interface RouteContext {
   readonly engine: SessionMaintenanceEngine;
@@ -56,11 +73,99 @@ function send(response: ServerResponse, status: number, value: unknown): void {
   response.end(`${JSON.stringify(value)}\n`);
 }
 
+async function sendNdjson(response: ServerResponse, frames: AsyncIterable<string>): Promise<void> {
+  response.statusCode = 200;
+  response.setHeader("content-type", "application/x-ndjson; charset=utf-8");
+  for await (const frame of frames) {
+    if (!response.write(frame)) await once(response, "drain");
+  }
+  response.end();
+}
+
 function errorBody(code: string, message: string): JsonValue {
   return { error: { code, message } };
 }
 
 const emptyRequestSchema = z.strictObject({});
+const runtimeBrokerIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9@/._:-]{0,255}$/u);
+const runtimeBrokerPrepareSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  client: z.strictObject({ kind: z.enum(["launcher", "plugin", "cli"]), id: runtimeBrokerIdSchema }),
+  runtimeClientId: runtimeBrokerIdSchema,
+  instanceId: runtimeBrokerIdSchema,
+  profileId: runtimeBrokerIdSchema,
+  dshVersion: z.string().min(1).max(100),
+  maintenanceEndpoint: z.string().url(),
+  branchId: runtimeBrokerIdSchema,
+  environment: z.strictObject({
+    packageVersions: z.record(z.string(), z.string()),
+    runtimeCapabilities: z.array(z.string().min(1).max(200)).max(200),
+  }),
+  pinnedAdapterId: runtimeBrokerIdSchema.nullable(),
+  projectSelection: z.discriminatedUnion("kind", [
+    z.strictObject({ kind: z.literal("all") }),
+    z.strictObject({ kind: z.literal("ids"), projectIds: z.array(runtimeBrokerIdSchema).min(1) }),
+  ]),
+});
+const runtimeBrokerAttachSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, temporaryPersistenceRootId: runtimeBrokerIdSchema,
+  attachedAt: z.iso.datetime(),
+});
+const runtimeBrokerAppendSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  clientId: runtimeBrokerIdSchema,
+  operation: z.strictObject({
+    runId: runtimeBrokerIdSchema,
+    operationId: runtimeBrokerIdSchema,
+    nativeSessionId: runtimeBrokerIdSchema,
+    nativeRevision: z.number().int().nonnegative(),
+    payload: z.unknown(),
+    observedAt: z.iso.datetime(),
+  }),
+});
+const runtimeBrokerRegisterSessionSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, nativeSessionId: runtimeBrokerIdSchema,
+  header: z.unknown(), title: z.string().max(500), adapterMetadata: z.unknown().optional(),
+});
+const runtimeBrokerFlushSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, nativeSessionId: runtimeBrokerIdSchema,
+});
+const runtimeBrokerCloseSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, reason: z.enum(["normal", "recovery"]),
+});
+const runtimeBrokerDrainSchema = z.strictObject({
+  schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
+  runId: runtimeBrokerIdSchema, runtimeFlushCompletedAt: z.iso.datetime(),
+});
+const projectionHotLimitSchema = z.coerce.number().int().min(0).max(1_000);
+const stableReferenceRequestSchema = z.strictObject({
+  referenceType: z.enum(["annotation", "sticker", "obsidian-reference"]),
+  logicalSessionId: z.string().min(1).nullable(),
+  logicalAnchorId: z.string().min(1).nullable(),
+  legacyNativeSessionId: z.string().min(1).nullable(),
+  legacyNativeAnchorId: z.string().min(1).nullable(),
+}).refine((value) => value.logicalSessionId !== null || value.legacyNativeSessionId !== null, {
+  message: "A logical or legacy session ID is required",
+});
+const canonicalSessionPatchSchema = z.strictObject({
+  title: z.string().max(500).optional(),
+  tags: z.array(z.string().max(200)).max(100).optional(),
+  workspaceId: z.string().min(1).nullable().optional(),
+  displayOrder: z.number().int().nonnegative().optional(),
+  pinned: z.boolean().optional(),
+  archived: z.boolean().optional(),
+});
+const adapterSelectionRequestSchema = z.strictObject({
+  instanceId: z.string().min(1),
+  adapterId: z.string().min(1),
+});
+const canonicalMigrationActivationSchema = z.strictObject({
+  sourceDigest: z.string().min(1),
+});
 
 function pathId(value: string): string {
   const decoded = decodeURIComponent(value);
@@ -152,6 +257,88 @@ export async function routeRequest(
       send(response, 200, { instances: await context.engine.listInstances() });
       return;
     }
+    if (request.method === "GET" && url.pathname === "/v1/adapters/registry") {
+      send(response, 200, { adapters: context.engine.adapterRegistry.list() });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/references/resolve") {
+      const input = stableReferenceRequestSchema.parse(await readJsonBody(request));
+      send(response, 200, { resolution: await context.engine.resolveStableReference(input as never) });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/runtime-broker/runs/prepare") {
+      const body = runtimeBrokerPrepareSchema.parse(await readJsonBody(request));
+      send(response, 201, { run: await context.engine.prepareProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const runtimeBrokerAttach = /^\/v1\/runtime-broker\/runs\/([^/]+)\/attach$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerAttach !== null) {
+      const body = runtimeBrokerAttachSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerAttach[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, { run: await context.engine.attachProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const runtimeBrokerAppend = /^\/v1\/runtime-broker\/runs\/([^/]+)\/append$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerAppend !== null) {
+      const body = runtimeBrokerAppendSchema.parse(await readJsonBody(request, 4 * 1024 * 1024));
+      if (decodeURIComponent(runtimeBrokerAppend[1]!) !== body.operation.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, { schemaVersion: 1, receipt: await context.engine.appendProjectionRuntimeEvent(body.clientId, body.operation as never) });
+      return;
+    }
+    const runtimeBrokerRegisterSession = /^\/v1\/runtime-broker\/runs\/([^/]+)\/sessions$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerRegisterSession !== null) {
+      const body = runtimeBrokerRegisterSessionSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerRegisterSession[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 201, { session: await context.engine.registerProjectionRuntimeSession(body as never) });
+      return;
+    }
+    const runtimeBrokerFlush = /^\/v1\/runtime-broker\/runs\/([^/]+)\/flush$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerFlush !== null) {
+      const body = runtimeBrokerFlushSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerFlush[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, await context.engine.flushProjectionRuntimeSession(body as never));
+      return;
+    }
+    const runtimeBrokerClose = /^\/v1\/runtime-broker\/runs\/([^/]+)\/close$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerClose !== null) {
+      const body = runtimeBrokerCloseSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerClose[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, { run: await context.engine.closeProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const runtimeBrokerDrain = /^\/v1\/runtime-broker\/runs\/([^/]+)\/drain$/u.exec(url.pathname);
+    if (request.method === "POST" && runtimeBrokerDrain !== null) {
+      const body = runtimeBrokerDrainSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeBrokerDrain[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
+      send(response, 200, { run: await context.engine.drainProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const projectionRuntimeMatch = /^\/v1\/projection-runs\/([^/]+)\/runtime$/u.exec(url.pathname);
+    if (request.method === "GET" && projectionRuntimeMatch !== null) {
+      const runId = decodeURIComponent(projectionRuntimeMatch[1]!) as never;
+      const snapshot = await context.engine.getProjectionRuntimeSnapshot(runId);
+      if (snapshot === undefined) send(response, 404, { error: "projection run not found" });
+      else send(response, 200, snapshot);
+      return;
+    }
+    const projectionRuntimeStream = /^\/v1\/projection-runs\/([^/]+)\/runtime\/stream$/u.exec(url.pathname);
+    if (request.method === "GET" && projectionRuntimeStream !== null) {
+      const runId = decodeURIComponent(projectionRuntimeStream[1]!) as never;
+      const hotLimit = projectionHotLimitSchema.parse(url.searchParams.get("hotLimit") ?? 200);
+      const stream = await context.engine.getProjectionRuntimeStream(runId, hotLimit);
+      if (stream === undefined) send(response, 404, errorBody("PROJECTION_RUN_NOT_FOUND", "Projection run not found"));
+      else await sendNdjson(response, stream.frames);
+      return;
+    }
+    const projectionRuntimeSessionStream = /^\/v1\/projection-runs\/([^/]+)\/runtime\/sessions\/([^/]+)\/stream$/u.exec(url.pathname);
+    if (request.method === "GET" && projectionRuntimeSessionStream !== null) {
+      const runId = decodeURIComponent(projectionRuntimeSessionStream[1]!) as never;
+      const nativeSessionId = pathId(projectionRuntimeSessionStream[2]!) as never;
+      const stream = await context.engine.getProjectionRuntimeSessionStream(runId, nativeSessionId);
+      if (stream === undefined) send(response, 404, errorBody("PROJECTION_SESSION_NOT_FOUND", "Projection session not found"));
+      else await sendNdjson(response, stream.frames);
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/v1/session-resolution") {
       const key = platformSessionResolutionRequestSchema.parse(await readJsonBody(request));
       const resolution = await context.engine.resolvePlatformSession(key);
@@ -163,27 +350,162 @@ export async function routeRequest(
       send(response, 200, { overview: await context.engine.overview() });
       return;
     }
-    if (request.method === "GET" && url.pathname === "/v1/mirrors") {
-      send(response, 200, { mirrors: await context.engine.listNativeMirrors() });
+    if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH) {
+      send(response, 200, { preview: await context.engine.previewCanonicalMigration() });
       return;
     }
-    const mirrorPreview = url.pathname.match(/^\/v1\/mirrors\/([^/]+)\/preview$/u);
-    if (request.method === "POST" && mirrorPreview !== null) {
-      const body = nativeMirrorActionRequestSchema.parse(await readJsonBody(request)) as NativeMirrorActionRequest;
-      send(response, 200, { preview: await context.engine.previewNativeMirrorAction(pathId(mirrorPreview[1]!), body) });
+    if (request.method === "POST" && url.pathname === "/v1/canonical/migration/activate") {
+      const body = canonicalMigrationActivationSchema.parse(await readJsonBody(request));
+      send(response, 201, { activation: await context.engine.activateCanonicalMigration(body.sourceDigest) });
       return;
     }
-    const mirrorAction = url.pathname.match(/^\/v1\/mirrors\/([^/]+)\/actions$/u);
-    if (request.method === "POST" && mirrorAction !== null) {
-      const body = nativeMirrorActionRequestSchema.parse(await readJsonBody(request)) as NativeMirrorActionRequest;
-      send(response, 200, { mirror: await context.engine.applyNativeMirrorAction(pathId(mirrorAction[1]!), body) });
+    if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_WORKSPACES_PATH) {
+      send(response, 200, { directory: await readCanonicalWorkspaceDirectory(context.engine.repository.database) });
       return;
     }
-    const mirror = url.pathname.match(/^\/v1\/mirrors\/([^/]+)$/u);
-    if (request.method === "GET" && mirror !== null) {
-      const stored = await context.engine.getNativeMirror(pathId(mirror[1]!));
-      if (stored === undefined) { send(response, 404, errorBody("MIRROR_NOT_ENABLED", "Native mirror is not enabled")); return; }
-      send(response, 200, { mirror: stored });
+    if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_PROJECTS_PATH) {
+      send(response, 200, { directory: await readCanonicalProjectDirectory(context.engine.repository.database) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/canonical/recently-deleted") {
+      send(response, 200, { sessions: await readRecentlyDeleted(context.engine.repository.database) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/canonical/run-center") {
+      send(response, 200, { runs: readRunCenter(context.engine.repository.database) });
+      return;
+    }
+    if (request.method === "GET" && url.pathname === "/v1/canonical/adapters") {
+      send(response, 200, { adapters: context.engine.adapterRegistry.list().map((registration) => ({
+        manifest: registration.manifest,
+        enabled: registration.enabled,
+        sourceKind: registration.source.kind,
+        sourceLabel: registration.source.kind === "local" ? `local:${registration.manifest.id}`
+          : registration.source.kind === "generation" ? `generation:${registration.source.generationId}`
+            : `npm:${registration.source.packageName}`,
+      })) });
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/canonical/adapters/select") {
+      const body = adapterSelectionRequestSchema.parse(await readJsonBody(request));
+      const instance = context.engine.instances.find((item) => item.id === body.instanceId && item.platform === "dsh");
+      if (instance === undefined) {
+        send(response, 404, errorBody("DSH_INSTANCE_NOT_FOUND", "Registered DSH instance not found"));
+        return;
+      }
+      const selection = await context.engine.adapterRegistry.select({
+        environment: {
+          dshVersion: instance.platformVersion,
+          packageVersions: {
+            "@deepseek-ai/dsh-session": instance.platformVersion,
+            "@deepseek-ai/dsh-session-persistence": instance.platformVersion,
+          },
+          runtimeCapabilities: ["sessionPersistence", "legacySessionPersistence"],
+        },
+        pinnedAdapterId: body.adapterId as never,
+      });
+      send(response, 200, { selection: {
+        adapterId: selection.adapterId,
+        manifest: selection.registration.manifest,
+        probe: selection.probe,
+        reason: selection.reason,
+        verificationRunId: selection.verificationRunId,
+      } });
+      return;
+    }
+    const canonicalWorkspace = url.pathname.match(/^\/v1\/canonical\/workspaces\/([^/]+)$/u);
+    if (request.method === "DELETE" && canonicalWorkspace !== null) {
+      const deleted = deleteLogicalWorkspace(context.engine.repository.database, pathId(canonicalWorkspace[1]!), new Date().toISOString());
+      if (!deleted) send(response, 404, errorBody("CANONICAL_WORKSPACE_NOT_FOUND", "Canonical workspace not found"));
+      else send(response, 200, { deleted: true });
+      return;
+    }
+    const canonicalSession = url.pathname.match(/^\/v1\/canonical\/sessions\/([^/]+)$/u);
+    if (request.method === "GET" && canonicalSession !== null) {
+      const detail = await readCanonicalDashboardSession(
+        context.engine.repository.database,
+        pathId(canonicalSession[1]!),
+      );
+      if (detail === undefined) {
+        send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
+      } else {
+        send(response, 200, { session: detail });
+      }
+      return;
+    }
+    if (request.method === "PATCH" && canonicalSession !== null) {
+      const detail = await updateCanonicalDashboardSession(
+        context.engine.repository.database,
+        pathId(canonicalSession[1]!),
+        canonicalSessionPatchSchema.parse(await readJsonBody(request)) as CanonicalSessionMaintenancePatch,
+        new Date().toISOString(),
+      );
+      if (detail === undefined) send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
+      else send(response, 200, { session: detail });
+      return;
+    }
+    if (request.method === "DELETE" && canonicalSession !== null) {
+      const logicalSessionId = pathId(canonicalSession[1]!);
+      const activeRows = context.engine.repository.database.prepare(
+        `SELECT DISTINCT pr.id, pr.lease_id, pr.profile_id, pr.adapter_id, pr.dsh_version
+         FROM projection_runs pr JOIN projection_sessions ps ON ps.run_id = pr.id
+         WHERE ps.logical_session_id = ? AND pr.state IN ('preparing','running','draining','verifying','recovery-required','recovering')`,
+      ).all(logicalSessionId) as unknown as Array<{ readonly id: string; readonly lease_id: string; readonly profile_id: string; readonly adapter_id: string; readonly dsh_version: string }>;
+      const spans = [];
+      for (const run of activeRows) spans.push(await context.engine.statusLog.start({
+        runId: run.id as never,
+        leaseId: run.lease_id as never,
+        profileId: run.profile_id,
+        adapterId: run.adapter_id as never,
+        dshVersion: run.dsh_version,
+        stage: "run.shutdown-recovery",
+        logicalSessionId: logicalSessionId as never,
+        nativeSessionId: null,
+        operationId: null,
+        diagnosticDetailRef: "diag:session-delete",
+      }));
+      const at = new Date();
+      const result = deleteCanonicalDashboardSession(
+        context.engine.repository.database,
+        logicalSessionId,
+        at.toISOString(),
+        new Date(at.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      );
+      if (result === undefined) {
+        for (const span of spans) await context.engine.statusLog.fail(span, { errorCode: "SESSION_NOT_FOUND" });
+        send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
+      } else {
+        for (const span of spans) {
+          if (result.state === "pending-delete") await context.engine.statusLog.fail(span, { errorCode: "DELETE_PENDING_WRITES", diagnosticDetailRef: "diag:session-delete-pending" });
+          else await context.engine.statusLog.succeed(span, { diagnosticDetailRef: "diag:session-delete-hidden" });
+        }
+        send(response, result.state === "pending-delete" ? 202 : 200, { deletion: result });
+      }
+      return;
+    }
+    const canonicalRestore = url.pathname.match(/^\/v1\/canonical\/sessions\/([^/]+)\/restore$/u);
+    if (request.method === "POST" && canonicalRestore !== null) {
+      emptyRequestSchema.parse(await readJsonBody(request));
+      const restored = restoreCanonicalDashboardSession(context.engine.repository.database, pathId(canonicalRestore[1]!), new Date().toISOString());
+      if (restored === undefined) send(response, 404, errorBody("CANONICAL_SESSION_NOT_DELETED", "Canonical session is not deleted"));
+      else send(response, 200, { restoration: restored });
+      return;
+    }
+    if (request.method === "GET" && (url.pathname === "/v1/status-events" || url.pathname === "/v1/status-events/stream")) {
+      const query = statusEventQuerySchema.parse({
+        ...(url.searchParams.has("cursor") ? { cursor: url.searchParams.get("cursor") } : {}),
+        ...(url.searchParams.has("limit") ? { limit: Number(url.searchParams.get("limit")) } : {}),
+        ...(url.searchParams.has("runId") ? { runId: url.searchParams.get("runId") } : {}),
+        ...(url.searchParams.has("logicalSessionId") ? { logicalSessionId: url.searchParams.get("logicalSessionId") } : {}),
+        ...(url.searchParams.has("operationId") ? { operationId: url.searchParams.get("operationId") } : {}),
+        ...(url.searchParams.has("stage") ? { stage: url.searchParams.get("stage") } : {}),
+        ...(url.searchParams.has("spanId") ? { spanId: url.searchParams.get("spanId") } : {}),
+      }) as unknown as StatusEventQuery;
+      if (url.pathname.endsWith("/stream")) {
+        await streamStatusEvents(response, context.engine.statusLog, query);
+      } else {
+        send(response, 200, { page: await context.engine.listStatusEvents(query) });
+      }
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/sessions") {
@@ -388,8 +710,11 @@ export async function routeRequest(
     }
     send(response, 404, errorBody("NOT_FOUND", "Route not found"));
   } catch (error) {
-    if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
+    if (response.headersSent) {
+      response.destroy(error instanceof Error ? error : undefined);
+    } else if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
     else if (error instanceof ZodError) send(response, 400, errorBody("INVALID_REQUEST", "Request does not match the API schema"));
+    else if (error instanceof ProjectionRuntimeStreamError) send(response, 422, errorBody(error.code, error.message));
     else if (error instanceof SessionMaintenanceError) {
       const status = error.code === "CAPABILITY_NOT_AVAILABLE"
         ? 501

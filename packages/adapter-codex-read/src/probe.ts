@@ -8,7 +8,7 @@ import type {
 import { sha256Canonical } from "@linmu/dsh-session-domain";
 
 import { parseCodexJsonl } from "./parser.js";
-import { openCodexDatabase, resolveContainedRollout } from "./stable-read.js";
+import { resolveContainedRollout, withCodexReadSnapshot } from "./stable-read.js";
 
 export const CODEX_SUPPORTED_VERSION = "0.146.0";
 export const CODEX_REQUIRED_THREAD_COLUMNS = [
@@ -32,13 +32,14 @@ export const CODEX_REQUIRED_THREAD_COLUMNS = [
   ["thread_section_id", "TEXT", 0, 0], ["section_position", "INTEGER", 0, 0],
   ["section_entered_at_ms", "INTEGER", 0, 0], ["project_id", "TEXT", 0, 0],
 ] as const;
-export const CODEX_SUPPORTED_ENVELOPES = ["response_item", "session_meta"] as const;
+export const CODEX_REQUIRED_ENVELOPES = ["response_item", "session_meta"] as const;
+export const CODEX_SUPPORTED_ENVELOPES = [...CODEX_REQUIRED_ENVELOPES, "compacted"] as const;
 const schemaHex = sha256Canonical({
   tables: [{ name: "threads", columns: CODEX_REQUIRED_THREAD_COLUMNS }],
   sessionIndex: ["id", "thread_name", "updated_at"],
   envelopes: [...CODEX_SUPPORTED_ENVELOPES],
 });
-export const CODEX_SCHEMA_FINGERPRINT = `codex-read/0.146.0/schema-2:${schemaHex}`;
+export const CODEX_SCHEMA_FINGERPRINT = `codex-read/0.146.0/schema-3:${schemaHex}`;
 
 const contract = (version: string, fingerprint = CODEX_SCHEMA_FINGERPRINT): AdapterContractRef => ({
   adapter: "codex-read",
@@ -67,26 +68,22 @@ export async function probeCodexInstance(
   }
 
   try {
-    const database = openCodexDatabase(instance.root);
-    let columns: Array<readonly [string, string, number, number]>;
-    let rolloutPath: string | undefined;
-    try {
-      columns = (
+    const snapshot = withCodexReadSnapshot(instance.root, (database) => ({
+      columns: (
         database.prepare("PRAGMA table_info(threads)").all() as unknown as Array<{
           readonly name: string;
           readonly type: string;
           readonly notnull: number;
           readonly pk: number;
         }>
-      ).map((row) => [row.name, row.type, row.notnull, row.pk] as const);
-      rolloutPath = (
+      ).map((row) => [row.name, row.type, row.notnull, row.pk] as const),
+      rolloutPath: (
         database.prepare("SELECT rollout_path FROM threads ORDER BY id LIMIT 1").get() as
           | { readonly rollout_path: string }
           | undefined
-      )?.rollout_path;
-    } finally {
-      database.close();
-    }
+      )?.rollout_path,
+    }));
+    const { columns, rolloutPath } = snapshot;
 
     if (JSON.stringify(columns) !== JSON.stringify(CODEX_REQUIRED_THREAD_COLUMNS)) {
       return {
@@ -108,8 +105,8 @@ export async function probeCodexInstance(
     }
     onProbeRead();
     const observedTypes = new Set(parseCodexJsonl(await readFile(resolved)).map((item) => item.type));
-    if (!CODEX_SUPPORTED_ENVELOPES.every((type) => observedTypes.has(type))) {
-      throw new Error("Codex probe sample is missing supported envelope names");
+    if (!CODEX_REQUIRED_ENVELOPES.every((type) => observedTypes.has(type))) {
+      throw new Error("Codex probe sample is missing required envelope names");
     }
 
     return {

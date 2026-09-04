@@ -16,6 +16,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@linmu/dsh-canonical-session-engine": "workspace:*",
     "@linmu/dsh-session-contracts": "workspace:*",
     "@linmu/dsh-session-domain": "workspace:*"
   }

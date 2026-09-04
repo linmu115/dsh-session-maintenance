@@ -1,10 +1,19 @@
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
-import { CodexNativeWriteAdapter } from "@linmu/dsh-adapter-codex-native";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
+import { AdapterHost, AdapterRegistry, NodeAdapterWorkerFactory } from "@linmu/dsh-session-adapter-host";
+import { manifest as alpha2AdapterManifest } from "@linmu/dsh-session-adapter-alpha2";
+import { manifest as rc1AdapterManifest } from "@linmu/dsh-session-adapter-rc1";
+import { manifest as rc2AdapterManifest } from "@linmu/dsh-session-adapter-rc2";
+import { adapter as alpha2Adapter } from "@linmu/dsh-session-adapter-alpha2";
+import { adapter as rc1Adapter } from "@linmu/dsh-session-adapter-rc1";
+import { adapter as rc2Adapter } from "@linmu/dsh-session-adapter-rc2";
 import { DshWriteAdapter } from "@linmu/dsh-adapter-dsh-write";
 import { RemoteDshHostGateway } from "@linmu/dsh-host-gateway";
 import {
@@ -19,12 +28,16 @@ import {
   type SyncPlan,
 } from "@linmu/dsh-session-contracts";
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
-import { NativeMirrorService } from "@linmu/dsh-session-native-mirror-engine";
-import { SqliteSessionRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
+import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
+import { ProjectionLifecycle, SqliteCanonicalProjectionSource } from "@linmu/dsh-session-projection-lifecycle";
+import { SqliteAdapterEvidenceStore, SqliteAdapterRegistryRepository, SqliteCanonicalSessionEngineStore, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
   addInstance,
+  activateDatabaseFile,
+  activeDatabasePath,
   initializeStateRoot,
   loadConfig,
   registeredCodexTargets,
@@ -37,13 +50,21 @@ import {
   type DshGatewayTarget,
 } from "./dsh-gateway-connection.js";
 import { WriteService } from "./write-service.js";
+import { CodexCatalogTitleSyncService } from "./codex-catalog-title-sync.js";
+
+const resolveModule = createRequire(import.meta.url).resolve;
+
+function adapterWorkerEntryPoint(packageName: string, bundledFilename: string): string {
+  const bundled = join(dirname(fileURLToPath(import.meta.url)), "adapters", bundledFilename);
+  if (existsSync(bundled)) return bundled;
+  return join(dirname(resolveModule(`${packageName}/package.json`)), "dist", "rpc-worker.js");
+}
 
 export interface CompositionOptions {
   readonly stateRoot: string;
   readonly clock?: () => string;
   readonly fixturePolicy?: (root: string) => void;
   readonly continuationAdapter?: CodexContinuationPort;
-  readonly enableCodexNativeWrites?: boolean;
 }
 
 export interface DshWritableCompositionOptions extends CompositionOptions {
@@ -114,8 +135,9 @@ async function createComposition(
   await mkdir(join(options.stateRoot, "objects"), { recursive: true });
   const config = await loadConfig(options.stateRoot);
   const objectStore = new ZstdContentObjectStore(options.stateRoot);
+  const metadataPath = activeDatabasePath(options.stateRoot, config);
   const repository = new SqliteSessionRepository(
-    openMaintenanceDatabase(join(options.stateRoot, "metadata.sqlite")),
+    openMaintenanceDatabase(metadataPath),
     objectStore,
   );
   const instances = registeredInstances(config);
@@ -127,22 +149,74 @@ async function createComposition(
     targets: registeredCodexTargets(config),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
-  const mirrors = new NativeMirrorService({ repository, ...(options.clock === undefined ? {} : { clock: options.clock }) });
+  const statusLog = new StatusLog(
+    new SqliteStatusEventAdapter(new SqliteStatusEventRepository(repository.database)),
+    options.clock === undefined ? {} : { clock: options.clock },
+  );
+  const evidenceStore = new SqliteAdapterEvidenceStore(
+    repository.database,
+    objectStore,
+    options.clock === undefined ? {} : { clock: options.clock },
+  );
+  const adapterRegistry = new AdapterRegistry({
+    host: new AdapterHost(new NodeAdapterWorkerFactory()),
+    repository: new SqliteAdapterRegistryRepository(repository.database),
+    ...(options.clock === undefined ? {} : { now: options.clock }),
+  });
+  await adapterRegistry.register({
+    manifest: alpha2AdapterManifest,
+    source: {
+      kind: "generation",
+      generationId: "builtin-canonical-alpha2",
+      packageName: "@linmu/dsh-session-adapter-alpha2",
+      entryPoint: adapterWorkerEntryPoint(
+        "@linmu/dsh-session-adapter-alpha2",
+        "dsh-alpha2-rpc-worker.mjs",
+      ),
+    },
+    enabled: true,
+  });
+  await adapterRegistry.register({
+    manifest: rc1AdapterManifest,
+    source: {
+      kind: "generation",
+      generationId: "builtin-canonical-rc1",
+      packageName: "@linmu/dsh-session-adapter-rc1",
+      entryPoint: adapterWorkerEntryPoint(
+        "@linmu/dsh-session-adapter-rc1",
+        "dsh-rc1-rpc-worker.mjs",
+      ),
+    },
+    enabled: true,
+  });
+  await adapterRegistry.register({
+    manifest: rc2AdapterManifest,
+    source: {
+      kind: "generation",
+      generationId: "builtin-canonical-rc2",
+      packageName: "@linmu/dsh-session-adapter-rc2",
+      entryPoint: adapterWorkerEntryPoint(
+        "@linmu/dsh-session-adapter-rc2",
+        "dsh-rc2-rpc-worker.mjs",
+      ),
+    },
+    enabled: true,
+  });
+  const projectionRunRepository = new SqliteProjectionRunRepository(repository.database);
+  const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
+  const canonicalEngine = new CanonicalSessionEngine(
+    new SqliteCanonicalSessionEngineStore(repository.database, objectStore),
+  );
+  const codexCatalogTitleSync = new CodexCatalogTitleSyncService({
+    instances,
+    adapters: readAdapters,
+    canonicalEngine,
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+  });
+  const sessionAliases = new SqliteSessionAliasRepository(repository.database);
   let writeService: WriteService | undefined;
   const instanceMap = new Map(instances.map((instance) => [instance.id, instance]));
   const writeAdapters = new Map<"codex" | "dsh", PlatformWriteAdapter>();
-  if (options.enableCodexNativeWrites === true) {
-    const codexRoots = new Map(instances.filter((instance) => instance.platform === "codex").map((instance) => [instance.id, instance.root]));
-    if (codexRoots.size > 0) {
-      writeAdapters.set("codex", new CodexNativeWriteAdapter({
-        stateRoot: options.stateRoot,
-        loadSource: (plan) => loadVersionBody(repository, objectStore, plan),
-        registeredRoots: codexRoots,
-        ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
-        ...(options.clock === undefined ? {} : { now: () => new Date(options.clock!()) }),
-      }));
-    }
-  }
   if (dshGatewayTargets.length > 0) {
     for (const target of dshGatewayTargets) {
       const instance = instanceMap.get(target.instanceId);
@@ -185,7 +259,42 @@ async function createComposition(
     repository,
     objectStore,
     continuations,
-    mirrors,
+    canonicalEngine,
+    beforeProjectionPrepare: async () => { await codexCatalogTitleSync.sync(); },
+    projectionLifecycleFactory: ({ adapterId, bridge }) => {
+      const adapter = adapterId === alpha2Adapter.manifest.id
+        ? alpha2Adapter
+        : adapterId === rc1Adapter.manifest.id
+          ? rc1Adapter
+          : adapterId === rc2Adapter.manifest.id
+            ? rc2Adapter
+            : undefined;
+      if (adapter === undefined) throw new TypeError(`Unsupported built-in projection adapter: ${adapterId}`);
+      return new ProjectionLifecycle({
+        runRepository: projectionRunRepository,
+        statusLog,
+        source: canonicalProjectionSource,
+        adapter,
+        bridge,
+        canonicalEngine,
+        evidencePort: evidenceStore,
+        checkpointRepository: repository,
+        runtimeRoot: join(options.stateRoot, "projection-runtime"),
+        ...(options.clock === undefined ? {} : { clock: options.clock }),
+      });
+    },
+    migrationSourcePath: metadataPath,
+    migrationCandidatePath: join(options.stateRoot, "metadata.canonical-candidate.sqlite"),
+    migrationArchivePath: join(options.stateRoot, "metadata.pre-canonical-v6.sqlite"),
+    migrationPort: {
+      activateDatabaseFile: async (databaseFile) => { await activateDatabaseFile(options.stateRoot, databaseFile); },
+    },
+    statusLog,
+    adapterRegistry,
+    projectionRunRepository,
+    canonicalProjectionSource,
+    sessionAliases,
+    projectionRuntimeRoot: join(options.stateRoot, "projection-runtime"),
     settingsPort: {
       get: async () => (await loadConfig(options.stateRoot)).settings,
       patch: (input) => updateSettings(options.stateRoot, input),

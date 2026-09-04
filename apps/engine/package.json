@@ -1,6 +1,6 @@
 {
   "name": "@linmu/dsh-session-maintenance-engine",
-  "version": "0.1.3",
+  "version": "0.1.13",
   "private": true,
   "type": "module",
   "bin": {
@@ -19,17 +19,22 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@linmu/dsh-session-adapter-alpha2": "workspace:*",
+    "@linmu/dsh-session-adapter-rc1": "workspace:*",
+    "@linmu/dsh-session-adapter-rc2": "workspace:*",
+    "@linmu/dsh-session-adapter-host": "workspace:*",
+    "@linmu/dsh-session-projection-lifecycle": "workspace:*",
     "@linmu/dsh-adapter-codex-continuation": "workspace:*",
     "@linmu/dsh-adapter-codex-read": "workspace:*",
-    "@linmu/dsh-adapter-codex-native": "workspace:*",
     "@linmu/dsh-adapter-dsh": "workspace:*",
     "@linmu/dsh-adapter-dsh-write": "workspace:*",
     "@linmu/dsh-host-gateway": "workspace:*",
     "@linmu/dsh-session-contracts": "workspace:*",
     "@linmu/dsh-session-domain": "workspace:*",
     "@linmu/dsh-session-continuation-engine": "workspace:*",
-    "@linmu/dsh-session-native-mirror-engine": "workspace:*",
+    "@linmu/dsh-canonical-session-engine": "workspace:*",
     "@linmu/dsh-session-store": "workspace:*",
+    "@linmu/dsh-session-status-log": "workspace:*",
     "@linmu/dsh-session-transaction-engine": "workspace:*",
     "commander": "14.0.0",
     "yaml": "2.8.1",

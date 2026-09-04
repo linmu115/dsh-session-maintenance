@@ -1,0 +1,9 @@
+{
+  "name": "dsh-session-adapter-minimal-example",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@linmu/dsh-session-adapter-sdk": "^1.0.0"
+  }
+}

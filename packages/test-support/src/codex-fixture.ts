@@ -100,7 +100,7 @@ export async function writeCodexFixtureHome(root: string): Promise<void> {
         "Fixture conversation",
         1787702402,
         1787702402000,
-        "fixture",
+        "Fixture conversation",
       );
   } finally {
     database.close();

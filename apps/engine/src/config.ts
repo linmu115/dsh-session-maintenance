@@ -14,6 +14,7 @@ import { parse, stringify } from "yaml";
 
 export interface EngineConfig {
   readonly schemaVersion: 1;
+  readonly databaseFile: string;
   readonly instances: Readonly<Record<string, {
     readonly platform: PlatformKind;
     readonly displayName: string;
@@ -44,7 +45,20 @@ const DEFAULT_SETTINGS: MaintenanceSettings = {
   allowBatchSafeApply: false,
 };
 
-const EMPTY_CONFIG: EngineConfig = { schemaVersion: 1, instances: {}, codexTargets: {}, settings: DEFAULT_SETTINGS };
+const DEFAULT_DATABASE_FILE = "metadata.sqlite";
+const EMPTY_CONFIG: EngineConfig = { schemaVersion: 1, databaseFile: DEFAULT_DATABASE_FILE, instances: {}, codexTargets: {}, settings: DEFAULT_SETTINGS };
+
+/**
+ * Trusted launchers may select the Engine state root without placing session
+ * paths in a DSH Profile. The value is consumed by the Engine process only;
+ * DSH receives a loopback endpoint and opaque run/profile IDs.
+ */
+export function launcherStateRoot(
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): string | undefined {
+  const value = environment.DSH_SESSION_MAINTENANCE_STATE_ROOT?.trim();
+  return value === undefined || value.length === 0 ? undefined : value;
+}
 
 export function configPathFor(stateRoot: string): string {
   return join(stateRoot, "config.yaml");
@@ -57,6 +71,10 @@ function validateConfig(value: unknown): EngineConfig {
     throw new TypeError("Unsupported or invalid config schema");
   }
   const instances: Record<string, EngineConfig["instances"][string]> = {};
+  const databaseFile = root.databaseFile ?? DEFAULT_DATABASE_FILE;
+  if (typeof databaseFile !== "string" || !/^metadata(?:\.[a-z0-9-]+)?\.sqlite$/u.test(databaseFile)) {
+    throw new TypeError("Invalid Maintenance database file pointer");
+  }
   for (const [id, item] of Object.entries(root.instances as Record<string, unknown>)) {
     if (typeof item !== "object" || item === null || Array.isArray(item)) throw new TypeError(`Invalid instance: ${id}`);
     const record = item as Record<string, unknown>;
@@ -108,7 +126,7 @@ function validateConfig(value: unknown): EngineConfig {
     };
   }
   const settings = maintenanceSettingsSchema.parse(root.settings ?? DEFAULT_SETTINGS) as MaintenanceSettings;
-  return { schemaVersion: 1, instances, codexTargets, settings };
+  return { schemaVersion: 1, databaseFile, instances, codexTargets, settings };
 }
 
 async function atomicWrite(path: string, content: string): Promise<void> {
@@ -138,6 +156,20 @@ export async function initializeStateRoot(stateRoot: string): Promise<EngineConf
 
 export async function loadConfig(stateRoot: string): Promise<EngineConfig> {
   return validateConfig(parse(await readFile(configPathFor(stateRoot), "utf8")) as unknown);
+}
+
+export function activeDatabasePath(stateRoot: string, config: EngineConfig): string {
+  return join(stateRoot, config.databaseFile);
+}
+
+export async function activateDatabaseFile(stateRoot: string, databaseFile: string): Promise<EngineConfig> {
+  if (!/^metadata(?:\.[a-z0-9-]+)?\.sqlite$/u.test(databaseFile)) {
+    throw new TypeError("Invalid Maintenance database file pointer");
+  }
+  const config = await initializeStateRoot(stateRoot);
+  const next = { ...config, databaseFile };
+  await atomicWrite(configPathFor(stateRoot), stringify(next));
+  return next;
 }
 
 export function registeredInstances(config: EngineConfig): readonly RegisteredInstance[] {
@@ -199,6 +231,7 @@ export async function addCodexTarget(
   };
   await atomicWrite(configPathFor(stateRoot), stringify({
     schemaVersion: 1,
+    databaseFile: config.databaseFile,
     instances: config.instances,
     codexTargets: { ...config.codexTargets, [input.id]: target },
     settings: config.settings,
@@ -226,7 +259,7 @@ export async function addInstance(
     root: resolved.root,
     platformVersion: resolved.platformVersion,
   } };
-  await atomicWrite(configPathFor(stateRoot), stringify({ schemaVersion: 1, instances, codexTargets: config.codexTargets, settings: config.settings }));
+  await atomicWrite(configPathFor(stateRoot), stringify({ schemaVersion: 1, databaseFile: config.databaseFile, instances, codexTargets: config.codexTargets, settings: config.settings }));
   return resolved;
 }
 

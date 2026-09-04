@@ -4,6 +4,9 @@ import {
   apiErrorResponseSchema,
   checkpointListResponseSchema,
   checkpointResponseSchema,
+  canonicalDashboardSessionResponseSchema,
+  canonicalWorkspaceDirectoryResponseSchema,
+  canonicalProjectDirectoryResponseSchema,
   continuationJobResponseSchema,
   continuationPreviewResponseSchema,
   diagnosticsResponseSchema,
@@ -14,9 +17,6 @@ import {
   jobAcceptedResponseSchema,
   jobRefSchema,
   overviewResponseSchema,
-  nativeMirrorListResponseSchema,
-  nativeMirrorPreviewResponseSchema,
-  nativeMirrorResponseSchema,
   pageSchema,
   planResponseSchema,
   planListResponseSchema,
@@ -31,6 +31,16 @@ import {
   versionGraphResponseSchema,
   type AdapterDiagnostic,
   type Checkpoint,
+  type CanonicalDashboardSessionDetail,
+  type CanonicalWorkspaceDirectory,
+  type CanonicalProjectDirectory,
+  type CanonicalSessionMaintenancePatch,
+  type CanonicalSessionDeleteResult,
+  type CanonicalSessionRestoreResult,
+  type RecentlyDeletedSession,
+  type RunCenterItem,
+  type AdapterDashboardRecord,
+  type AdapterExperimentalSelectionResponse,
   type CheckpointRestoreRequest,
   type CreateCheckpointRequest,
   type DiffRequest,
@@ -45,9 +55,6 @@ import {
   type DashboardLaunchInfo,
   type MaintenanceSettings,
   type MaintenanceSettingsPatch,
-  type NativeMirrorActionPreview,
-  type NativeMirrorActionRequest,
-  type NativeMirrorRecord,
   type Page,
   type PlanRequest,
   type PlanQuery,
@@ -153,6 +160,88 @@ class ApiClient {
     return value.workspaces as readonly WorkspaceSummary[];
   }
 
+  async listCanonicalWorkspaces(signal?: AbortSignal): Promise<CanonicalWorkspaceDirectory> {
+    return (await this.request(
+      "/v1/canonical/workspaces",
+      {},
+      canonicalWorkspaceDirectoryResponseSchema,
+      signal,
+    )).directory as unknown as CanonicalWorkspaceDirectory;
+  }
+
+  async listCanonicalProjects(signal?: AbortSignal): Promise<CanonicalProjectDirectory> {
+    return (await this.request(
+      "/v1/canonical/projects",
+      {},
+      canonicalProjectDirectoryResponseSchema,
+      signal,
+    )).directory as unknown as CanonicalProjectDirectory;
+  }
+
+  async getCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail> {
+    return (await this.request(
+      `/v1/canonical/sessions/${encodeURIComponent(id)}`,
+      {},
+      canonicalDashboardSessionResponseSchema,
+      signal,
+    )).session as unknown as CanonicalDashboardSessionDetail;
+  }
+
+  async updateCanonicalSession(id: string, patch: CanonicalSessionMaintenancePatch, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail> {
+    const response = await this.request(
+      `/v1/canonical/sessions/${encodeURIComponent(id)}`,
+      this.jsonPatch(patch),
+      z.custom<{ readonly session: CanonicalDashboardSessionDetail }>(),
+      signal,
+    );
+    return response.session;
+  }
+
+  async deleteCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalSessionDeleteResult> {
+    const response = await this.request(
+      `/v1/canonical/sessions/${encodeURIComponent(id)}`,
+      { method: "DELETE" },
+      z.custom<{ readonly deletion: CanonicalSessionDeleteResult }>(),
+      signal,
+    );
+    return response.deletion;
+  }
+
+  async restoreCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalSessionRestoreResult> {
+    const response = await this.request(
+      `/v1/canonical/sessions/${encodeURIComponent(id)}/restore`,
+      this.jsonPost({}),
+      z.custom<{ readonly restoration: CanonicalSessionRestoreResult }>(),
+      signal,
+    );
+    return response.restoration;
+  }
+
+  async listRecentlyDeleted(signal?: AbortSignal): Promise<readonly RecentlyDeletedSession[]> {
+    return (await this.request("/v1/canonical/recently-deleted", {}, z.custom<{ readonly sessions: readonly RecentlyDeletedSession[] }>(), signal)).sessions;
+  }
+
+  async deleteCanonicalWorkspace(id: string, signal?: AbortSignal): Promise<void> {
+    await this.request(`/v1/canonical/workspaces/${encodeURIComponent(id)}`, { method: "DELETE" }, z.strictObject({ deleted: z.literal(true) }), signal);
+  }
+
+  async listProjectionRuns(signal?: AbortSignal): Promise<readonly RunCenterItem[]> {
+    return (await this.request("/v1/canonical/run-center", {}, z.custom<{ readonly runs: readonly RunCenterItem[] }>(), signal)).runs;
+  }
+
+  async listCanonicalAdapters(signal?: AbortSignal): Promise<readonly AdapterDashboardRecord[]> {
+    return (await this.request("/v1/canonical/adapters", {}, z.custom<{ readonly adapters: readonly AdapterDashboardRecord[] }>(), signal)).adapters;
+  }
+
+  async selectExperimentalAdapter(instanceId: string, adapterId: string, signal?: AbortSignal): Promise<AdapterExperimentalSelectionResponse["selection"]> {
+    return (await this.request(
+      "/v1/canonical/adapters/select",
+      this.jsonPost({ instanceId, adapterId }),
+      z.custom<AdapterExperimentalSelectionResponse>(),
+      signal,
+    )).selection;
+  }
+
   async getGraph(id: string, cursor?: string, signal?: AbortSignal): Promise<VersionGraphPage> {
     const suffix = cursor === undefined ? "" : `?cursor=${encodeURIComponent(cursor)}`;
     return (await this.request(`/v1/sessions/${encodeURIComponent(id)}/graph${suffix}`, {}, versionGraphResponseSchema, signal)).graph as unknown as VersionGraphPage;
@@ -160,27 +249,6 @@ class ApiClient {
 
   async overview(signal?: AbortSignal): Promise<DashboardOverview> {
     return (await this.request("/v1/overview", {}, overviewResponseSchema, signal)).overview as DashboardOverview;
-  }
-
-  async listNativeMirrors(signal?: AbortSignal): Promise<readonly NativeMirrorRecord[]> {
-    return (await this.request("/v1/mirrors", {}, nativeMirrorListResponseSchema, signal)).mirrors as readonly NativeMirrorRecord[];
-  }
-
-  async getNativeMirror(id: string, signal?: AbortSignal): Promise<NativeMirrorRecord | undefined> {
-    try {
-      return (await this.request(`/v1/mirrors/${encodeURIComponent(id)}`, {}, nativeMirrorResponseSchema, signal)).mirror as NativeMirrorRecord;
-    } catch (error) {
-      if (error instanceof Error && error.message.startsWith("MIRROR_NOT_ENABLED:")) return undefined;
-      throw error;
-    }
-  }
-
-  async previewNativeMirrorAction(id: string, input: NativeMirrorActionRequest, signal?: AbortSignal): Promise<NativeMirrorActionPreview> {
-    return (await this.request(`/v1/mirrors/${encodeURIComponent(id)}/preview`, this.jsonPost(input), nativeMirrorPreviewResponseSchema, signal)).preview as NativeMirrorActionPreview;
-  }
-
-  async applyNativeMirrorAction(id: string, input: NativeMirrorActionRequest, signal?: AbortSignal): Promise<NativeMirrorRecord> {
-    return (await this.request(`/v1/mirrors/${encodeURIComponent(id)}/actions`, this.jsonPost(input), nativeMirrorResponseSchema, signal)).mirror as NativeMirrorRecord;
   }
 
   async getSession(id: string, signal?: AbortSignal): Promise<SessionDetail> {

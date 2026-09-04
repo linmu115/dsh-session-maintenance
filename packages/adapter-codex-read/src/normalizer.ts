@@ -14,17 +14,110 @@ import {
   isCodexObservationPayload,
   type CodexEnvelope,
 } from "./parser.js";
+import { codexDisplayTitle } from "./thread.js";
 import { codexWorkspaceId } from "./workspace.js";
 
 function asJson(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
-function messageEvent(
+function isRecord(value: unknown): value is Readonly<Record<string, JsonValue>> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: JsonValue | undefined): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function toolOutputText(value: JsonValue | undefined): string {
+  if (value === undefined) return "";
+  if (typeof value === "string") return value;
+  if (Array.isArray(value)) {
+    return value.map((part) => {
+      if (isRecord(part) && typeof part.text === "string") return part.text;
+      if (isRecord(part) && part.type === "input_image") return "[Codex 工具图像输出]";
+      return JSON.stringify(part);
+    }).join("\n");
+  }
+  return JSON.stringify(value);
+}
+
+function toolEvent(
   envelope: CodexEnvelope,
-  lineIndex: number,
+  sourceIndex: number | string,
   sequence: number,
 ): RawSessionEvent | undefined {
+  const payload = envelope.payload;
+  const sourceType = stringValue(payload.type);
+  if (sourceType === undefined) return undefined;
+  const phase = sourceType === "custom_tool_call" || sourceType === "function_call"
+    ? "call"
+    : sourceType === "custom_tool_call_output" || sourceType === "function_call_output"
+      ? "result"
+      : undefined;
+  if (phase === undefined) return undefined;
+
+  // A Codex output row is correlated only by its explicit call_id. Falling
+  // back to the row id turns coordination/status outputs into orphan DSH tool
+  // results, which later makes the model request invalid. Call rows may still
+  // use their own id as the protocol call identity.
+  const callId = phase === "result"
+    ? stringValue(payload.call_id)
+    : stringValue(payload.call_id) ?? stringValue(payload.id);
+  if (callId === undefined) return undefined;
+  const protocol = sourceType.startsWith("custom_") ? "custom" : "function";
+  const name = stringValue(payload.name)
+    ?? (stringValue(payload.namespace) === undefined
+      ? "codex-tool"
+      : `${payload.namespace}.${stringValue(payload.name) ?? "tool"}`);
+  const argumentsText = stringValue(payload.arguments)
+    ?? stringValue(payload.input)
+    ?? "";
+  const outputText = toolOutputText(payload.output);
+  return {
+    sourceEventId: stringValue(payload.id) ?? `${sourceType}-${sourceIndex}`,
+    parentSourceEventId: null,
+    sequence,
+    kind: "tool-import",
+    role: phase === "call" ? "assistant" : "tool",
+    content: phase === "call" ? argumentsText : outputText,
+    attachments: [],
+    extensions: {
+      sourceType,
+      codexTool: {
+        phase,
+        protocol,
+        callId,
+        name,
+        ...(phase === "call"
+          ? { arguments: argumentsText }
+          : { outputText }),
+      },
+    },
+  };
+}
+
+function visibleUserText(value: string): string {
+  let visible = value
+    .replace(/<codex_internal_context\b[^>]*>[\s\S]*?<\/codex_internal_context>/giu, "")
+    .replace(/<in-app-browser-context\b[^>]*>[\s\S]*?<\/in-app-browser-context>/giu, "")
+    .replace(/<environment_context\b[^>]*>[\s\S]*?<\/environment_context>/giu, "")
+    .replace(/<recommended_plugins\b[^>]*>[\s\S]*?<\/recommended_plugins>/giu, "")
+    .replace(/<system-reminder\b[^>]*>[\s\S]*?<\/system-reminder>/giu, "")
+    .replace(/<app-context\b[^>]*>[\s\S]*?<\/app-context>/giu, "")
+    .replace(/(?:^|\n)# Response annotations:[\s\S]*?<\/response-annotations>\s*/giu, "\n");
+  visible = visible.replace(
+    /<codex_delegation\b[^>]*>[\s\S]*?<input>([\s\S]*?)<\/input>[\s\S]*?<\/codex_delegation>/giu,
+    "$1",
+  );
+  return visible.trim();
+}
+
+function messageEvent(
+  envelope: CodexEnvelope,
+  sourceIndex: number | string,
+  sequence: number,
+): RawSessionEvent | null | undefined {
   const payload = envelope.payload;
   if (payload.type !== "message" || typeof payload.role !== "string" || !Array.isArray(payload.content)) {
     return undefined;
@@ -69,13 +162,22 @@ function messageEvent(
     }
   }
 
-  const content = text.join("\n");
+  const joinedContent = text.join("\n");
   const importedContent = importedMode === "visible-record" || importedMode === "metadata-record"
-    ? content.replace(/^\[DSH 导入记录 · [^\]]+\]\n/u, "")
-    : content;
+    ? joinedContent.replace(/^\[DSH 导入记录 · [^\]]+\]\n/u, "")
+    : payload.role === "user"
+      ? visibleUserText(joinedContent)
+      : joinedContent;
+  if (payload.role === "user"
+    && imported === undefined
+    && importedContent.length === 0
+    && attachments.length === 0
+    && unknownContent.length === 0) {
+    return null;
+  }
   return {
     sourceEventId:
-      typeof payload.id === "string" && payload.id.length > 0 ? payload.id : `line-${lineIndex}`,
+      typeof payload.id === "string" && payload.id.length > 0 ? payload.id : `line-${sourceIndex}`,
     parentSourceEventId: null,
     sequence,
     kind: importedMode === "visible-record" ? "tool-import" : importedMode === "metadata-record" ? "metadata" : "message",
@@ -89,6 +191,80 @@ function messageEvent(
   };
 }
 
+interface IndexedCodexEnvelope {
+  readonly envelope: CodexEnvelope;
+  readonly sourceIndex: number | string;
+  readonly compactionBoundary?: true;
+}
+
+/**
+ * Codex persists a `compacted` envelope whose `replacement_history` is the
+ * model-visible history after compaction. Rows before that boundary remain in
+ * the rollout for audit, but replaying them as active messages defeats Codex's
+ * compaction and can make the first DSH continuation exceed the model window.
+ */
+function activeCodexEnvelopes(envelopes: readonly CodexEnvelope[]): readonly IndexedCodexEnvelope[] {
+  let compactedIndex = -1;
+  for (const [index, envelope] of envelopes.entries()) {
+    if (envelope.type === "compacted" && Array.isArray(envelope.payload.replacement_history)) {
+      compactedIndex = index;
+    }
+  }
+  if (compactedIndex < 0) {
+    return envelopes.map((envelope, sourceIndex) => ({ envelope, sourceIndex }));
+  }
+
+  const boundary = envelopes[compactedIndex]!;
+  const replacementHistory = boundary.payload.replacement_history as readonly JsonValue[];
+  const active: IndexedCodexEnvelope[] = [{
+    envelope: boundary,
+    sourceIndex: compactedIndex,
+    compactionBoundary: true,
+  }];
+  for (const [replacementIndex, value] of replacementHistory.entries()) {
+    if (!isRecord(value)) continue;
+    // The encrypted Codex compaction item is source-specific and cannot be
+    // replayed through a different provider. It remains available inside the
+    // boundary evidence above; only portable response items become active.
+    if (value.type === "compaction") continue;
+    // Codex developer scaffolding is not a user/assistant turn and must not be
+    // widened into a DSH conversation. The boundary evidence retains it.
+    if (value.type === "message" && value.role === "developer") continue;
+    active.push({
+      envelope: {
+        ...(boundary.timestamp === undefined ? {} : { timestamp: boundary.timestamp }),
+        type: "response_item",
+        payload: value,
+      },
+      sourceIndex: `${compactedIndex}:replacement:${replacementIndex}`,
+    });
+  }
+  for (let index = compactedIndex + 1; index < envelopes.length; index += 1) {
+    active.push({ envelope: envelopes[index]!, sourceIndex: index });
+  }
+  return active;
+}
+
+function preservedEnvelopeEvent(
+  envelope: CodexEnvelope,
+  sourceIndex: number | string,
+  sequence: number,
+): RawSessionEvent {
+  return {
+    sourceEventId: stringValue(envelope.payload.id) ?? `line-${sourceIndex}`,
+    parentSourceEventId: null,
+    sequence,
+    kind: "metadata",
+    role: "unknown",
+    content: "",
+    attachments: [],
+    extensions: {
+      sourceType: envelope.type,
+      codexEnvelope: asJson(envelope),
+    },
+  };
+}
+
 export function normalizeCodexObservation(observation: StableObservation): NormalizedSession {
   if (!isCodexObservationPayload(observation.payload)) {
     throw new TypeError("Stable observation is not a supported Codex payload");
@@ -96,28 +272,30 @@ export function normalizeCodexObservation(observation: StableObservation): Norma
   const payload = observation.payload;
   const events: RawSessionEvent[] = [];
   const issues: CompatibilityIssue[] = [];
-  for (const [lineIndex, envelope] of payload.envelopes.entries()) {
+  for (const item of activeCodexEnvelopes(payload.envelopes)) {
+    const { envelope, sourceIndex } = item;
     if (envelope.type === "session_meta") {
       continue;
     }
+    if (item.compactionBoundary === true) {
+      events.push(preservedEnvelopeEvent(envelope, sourceIndex, events.length));
+      continue;
+    }
     if (envelope.type === "response_item") {
-      const message = messageEvent(envelope, lineIndex, events.length);
+      const message = messageEvent(envelope, sourceIndex, events.length);
+      if (message === null) continue;
       if (message !== undefined) {
         events.push(message);
         continue;
       }
+      const tool = toolEvent(envelope, sourceIndex, events.length);
+      if (tool !== undefined) {
+        events.push(tool);
+        continue;
+      }
     }
 
-    events.push({
-      sourceEventId: `line-${lineIndex}`,
-      parentSourceEventId: null,
-      sequence: events.length,
-      kind: "metadata",
-      role: "unknown",
-      content: "",
-      attachments: [],
-      extensions: { codexEnvelope: asJson(envelope) },
-    });
+    events.push(preservedEnvelopeEvent(envelope, sourceIndex, events.length));
     issues.push({
       code: "CODEX_EVENT_DEGRADED",
       message: `Unsupported Codex envelope preserved as source metadata: ${envelope.type}`,
@@ -127,7 +305,7 @@ export function normalizeCodexObservation(observation: StableObservation): Norma
 
   return normalizeSession({
     key: observation.key,
-    title: payload.thread.title || payload.thread.name || payload.thread.id,
+    title: codexDisplayTitle(payload.thread),
     archived: Boolean(payload.thread.archived),
     workspaceId: codexWorkspaceId(payload.thread.cwd),
     provenance: {

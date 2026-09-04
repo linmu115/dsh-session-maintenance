@@ -26,6 +26,7 @@ import type {
   InstanceStatus,
   DiscoveryResult,
   EngineStatus,
+  JsonValue,
 } from "./model.js";
 import type {
   ApplyPlanRequest,
@@ -39,6 +40,29 @@ import type {
   SyncPlan,
 } from "./plans.js";
 import type { Checkpoint, TransactionRecord, TransactionRef } from "./model.js";
+import type {
+  AdapterEvidencePort,
+  AdapterProbeResult,
+  CanonicalAppendOperation,
+  CanonicalProjectionInput,
+  CanonicalProjectionSessionInput,
+  DshEnvironmentDescriptor,
+  NativeAppendOperation,
+  NativeRecoverySession,
+  UnmappedNativeRecoverySession,
+  NativeSessionRegistration,
+  NativeReferenceResolution,
+  ProjectionInspection,
+  ProjectionManifest,
+  RuntimeAttachContext,
+  RuntimeDrainResult,
+  RuntimeHandle,
+  StableSessionReference,
+  AdapterVerificationResult,
+  AdapterManifestV1,
+} from "./adapter-sdk.js";
+import type { NativeSessionId, RunId } from "./canonical.js";
+import type { ProjectionRun, ProjectionSession } from "./projection.js";
 
 export interface SessionReadAdapter {
   readonly platform: "codex" | "dsh";
@@ -98,4 +122,81 @@ export interface WriteEngine extends ReadOnlyEngine {
   recoverTransaction(request: RecoverTransactionRequest): Promise<TransactionRef>;
   createCheckpoint(request: CreateCheckpointRequest): Promise<Checkpoint>;
   createCheckpointRestorePlan(request: CheckpointRestoreRequest): Promise<SyncPlan>;
+}
+
+export interface ProjectionWriter {
+  writeWorkspace(nativeWorkspaceId: string, payload: JsonValue): Promise<void>;
+  writeSession(nativeSessionId: NativeSessionId, payload: JsonValue): Promise<void>;
+}
+
+export interface ProjectionReader {
+  listNativeSessionIds(): Promise<readonly NativeSessionId[]>;
+  readSession(nativeSessionId: NativeSessionId): Promise<JsonValue>;
+}
+
+export interface DshSessionAdapterV1 {
+  readonly manifest: AdapterManifestV1;
+  probe(environment: DshEnvironmentDescriptor): Promise<AdapterProbeResult>;
+  materialize(
+    input: CanonicalProjectionInput,
+    output: ProjectionWriter,
+  ): Promise<ProjectionManifest>;
+  /** Rebuilds a full manifest from cached digests without rereading session bodies. */
+  composeProjectionManifest?(
+    input: import("./adapter-sdk.js").ProjectionManifestCompositionInput,
+  ): ProjectionManifest;
+  normalizeAppend(
+    operation: NativeAppendOperation,
+    evidencePort?: AdapterEvidencePort,
+  ): Promise<CanonicalAppendOperation>;
+  inspect(projection: ProjectionReader): Promise<ProjectionInspection>;
+  verify(
+    expected: ProjectionManifest,
+    actual: ProjectionInspection,
+  ): Promise<AdapterVerificationResult>;
+  resolveReference(
+    reference: StableSessionReference,
+    run: ProjectionRun,
+  ): Promise<NativeReferenceResolution>;
+  /**
+   * Returns the native revision represented by the canonical prefix in one
+   * materialized payload. Implementations must validate that the payload begins
+   * with the canonical session; a divergent prefix must throw.
+   */
+  projectedNativeRevision?(
+    canonical: CanonicalProjectionSessionInput,
+    payload: JsonValue,
+  ): number;
+  /** Decodes adapter-owned projection metadata during crash recovery. */
+  recoverProjectionSession?(
+    projection: ProjectionSession,
+    payload: JsonValue,
+  ): NativeRecoverySession;
+  /** Recovers only a payload left by an interrupted native-session registration. */
+  recoverUnmappedProjectionSession?(
+    runId: RunId,
+    nativeSessionId: NativeSessionId,
+    payload: JsonValue,
+  ): UnmappedNativeRecoverySession;
+  /**
+   * Identifies a pending crash-recovery WAL append that contains only native
+   * runtime preparation state and therefore has no canonical user mutation to
+   * replay. Returning true preserves the WAL as a superseded recovery artifact
+   * instead of committing it as a new logical-session version.
+   */
+  shouldSupersedeRecoveryAppend?(operation: NativeAppendOperation): boolean;
+}
+
+export interface DshRuntimeBridgeV1 {
+  attach(context: RuntimeAttachContext): Promise<RuntimeHandle>;
+  drain(handle: RuntimeHandle): Promise<RuntimeDrainResult>;
+  drainSession?(handle: RuntimeHandle, nativeSessionId: NativeSessionId): Promise<RuntimeDrainResult>;
+  /** Removes one native session from an attached temporary projection after pending writes drain. */
+  hideSession?(handle: RuntimeHandle, nativeSessionId: NativeSessionId): Promise<void>;
+  detach(handle: RuntimeHandle): Promise<void>;
+  registerSession?(
+    handle: RuntimeHandle,
+    registration: NativeSessionRegistration,
+    projection: unknown,
+  ): Promise<void>;
 }

@@ -3,9 +3,17 @@ import { describe, expect, it } from "vitest";
 import { connectionDescriptorPath, normalizeConfig } from "../src/config.js";
 
 describe("DSH host configuration boundary", () => {
-  it("contains only connection and instance IDs, never a capability or filesystem root", () => {
+  it("contains only safe launcher metadata, never a capability or filesystem root", () => {
     const config = normalizeConfig({ connectionId: "primary", dshInstanceId: "dsh-web", profileId: "web" });
-    expect(config).toEqual({ connectionId: "primary", dshInstanceId: "dsh-web", profileId: "web" });
+    expect(config).toEqual({
+      connectionId: "primary",
+      dshInstanceId: "dsh-web",
+      profileId: "web",
+      sessionSource: "native",
+      maintenanceEndpoint: "auto",
+      adapterSelection: "auto",
+      pinnedAdapterId: null,
+    });
     expect(JSON.stringify(config)).not.toMatch(/token|capability|origin|path|root/iu);
   });
 

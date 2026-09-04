@@ -11,6 +11,44 @@ const cleanups: string[] = [];
 afterEach(async () => Promise.all(cleanups.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
 
 describe("restricted Engine proxy", () => {
+  it("forwards stable references through the same-origin proxy without exposing the Engine token", async () => {
+    const token = "r".repeat(43);
+    const provider: EngineConnectionProvider = { current: async () => ({ origin: "http://127.0.0.1:43123", token }) };
+    let requestBody: unknown;
+    const proxy = new RestrictedEngineProxy(config, provider, async (input, init) => {
+      expect(String(input)).toBe("http://127.0.0.1:43123/v1/references/resolve");
+      requestBody = JSON.parse(String(init?.body));
+      return new Response(JSON.stringify({
+        resolution: {
+          referenceType: "sticker",
+          logicalSessionId: "logical-session-1",
+          logicalAnchorId: "logical-anchor-1",
+          nativeSessionId: "session-alpha2",
+          nativeAnchorId: "anchor-alpha2",
+          runId: "run-alpha2",
+          status: "resolved",
+        },
+      }), { status: 200 });
+    });
+    const result = await proxy.invoke({
+      operation: "reference:resolve",
+      referenceType: "sticker",
+      logicalSessionId: "logical-session-1",
+      logicalAnchorId: "logical-anchor-1",
+      legacyNativeSessionId: "session-alpha1",
+      legacyNativeAnchorId: "anchor-alpha1",
+    });
+    expect(requestBody).toEqual({
+      referenceType: "sticker",
+      logicalSessionId: "logical-session-1",
+      logicalAnchorId: "logical-anchor-1",
+      legacyNativeSessionId: "session-alpha1",
+      legacyNativeAnchorId: "anchor-alpha1",
+    });
+    expect(result.referenceResolution).toMatchObject({ nativeSessionId: "session-alpha2", status: "resolved" });
+    expect(JSON.stringify(result)).not.toContain(token);
+  });
+
   it("refreshes the host-only connection and never returns the rotating capability", async () => {
     let token = "a".repeat(43);
     const provider: EngineConnectionProvider = { current: async () => ({ origin: "http://127.0.0.1:43123", token }) };

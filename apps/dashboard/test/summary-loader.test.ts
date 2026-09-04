@@ -12,17 +12,13 @@ describe("Dashboard summary baseline", () => {
         calls.push("overview");
         return { sessions: 1, conflicts: 0, unmapped: 1, unresolvedTransactions: 0, instances: [] };
       },
-      listSessions: async (query) => {
-        calls.push(`sessions:${query?.limit}`);
-        return { items: [] };
-      },
-      listWorkspaces: async () => {
-        calls.push("workspaces");
-        return [];
+      listCanonicalProjects: async () => {
+        calls.push("projects");
+        return { schemaVersion: 1, projects: [], unclassified: [] };
       },
     };
     await loadDashboardSummary(api);
-    expect(calls).toEqual(["overview", "workspaces"]);
+    expect(calls).toEqual(["overview", "projects"]);
   });
 
   it("renders an actionable offline state without a runtime credential", () => {

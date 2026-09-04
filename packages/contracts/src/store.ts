@@ -29,6 +29,28 @@ import type {
 import type { ContinuationJob, ContinuationTransition } from "./continuations.js";
 import type { SyncPlan } from "./plans.js";
 import type { PlanQuery, PlanSummary, TransactionQuery, TransactionSummary } from "./operations.js";
+import type {
+  CanonicalEventV1,
+  CanonicalSessionRecord,
+  LogicalSessionId,
+  LogicalWorkspace,
+  LogicalProject,
+  LogicalProjectId,
+  OperationId,
+  SessionDerivation,
+  SessionTombstone,
+  WorkspaceMembership,
+  ProjectMembership,
+  ProjectRoot,
+  NativeSessionReferenceIndexV1,
+} from "./canonical.js";
+import type {
+  ProjectionOperationReceipt,
+  ProjectionRun,
+  ProjectionRunState,
+  ProjectionSession,
+} from "./projection.js";
+import type { StatusEventQuery, StatusEventV1 } from "./status.js";
 
 export interface VerifiedRefAdvance {
   readonly logicalSessionId: string;
@@ -71,6 +93,7 @@ export interface SessionRepository {
   listPlans(query: PlanQuery): Promise<Page<PlanSummary>>;
 }
 
+/** @deprecated Read only during canonical migration; do not add new callers. */
 export interface NativeMirrorRepository {
   getNativeMirror(logicalSessionId: string): Promise<NativeMirrorRecord | undefined>;
   listNativeMirrors(): Promise<readonly NativeMirrorRecord[]>;
@@ -130,4 +153,39 @@ export interface ContinuationRepository {
   findContinuationByRequestHash(requestHash: string): Promise<ContinuationJob | undefined>;
   transitionContinuationJob(id: string, transition: ContinuationTransition): Promise<ContinuationJob>;
   listRecoverableContinuations(): Promise<readonly ContinuationJob[]>;
+}
+
+/** Unified read model over source bindings, live projections and old aliases. */
+export interface NativeSessionReferenceRepository {
+  getReferenceIndex(logicalSessionId: LogicalSessionId): Promise<NativeSessionReferenceIndexV1 | undefined>;
+}
+
+export interface CanonicalSessionRepository {
+  createCanonicalSession(input: CanonicalSessionRecord): Promise<boolean>;
+  getCanonicalSession(id: LogicalSessionId): Promise<CanonicalSessionRecord | undefined>;
+  putCanonicalEvent(input: CanonicalEventV1): Promise<boolean>;
+  recordDerivation(input: SessionDerivation): Promise<boolean>;
+  findDerivationByOperationId(operationId: OperationId): Promise<SessionDerivation | undefined>;
+  upsertLogicalWorkspace(input: LogicalWorkspace): Promise<void>;
+  setWorkspaceMembership(input: WorkspaceMembership): Promise<void>;
+  upsertLogicalProject(input: LogicalProject): Promise<void>;
+  replaceProjectRoots(projectId: LogicalProjectId, roots: readonly ProjectRoot[]): Promise<void>;
+  setProjectMembership(input: ProjectMembership): Promise<void>;
+  saveTombstone(input: SessionTombstone): Promise<void>;
+  getTombstone(logicalSessionId: LogicalSessionId): Promise<SessionTombstone | undefined>;
+  listChanges(input: import("./canonical.js").CanonicalChangeQuery): Promise<import("./canonical.js").CanonicalChangePage>;
+}
+
+export interface ProjectionRunRepository {
+  createProjectionRun(input: ProjectionRun): Promise<ProjectionRun>;
+  getProjectionRun(id: ProjectionRun["id"]): Promise<ProjectionRun | undefined>;
+  setProjectionRunState(id: ProjectionRun["id"], state: ProjectionRunState): Promise<void>;
+  upsertProjectionSession(input: ProjectionSession): Promise<void>;
+  saveOperationReceipt(input: ProjectionOperationReceipt): Promise<void>;
+  getOperationReceipt(operationId: OperationId): Promise<ProjectionOperationReceipt | undefined>;
+}
+
+export interface StatusEventRepository {
+  appendStatusEvent(input: StatusEventV1): Promise<void>;
+  listStatusEvents(query: StatusEventQuery): Promise<Page<StatusEventV1>>;
 }

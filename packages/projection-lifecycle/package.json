@@ -1,0 +1,27 @@
+{
+  "name": "@linmu/dsh-session-projection-lifecycle",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@linmu/dsh-session-adapter-sdk": "workspace:*",
+    "@linmu/dsh-canonical-session-engine": "workspace:*",
+    "@linmu/dsh-session-contracts": "workspace:*",
+    "@linmu/dsh-session-status-log": "workspace:*"
+  },
+  "devDependencies": {
+    "@linmu/dsh-session-adapter-alpha2": "workspace:*"
+  }
+}

@@ -6,13 +6,13 @@ export class HttpBodyError extends Error {
   constructor(readonly status: number, message: string) { super(message); }
 }
 
-export async function readJsonBody(request: IncomingMessage): Promise<unknown> {
+export async function readJsonBody(request: IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<unknown> {
   const chunks: Buffer[] = [];
   let size = 0;
   for await (const chunk of request) {
     const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk as Uint8Array);
     size += bytes.length;
-    if (size > MAX_BODY_BYTES) throw new HttpBodyError(413, "Request body exceeds 64 KiB");
+    if (size > maxBytes) throw new HttpBodyError(413, `Request body exceeds ${maxBytes} bytes`);
     chunks.push(bytes);
   }
   try {

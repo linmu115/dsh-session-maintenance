@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { JsonValue } from "./model.js";
+import { STATUS_STAGES } from "./status.js";
 
 const idSchema = z.string().min(1);
 const timestampSchema = z.string().datetime({ offset: true });
@@ -35,6 +36,516 @@ export const sessionStatusSchema = z.enum([
   "paused",
   "unsupported",
 ]);
+
+export const authorityScopeSchema = z.enum(["codex", "maintenance"]);
+export const sessionOriginKindSchema = z.enum([
+  "codex-mirror",
+  "maintenance-native",
+  "codex-derived",
+]);
+export const sessionDerivationKindSchema = z.literal("dsh-continuation");
+
+export const canonicalEventKindSchema = z.enum([
+  "user-message",
+  "assistant-message",
+  "system-message",
+  "reasoning",
+  "tool-call",
+  "tool-result",
+  "annotation",
+  "sticker",
+  "obsidian-reference",
+  "attachment",
+  "system-metadata",
+  "other",
+  "opaque-unknown",
+]);
+export const canonicalOtherReasonSchema = z.enum([
+  "no-common-semantics",
+  "unsupported-source-event",
+  "orphan-tool-result",
+  "adapter-evidence",
+]);
+export const canonicalOtherContentV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  type: z.literal("other"),
+  reason: canonicalOtherReasonSchema,
+  sourceKind: z.string().min(1),
+  label: z.string().min(1),
+  summary: z.string().min(1),
+  evidenceRef: z.string().min(1).nullable(),
+});
+export const adapterEvidenceInputV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  adapterId: idSchema,
+  nativeFormatId: z.string().min(1),
+  sourceKind: z.string().min(1),
+  payload: jsonValueSchema,
+  observedAt: timestampSchema,
+});
+export const adapterEvidenceRecordV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  ref: z.string().regex(/^evidence:sha256:[0-9a-f]{64}$/u),
+  adapterId: idSchema,
+  nativeFormatId: z.string().min(1),
+  sourceKind: z.string().min(1),
+  objectId: z.string().regex(/^sha256:[0-9a-f]{64}$/u),
+  byteLength: nonNegativeIntegerSchema,
+  createdAt: timestampSchema,
+});
+export const canonicalEventRoleSchema = z.enum([
+  "user",
+  "assistant",
+  "system",
+  "tool",
+  "unknown",
+]);
+export const canonicalEventSourceSchema = z.strictObject({
+  platform: platformKindSchema,
+  instanceId: idSchema,
+  sessionId: idSchema,
+  eventId: idSchema.nullable(),
+  cursor: z.string().nullable(),
+});
+export const canonicalEventV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  logicalSessionId: idSchema,
+  sequence: nonNegativeIntegerSchema,
+  kind: canonicalEventKindSchema,
+  role: canonicalEventRoleSchema,
+  content: jsonValueSchema,
+  source: canonicalEventSourceSchema,
+  contentDigest: idSchema,
+  rawPayload: jsonValueSchema.nullable(),
+  extensions: z.record(z.string(), jsonValueSchema),
+}).superRefine((event, context) => {
+  if (event.kind !== "other") return;
+  if (event.role !== "unknown") {
+    context.addIssue({
+      code: "custom",
+      path: ["role"],
+      message: "MCSF other events must use the unknown role",
+    });
+  }
+  if (event.rawPayload !== null) {
+    context.addIssue({
+      code: "custom",
+      path: ["rawPayload"],
+      message: "MCSF other events must keep Adapter evidence outside the public event",
+    });
+  }
+  const parsed = canonicalOtherContentV1Schema.safeParse(event.content);
+  if (!parsed.success) {
+    context.addIssue({
+      code: "custom",
+      path: ["content"],
+      message: "MCSF other events require CanonicalOtherContentV1",
+    });
+  }
+});
+export const canonicalSessionRecordSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  authorityScope: authorityScopeSchema,
+  originKind: sessionOriginKindSchema,
+  headVersionId: idSchema.nullable(),
+  title: z.string(),
+  tags: z.array(z.string()),
+  archivedAt: timestampSchema.nullable(),
+  tombstonedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const nativeSessionReferenceUseSchema = z.enum(["source", "active-projection", "historical-alias"]);
+export const nativeSessionReferenceV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  platform: platformKindSchema,
+  instanceId: idSchema,
+  nativeSessionId: idSchema,
+  adapterId: idSchema.nullable(),
+  referenceUse: nativeSessionReferenceUseSchema,
+  runId: idSchema.nullable(),
+}).superRefine((reference, context) => {
+  if ((reference.referenceUse === "active-projection") !== (reference.runId !== null)) {
+    context.addIssue({
+      code: "custom",
+      path: ["runId"],
+      message: "Only active projection references carry a run ID",
+    });
+  }
+});
+export const nativeSessionReferenceIndexV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  references: z.array(nativeSessionReferenceV1Schema),
+}).superRefine((index, context) => {
+  if (index.references.some((reference) => reference.logicalSessionId !== index.logicalSessionId)) {
+    context.addIssue({
+      code: "custom",
+      path: ["references"],
+      message: "Native session references must belong to the indexed logical session",
+    });
+  }
+});
+export const canonicalChangeKindSchema = z.enum([
+  "session-created",
+  "content-updated",
+  "metadata-updated",
+  "workspace-updated",
+  "project-updated",
+  "branch-created",
+  "tombstone-updated",
+]);
+export const canonicalChangeV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  revision: z.number().int().positive(),
+  logicalSessionId: idSchema,
+  kind: canonicalChangeKindSchema,
+  changedAt: timestampSchema,
+});
+export const canonicalChangeQuerySchema = z.strictObject({
+  afterRevision: nonNegativeIntegerSchema,
+  limit: z.number().int().positive().max(1_000),
+});
+export const canonicalChangePageSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  afterRevision: nonNegativeIntegerSchema,
+  throughRevision: nonNegativeIntegerSchema,
+  currentRevision: nonNegativeIntegerSchema,
+  hasMore: z.boolean(),
+  changes: z.array(canonicalChangeV1Schema),
+}).superRefine((page, context) => {
+  if (page.throughRevision < page.afterRevision || page.currentRevision < page.throughRevision) {
+    context.addIssue({
+      code: "custom",
+      path: ["throughRevision"],
+      message: "Canonical change revisions must be monotonic",
+    });
+  }
+  if (page.changes.some((change) => change.revision <= page.afterRevision || change.revision > page.throughRevision)) {
+    context.addIssue({
+      code: "custom",
+      path: ["changes"],
+      message: "Canonical changes must fall inside the page revision window",
+    });
+  }
+  if (page.changes.some((change, index) => index > 0 && change.revision <= page.changes[index - 1]!.revision)) {
+    context.addIssue({
+      code: "custom",
+      path: ["changes"],
+      message: "Canonical changes must be strictly ordered by revision",
+    });
+  }
+  const expectedThrough = page.changes.at(-1)?.revision ?? page.afterRevision;
+  if (page.throughRevision !== expectedThrough || page.hasMore !== (page.throughRevision < page.currentRevision)) {
+    context.addIssue({
+      code: "custom",
+      path: ["throughRevision"],
+      message: "Canonical change page cursor does not match its rows",
+    });
+  }
+});
+export const sessionDerivationSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  childSessionId: idSchema,
+  parentSessionId: idSchema,
+  baseVersionId: idSchema,
+  kind: sessionDerivationKindSchema,
+  triggerRunId: idSchema,
+  triggerOperationId: idSchema,
+  createdAt: timestampSchema,
+});
+export const logicalWorkspaceSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  parentId: idSchema.nullable(),
+  name: z.string().min(1),
+  sortKey: z.string(),
+  deletedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const workspaceMembershipSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  workspaceId: idSchema.nullable(),
+  displayOrder: nonNegativeIntegerSchema,
+  pinned: z.boolean(),
+  archived: z.boolean(),
+  revision: nonNegativeIntegerSchema,
+});
+export const logicalProjectSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  name: z.string().min(1),
+  sourcePlatform: z.enum(["codex", "maintenance"]),
+  sourceProjectId: z.string().min(1).nullable(),
+  sortKey: z.string(),
+  deletedAt: timestampSchema.nullable(),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+});
+export const projectRootSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  projectId: idSchema,
+  path: z.string().min(1),
+  normalizedPath: z.string().min(1),
+  ordinal: nonNegativeIntegerSchema,
+});
+export const projectMembershipSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  projectId: idSchema.nullable(),
+  revision: nonNegativeIntegerSchema,
+});
+export const canonicalDashboardSessionSummarySchema = z.strictObject({
+  session: canonicalSessionRecordSchema,
+  membership: workspaceMembershipSchema.nullable(),
+});
+export const canonicalDashboardWorkspaceSchema = z.strictObject({
+  workspace: logicalWorkspaceSchema,
+  sessions: z.array(canonicalDashboardSessionSummarySchema),
+});
+export const canonicalWorkspaceDirectorySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  workspaces: z.array(canonicalDashboardWorkspaceSchema),
+  unclassified: z.array(canonicalDashboardSessionSummarySchema),
+});
+export const canonicalWorkspaceDirectoryResponseSchema = z.strictObject({
+  directory: canonicalWorkspaceDirectorySchema,
+});
+export const canonicalDashboardProjectSchema = z.strictObject({
+  project: logicalProjectSchema,
+  roots: z.array(projectRootSchema),
+  sessions: z.array(canonicalDashboardSessionSummarySchema),
+});
+export const canonicalProjectDirectorySchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  projects: z.array(canonicalDashboardProjectSchema),
+  unclassified: z.array(canonicalDashboardSessionSummarySchema),
+});
+export const canonicalProjectDirectoryResponseSchema = z.strictObject({
+  directory: canonicalProjectDirectorySchema,
+});
+export const canonicalLineageRelationSchema = z.strictObject({
+  derivation: sessionDerivationSchema,
+  session: canonicalSessionRecordSchema,
+});
+export const canonicalDashboardSessionDetailSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  session: canonicalSessionRecordSchema,
+  membership: workspaceMembershipSchema.nullable(),
+  workspace: logicalWorkspaceSchema.nullable(),
+  projectMembership: projectMembershipSchema.nullable(),
+  project: logicalProjectSchema.nullable(),
+  projectRoots: z.array(projectRootSchema),
+  nativeReferences: nativeSessionReferenceIndexV1Schema,
+  events: z.array(canonicalEventV1Schema),
+  parent: canonicalLineageRelationSchema.nullable(),
+  children: z.array(canonicalLineageRelationSchema),
+});
+export const canonicalDashboardSessionResponseSchema = z.strictObject({
+  session: canonicalDashboardSessionDetailSchema,
+});
+export const sessionTombstoneSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  operationId: idSchema,
+  checkpointId: idSchema,
+  previousWorkspaceId: idSchema.nullable(),
+  deletedAt: timestampSchema,
+  retentionUntil: timestampSchema,
+  restoredAt: timestampSchema.nullable(),
+});
+
+export const projectionRunStateSchema = z.enum([
+  "preparing",
+  "running",
+  "draining",
+  "verifying",
+  "closed",
+  "recovery-required",
+  "recovering",
+  "recovered",
+  "quarantined",
+  "cleanup-pending",
+]);
+export const projectionSessionModeSchema = z.enum([
+  "maintenance-write",
+  "codex-read-until-write",
+  "hidden",
+  "recovery-only",
+]);
+export const projectionOperationStatusSchema = z.enum([
+  "pending",
+  "committed",
+  "failed",
+  "quarantined",
+]);
+export const projectionRunSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  leaseId: idSchema,
+  branchId: idSchema,
+  instanceId: idSchema,
+  profileId: idSchema,
+  dshVersion: idSchema,
+  adapterId: idSchema,
+  state: projectionRunStateSchema,
+  startedAt: timestampSchema,
+  heartbeatAt: timestampSchema,
+  checkpointId: idSchema.nullable(),
+});
+export const projectionSessionSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  runId: idSchema,
+  nativeSessionId: idSchema,
+  logicalSessionId: idSchema,
+  baseVersionId: idSchema.nullable(),
+  mode: projectionSessionModeSchema,
+  nativeRevision: nonNegativeIntegerSchema,
+  lastCommittedOperationId: idSchema.nullable(),
+  derivedChildSessionId: idSchema.nullable(),
+});
+export const projectionOperationReceiptSchema = z.strictObject({
+  schemaVersion: z.literal(1),
+  operationId: idSchema,
+  runId: idSchema,
+  logicalSessionId: idSchema,
+  nativeSessionId: idSchema,
+  status: projectionOperationStatusSchema,
+  canonicalVersionId: idSchema.nullable(),
+  projectionRevision: nonNegativeIntegerSchema,
+  committedAt: timestampSchema.nullable(),
+});
+export const projectionCacheSessionStateV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  logicalSessionId: idSchema,
+  nativeSessionId: idSchema,
+  canonicalHeadVersionId: idSchema.nullable(),
+  canonicalUpdatedAt: timestampSchema,
+  title: z.string(),
+  tags: z.array(z.string()),
+  archivedAt: timestampSchema.nullable(),
+  workspaceId: idSchema.nullable(),
+  projectId: idSchema.nullable(),
+  authorityScope: authorityScopeSchema,
+  nativeRevision: nonNegativeIntegerSchema,
+  nativeDigest: z.string().min(1),
+});
+export const projectionCacheWorkspaceStateV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  nativeWorkspaceId: idSchema,
+  nativeDigest: z.string().min(1),
+});
+export const persistentProjectionCacheManifestV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  cacheKey: z.string().min(1),
+  adapterId: idSchema,
+  adapterFingerprint: z.string().min(1),
+  configurationDigest: z.string().min(1),
+  lastAppliedRevision: nonNegativeIntegerSchema,
+  sessions: z.array(projectionCacheSessionStateV1Schema),
+  workspaces: z.array(projectionCacheWorkspaceStateV1Schema),
+  createdAt: timestampSchema,
+  updatedAt: timestampSchema,
+}).superRefine((manifest, context) => {
+  const logicalIds = new Set(manifest.sessions.map((session) => session.logicalSessionId));
+  const nativeIds = new Set(manifest.sessions.map((session) => session.nativeSessionId));
+  const workspaceIds = new Set(manifest.workspaces.map((workspace) => workspace.nativeWorkspaceId));
+  if (logicalIds.size !== manifest.sessions.length || nativeIds.size !== manifest.sessions.length) {
+    context.addIssue({ code: "custom", path: ["sessions"], message: "Projection cache session identities must be unique" });
+  }
+  if (workspaceIds.size !== manifest.workspaces.length) {
+    context.addIssue({ code: "custom", path: ["workspaces"], message: "Projection cache workspace identities must be unique" });
+  }
+});
+export const projectionDeltaApplyReceiptV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  cacheKey: z.string().min(1),
+  baseline: z.boolean(),
+  fromRevision: nonNegativeIntegerSchema,
+  throughRevision: nonNegativeIntegerSchema,
+  currentRevision: nonNegativeIntegerSchema,
+  changedSessions: nonNegativeIntegerSchema,
+  rewrittenSessions: nonNegativeIntegerSchema,
+  removedSessions: nonNegativeIntegerSchema,
+  unchangedSessions: nonNegativeIntegerSchema,
+  rewrittenWorkspaces: nonNegativeIntegerSchema,
+  removedWorkspaces: nonNegativeIntegerSchema,
+}).superRefine((receipt, context) => {
+  if (receipt.fromRevision > receipt.throughRevision || receipt.throughRevision > receipt.currentRevision) {
+    context.addIssue({ code: "custom", path: ["throughRevision"], message: "Projection delta revisions must be monotonic" });
+  }
+});
+
+export const statusStageSchema = z.enum(STATUS_STAGES);
+export const statusEventStateSchema = z.enum(["started", "succeeded", "failed"]);
+export const statusEventV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  at: timestampSchema,
+  runId: idSchema,
+  leaseId: idSchema,
+  profileId: idSchema,
+  adapterId: idSchema,
+  dshVersion: idSchema,
+  stage: statusStageSchema,
+  state: statusEventStateSchema,
+  logicalSessionId: idSchema.nullable(),
+  nativeSessionId: idSchema.nullable(),
+  operationId: idSchema.nullable(),
+  parentEventId: idSchema.nullable(),
+  spanId: idSchema,
+  errorCode: z.string().nullable(),
+  durationMs: nonNegativeIntegerSchema.nullable(),
+  diagnosticDetailRef: z.string().nullable(),
+});
+export const statusEventQuerySchema = z.strictObject({
+  cursor: z.string().optional(),
+  limit: z.number().int().min(1).max(100).optional(),
+  runId: idSchema.optional(),
+  logicalSessionId: idSchema.optional(),
+  operationId: idSchema.optional(),
+  stage: statusStageSchema.optional(),
+  spanId: idSchema.optional(),
+});
+
+export const adapterCapabilitySchema = z.enum([
+  "session-persistence",
+  "append",
+  "revision-check",
+  "read-from",
+  "borrow-session",
+  "snapshots",
+  "workspace-projection",
+  "annotation",
+  "sticker-obsidian-reference",
+  "unknown-event-round-trip",
+  "stable-native-session-id",
+  "metadata-hot-update",
+  "deep-link-resolution",
+  "recovery",
+  "projection-verification",
+]);
+export const adapterVerificationStatusSchema = z.enum([
+  "verified",
+  "compatible",
+  "experimental",
+  "failed",
+]);
+export const adapterManifestV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  id: idSchema,
+  displayName: z.string().min(1),
+  adapterApiVersion: z.literal(1),
+  packageVersion: z.string().min(1),
+  testedDshVersions: z.array(z.string().min(1)),
+  declaredDshRange: z.string().min(1),
+  capabilities: z.array(adapterCapabilitySchema),
+});
 
 export const platformSessionKeySchema = z.strictObject({
   platform: platformKindSchema,

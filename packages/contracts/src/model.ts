@@ -7,7 +7,9 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue };
 
 export type PlatformKind = "codex" | "dsh";
+/** @deprecated Replaced by canonical authority and origin contracts. */
 export type SyncMode = "continuation" | "native-mirror" | "paused";
+/** @deprecated Replaced by projection run and derivation states. */
 export type NativeMirrorState =
   | "disabled"
   | "initializing"
@@ -190,6 +192,7 @@ export interface PlatformBinding {
   readonly status: BindingStatus;
 }
 
+/** @deprecated Replaced by canonical sessions, derivations and projection runs. */
 export interface NativeMirrorRecord {
   readonly logicalSessionId: string;
   readonly state: NativeMirrorState;
