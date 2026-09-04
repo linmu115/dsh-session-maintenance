@@ -17,9 +17,16 @@ import {
   type CompositionOptions,
 } from "./composition-root.js";
 import { reseedCanonicalCandidate } from "./canonical-reseed.js";
+import {
+  activateConversationTopologyRepairCandidate,
+  previewConversationTopologyRepair,
+  stageConversationTopologyRepair,
+} from "./conversation-topology-repair.js";
 import type { DshGatewayTarget } from "./dsh-gateway-connection.js";
 import {
   addCodexTarget,
+  activateDatabaseFile,
+  activeDatabasePath,
   initializeStateRoot,
   loadConfig,
   registeredCodexTargets,
@@ -245,6 +252,81 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
   });
 
   const canonical = program.command("canonical");
+  canonical.command("repair-rc1-preview")
+    .requiredOption("--candidate-file <name>")
+    .option("--codex-instance <id>")
+    .option("--json")
+    .action(async (value: { candidateFile: string; codexInstance?: string }) => {
+      const stateRoot = compositionOptions().stateRoot;
+      const config = await loadConfig(stateRoot);
+      const codex = registeredInstances(config).filter((item) =>
+        item.platform === "codex" && (value.codexInstance === undefined || item.id === value.codexInstance));
+      if (codex.length !== 1) {
+        throw new TypeError(`RC1 repair preview requires exactly one selected Codex instance; found ${codex.length}`);
+      }
+      const preview = await previewConversationTopologyRepair({
+        stateRoot,
+        sourceDatabasePath: activeDatabasePath(stateRoot, config),
+        candidateFile: value.candidateFile,
+        codexInstance: codex[0]!,
+        ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
+        onStatus: (event) => output(stderr, event),
+      });
+      output(stdout, { preview });
+    });
+
+  canonical.command("repair-rc1-stage")
+    .requiredOption("--candidate-file <name>")
+    .requiredOption("--source-digest <digest>")
+    .requiredOption("--codex-plan-digest <digest>")
+    .option("--codex-instance <id>")
+    .option("--json")
+    .action(async (value: {
+      candidateFile: string;
+      sourceDigest: string;
+      codexPlanDigest: string;
+      codexInstance?: string;
+    }) => {
+      const stateRoot = compositionOptions().stateRoot;
+      const config = await loadConfig(stateRoot);
+      const codex = registeredInstances(config).filter((item) =>
+        item.platform === "codex" && (value.codexInstance === undefined || item.id === value.codexInstance));
+      if (codex.length !== 1) {
+        throw new TypeError(`RC1 repair staging requires exactly one selected Codex instance; found ${codex.length}`);
+      }
+      const manifest = await stageConversationTopologyRepair({
+        stateRoot,
+        sourceDatabasePath: activeDatabasePath(stateRoot, config),
+        candidateFile: value.candidateFile,
+        codexInstance: codex[0]!,
+        expectedSourceDigest: value.sourceDigest,
+        expectedCodexPlanDigest: value.codexPlanDigest,
+        ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
+        ...(options.clock === undefined ? {} : { now: options.clock }),
+        onStatus: (event) => output(stderr, event),
+      });
+      output(stdout, { manifest });
+    });
+
+  canonical.command("repair-rc1-activate")
+    .requiredOption("--candidate-file <name>")
+    .requiredOption("--source-digest <digest>")
+    .requiredOption("--candidate-digest <digest>")
+    .option("--json")
+    .action(async (value: { candidateFile: string; sourceDigest: string; candidateDigest: string }) => {
+      const stateRoot = compositionOptions().stateRoot;
+      const config = await loadConfig(stateRoot);
+      const activation = await activateConversationTopologyRepairCandidate({
+        stateRoot,
+        sourceDatabasePath: activeDatabasePath(stateRoot, config),
+        candidateFile: value.candidateFile,
+        expectedSourceDigest: value.sourceDigest,
+        expectedCandidateDigest: value.candidateDigest,
+        activateDatabaseFile: async (candidateFile) => { await activateDatabaseFile(stateRoot, candidateFile); },
+      });
+      output(stdout, { activation });
+    });
+
   canonical.command("reseed-alpha2")
     .requiredOption("--candidate-file <name>")
     .requiredOption("--dsh-home <path>")

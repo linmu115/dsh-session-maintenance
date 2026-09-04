@@ -23,7 +23,7 @@ export {
   composeRc1ProjectionManifest,
   materializeRc1,
 } from "./materialize.js";
-export { normalizeRc1Append } from "./normalize-append.js";
+export { normalizeRc1Append, portableizeRc1CanonicalHistory } from "./normalize-append.js";
 export { assertRc1SessionInvariants, inspectRc1, verifyRc1 } from "./inspect.js";
 export { probeRc1 } from "./probe.js";
 export { resolveRc1Reference } from "./references.js";

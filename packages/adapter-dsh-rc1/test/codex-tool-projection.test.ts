@@ -98,6 +98,7 @@ async function project(events: readonly CanonicalEventV1[]) {
     writeSession: async (id, payload) => { sessions.set(id, payload); },
   });
   return sessions.get(rc1NativeSessionId(logicalSessionId)) as {
+    readonly canonicalHistoryMode: "native" | "portable";
     readonly events: readonly Array<{
       readonly type: string;
       readonly seq: number;
@@ -217,6 +218,7 @@ describe("Rc1 Codex tool projection", () => {
       "step/end",
       "turn/end",
     ]);
+    expect(projected.canonicalHistoryMode).toBe("portable");
     expect(toolCallIds(projected.events[3]!)).toEqual(["call-1"]);
     expect(projected.events[4]).toMatchObject({
       seq: 4,

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Mark projected histories as `native` or `portable` and preserve that mode
+  across later durable appends.
+- Convert portable RC1 appends into exact MCSF user, assistant, reasoning,
+  tool-call and tool-result events before replanning conversation topology.
+- Keep RC1 lifecycle, streaming chunks and request-context envelopes as
+  evidence-only transport details when appending to a portable history.
+- Add a migration helper that converts an existing derived conversation's
+  retained native RC1 suffix without changing its event identities or content.
 - Project portable MCSF conversations through RC1's native one-based
   turn/step lifecycle instead of hard-coding turn and step zero.
 - Combine reasoning, assistant text and correlated calls into the native

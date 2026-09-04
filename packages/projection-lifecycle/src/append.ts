@@ -273,6 +273,9 @@ export async function commitProjectionAppend(input: {
       && !Array.isArray(normalized.metadata)
       ? normalized.metadata as Readonly<Record<string, import("@linmu/dsh-session-contracts").JsonValue>>
       : undefined;
+    const canonicalHistoryMode = metadata?.canonicalHistoryMode === "portable"
+      ? "portable" as const
+      : "native" as const;
     const evidenceCount = Array.isArray(metadata?.evidenceRefs)
       ? metadata.evidenceRefs.length
       : 0;
@@ -317,6 +320,7 @@ export async function commitProjectionAppend(input: {
       archivedAt: session.archivedAt,
       workspaceId: session.workspaceId,
       appendedEvents: normalized.events,
+      canonicalHistoryMode,
       observedAt: operation.observedAt,
       projection: {
         runId: context.handle.run.id,

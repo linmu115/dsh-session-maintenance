@@ -22,6 +22,7 @@ import { codexDisplayTitle } from "./thread.js";
 import { codexWorkspaceId } from "./workspace.js";
 import {
   CODEX_CANONICAL_SEMANTICS_EXTENSION,
+  attachCodexClassification,
   codexCanonicalSemantics,
   type CodexCanonicalSemanticsV1,
   type CodexClassificationSummaryV1,
@@ -611,5 +612,5 @@ export function normalizeCodexObservation(observation: StableObservation): Codex
       && event.extensions.codexTextNormalization.transportWhitespacePrefixRemoved === true).length,
     sourceKindCounts,
   };
-  return { ...normalized, codexClassification };
+  return attachCodexClassification(normalized, codexClassification);
 }

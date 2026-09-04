@@ -1,4 +1,5 @@
 import {
+  CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION,
   readCanonicalConversationTopologyV1,
   type CanonicalConversationPhase,
   type CanonicalConversationTopologyV1,
@@ -387,5 +388,37 @@ export function planConversationTopology(
       unclosedToolCallCount: pendingToolCalls.size + missingToolCallIdCount,
       topologyConflictCount,
     },
+  };
+}
+
+/**
+ * Apply the stable MCSF topology plan without changing event identity, order,
+ * content or source provenance. Existing valid explicit coordinates remain the
+ * authority; only missing coordinates are derived by the planner.
+ */
+export function withPlannedConversationTopology(
+  inputEvents: readonly CanonicalEventV1[],
+): {
+  readonly events: readonly CanonicalEventV1[];
+  readonly plan: ConversationTopologyPlanV1;
+} {
+  const plan = planConversationTopology(inputEvents);
+  const topologyByEventId = new Map(
+    plan.events.map((event) => [event.eventId, event.topology] as const),
+  );
+  return {
+    plan,
+    events: inputEvents.map((event) => {
+      const topology = topologyByEventId.get(event.id);
+      return topology === undefined
+        ? event
+        : {
+            ...event,
+            extensions: {
+              ...event.extensions,
+              [CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION]: topology,
+            },
+          };
+    }),
   };
 }

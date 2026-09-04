@@ -31,8 +31,35 @@ export interface CodexClassificationSummaryV1 {
   readonly sourceKindCounts: Readonly<Record<string, number>>;
 }
 
+/**
+ * A normalized session whose Adapter-local classification summary is still
+ * available in this process. The summary deliberately is not a property of
+ * the shared NormalizedSession DTO and therefore cannot leak into persisted
+ * discovery objects.
+ */
+declare const CODEX_NORMALIZED_SESSION_BRAND: unique symbol;
 export interface CodexNormalizedSession extends NormalizedSession {
-  readonly codexClassification: CodexClassificationSummaryV1;
+  readonly [CODEX_NORMALIZED_SESSION_BRAND]: true;
+}
+
+const classificationBySession = new WeakMap<NormalizedSession, CodexClassificationSummaryV1>();
+
+export function attachCodexClassification(
+  session: NormalizedSession,
+  classification: CodexClassificationSummaryV1,
+): CodexNormalizedSession {
+  classificationBySession.set(session, classification);
+  return session as CodexNormalizedSession;
+}
+
+export function readCodexClassification(
+  session: CodexNormalizedSession,
+): CodexClassificationSummaryV1 {
+  const classification = classificationBySession.get(session);
+  if (classification === undefined) {
+    throw new TypeError("Normalized Codex session lacks its Adapter classification summary");
+  }
+  return classification;
 }
 
 export interface CodexCanonicalSemanticsInput {
@@ -114,5 +141,5 @@ export function readCodexCanonicalSemantics(
 }
 
 export function isCodexNormalizedSession(value: NormalizedSession): value is CodexNormalizedSession {
-  return "codexClassification" in value;
+  return classificationBySession.has(value);
 }

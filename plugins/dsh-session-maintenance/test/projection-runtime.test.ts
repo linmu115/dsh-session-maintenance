@@ -348,6 +348,82 @@ describe("DSH projection runtime", () => {
     expect(requests.filter((request) => request.path.endsWith("/flush"))).toHaveLength(1);
   });
 
+  it("keeps a projected portable history portable after a durable RC1 append", async () => {
+    const endpoint = "http://127.0.0.1:41781";
+    const runId = "run-rc1-portable-live";
+    const nativeSessionId = "native-rc1-portable-live";
+    const requests: Array<{ readonly path: string; readonly body: Record<string, unknown> }> = [];
+    const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      requests.push({ path: url.pathname, body });
+      if (url.pathname.endsWith("/attach")) return json({ schemaVersion: 1, runId, state: "running" });
+      if (url.pathname.endsWith("/append")) {
+        return json({
+          schemaVersion: 1,
+          receipt: {
+            status: "committed",
+            logicalSessionId: "logical-rc1-portable",
+            canonicalVersionId: "version-rc1-portable-appended",
+          },
+        });
+      }
+      if (url.pathname.endsWith("/flush")) return json({ schemaVersion: 1, pendingOperations: 0 });
+      return json({ error: { message: `unexpected route ${url.pathname}` } }, 404);
+    }) as typeof fetch;
+    const projectedSession = {
+      nativeSessionId,
+      updatedAt: "2026-09-05T00:00:00.000Z",
+      hot: false,
+      eventCount: 0,
+      payload: {
+        logicalSessionId: "logical-rc1-portable",
+        baseVersionId: "version-rc1-portable",
+        canonicalHistoryMode: "portable",
+        header: { version: 0, id: nativeSessionId, createdAt: 1, cwd: "D:/synthetic/project", isSeeded: false },
+        events: [],
+      },
+    } as const;
+    const registrar = new ProjectionRuntimeRegistrar({
+      transport: { stream: vi.fn(async function* () {
+        yield { type: "catalog-begin" as const, schemaVersion: 2 as const, runId, hotLimit: 0, sessionCount: 1 };
+        yield { type: "catalog-sessions" as const, sessions: [projectedSession] };
+        yield { type: "catalog-end" as const, sessionCount: 1 };
+      }) },
+      overlay: new InMemoryProjectionPersistenceOverlay(),
+    });
+    const client = new RuntimeBrokerPluginClient({
+      connection: { current: async () => ({ origin: endpoint, token: "t".repeat(32) }) },
+      registrar,
+      clientId: "client-plugin-test",
+      runId,
+      temporaryPersistenceRootId: `projection:${runId}`,
+      maintenanceEndpoint: endpoint,
+      fetchImpl,
+    });
+    const event = { seq: 0, type: "user/message", data: { text: "continue" } };
+
+    await client.attach();
+    client.observe(nativeSessionId, event, projectedSession.payload.header, () => []);
+    await client.flush(nativeSessionId);
+
+    expect(requests.some((request) => request.path.endsWith("/sessions"))).toBe(false);
+    const append = requests.find((request) => request.path.endsWith("/append"));
+    expect(append?.body.operation).toMatchObject({
+      payload: {
+        logicalSessionId: "logical-rc1-portable",
+        baseVersionId: "version-rc1-portable",
+        canonicalHistoryMode: "portable",
+        events: [event],
+      },
+    });
+    expect(requests.filter((request) => request.path.endsWith("/flush"))).toHaveLength(1);
+  });
+
   it("batches streamed Alpha2 events that arrive while a durable append is in flight", async () => {
     const endpoint = "http://127.0.0.1:41781";
     const runId = "run-alpha2-stream-batch";

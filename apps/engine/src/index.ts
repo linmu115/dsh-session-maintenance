@@ -1,6 +1,7 @@
 export * from "./cli.js";
 export * from "./codex-canonical-import.js";
 export * from "./canonical-reseed.js";
+export * from "./conversation-topology-repair.js";
 export * from "./codex-catalog-title-sync.js";
 export * from "./internal-codex-reconcile.js";
 export * from "./sqlite-codex-project-port.js";

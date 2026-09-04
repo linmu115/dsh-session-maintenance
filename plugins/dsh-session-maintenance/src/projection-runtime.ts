@@ -822,6 +822,7 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
 interface ProjectedSessionMetadata {
   readonly logicalSessionId: string;
   readonly baseVersionId: string | null;
+  readonly canonicalHistoryMode: "native" | "portable";
 }
 
 interface QueuedRuntimeEvent {
@@ -855,10 +856,22 @@ function projectedMetadata(value: JsonValue): ProjectedSessionMetadata {
   const payload = object(value, "DSH projected session");
   if (typeof payload.logicalSessionId !== "string") throw new TypeError("Projected session lacks logicalSessionId");
   if (payload.baseVersionId !== null && typeof payload.baseVersionId !== "string") throw new TypeError("Projected session has invalid baseVersionId");
-  return { logicalSessionId: payload.logicalSessionId, baseVersionId: payload.baseVersionId as string | null };
+  if (payload.canonicalHistoryMode !== undefined
+    && payload.canonicalHistoryMode !== "native"
+    && payload.canonicalHistoryMode !== "portable") {
+    throw new TypeError("Projected session has invalid canonicalHistoryMode");
+  }
+  return {
+    logicalSessionId: payload.logicalSessionId,
+    baseVersionId: payload.baseVersionId as string | null,
+    canonicalHistoryMode: payload.canonicalHistoryMode === "portable" ? "portable" : "native",
+  };
 }
 
-function committedMetadata(value: unknown): ProjectedSessionMetadata | undefined {
+function committedMetadata(
+  value: unknown,
+  canonicalHistoryMode: ProjectedSessionMetadata["canonicalHistoryMode"],
+): ProjectedSessionMetadata | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const receipt = (value as { readonly receipt?: unknown }).receipt;
   if (typeof receipt !== "object" || receipt === null || Array.isArray(receipt)) return undefined;
@@ -872,6 +885,7 @@ function committedMetadata(value: unknown): ProjectedSessionMetadata | undefined
   return {
     logicalSessionId: candidate.logicalSessionId,
     baseVersionId: candidate.canonicalVersionId,
+    canonicalHistoryMode,
   };
 }
 
@@ -1059,6 +1073,7 @@ export class RuntimeBrokerPluginClient {
                 payload: {
                   logicalSessionId: metadata.logicalSessionId,
                   baseVersionId: metadata.baseVersionId,
+                  canonicalHistoryMode: metadata.canonicalHistoryMode,
                   events,
                 },
                 observedAt: this.clock(),
@@ -1071,7 +1086,11 @@ export class RuntimeBrokerPluginClient {
             clientId: this.clientId,
             operation: batch.operation,
           });
-          const advanced = committedMetadata(response);
+          const operationPayload = object(batch.operation.payload, "DSH runtime append payload");
+          const advanced = committedMetadata(
+            response,
+            operationPayload.canonicalHistoryMode === "portable" ? "portable" : "native",
+          );
           if (advanced !== undefined) this.dynamicMetadata.set(nativeSessionId, advanced);
           queue!.splice(0, batch.queueLength);
           this.pendingBatches.delete(nativeSessionId);
@@ -1114,6 +1133,7 @@ export class RuntimeBrokerPluginClient {
     const metadata = {
       logicalSessionId: response.session.logicalSessionId,
       baseVersionId: response.session.baseVersionId as string | null,
+      canonicalHistoryMode: "native" as const,
     };
     this.dynamicMetadata.set(nativeSessionId, metadata);
     return metadata;

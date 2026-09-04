@@ -38,6 +38,7 @@ export type {
 } from "@linmu/dsh-session-contracts";
 
 export {
+  CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION,
   canonicalEventProjectionPolicy,
   readCanonicalConversationTopologyV1,
   RUNTIME_MANAGED_PROJECT_DIRECTORY,

@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Preserve the RC1 projection's Canonical history mode through registration,
+  retry, durable append receipts and later live events, so a repaired Codex
+  mirror or derived conversation cannot fall back to native-history handling.
 - Render grouped unknown-record regions as one compact Maintenance disclosure
   that is closed by default, while preserving each portable evidence reference
   outside the model surface.

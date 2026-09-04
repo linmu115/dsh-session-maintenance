@@ -9,7 +9,10 @@ import type {
   StableObservation,
   StableObservation as StableObservationType,
 } from "@linmu/dsh-session-contracts";
-import { readCanonicalConversationTopologyV1 } from "@linmu/dsh-session-contracts";
+import {
+  normalizedSessionSchema,
+  readCanonicalConversationTopologyV1,
+} from "@linmu/dsh-session-contracts";
 import {
   assertFixtureSandbox,
   createFixtureSandbox,
@@ -20,6 +23,7 @@ import {
 import {
   CodexReadAdapter,
   codexDisplayTitle,
+  readCodexClassification,
   readCodexCanonicalSemantics,
   type CodexReadStatusEvent,
 } from "../src/index.js";
@@ -352,12 +356,13 @@ describe("CodexReadAdapter", () => {
     expect(normalized.events.map((event) => readCanonicalConversationTopologyV1(event)?.turnOrdinal)).toEqual([
       0, 0, 0, 0, 0, 1, 1,
     ]);
-    expect(normalized.codexClassification).toMatchObject({
+    expect(readCodexClassification(normalized)).toMatchObject({
       sourceEnvelopeCount: 16,
       canonicalEventCount: 7,
       evidenceOnlyCount: 9,
       otherEventCount: 0,
     });
+    expect(normalizedSessionSchema.safeParse(JSON.parse(JSON.stringify(normalized))).success).toBe(true);
     expect(normalized.events.every((event) => event.extensions.codexEnvelope === undefined)).toBe(true);
     expect(normalized.compatibility.status).toBe("compatible");
   });
@@ -515,7 +520,7 @@ describe("CodexReadAdapter", () => {
       "确认，开始施工",
       "保留字面实体 &#x20;、&lt;tag&gt; 和 &amp;",
     ]);
-    expect(normalized.codexClassification.transportWhitespaceNormalizedEventCount).toBe(1);
+    expect(readCodexClassification(normalized).transportWhitespaceNormalizedEventCount).toBe(1);
   });
 
   it("uses the latest Codex compacted replacement history as the active conversation", async () => {
@@ -596,7 +601,7 @@ describe("CodexReadAdapter", () => {
     expect(JSON.stringify(visible)).not.toContain("这段历史已经被 Codex 压缩");
     expect(JSON.stringify(visible)).not.toContain("Codex-only developer instructions");
     expect(normalized.events[0]).toMatchObject({ kind: "message", role: "user" });
-    expect(normalized.codexClassification).toMatchObject({
+    expect(readCodexClassification(normalized)).toMatchObject({
       sourceEnvelopeCount: 4,
       canonicalEventCount: 3,
       evidenceOnlyCount: 1,

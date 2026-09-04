@@ -285,6 +285,44 @@ describe("CanonicalSessionEngine", () => {
     });
   });
 
+  it("replans only portable DSH history through the Canonical conversation topology", async () => {
+    const store = new MemoryEngineStore();
+    const engine = new CanonicalSessionEngine(store);
+    const logicalSessionId = "logical-portable-append" as LogicalSessionId;
+    await engine.appendDsh({
+      logicalSessionId,
+      title: "Portable append",
+      tags: [],
+      archivedAt: null,
+      workspaceId: null,
+      canonicalHistoryMode: "portable",
+      appendedEvents: [
+        event(logicalSessionId, "portable-user", 0, "question", "dsh"),
+        event(logicalSessionId, "portable-answer", 1, "answer", "dsh"),
+      ],
+      observedAt: at,
+      projection: projection("operation-portable-1"),
+    });
+
+    const portableEvents = store.mutations.at(-1)?.version?.events ?? [];
+    expect(portableEvents).toHaveLength(2);
+    expect(portableEvents.every((item) => item.extensions["mcsf.conversationTopology.v1"] !== undefined)).toBe(true);
+
+    const nativeId = "logical-native-no-plan" as LogicalSessionId;
+    await engine.appendDsh({
+      logicalSessionId: nativeId,
+      title: "Native append",
+      tags: [],
+      archivedAt: null,
+      workspaceId: null,
+      canonicalHistoryMode: "native",
+      appendedEvents: [event(nativeId, "native-user", 0, "question", "dsh")],
+      observedAt: at,
+      projection: projection("operation-native-no-plan"),
+    });
+    expect(store.mutations.at(-1)?.version?.events[0]?.extensions).toEqual({});
+  });
+
   it("tombstones and restores without rewriting immutable versions", async () => {
     const store = new MemoryEngineStore();
     const engine = new CanonicalSessionEngine(store);

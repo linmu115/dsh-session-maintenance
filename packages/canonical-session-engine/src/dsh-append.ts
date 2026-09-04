@@ -14,6 +14,7 @@ import type {
   SessionVersionId,
   WorkspaceMembership,
 } from "@linmu/dsh-session-contracts";
+import { withPlannedConversationTopology } from "@linmu/dsh-session-domain";
 
 import { buildCanonicalVersion } from "./codex-observation.js";
 import {
@@ -46,6 +47,12 @@ export interface DshAppendInput {
   readonly archivedAt: string | null;
   readonly workspaceId: LogicalWorkspaceId | null;
   readonly appendedEvents: readonly CanonicalEventV1[];
+  /**
+   * Portable histories use MCSF conversation semantics as their authority.
+   * Native histories retain the source Harness envelope and must not be
+   * rewritten by the Canonical topology planner.
+   */
+  readonly canonicalHistoryMode?: "native" | "portable";
   readonly observedAt: string;
   readonly projection: DshProjectionAppendContext;
 }
@@ -169,10 +176,14 @@ export async function appendDsh(
   }
 
   assertAppendTarget(targetId, appendedEvents);
+  const combinedEvents = [...baseEvents, ...appendedEvents];
+  const versionEvents = input.canonicalHistoryMode === "portable"
+    ? withPlannedConversationTopology(combinedEvents).events
+    : combinedEvents;
   const version = buildCanonicalVersion({
     logicalSessionId: targetId,
     parentVersionIds,
-    events: [...baseEvents, ...appendedEvents],
+    events: versionEvents,
     workspaceId,
     title,
     tags,

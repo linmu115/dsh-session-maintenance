@@ -46,6 +46,8 @@ export interface Rc1ProjectionSession {
   readonly updatedAt: string;
   readonly title: string;
   readonly tags: readonly string[];
+  /** Determines whether later RC1 appends remain native or extend portable MCSF history. */
+  readonly canonicalHistoryMode: "native" | "portable";
   /** Exact fork-inherited prefix length carried outside the RC1 SessionHeader. */
   readonly inheritedEventCount: Rc1SessionLogOffset;
   readonly header: {
@@ -1099,6 +1101,16 @@ function materializeEvents(events: readonly CanonicalEventV1[], createdAt: numbe
   return materializePortableConversationEvents(events, createdAt);
 }
 
+function canonicalHistoryMode(
+  events: readonly CanonicalEventV1[],
+): Rc1ProjectionSession["canonicalHistoryMode"] {
+  return events.some((event) =>
+    isPortableConversationKind(event.kind)
+    && rawEnvelope(event) === undefined)
+    ? "portable"
+    : "native";
+}
+
 export function rc1ProjectedNativeRevision(
   canonical: CanonicalProjectionSessionInput,
   payload: JsonValue,
@@ -1182,6 +1194,7 @@ export async function materializeRc1(
         updatedAt: item.session.updatedAt,
         title: item.session.title,
         tags: item.session.tags,
+        canonicalHistoryMode: canonicalHistoryMode(item.events),
         inheritedEventCount: rc1SessionLogOffset(0),
         header: {
           version: 0,
