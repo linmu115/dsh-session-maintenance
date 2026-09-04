@@ -14,6 +14,7 @@ export type {
   AdapterManifestV1,
   AdapterVerificationStatus,
   CanonicalEventV1,
+  CanonicalConversationTopologyV1,
   CanonicalProjectionSessionInput,
   CanonicalSessionRecord,
   JsonValue,
@@ -38,6 +39,7 @@ export type {
 
 export {
   canonicalEventProjectionPolicy,
+  readCanonicalConversationTopologyV1,
   RUNTIME_MANAGED_PROJECT_DIRECTORY,
   runtimeManagedProjectSegment,
 } from "@linmu/dsh-session-contracts";

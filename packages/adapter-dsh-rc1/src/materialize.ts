@@ -1,7 +1,11 @@
 import { createHash } from "node:crypto";
 
-import { canonicalEventProjectionPolicy } from "@linmu/dsh-session-adapter-sdk";
+import {
+  canonicalEventProjectionPolicy,
+  readCanonicalConversationTopologyV1,
+} from "@linmu/dsh-session-adapter-sdk";
 import type {
+  CanonicalConversationTopologyV1,
   CanonicalEventV1,
   CanonicalProjectionInput,
   CanonicalProjectionSessionInput,
@@ -247,19 +251,27 @@ function canonicalToolRecord(event: CanonicalEventV1): { readonly [key: string]:
   return isRecord(event.content) ? event.content : {};
 }
 
-function canonicalToolCall(event: CanonicalEventV1): { readonly [key: string]: JsonValue } {
+function canonicalToolCall(
+  event: CanonicalEventV1,
+  turn = 0,
+  step = 0,
+): { readonly [key: string]: JsonValue } {
   const content = canonicalToolRecord(event);
   return {
-    turn: 0,
-    step: 0,
+    turn,
+    step,
     callId: nonEmptyString(content.callId) ?? event.id,
     name: nonEmptyString(content.name) ?? "codex-tool",
     arguments: typeof content.arguments === "string" ? content.arguments : "",
   };
 }
 
-function canonicalToolCallMessage(event: CanonicalEventV1): { readonly [key: string]: JsonValue } {
-  const call = canonicalToolCall(event);
+function canonicalToolCallMessage(
+  event: CanonicalEventV1,
+  turn = 0,
+  step = 0,
+): { readonly [key: string]: JsonValue } {
+  const call = canonicalToolCall(event, turn, step);
   return {
     turn: call.turn!,
     step: call.step!,
@@ -277,14 +289,18 @@ function canonicalToolCallMessage(event: CanonicalEventV1): { readonly [key: str
   };
 }
 
-function canonicalToolResult(event: CanonicalEventV1): { readonly [key: string]: JsonValue } {
+function canonicalToolResult(
+  event: CanonicalEventV1,
+  turn = 0,
+  step = 0,
+): { readonly [key: string]: JsonValue } {
   const content = canonicalToolRecord(event);
   const callId = nonEmptyString(content.callId) ?? event.id;
   const text = typeof content.outputText === "string" ? content.outputText : "";
   const isError = content.isError === true;
   return {
-    turn: 0,
-    step: 0,
+    turn,
+    step,
     message: {
       id: event.id,
       role: "user",
@@ -304,7 +320,7 @@ function canonicalToolResult(event: CanonicalEventV1): { readonly [key: string]:
   };
 }
 
-export function materializeEvent(event: CanonicalEventV1, createdAt: number): Rc1SessionEvent {
+function materializeEvent(event: CanonicalEventV1, createdAt: number): Rc1SessionEvent {
   // MCSF `other` is a hard safety boundary. Adapter evidence may contain a
   // source event that happens to look like a model-facing Rc1 message, but
   // replaying that envelope would widen log-only evidence into model history.
@@ -384,7 +400,10 @@ function rebaseSurfaceOp(surfaceOp: JsonValue, sequenceMap: ReadonlyMap<number, 
   };
 }
 
-function materializeEvents(events: readonly CanonicalEventV1[], createdAt: number): readonly Rc1SessionEvent[] {
+function materializeNativeEnvelopeEvents(
+  events: readonly CanonicalEventV1[],
+  createdAt: number,
+): readonly Rc1SessionEvent[] {
   const drafts: MaterializedDraft[] = [];
   for (const event of events) {
     const packed = event.kind === "other" ? undefined : packedStorageEvents(event);
@@ -479,6 +498,504 @@ function materializeEvents(events: readonly CanonicalEventV1[], createdAt: numbe
         : { surfaceOp: rebaseSurfaceOp(draft.event.surfaceOp, sequenceMap) }),
     };
   });
+}
+
+type PortableConversationKind = Extract<CanonicalEventV1["kind"],
+  "user-message" | "reasoning" | "assistant-message" | "tool-call" | "tool-result">;
+
+interface TopologizedEvent {
+  readonly event: CanonicalEventV1;
+  readonly topology: CanonicalConversationTopologyV1;
+}
+
+interface PortableTurn {
+  readonly id: string;
+  readonly ordinal: number;
+  readonly events: TopologizedEvent[];
+}
+
+interface PortableStep {
+  readonly id: string;
+  readonly ordinal: number;
+  readonly events: TopologizedEvent[];
+}
+
+interface PositionedDraft {
+  readonly sourceSequence: number;
+  readonly rank: number;
+  readonly insertionOrder: number;
+  readonly event: Rc1SessionEvent;
+  readonly originSequences: readonly number[];
+  readonly resultCallId?: string;
+}
+
+function conversationPhaseForKind(
+  kind: CanonicalEventV1["kind"],
+): CanonicalConversationTopologyV1["phase"] | null {
+  if (kind === "user-message") return "user";
+  if (kind === "reasoning") return "reasoning";
+  if (kind === "assistant-message") return "assistant";
+  if (kind === "tool-call") return "tool-call";
+  if (kind === "tool-result") return "tool-result";
+  return null;
+}
+
+function isPortableConversationKind(kind: CanonicalEventV1["kind"]): kind is PortableConversationKind {
+  return conversationPhaseForKind(kind) !== null;
+}
+
+function strictCallId(event: CanonicalEventV1): string | null {
+  const value = canonicalToolRecord(event).callId;
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function sameCoordinates(left: TopologizedEvent, right: TopologizedEvent): boolean {
+  return left.topology.turnId === right.topology.turnId
+    && left.topology.stepId !== null
+    && left.topology.stepId === right.topology.stepId;
+}
+
+function reasoningBlocks(event: CanonicalEventV1): readonly JsonValue[] {
+  return canonicalMessageBlocks(event).map((block) => {
+    if (isRecord(block) && block.type === "reasoning") return block;
+    if (isRecord(block) && block.type === "text" && typeof block.text === "string") {
+      return { type: "reasoning", text: block.text };
+    }
+    throw new TypeError(`Portable reasoning event ${event.id} contains a non-text block`);
+  });
+}
+
+function assistantSource(events: readonly TopologizedEvent[]): JsonValue {
+  for (const { event } of events) {
+    if (event.kind !== "assistant-message" && event.kind !== "reasoning") continue;
+    const message = canonicalMessageRecord(event);
+    const source = isRecord(message?.source) ? message.source : undefined;
+    if (
+      source?.kind === "model"
+      && nonEmptyString(source.provider) !== undefined
+      && nonEmptyString(source.model) !== undefined
+    ) return source;
+  }
+  return { kind: "model", provider: "codex", model: "imported" };
+}
+
+function assistantContentBlocks(
+  events: readonly TopologizedEvent[],
+  matchedToolCallEventIds: ReadonlySet<string>,
+): readonly JsonValue[] {
+  const blocks: JsonValue[] = [];
+  for (const { event } of events) {
+    if (event.kind === "reasoning") {
+      blocks.push(...reasoningBlocks(event));
+      continue;
+    }
+    if (event.kind === "assistant-message") {
+      const messageBlocks = canonicalMessageBlocks(event);
+      if (messageBlocks.some((block) =>
+        isRecord(block) && (block.type === "tool-call" || block.type === "tool-result"))) {
+        throw new TypeError(
+          `Portable assistant event ${event.id} embeds tool protocol blocks; use canonical tool events`,
+        );
+      }
+      blocks.push(...messageBlocks);
+      continue;
+    }
+    if (event.kind !== "tool-call" || !matchedToolCallEventIds.has(event.id)) continue;
+    const call = canonicalToolRecord(event);
+    const callId = strictCallId(event);
+    const name = nonEmptyString(call.name);
+    if (callId === null || name === undefined || typeof call.arguments !== "string") {
+      throw new TypeError(`Portable tool call ${event.id} lacks its exact call_id, name or arguments`);
+    }
+    blocks.push({ type: "tool-call", id: callId, name, arguments: call.arguments });
+  }
+  return blocks;
+}
+
+function evidenceEvent(
+  event: CanonicalEventV1,
+  type: "maintenance/unclosed-tool-call" | "maintenance/orphan-tool-result",
+  reason: string,
+  createdAt: number,
+): Rc1SessionEvent {
+  return {
+    type,
+    seq: rc1SessionSeq(0),
+    time: createdAt + event.sequence,
+    data: {
+      reason,
+      callId: strictCallId(event),
+      canonicalEventId: event.id,
+      canonicalContent: event.content,
+    },
+    ignorable: true,
+  };
+}
+
+function validateCanonicalSequence(events: readonly CanonicalEventV1[]): void {
+  let previous = -1;
+  const ids = new Set<string>();
+  for (const event of events) {
+    if (!Number.isSafeInteger(event.sequence) || event.sequence < 0 || event.sequence <= previous) {
+      throw new TypeError(
+        `Canonical projection event sequence is not strictly increasing: ${String(previous)} -> ${String(event.sequence)}`,
+      );
+    }
+    if (ids.has(event.id)) throw new TypeError(`Canonical projection repeats event ID ${event.id}`);
+    ids.add(event.id);
+    previous = event.sequence;
+  }
+}
+
+function collectPortableTurns(events: readonly CanonicalEventV1[]): readonly PortableTurn[] {
+  const turnsById = new Map<string, PortableTurn>();
+  const turnIdsByOrdinal = new Map<number, string>();
+  for (const event of events) {
+    const phase = conversationPhaseForKind(event.kind);
+    if (phase === null) continue;
+    const topology = readCanonicalConversationTopologyV1(event);
+    if (topology === null) {
+      throw new TypeError(
+        `Portable conversation event ${event.id} lacks mcsf.conversationTopology.v1`,
+      );
+    }
+    if (topology.phase !== phase) {
+      throw new TypeError(`Portable conversation event ${event.id} has a mismatched topology phase`);
+    }
+    const ordinalId = turnIdsByOrdinal.get(topology.turnOrdinal);
+    if (ordinalId !== undefined && ordinalId !== topology.turnId) {
+      throw new TypeError(`Canonical turn ordinal ${topology.turnOrdinal} has conflicting identities`);
+    }
+    turnIdsByOrdinal.set(topology.turnOrdinal, topology.turnId);
+    let turn = turnsById.get(topology.turnId);
+    if (turn === undefined) {
+      turn = { id: topology.turnId, ordinal: topology.turnOrdinal, events: [] };
+      turnsById.set(topology.turnId, turn);
+    } else if (turn.ordinal !== topology.turnOrdinal) {
+      throw new TypeError(`Canonical turn ${topology.turnId} changes ordinal`);
+    }
+    turn.events.push({ event, topology });
+  }
+
+  const turns = [...turnsById.values()].sort((left, right) => left.ordinal - right.ordinal);
+  let priorMaximum = -1;
+  for (const [index, turn] of turns.entries()) {
+    if (turn.ordinal !== index) {
+      throw new TypeError(`Canonical turn ordinals must be dense from zero; saw ${turn.ordinal} at ${index}`);
+    }
+    const minimum = turn.events[0]!.event.sequence;
+    const maximum = turn.events.at(-1)!.event.sequence;
+    if (minimum <= priorMaximum) throw new TypeError(`Canonical turn ${turn.id} is not contiguous`);
+    priorMaximum = maximum;
+    const firstModelSequence = turn.events.find(({ event }) => event.kind !== "user-message")?.event.sequence;
+    if (
+      firstModelSequence !== undefined
+      && turn.events.some(({ event }) => event.kind === "user-message" && event.sequence > firstModelSequence)
+    ) {
+      throw new TypeError(`Canonical turn ${turn.id} contains a user message after model work`);
+    }
+  }
+  return turns;
+}
+
+function collectPortableSteps(turn: PortableTurn): readonly PortableStep[] {
+  const stepsById = new Map<string, PortableStep>();
+  const stepIdsByOrdinal = new Map<number, string>();
+  for (const entry of turn.events) {
+    if (entry.event.kind === "user-message") continue;
+    const { stepId, stepOrdinal } = entry.topology;
+    if (stepId === null || stepOrdinal === null) {
+      throw new TypeError(`Canonical model event ${entry.event.id} lacks a step coordinate`);
+    }
+    const ordinalId = stepIdsByOrdinal.get(stepOrdinal);
+    if (ordinalId !== undefined && ordinalId !== stepId) {
+      throw new TypeError(`Canonical step ordinal ${stepOrdinal} has conflicting identities in ${turn.id}`);
+    }
+    stepIdsByOrdinal.set(stepOrdinal, stepId);
+    let step = stepsById.get(stepId);
+    if (step === undefined) {
+      step = { id: stepId, ordinal: stepOrdinal, events: [] };
+      stepsById.set(stepId, step);
+    } else if (step.ordinal !== stepOrdinal) {
+      throw new TypeError(`Canonical step ${stepId} changes ordinal`);
+    }
+    step.events.push(entry);
+  }
+  const steps = [...stepsById.values()].sort((left, right) => left.ordinal - right.ordinal);
+  let priorMaximum = -1;
+  for (const [index, step] of steps.entries()) {
+    if (step.ordinal !== index) {
+      throw new TypeError(
+        `Canonical step ordinals in turn ${turn.id} must be dense from zero; saw ${step.ordinal} at ${index}`,
+      );
+    }
+    const minimum = step.events[0]!.event.sequence;
+    const maximum = step.events.at(-1)!.event.sequence;
+    if (minimum <= priorMaximum) throw new TypeError(`Canonical step ${step.id} is not contiguous`);
+    priorMaximum = maximum;
+  }
+  return steps;
+}
+
+function materializePortableConversationEvents(
+  events: readonly CanonicalEventV1[],
+  createdAt: number,
+): readonly Rc1SessionEvent[] {
+  validateCanonicalSequence(events);
+  const turns = collectPortableTurns(events);
+  const topologized = turns.flatMap((turn) => turn.events);
+  const callsById = new Map<string, TopologizedEvent[]>();
+  const resultsById = new Map<string, TopologizedEvent[]>();
+  for (const entry of topologized) {
+    if (entry.event.kind !== "tool-call" && entry.event.kind !== "tool-result") continue;
+    const callId = strictCallId(entry.event);
+    if (callId === null) continue;
+    const target = entry.event.kind === "tool-call" ? callsById : resultsById;
+    const matches = target.get(callId) ?? [];
+    matches.push(entry);
+    target.set(callId, matches);
+  }
+
+  const matchedToolCallEventIds = new Set<string>();
+  const matchedToolResultEventIds = new Set<string>();
+  for (const [callId, calls] of callsById) {
+    const results = resultsById.get(callId) ?? [];
+    if (calls.length !== 1 || results.length !== 1 || !sameCoordinates(calls[0]!, results[0]!)) continue;
+    matchedToolCallEventIds.add(calls[0]!.event.id);
+    matchedToolResultEventIds.add(results[0]!.event.id);
+  }
+
+  const drafts: PositionedDraft[] = [];
+  let insertionOrder = 0;
+  const push = (
+    sourceSequence: number,
+    rank: number,
+    event: Rc1SessionEvent,
+    originSequences: readonly number[] = [],
+    resultCallId?: string,
+  ): void => {
+    drafts.push({
+      sourceSequence,
+      rank,
+      insertionOrder,
+      event,
+      originSequences,
+      ...(resultCallId === undefined ? {} : { resultCallId }),
+    });
+    insertionOrder += 1;
+  };
+
+  for (const event of events) {
+    if (isPortableConversationKind(event.kind)) continue;
+    push(event.sequence, 0, materializeEvent(event, createdAt), [event.sequence]);
+  }
+
+  for (const turn of turns) {
+    const nativeTurn = turn.ordinal + 1;
+    const firstSequence = turn.events[0]!.event.sequence;
+    const lastSequence = turn.events.at(-1)!.event.sequence;
+    push(firstSequence, -400, {
+      type: "turn/start",
+      seq: rc1SessionSeq(0),
+      time: createdAt + firstSequence,
+      data: { turn: nativeTurn },
+    });
+
+    for (const entry of turn.events) {
+      if (entry.event.kind !== "user-message") continue;
+      push(entry.event.sequence, 0, {
+        type: "user/message",
+        seq: rc1SessionSeq(0),
+        time: createdAt + entry.event.sequence,
+        data: rc1Message(entry.event, "user"),
+        surfaceOp: "append",
+      }, [entry.event.sequence]);
+    }
+
+    for (const step of collectPortableSteps(turn)) {
+      const nativeStep = step.ordinal + 1;
+      const stepFirstSequence = step.events[0]!.event.sequence;
+      const stepLastSequence = step.events.at(-1)!.event.sequence;
+      push(stepFirstSequence, -300, {
+        type: "step/start",
+        seq: rc1SessionSeq(0),
+        time: createdAt + stepFirstSequence,
+        data: { turn: nativeTurn, step: nativeStep },
+      });
+
+      const assistantEvents = step.events.filter(({ event }) =>
+        event.kind === "reasoning"
+        || event.kind === "assistant-message"
+        || (event.kind === "tool-call" && matchedToolCallEventIds.has(event.id)));
+      const blocks = assistantContentBlocks(assistantEvents, matchedToolCallEventIds);
+      if (blocks.length > 0) {
+        const assistantSequence = assistantEvents[0]!.event.sequence;
+        const assistantId = assistantEvents.length === 1
+          && assistantEvents[0]!.event.kind === "assistant-message"
+          ? assistantEvents[0]!.event.id
+          : `mcsf:${turn.id}:${step.id}:assistant`;
+        push(assistantSequence, -200, {
+          type: "assistant/message",
+          seq: rc1SessionSeq(0),
+          time: createdAt + assistantSequence,
+          data: {
+            turn: nativeTurn,
+            step: nativeStep,
+            message: {
+              id: assistantId,
+              role: "assistant",
+              content: blocks,
+              source: assistantSource(assistantEvents),
+            },
+          },
+          surfaceOp: "append",
+        }, assistantEvents.map(({ event }) => event.sequence));
+      }
+
+      for (const entry of step.events) {
+        const { event } = entry;
+        if (event.kind === "tool-call") {
+          if (!matchedToolCallEventIds.has(event.id)) {
+            const callId = strictCallId(event);
+            const calls = callId === null ? [] : callsById.get(callId) ?? [];
+            const results = callId === null ? [] : resultsById.get(callId) ?? [];
+            const reason = callId === null ? "missing-call-id"
+              : calls.length !== 1 ? "duplicate-call-id"
+                : results.length === 0 ? "unclosed-tool-call"
+                  : results.length !== 1 ? "ambiguous-tool-results"
+                    : "cross-step-tool-result";
+            push(event.sequence, 0, evidenceEvent(
+              event,
+              "maintenance/unclosed-tool-call",
+              reason,
+              createdAt,
+            ), [event.sequence]);
+            continue;
+          }
+          push(event.sequence, 0, {
+            type: "tool/call",
+            seq: rc1SessionSeq(0),
+            time: createdAt + event.sequence,
+            data: canonicalToolCall(event, nativeTurn, nativeStep),
+          }, [event.sequence]);
+          continue;
+        }
+        if (event.kind !== "tool-result") continue;
+        const callId = strictCallId(event);
+        if (callId === null || !matchedToolResultEventIds.has(event.id)) {
+          const calls = callId === null ? [] : callsById.get(callId) ?? [];
+          const results = callId === null ? [] : resultsById.get(callId) ?? [];
+          const reason = callId === null ? "missing-call-id"
+            : calls.length === 0 ? "missing-correlated-tool-call"
+              : calls.length !== 1 ? "ambiguous-tool-calls"
+                : results.length !== 1 ? "ambiguous-tool-results"
+                  : "cross-step-tool-call";
+          push(event.sequence, 0, evidenceEvent(
+            event,
+            "maintenance/orphan-tool-result",
+            reason,
+            createdAt,
+          ), [event.sequence]);
+          continue;
+        }
+        push(event.sequence, 0, {
+          type: "tool/result",
+          seq: rc1SessionSeq(0),
+          time: createdAt + event.sequence,
+          data: canonicalToolResult(event, nativeTurn, nativeStep),
+          surfaceOp: "append",
+        }, [event.sequence], callId);
+      }
+
+      push(stepLastSequence, 300, {
+        type: "step/end",
+        seq: rc1SessionSeq(0),
+        time: createdAt + stepLastSequence,
+        data: { turn: nativeTurn, step: nativeStep },
+      });
+    }
+
+    push(lastSequence, 400, {
+      type: "turn/end",
+      seq: rc1SessionSeq(0),
+      time: createdAt + lastSequence,
+      data: { turn: nativeTurn, reason: { kind: "completed" } },
+    });
+  }
+
+  drafts.sort((left, right) => left.sourceSequence - right.sourceSequence
+    || left.rank - right.rank
+    || left.insertionOrder - right.insertionOrder);
+
+  const sequenceMap = new Map<number, number>();
+  const callSequenceById = new Map<string, number>();
+  for (const [newSequence, draft] of drafts.entries()) {
+    for (const origin of draft.originSequences) {
+      if (!sequenceMap.has(origin)) sequenceMap.set(origin, newSequence);
+    }
+    if (draft.event.type !== "tool/call" || !isRecord(draft.event.data)) continue;
+    const callId = nonEmptyString(draft.event.data.callId);
+    if (callId !== undefined) callSequenceById.set(callId, newSequence);
+  }
+
+  return drafts.map((draft, newSequence) => {
+    const sourceEventSeqs = draft.event.sourceEventSeqs?.map((sequence) => {
+      const rebased = sequenceMap.get(sequence);
+      if (rebased === undefined) {
+        throw new TypeError(`Rc1 portable projection source sequence ${sequence} has no materialized target`);
+      }
+      return rc1SessionSeq(rebased);
+    });
+    const correlatedCallSequence = draft.resultCallId === undefined
+      ? undefined
+      : callSequenceById.get(draft.resultCallId);
+    if (draft.resultCallId !== undefined && correlatedCallSequence === undefined) {
+      throw new TypeError(`Rc1 portable projection lost tool call ${draft.resultCallId}`);
+    }
+    return {
+      ...draft.event,
+      seq: rc1SessionSeq(newSequence),
+      ...(correlatedCallSequence === undefined
+        ? sourceEventSeqs === undefined ? {} : { sourceEventSeqs }
+        : { sourceEventSeqs: [rc1SessionSeq(correlatedCallSequence)] }),
+      ...(draft.event.surfaceOp === undefined
+        ? {}
+        : { surfaceOp: rebaseSurfaceOp(draft.event.surfaceOp, sequenceMap) }),
+    };
+  });
+}
+
+function materializeEvents(events: readonly CanonicalEventV1[], createdAt: number): readonly Rc1SessionEvent[] {
+  const hasPortableConversation = events.some((event) =>
+    isPortableConversationKind(event.kind)
+    && rawEnvelope(event) === undefined);
+  if (!hasPortableConversation) return materializeNativeEnvelopeEvents(events, createdAt);
+
+  const nativeConversationEventTypes = new Set([
+    "turn/start",
+    "turn/end",
+    "step/start",
+    "step/end",
+    "user/message",
+    "assistant/chunk",
+    "assistant/message",
+    "tool/call",
+    "tool/result",
+    "request/header",
+    "request/context",
+    "session/end-seed",
+  ]);
+  const hasNativeArtifacts = events.some((event) => {
+    if (event.kind === "other" || packedStorageEvents(event) !== undefined) return event.kind !== "other";
+    const raw = rawEnvelope(event);
+    return raw !== undefined && nativeConversationEventTypes.has(raw.type);
+  });
+  if (hasNativeArtifacts) {
+    throw new TypeError(
+      "Rc1 projection cannot mix portable conversation topology with native envelopes in one canonical version",
+    );
+  }
+  return materializePortableConversationEvents(events, createdAt);
 }
 
 export function rc1ProjectedNativeRevision(

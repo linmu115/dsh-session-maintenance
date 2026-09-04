@@ -16,3 +16,9 @@ changes outside this Adapter instead of adding compatibility branches.
 Unknown source semantics are normalized into the MCSF `other` class and
 projected as ignorable Maintenance evidence. They cannot become user,
 assistant, or model-visible tool-result messages.
+
+Portable conversations additionally require `mcsf.conversationTopology.v1`.
+The Adapter maps its dense zero-based ordinals to the one-based turn and step
+coordinates required by RC1. Native RC1 conversation envelopes and portable
+conversation rows cannot be mixed in the same Canonical version; controlled
+recomposition belongs to the M06 migration boundary.

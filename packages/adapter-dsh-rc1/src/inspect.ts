@@ -37,6 +37,109 @@ function parsePayload(value: JsonValue): Rc1ProjectionSession {
   return value as unknown as Rc1ProjectionSession;
 }
 
+function integerField(
+  data: JsonValue,
+  field: "turn" | "step",
+  eventType: string,
+): number {
+  if (!isRecord(data) || !Number.isSafeInteger(data[field])) {
+    throw new TypeError(`Rc1 ${eventType} has no valid ${field}`);
+  }
+  return data[field] as number;
+}
+
+function requireOpenStep(
+  event: Rc1ProjectionSession["events"][number],
+  openTurn: number | null,
+  openStep: number | null,
+): void {
+  const turn = integerField(event.data, "turn", event.type);
+  const step = integerField(event.data, "step", event.type);
+  if (turn !== openTurn || step !== openStep) {
+    throw new TypeError(
+      `Rc1 ${event.type} names turn ${turn}/step ${step} but open is turn ${String(openTurn)}/step ${String(openStep)}`,
+    );
+  }
+}
+
+/** Exact relational subset published by @deepseek-ai/dsh-session 0.1.2-rc.1. */
+export function assertRc1SessionInvariants(events: Rc1ProjectionSession["events"]): void {
+  let lastSeq = -1;
+  let nextTurn = 1;
+  let nextStep = 1;
+  let openTurn: number | null = null;
+  let openStep: number | null = null;
+  const pendingCalls = new Set<string>();
+  for (const event of events) {
+    if (!Number.isSafeInteger(event.seq) || event.seq <= lastSeq) {
+      throw new TypeError(`Rc1 seq must strictly increase: saw ${event.seq} after ${lastSeq}`);
+    }
+    lastSeq = event.seq;
+    if (event.type === "turn/start") {
+      const turn = integerField(event.data, "turn", event.type);
+      if (openTurn !== null) throw new TypeError(`Rc1 turn/start ${turn} while turn ${openTurn} is open`);
+      if (turn !== nextTurn) throw new TypeError(`Rc1 turn/start expected ${nextTurn}, got ${turn}`);
+      openTurn = turn;
+      nextStep = 1;
+      continue;
+    }
+    if (event.type === "turn/end") {
+      const turn = integerField(event.data, "turn", event.type);
+      if (turn !== openTurn) throw new TypeError(`Rc1 turn/end ${turn} does not match open turn ${String(openTurn)}`);
+      if (openStep !== null) throw new TypeError(`Rc1 turn/end ${turn} while step ${openStep} is open`);
+      openTurn = null;
+      nextTurn += 1;
+      continue;
+    }
+    if (event.type === "step/start") {
+      const turn = integerField(event.data, "turn", event.type);
+      const step = integerField(event.data, "step", event.type);
+      if (turn !== openTurn) throw new TypeError(`Rc1 step/start turn ${turn} does not match ${String(openTurn)}`);
+      if (openStep !== null) throw new TypeError(`Rc1 step/start ${step} while step ${openStep} is open`);
+      if (step !== nextStep) throw new TypeError(`Rc1 step/start expected ${nextStep}, got ${step}`);
+      openStep = step;
+      continue;
+    }
+    if (event.type === "step/end") {
+      requireOpenStep(event, openTurn, openStep);
+      pendingCalls.clear();
+      openStep = null;
+      nextStep += 1;
+      continue;
+    }
+    if (event.type === "assistant/chunk" || event.type === "assistant/message") {
+      requireOpenStep(event, openTurn, openStep);
+      continue;
+    }
+    if (event.type === "tool/call") {
+      requireOpenStep(event, openTurn, openStep);
+      if (!isRecord(event.data) || typeof event.data.callId !== "string" || event.data.callId.length === 0) {
+        throw new TypeError("Rc1 tool/call has no callId");
+      }
+      pendingCalls.add(event.data.callId);
+      continue;
+    }
+    if (event.type === "tool/result") {
+      if (event.surfaceOp !== "append") {
+        if (openTurn === null) throw new TypeError("Rc1 replacement tool/result is outside a turn");
+        continue;
+      }
+      requireOpenStep(event, openTurn, openStep);
+      const message = isRecord(event.data) && isRecord(event.data.message) ? event.data.message : undefined;
+      const source = isRecord(message?.source) ? message.source : undefined;
+      const callId = typeof source?.callId === "string" ? source.callId : null;
+      if (callId === null || !pendingCalls.has(callId)) {
+        throw new TypeError(`Rc1 tool/result has no pending tool/call for ${String(callId)}`);
+      }
+      pendingCalls.delete(callId);
+      continue;
+    }
+    if ((event.type === "request/header" || event.type === "request/context") && openTurn === null) {
+      throw new TypeError(`Rc1 ${event.type} is outside a turn`);
+    }
+  }
+}
+
 export async function inspectRc1(reader: ProjectionReader): Promise<ProjectionInspection> {
   const ids = [...await reader.listNativeSessionIds()].sort();
   const sessionDigests: Record<string, string> = {};
@@ -51,6 +154,7 @@ export async function inspectRc1(reader: ProjectionReader): Promise<ProjectionIn
     const value = await reader.readSession(id);
     const payload = parsePayload(value);
     if (payload.header.id !== id) throw new TypeError(`Rc1 payload identity mismatch for ${id}`);
+    assertRc1SessionInvariants(payload.events);
     sessionDigests[id] = digest(value);
     if (workspaceReader.listNativeWorkspaceIds === undefined && payload.workspaceId !== null) {
       workspaceIds.push(payload.workspaceId);

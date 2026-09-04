@@ -19,6 +19,10 @@ Compared with the Alpha2 format family, RC1 requires:
   offset gap is detected;
 - `session/flush` to remain the durable barrier after all queued appends have
   received Maintenance receipts.
+- fresh native execution traces to start at turn one and step one, with every
+  assistant/tool event enclosed by matching `turn/start`, `step/start`,
+  `step/end`, and `turn/end` records;
+- tool results to cite a prior `tool/call` in the same open step.
 
 Maintenance-owned projections are created unseeded with
 `inheritedEventCount = 0`. The JSONL package may still encode lineage as the
@@ -35,3 +39,8 @@ The following invariants are unchanged:
   model-visible history;
 - official DSH compaction and Token Meter configuration is not replaced or
   disabled.
+
+Portable MCSF conversation rows are therefore accepted only when they carry
+the typed Canonical topology extension. Old imported heads that lack it remain
+untouched until the explicit, checkpointed M06 migration rebuilds and switches
+their active versions.

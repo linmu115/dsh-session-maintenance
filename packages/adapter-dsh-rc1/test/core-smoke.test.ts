@@ -109,7 +109,17 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
             source: { platform: "dsh", instanceId: "fixture", sessionId: "source", eventId: "0", cursor: "0" },
             contentDigest: "sha256:user",
             rawPayload: null,
-            extensions: {},
+            extensions: {
+              "mcsf.conversationTopology.v1": {
+                schemaVersion: 1,
+                turnId: "turn-smoke-0",
+                turnOrdinal: 0,
+                stepId: "turn-smoke-0:step-0",
+                stepOrdinal: 0,
+                phase: "user",
+                inference: "explicit",
+              },
+            },
           }, {
             schemaVersion: 1,
             id: "event-assistant",
@@ -121,7 +131,17 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
             source: { platform: "dsh", instanceId: "fixture", sessionId: "source", eventId: "1", cursor: "1" },
             contentDigest: "sha256:assistant",
             rawPayload: null,
-            extensions: {},
+            extensions: {
+              "mcsf.conversationTopology.v1": {
+                schemaVersion: 1,
+                turnId: "turn-smoke-0",
+                turnOrdinal: 0,
+                stepId: "turn-smoke-0:step-0",
+                stepOrdinal: 0,
+                phase: "assistant",
+                inference: "explicit",
+              },
+            },
           }, {
             schemaVersion: 1,
             id: "event-held-out",
@@ -223,7 +243,8 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
     expect(projected.header.isSeeded).toBe(false);
     expect(projected.inheritedEventCount).toBe(0);
     expect(projected.workspaceId).toBe("workspace-rc1-smoke");
-    expect(projected.events[0]).toMatchObject({
+    expect(projected.events[0]).toMatchObject({ type: "turn/start", data: { turn: 1 } });
+    expect(projected.events[1]).toMatchObject({
       type: "user/message",
       data: {
         id: "event-user",
@@ -231,7 +252,8 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
         source: { kind: "user" },
       },
     });
-    expect(projected.events[1]).toMatchObject({
+    expect(projected.events[2]).toMatchObject({ type: "step/start", data: { turn: 1, step: 1 } });
+    expect(projected.events[3]).toMatchObject({
       type: "assistant/message",
       data: {
         message: {
@@ -241,7 +263,9 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
         },
       },
     });
-    expect(projected.events[2]).toEqual(heldOut);
+    expect(projected.events[4]).toMatchObject({ type: "step/end", data: { turn: 1, step: 1 } });
+    expect(projected.events[5]).toMatchObject({ type: "turn/end", data: { turn: 1 } });
+    expect(projected.events[6]).toEqual({ ...heldOut, seq: 6 });
   });
 
   it("materializes Codex text and attachment rows as identified Rc1 messages", async () => {
@@ -298,7 +322,17 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
           source: { platform: "codex", instanceId: "codex", sessionId: "thread", eventId: "0", cursor: "0" },
           contentDigest: "sha256:codex-user",
           rawPayload: null,
-          extensions: {},
+          extensions: {
+            "mcsf.conversationTopology.v1": {
+              schemaVersion: 1,
+              turnId: "turn-codex-message-0",
+              turnOrdinal: 0,
+              stepId: "turn-codex-message-0:step-0",
+              stepOrdinal: 0,
+              phase: "user",
+              inference: "explicit",
+            },
+          },
         }, {
           schemaVersion: 1,
           id: "codex-assistant-event",
@@ -310,7 +344,17 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
           source: { platform: "codex", instanceId: "codex", sessionId: "thread", eventId: "1", cursor: "1" },
           contentDigest: "sha256:codex-assistant",
           rawPayload: null,
-          extensions: {},
+          extensions: {
+            "mcsf.conversationTopology.v1": {
+              schemaVersion: 1,
+              turnId: "turn-codex-message-0",
+              turnOrdinal: 0,
+              stepId: "turn-codex-message-0:step-0",
+              stepOrdinal: 0,
+              phase: "assistant",
+              inference: "explicit",
+            },
+          },
         }],
       }],
     }, writer);
@@ -318,7 +362,7 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
     const projected = sessions.get(rc1NativeSessionId(logicalSessionId)) as {
       readonly events: readonly Array<{ readonly data: Record<string, unknown> }>;
     };
-    expect(projected.events[0]?.data).toEqual({
+    expect(projected.events[1]?.data).toEqual({
       id: "codex-user-event",
       role: "user",
       content: [
@@ -327,9 +371,9 @@ describe("DSH Rc1 Adapter Core Smoke", () => {
       ],
       source: { kind: "user" },
     });
-    expect(projected.events[1]?.data).toEqual({
-      turn: 0,
-      step: 0,
+    expect(projected.events[3]?.data).toEqual({
+      turn: 1,
+      step: 1,
       message: {
         id: "codex-assistant-event",
         role: "assistant",

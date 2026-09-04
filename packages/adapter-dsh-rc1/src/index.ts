@@ -22,10 +22,9 @@ export {
   rc1ProjectedNativeRevision,
   composeRc1ProjectionManifest,
   materializeRc1,
-  materializeEvent,
 } from "./materialize.js";
 export { normalizeRc1Append } from "./normalize-append.js";
-export { inspectRc1, verifyRc1 } from "./inspect.js";
+export { assertRc1SessionInvariants, inspectRc1, verifyRc1 } from "./inspect.js";
 export { probeRc1 } from "./probe.js";
 export { resolveRc1Reference } from "./references.js";
 export * from "./runtime-bridge.js";
