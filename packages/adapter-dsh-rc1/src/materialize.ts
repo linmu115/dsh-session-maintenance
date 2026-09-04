@@ -520,6 +520,10 @@ interface PortableStep {
   readonly events: TopologizedEvent[];
 }
 
+interface PortableOtherGroup {
+  readonly events: readonly CanonicalEventV1[];
+}
+
 interface PositionedDraft {
   readonly sourceSequence: number;
   readonly rank: number;
@@ -737,6 +741,93 @@ function collectPortableSteps(turn: PortableTurn): readonly PortableStep[] {
   return steps;
 }
 
+function collectPortableOtherGroups(
+  events: readonly CanonicalEventV1[],
+  turns: readonly PortableTurn[],
+): readonly PortableOtherGroup[] {
+  const turnIntervals = turns.map((turn) => ({
+    id: turn.id,
+    minimum: turn.events[0]!.event.sequence,
+    maximum: turn.events.at(-1)!.event.sequence,
+  }));
+  const groups: CanonicalEventV1[][] = [];
+  const groupByTurnId = new Map<string, CanonicalEventV1[]>();
+  let outsideGroup: CanonicalEventV1[] | null = null;
+  for (const event of events) {
+    if (event.kind !== "other") {
+      outsideGroup = null;
+      continue;
+    }
+    const turn = turnIntervals.find((candidate) =>
+      event.sequence >= candidate.minimum && event.sequence <= candidate.maximum);
+    if (turn !== undefined) {
+      let group = groupByTurnId.get(turn.id);
+      if (group === undefined) {
+        group = [];
+        groupByTurnId.set(turn.id, group);
+        groups.push(group);
+      }
+      group.push(event);
+      outsideGroup = null;
+      continue;
+    }
+    if (outsideGroup === null) {
+      outsideGroup = [];
+      groups.push(outsideGroup);
+    }
+    outsideGroup.push(event);
+  }
+  return groups
+    .filter((group) => group.length > 0)
+    .sort((left, right) => left[0]!.sequence - right[0]!.sequence)
+    .map((group) => ({ events: group }));
+}
+
+function groupedOtherEvent(group: PortableOtherGroup, createdAt: number): Rc1SessionEvent {
+  if (group.events.length === 1) return materializeEvent(group.events[0]!, createdAt);
+  const items = group.events.map((event) => {
+    const content = isRecord(event.content) ? event.content : {};
+    return {
+      canonicalEventId: event.id,
+      canonicalSequence: event.sequence,
+      sourceKind: nonEmptyString(content.sourceKind) ?? "unknown",
+      reason: nonEmptyString(content.reason) ?? "adapter-evidence",
+      label: nonEmptyString(content.label) ?? "未映射记录",
+      summary: nonEmptyString(content.summary) ?? "该记录没有可移植的公共语义。",
+      evidenceRef: typeof content.evidenceRef === "string" ? content.evidenceRef : null,
+    };
+  });
+  const sourceKinds = [...new Set(items.map((item) => item.sourceKind))];
+  const first = group.events[0]!;
+  return {
+    type: "maintenance/other",
+    seq: rc1SessionSeq(0),
+    time: createdAt + first.sequence,
+    data: {
+      canonicalContent: {
+        schemaVersion: 1,
+        type: "other",
+        reason: "adapter-evidence",
+        sourceKind: "maintenance/grouped-other",
+        label: `未映射记录（${group.events.length} 条）`,
+        summary: `此处 ${group.events.length} 条源记录无法无损翻译，已合并为一条折叠维护记录。`,
+        evidenceRef: null,
+      },
+      grouping: {
+        schemaVersion: 1,
+        count: group.events.length,
+        firstCanonicalSequence: first.sequence,
+        lastCanonicalSequence: group.events.at(-1)!.sequence,
+        sourceKinds,
+        items,
+      },
+      ...canonicalEventProjectionPolicy("other"),
+      collapsed: true,
+    },
+    ignorable: true,
+  };
+}
+
 function materializePortableConversationEvents(
   events: readonly CanonicalEventV1[],
   createdAt: number,
@@ -785,8 +876,18 @@ function materializePortableConversationEvents(
     insertionOrder += 1;
   };
 
+  const otherGroups = collectPortableOtherGroups(events, turns);
+  for (const group of otherGroups) {
+    const first = group.events[0]!;
+    push(
+      first.sequence,
+      0,
+      groupedOtherEvent(group, createdAt),
+      group.events.map((event) => event.sequence),
+    );
+  }
   for (const event of events) {
-    if (isPortableConversationKind(event.kind)) continue;
+    if (isPortableConversationKind(event.kind) || event.kind === "other") continue;
     push(event.sequence, 0, materializeEvent(event, createdAt), [event.sequence]);
   }
 

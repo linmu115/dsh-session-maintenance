@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Render grouped unknown-record regions as one compact Maintenance disclosure
+  that is closed by default, while preserving each portable evidence reference
+  outside the model surface.
+- Use the browser's native details marker so Maintenance records have an
+  explicit fold/unfold interaction in RC1.
+
 ## 0.2.14 - 2026-09-04
 
 - Add the independent, exact-version `dsh-rc1` Adapter for DeepSeek Harness

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  MaintenanceOtherNodeView,
   maintenanceOtherConversationDefinition,
   maintenanceOtherEventData,
 } from "../src/client/other-event-card.js";
@@ -48,5 +49,47 @@ describe("Maintenance other event card", () => {
       visibility: "visible",
       data: { label: "未映射记录" },
     });
+  });
+
+  it("decodes a grouped record and keeps its details closed by default", () => {
+    const grouped = {
+      ...event,
+      data: {
+        ...event.data,
+        canonicalContent: {
+          ...event.data.canonicalContent,
+          sourceKind: "maintenance/grouped-other",
+          label: "未映射记录（2 条）",
+          evidenceRef: null,
+        },
+        collapsed: true,
+        grouping: {
+          schemaVersion: 1,
+          count: 2,
+          items: [{
+            sourceKind: "codex/a",
+            reason: "unsupported-source-event",
+            label: "A",
+            summary: "A summary",
+            evidenceRef: "evidence:a",
+          }, {
+            sourceKind: "codex/b",
+            reason: "unsupported-source-event",
+            label: "B",
+            summary: "B summary",
+            evidenceRef: "evidence:b",
+          }],
+        },
+      },
+    } as const;
+    const data = maintenanceOtherEventData(grouped);
+    expect(data).toMatchObject({ count: 2, label: "未映射记录（2 条）" });
+    expect(data?.items.map((item) => item.sourceKind)).toEqual(["codex/a", "codex/b"]);
+
+    const view = MaintenanceOtherNodeView({ node: { data } }) as unknown as {
+      readonly props: { readonly children: { readonly type: string; readonly props: { readonly open?: boolean } } };
+    };
+    expect(view.props.children.type).toBe("details");
+    expect(view.props.children.props.open).toBeUndefined();
   });
 });

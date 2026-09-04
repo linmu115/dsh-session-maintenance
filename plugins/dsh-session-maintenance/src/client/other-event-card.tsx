@@ -26,6 +26,16 @@ export interface MaintenanceOtherCardData {
   readonly sourceKind: string;
   readonly reason: string;
   readonly evidenceRef: string | null;
+  readonly count: number;
+  readonly items: readonly MaintenanceOtherCardItem[];
+}
+
+export interface MaintenanceOtherCardItem {
+  readonly sourceKind: string;
+  readonly reason: string;
+  readonly label: string;
+  readonly summary: string;
+  readonly evidenceRef: string | null;
 }
 
 interface MaintenanceOtherConversationState extends MaintenanceOtherCardData {
@@ -60,6 +70,24 @@ function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
     : undefined;
 }
 
+function cardItem(value: unknown): MaintenanceOtherCardItem | undefined {
+  const item = record(value);
+  if (
+    typeof item?.sourceKind !== "string"
+    || typeof item.reason !== "string"
+    || typeof item.label !== "string"
+    || typeof item.summary !== "string"
+    || !(item.evidenceRef === null || typeof item.evidenceRef === "string")
+  ) return undefined;
+  return {
+    sourceKind: item.sourceKind,
+    reason: item.reason,
+    label: item.label,
+    summary: item.summary,
+    evidenceRef: item.evidenceRef,
+  };
+}
+
 /** Decode only the MCSF shape whose Adapter projection is explicitly log-only. */
 export function maintenanceOtherEventData(event: SessionEventLike): MaintenanceOtherCardData | undefined {
   if (event.type !== "maintenance/other" || !Number.isSafeInteger(event.seq)) return undefined;
@@ -75,12 +103,32 @@ export function maintenanceOtherEventData(event: SessionEventLike): MaintenanceO
     || typeof content.reason !== "string"
     || !(content.evidenceRef === null || typeof content.evidenceRef === "string")
   ) return undefined;
+  const grouping = record(data.grouping);
+  const groupedItems = Array.isArray(grouping?.items)
+    ? grouping.items.map(cardItem)
+    : [];
+  if (groupedItems.some((item) => item === undefined)) return undefined;
+  const count = grouping === undefined ? 1 : grouping.count;
+  if (!Number.isSafeInteger(count) || Number(count) < 1 || Number(count) !== groupedItems.length) {
+    if (grouping !== undefined) return undefined;
+  }
+  const items = grouping === undefined
+    ? [{
+        sourceKind: content.sourceKind,
+        reason: content.reason,
+        label: content.label,
+        summary: content.summary,
+        evidenceRef: content.evidenceRef,
+      }]
+    : groupedItems as MaintenanceOtherCardItem[];
   return {
     label: content.label,
     summary: content.summary,
     sourceKind: content.sourceKind,
     reason: content.reason,
     evidenceRef: content.evidenceRef,
+    count: Number(count),
+    items,
   };
 }
 
@@ -121,6 +169,8 @@ export const maintenanceOtherConversationDefinition: MaintenanceOtherConversatio
         sourceKind: state.sourceKind,
         reason: state.reason,
         evidenceRef: state.evidenceRef,
+        count: state.count,
+        items: state.items,
       },
     });
   },
@@ -134,8 +184,20 @@ function nodeData(node: unknown): MaintenanceOtherCardData | undefined {
     || typeof data.sourceKind !== "string"
     || typeof data.reason !== "string"
     || !(data.evidenceRef === null || typeof data.evidenceRef === "string")
+    || !Number.isSafeInteger(data.count)
+    || !Array.isArray(data.items)
   ) return undefined;
-  return data as unknown as MaintenanceOtherCardData;
+  const items = data.items.map(cardItem);
+  if (items.some((item) => item === undefined) || items.length !== data.count) return undefined;
+  return {
+    label: data.label,
+    summary: data.summary,
+    sourceKind: data.sourceKind,
+    reason: data.reason,
+    evidenceRef: data.evidenceRef,
+    count: data.count as number,
+    items: items as MaintenanceOtherCardItem[],
+  };
 }
 
 export function MaintenanceOtherNodeView(props: { readonly node: unknown }) {
@@ -145,7 +207,11 @@ export function MaintenanceOtherNodeView(props: { readonly node: unknown }) {
     <details className="dsm-other-card">
       <summary><span className="dsm-other-badge">维护记录</span>{data.label}</summary>
       <p>{data.summary}</p>
-      <small>{data.sourceKind}</small>
+      {data.count === 1
+        ? <small>{data.sourceKind}</small>
+        : <ul>{data.items.map((item, index) => <li key={`${item.sourceKind}:${index}`}>
+            <span>{item.label}</span><small>{item.sourceKind}</small>
+          </li>)}</ul>}
     </details>
   </div>;
 }

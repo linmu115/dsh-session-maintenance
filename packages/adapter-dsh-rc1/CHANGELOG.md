@@ -10,6 +10,8 @@
   surface without manufacturing tool results.
 - Reject portable conversation rows without the Canonical topology extension,
   and validate generated logs against RC1's published relational invariants.
+- Group genuine MCSF `other` rows into at most one log-only card per Canonical
+  turn or contiguous outside-turn region.
 
 ## 0.1.0 - 2026-09-04
 

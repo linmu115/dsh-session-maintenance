@@ -361,6 +361,52 @@ describe("Rc1 Codex tool projection", () => {
     expect(JSON.stringify(projected.events)).not.toContain("must-not-replay");
   });
 
+  it("aggregates genuine unknown rows into at most one folded record per turn or outside region", async () => {
+    const other = (id: string, sequence: number, sourceKind: string) => event(
+      id,
+      sequence,
+      "other",
+      "unknown",
+      {
+        schemaVersion: 1,
+        type: "other",
+        reason: "unsupported-source-event",
+        sourceKind,
+        label: "未映射的 Codex 记录",
+        summary: `${sourceKind} 只作为证据保留`,
+        evidenceRef: `evidence:${id}`,
+      },
+    );
+    const projected = await project([
+      event("group-user", 0, "user-message", "user", "question"),
+      other("unknown-a", 1, "codex/unknown-a"),
+      event("group-reasoning", 2, "reasoning", "assistant", "thinking"),
+      other("unknown-b", 3, "codex/unknown-b"),
+      event("group-answer", 4, "assistant-message", "assistant", "answer"),
+      event("group-user-two", 5, "user-message", "user", "next", { turn: 1, step: 0 }),
+      event("group-answer-two", 6, "assistant-message", "assistant", "next answer", { turn: 1, step: 0 }),
+      other("unknown-c", 7, "codex/unknown-c"),
+      other("unknown-d", 8, "codex/unknown-d"),
+    ]);
+
+    const cards = projected.events.filter((item) => item.type === "maintenance/other");
+    expect(cards).toHaveLength(2);
+    expect(cards.map((item) => item.data)).toEqual([
+      expect.objectContaining({
+        collapsed: true,
+        modelExposure: "log-only",
+        grouping: expect.objectContaining({ count: 2, firstCanonicalSequence: 1, lastCanonicalSequence: 3 }),
+      }),
+      expect.objectContaining({
+        collapsed: true,
+        modelExposure: "log-only",
+        grouping: expect.objectContaining({ count: 2, firstCanonicalSequence: 7, lastCanonicalSequence: 8 }),
+      }),
+    ]);
+    expect(cards.every((item) => item.ignorable === true && item.surfaceOp === undefined)).toBe(true);
+    assertRc1Lifecycle(projected.events);
+  });
+
   it("rebases a sparse derived-session history without changing tool correlation", async () => {
     const projected = await project([
       event("base-user", 17_740, "user-message", "user", "continue"),
