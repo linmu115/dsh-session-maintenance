@@ -2,6 +2,9 @@
 
 ## 0.2.13 - 2026-09-03
 
+- Package the isolated Alpha2 and RC2 probe workers beside the standalone
+  Engine. Installed single-file deployments no longer depend on unresolved
+  workspace package paths before the Engine can open its loopback API.
 - Accept a Launcher's full loopback runtime URL during graceful shutdown while
   retaining only its origin. Path, token query and fragment data are discarded,
   so a normal stop no longer falls into crash recovery merely because the

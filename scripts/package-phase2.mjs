@@ -52,7 +52,7 @@ const staging = join(out, ".staging");
 const plugin = join(staging, "plugin");
 const engine = join(staging, "engine", "dsh-session-maintenance");
 await mkdir(join(plugin, "lib", "client"), { recursive: true });
-await mkdir(join(engine, "engine"), { recursive: true });
+await mkdir(join(engine, "engine", "adapters"), { recursive: true });
 
 const pluginHost = await build({
   absWorkingDir: root,
@@ -123,6 +123,30 @@ const engineBundle = await build({
   },
   metafile: true,
 });
+const alpha2WorkerBundle = await build({
+  absWorkingDir: root,
+  entryPoints: ["packages/adapter-dsh-alpha2/src/rpc-worker.ts"],
+  outfile: join(engine, "engine", "adapters", "dsh-alpha2-rpc-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  conditions: ["development"],
+  legalComments: "none",
+  metafile: true,
+});
+const rc2WorkerBundle = await build({
+  absWorkingDir: root,
+  entryPoints: ["packages/adapter-dsh-rc2/src/rpc-worker.ts"],
+  outfile: join(engine, "engine", "adapters", "dsh-rc2-rpc-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  conditions: ["development"],
+  legalComments: "none",
+  metafile: true,
+});
 await cp(join(root, "apps", "dashboard", "dist"), join(engine, "dashboard"), { recursive: true });
 await writeFile(join(engine, "Start-Session-Maintenance.cmd"), [
   "@echo off",
@@ -162,6 +186,10 @@ const manifest = {
   ],
   dependencyInputs: {
     engine: portableInputs(engineBundle.metafile),
+    adapterWorkers: {
+      alpha2: portableInputs(alpha2WorkerBundle.metafile),
+      rc2: portableInputs(rc2WorkerBundle.metafile),
+    },
     pluginHost: portableInputs(pluginHost.metafile),
     pluginClient: portableInputs(pluginClient.metafile),
   },

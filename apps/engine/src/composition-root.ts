@@ -1,6 +1,8 @@
+import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
@@ -49,16 +51,12 @@ import { WriteService } from "./write-service.js";
 import { CodexCatalogTitleSyncService } from "./codex-catalog-title-sync.js";
 
 const resolveModule = createRequire(import.meta.url).resolve;
-const alpha2WorkerEntryPoint = join(
-  dirname(resolveModule("@linmu/dsh-session-adapter-alpha2/package.json")),
-  "dist",
-  "rpc-worker.js",
-);
-const rc2WorkerEntryPoint = join(
-  dirname(resolveModule("@linmu/dsh-session-adapter-rc2/package.json")),
-  "dist",
-  "rpc-worker.js",
-);
+
+function adapterWorkerEntryPoint(packageName: string, bundledFilename: string): string {
+  const bundled = join(dirname(fileURLToPath(import.meta.url)), "adapters", bundledFilename);
+  if (existsSync(bundled)) return bundled;
+  return join(dirname(resolveModule(`${packageName}/package.json`)), "dist", "rpc-worker.js");
+}
 
 export interface CompositionOptions {
   readonly stateRoot: string;
@@ -169,7 +167,10 @@ async function createComposition(
       kind: "generation",
       generationId: "builtin-canonical-alpha2",
       packageName: "@linmu/dsh-session-adapter-alpha2",
-      entryPoint: alpha2WorkerEntryPoint,
+      entryPoint: adapterWorkerEntryPoint(
+        "@linmu/dsh-session-adapter-alpha2",
+        "dsh-alpha2-rpc-worker.mjs",
+      ),
     },
     enabled: true,
   });
@@ -179,7 +180,10 @@ async function createComposition(
       kind: "generation",
       generationId: "builtin-canonical-rc2",
       packageName: "@linmu/dsh-session-adapter-rc2",
-      entryPoint: rc2WorkerEntryPoint,
+      entryPoint: adapterWorkerEntryPoint(
+        "@linmu/dsh-session-adapter-rc2",
+        "dsh-rc2-rpc-worker.mjs",
+      ),
     },
     enabled: true,
   });
