@@ -33,7 +33,11 @@ const BROKER_PREPARE_TIMEOUT_MS = 240_000;
 // provider to report failure while the Engine is still safely recovering.
 const BROKER_FINALIZE_TIMEOUT_MS = 240_000;
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 15_000;
-const ENGINE_START_TIMEOUT_MS = 5_000;
+// Opening an existing canonical store may apply a one-time schema migration
+// before the health endpoint can listen. Large stores can legitimately take
+// several minutes, so the provider must not mistake that work for a failed
+// engine start.
+const ENGINE_START_TIMEOUT_MS = 240_000;
 const HANDLE_DIRECTORY = "external-lifecycle-handles";
 const SHUTDOWN_PATH = "/dsh-session-maintenance/runtime/shutdown";
 const SUPPORTED_RUNTIME_VERSION = "0.1.2-alpha.2";

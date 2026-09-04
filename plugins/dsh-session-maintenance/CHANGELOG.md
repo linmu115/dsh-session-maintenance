@@ -2,6 +2,10 @@
 
 ## 0.2.13 - 2026-09-03
 
+- Allow the external lifecycle provider up to four minutes to observe Engine
+  readiness. Opening and migrating a multi-gigabyte canonical store no longer
+  fails after the former five-second startup window while the Engine is still
+  making safe forward progress.
 - Introduce the first executable MCSF v1 semantic contract. Unsupported Codex
   records now enter the canonical `other` class instead of being guessed into
   user, assistant or tool history.
