@@ -1,11 +1,17 @@
 import { z } from "zod";
 
+import {
+  CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION,
+  type CanonicalConversationTopologyV1,
+  type CanonicalEventV1,
+} from "./canonical.js";
 import type { JsonValue } from "./model.js";
 import { STATUS_STAGES } from "./status.js";
 
 const idSchema = z.string().min(1);
 const timestampSchema = z.string().datetime({ offset: true });
 const nonNegativeIntegerSchema = z.number().int().nonnegative();
+const nonNegativeSafeIntegerSchema = nonNegativeIntegerSchema.max(Number.MAX_SAFE_INTEGER);
 
 export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([
@@ -60,6 +66,47 @@ export const canonicalEventKindSchema = z.enum([
   "other",
   "opaque-unknown",
 ]);
+export const canonicalConversationPhaseSchema = z.enum([
+  "user",
+  "reasoning",
+  "assistant",
+  "tool-call",
+  "tool-result",
+]);
+export const canonicalTopologyInferenceSchema = z.enum(["explicit", "derived"]);
+export const canonicalConversationTopologyV1Schema = z.strictObject({
+  schemaVersion: z.literal(1),
+  turnId: idSchema,
+  turnOrdinal: nonNegativeSafeIntegerSchema,
+  stepId: idSchema.nullable(),
+  stepOrdinal: nonNegativeSafeIntegerSchema.nullable(),
+  phase: canonicalConversationPhaseSchema,
+  inference: canonicalTopologyInferenceSchema,
+}).superRefine((topology, context) => {
+  if ((topology.stepId === null) !== (topology.stepOrdinal === null)) {
+    context.addIssue({
+      code: "custom",
+      path: [topology.stepId === null ? "stepOrdinal" : "stepId"],
+      message: "Canonical conversation step ID and ordinal must both be null or both be present",
+    });
+  }
+});
+
+/** Parse one topology value at a trust boundary. */
+export function parseCanonicalConversationTopologyV1(value: JsonValue): CanonicalConversationTopologyV1 {
+  return canonicalConversationTopologyV1Schema.parse(value) as CanonicalConversationTopologyV1;
+}
+
+/**
+ * Read the MCSF topology extension. Absence means that a caller may derive a
+ * topology; a present but invalid value is rejected instead of guessed around.
+ */
+export function readCanonicalConversationTopologyV1(
+  event: Pick<CanonicalEventV1, "extensions">,
+): CanonicalConversationTopologyV1 | null {
+  const value = event.extensions[CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION];
+  return value === undefined ? null : parseCanonicalConversationTopologyV1(value);
+}
 export const canonicalOtherReasonSchema = z.enum([
   "no-common-semantics",
   "unsupported-source-event",
@@ -120,6 +167,31 @@ export const canonicalEventV1Schema = z.strictObject({
   rawPayload: jsonValueSchema.nullable(),
   extensions: z.record(z.string(), jsonValueSchema),
 }).superRefine((event, context) => {
+  const topologyValue = event.extensions[CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION];
+  if (topologyValue !== undefined) {
+    const parsedTopology = canonicalConversationTopologyV1Schema.safeParse(topologyValue);
+    if (!parsedTopology.success) {
+      context.addIssue({
+        code: "custom",
+        path: ["extensions", CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION],
+        message: "MCSF conversation topology extension is invalid",
+      });
+    } else {
+      const expectedPhase = event.kind === "user-message" ? "user"
+        : event.kind === "reasoning" ? "reasoning"
+          : event.kind === "assistant-message" ? "assistant"
+            : event.kind === "tool-call" ? "tool-call"
+              : event.kind === "tool-result" ? "tool-result"
+                : null;
+      if (expectedPhase === null || parsedTopology.data.phase !== expectedPhase) {
+        context.addIssue({
+          code: "custom",
+          path: ["extensions", CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION, "phase"],
+          message: "MCSF conversation topology phase does not match the canonical event kind",
+        });
+      }
+    }
+  }
   if (event.kind !== "other") return;
   if (event.role !== "unknown") {
     context.addIssue({

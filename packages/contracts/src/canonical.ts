@@ -59,6 +59,33 @@ export type CanonicalEventSemanticClass =
 export type CanonicalEventPresentation = "message" | "tool-card" | "hidden";
 export type CanonicalModelExposure = "model-visible" | "log-only";
 
+/**
+ * MCSF-owned event extension for stable conversational ordering. Source-native
+ * turn identifiers remain Adapter evidence; this contract describes only the
+ * shared turn/step semantics that another Harness may safely project.
+ */
+export const CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION = "mcsf.conversationTopology.v1" as const;
+
+export type CanonicalConversationPhase =
+  | "user"
+  | "reasoning"
+  | "assistant"
+  | "tool-call"
+  | "tool-result";
+
+export type CanonicalTopologyInference = "explicit" | "derived";
+
+export type CanonicalConversationTopologyV1 = Readonly<{
+  readonly [key: string]: JsonValue;
+  readonly schemaVersion: 1;
+  readonly turnId: string;
+  readonly turnOrdinal: number;
+  readonly stepId: string | null;
+  readonly stepOrdinal: number | null;
+  readonly phase: CanonicalConversationPhase;
+  readonly inference: CanonicalTopologyInference;
+}>;
+
 export interface CanonicalEventProjectionPolicy {
   readonly semanticClass: CanonicalEventSemanticClass;
   readonly presentation: CanonicalEventPresentation;
