@@ -78,6 +78,8 @@ export interface RuntimeBrokerRegisterSessionRequest {
   /** Exact immutable SessionHeader observed from DSH. */
   readonly header: JsonValue;
   readonly title: string;
+  /** Opaque metadata passed only to the selected Adapter. */
+  readonly adapterMetadata?: JsonValue;
 }
 
 export interface RuntimeBrokerRegisteredSession {

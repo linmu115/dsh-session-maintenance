@@ -203,6 +203,8 @@ export interface NativeSessionRegistration {
   readonly title: string;
   readonly workspaceId: LogicalWorkspaceId | null;
   readonly projectId: LogicalProjectId;
+  /** Opaque Adapter-owned registration metadata; shared lifecycle code must not interpret it. */
+  readonly adapterMetadata?: JsonValue;
 }
 
 /** Adapter-decoded metadata needed to rebuild a crashed temporary projection. */
@@ -215,6 +217,8 @@ export interface NativeRecoverySession {
   readonly projectId: LogicalProjectId | null;
   readonly header: JsonValue;
   readonly committedEvents: readonly JsonValue[];
+  /** Opaque Adapter-owned recovery metadata; shared lifecycle code must not interpret it. */
+  readonly adapterMetadata?: JsonValue;
 }
 
 /**

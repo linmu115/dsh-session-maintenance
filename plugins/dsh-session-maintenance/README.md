@@ -1,6 +1,6 @@
 # DSH Session Maintenance
 
-这是 DeepSeek Harness 的稳定会话入口。Maintenance 保存与 DSH 版本无关的规范会话和逻辑工作区；Launcher 启动 Alpha2 或 RC2 时，把同一真源转换为该版本认识的临时投影，正常关闭后清空实例内的会话文件。
+这是 DeepSeek Harness 的稳定会话入口。Maintenance 保存与 DSH 版本无关的规范会话和逻辑工作区；Launcher 启动 Alpha2、RC1 或 RC2 时，把同一真源转换为该版本认识的临时投影，正常关闭后清空实例内的会话文件。
 
 ## 当前能力
 
@@ -18,6 +18,7 @@
 - 会话来源：`Session Maintenance`
 - Maintenance 端点：`auto`
 - Alpha2 固定 Adapter：`dsh-alpha2`
+- RC1 固定 Adapter：`dsh-rc1`
 - RC2 固定 Adapter：`dsh-rc2`
 
 Profile 不保存真实会话目录。启动时 Launcher 发现或唤醒 Engine，并通过一次性进程环境传递运行参数；正常关闭会等待 pending write 排空，异常退出保留恢复清单。
@@ -28,6 +29,6 @@ Profile 不保存真实会话目录。启动时 Launcher 发现或唤醒 Engine�
 
 ## 版本策略
 
-插件 peer 范围保持开放，不因实验版 semver 阻止组合。具体 DSH 格式由公开 Adapter SDK 处理；首批内置 Adapter 为官方 `0.1.2-alpha.2` 与 `0.1.1-rc.2`。第三方适配指南见 Generation 的 `documentation/adapters/`。
+插件 peer 范围保持开放，不因实验版 semver 阻止组合。具体 DSH 格式由公开 Adapter SDK 处理；当前内置 Adapter 为官方 `0.1.2-alpha.2`、`0.1.2-rc.1` 与 `0.1.1-rc.2`，其中 `dsh-rc1` 只声明精确的 `0.1.2-rc.1`。第三方适配指南见 Generation 的 `documentation/adapters/`。
 
 更新前请建立 Checkpoint。回滚时可恢复上一 Generation，并把 Engine 配置中的数据库指针切回封存的 `metadata.sqlite`。卸载 DSH 入口不会删除 Maintenance 数据库或 Codex 真源。

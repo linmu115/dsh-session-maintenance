@@ -127,7 +127,7 @@ const runtimeBrokerAppendSchema = z.strictObject({
 const runtimeBrokerRegisterSessionSchema = z.strictObject({
   schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
   runId: runtimeBrokerIdSchema, nativeSessionId: runtimeBrokerIdSchema,
-  header: z.unknown(), title: z.string().max(500),
+  header: z.unknown(), title: z.string().max(500), adapterMetadata: z.unknown().optional(),
 });
 const runtimeBrokerFlushSchema = z.strictObject({
   schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,

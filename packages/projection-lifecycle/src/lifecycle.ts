@@ -91,6 +91,7 @@ export interface ProjectionRecoverySessionSnapshot {
   readonly projectId: LogicalProjectId | null;
   readonly header: import("@linmu/dsh-session-contracts").JsonValue;
   readonly committedEvents: readonly import("@linmu/dsh-session-contracts").JsonValue[];
+  readonly adapterMetadata?: import("@linmu/dsh-session-contracts").JsonValue;
 }
 
 export type ProjectionRecoveryOperationSource = (
@@ -445,7 +446,7 @@ export class ProjectionLifecycle {
       }
       await this.quarantine(prepared.run.id);
       await this.statusLog.fail(attachSpan, { errorCode: "RUNTIME_ATTACH_FAILED" });
-      throw new ProjectionLifecycleError("RUNTIME_ATTACH_FAILED", prepared.run.id, "Alpha2 runtime persistence attach failed", { cause: error });
+      throw new ProjectionLifecycleError("RUNTIME_ATTACH_FAILED", prepared.run.id, "DSH runtime persistence attach failed", { cause: error });
     }
   }
 
@@ -1109,6 +1110,7 @@ export class ProjectionLifecycle {
         projectId: recovered.projectId,
         header: recovered.header,
         committedEvents: recovered.committedEvents,
+        ...(recovered.adapterMetadata === undefined ? {} : { adapterMetadata: recovered.adapterMetadata }),
       });
     }
     return snapshots;

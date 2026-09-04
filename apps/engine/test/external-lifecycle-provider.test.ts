@@ -45,6 +45,14 @@ function prepareRequest() {
   };
 }
 
+function rc1PrepareRequest() {
+  return {
+    ...prepareRequest(),
+    instanceId: "rc1-instance",
+    runtimeVersion: "0.1.2-rc.1",
+  };
+}
+
 describe("Maintenance external lifecycle provider", () => {
   it("completes prepare and abort through the authenticated Engine routes", async () => {
     const engine = await createEngineFixture("external-lifecycle-http");
@@ -85,7 +93,7 @@ describe("Maintenance external lifecycle provider", () => {
     });
   });
 
-  it("declines non-web and non-Alpha2 runtimes before Engine discovery or patch creation", async () => {
+  it("declines non-web and unsupported runtimes before Engine discovery or patch creation", async () => {
     const stateRoot = await mkdtemp(join(tmpdir(), "dsh-maint-external-disabled-"));
     cleanups.push(() => rm(stateRoot, { recursive: true, force: true }));
     let connectionAttempts = 0;
@@ -99,6 +107,46 @@ describe("Maintenance external lifecycle provider", () => {
     await expect(provider.handle({ ...prepareRequest(), web: false })).resolves.toEqual(disabled);
     await expect(provider.handle({ ...prepareRequest(), runtimeVersion: "0.1.1-rc.2" })).resolves.toEqual(disabled);
     expect(connectionAttempts).toBe(0);
+  });
+
+  it("pins an RC1 launch to the independent exact-version Adapter", async () => {
+    const calls: unknown[] = [];
+    let persistenceRoot = "";
+    const fetchImpl: typeof fetch = async (_input, init) => {
+      calls.push(JSON.parse(String(init?.body)));
+      return json({ run: {
+        schemaVersion: 1,
+        runId: "run-rc1",
+        leaseId: "lease-rc1",
+        adapterId: "dsh-rc1",
+        persistenceRoot,
+        temporaryPersistenceRootId: "projection:run-rc1",
+        runtimeClientId: "plugin-0123456789abcdefghijklmnopqrstuv",
+        state: "preparing",
+      } }, 201);
+    };
+    const { stateRoot, provider } = await fixture(fetchImpl);
+    persistenceRoot = join(stateRoot, "runtime", "run-rc1", "runtime-sessions");
+
+    const response = await provider.handle(rc1PrepareRequest());
+    expect(response).toMatchObject({ enabled: true });
+    if (!("enabled" in response) || !response.enabled || response.launch === null) throw new Error("prepare failed");
+    const metadata = JSON.parse(response.launch.env.DSH_SESSION_MAINTENANCE_LAUNCH_PROFILE!);
+    expect(metadata).toMatchObject({
+      adapterSelection: "pinned",
+      pinnedAdapterId: "dsh-rc1",
+      dshVersion: "0.1.2-rc.1",
+    });
+    expect(calls).toEqual([expect.objectContaining({
+      dshVersion: "0.1.2-rc.1",
+      pinnedAdapterId: "dsh-rc1",
+      environment: expect.objectContaining({
+        packageVersions: {
+          "@deepseek-ai/dsh-session": "0.1.2-rc.1",
+          "@deepseek-ai/dsh-session-persistence": "0.1.2-rc.1",
+        },
+      }),
+    })]);
   });
 
   it("prepares an Alpha2 projection and returns only generic launch mutations", async () => {

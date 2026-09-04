@@ -1,6 +1,6 @@
 {
   "name": "@linmu/dsh-session-maintenance-engine",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "private": true,
   "type": "module",
   "bin": {
@@ -20,6 +20,7 @@
   },
   "dependencies": {
     "@linmu/dsh-session-adapter-alpha2": "workspace:*",
+    "@linmu/dsh-session-adapter-rc1": "workspace:*",
     "@linmu/dsh-session-adapter-rc2": "workspace:*",
     "@linmu/dsh-session-adapter-host": "workspace:*",
     "@linmu/dsh-session-projection-lifecycle": "workspace:*",

@@ -8,7 +8,7 @@ import { launchDashboard } from "./dashboard-launcher.js";
 import { createProxyHandler, FileConnectionProvider, RestrictedEngineProxy } from "./engine-proxy.js";
 import { registerManagerActions, type ManagerActionContext } from "./manager-actions.js";
 import {
-  Alpha2SessionPersistenceProjection,
+  SessionPersistenceProjection,
   HttpProjectionRuntimeTransport,
   ProjectionRuntimeRegistrar,
   RuntimeBrokerPluginClient,
@@ -56,7 +56,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       if (current.origin !== launchProfile.maintenanceEndpoint) throw new Error("Launcher Runtime Broker endpoint differs from the trusted Engine descriptor");
       return `Bearer ${current.token}`;
     });
-    const overlay = new Alpha2SessionPersistenceProjection(
+    const overlay = new SessionPersistenceProjection(
       ctx as never,
       launchProfile.temporaryPersistenceRootId,
       (stage, detail) => {
@@ -101,7 +101,11 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
         String(session.id),
         event as unknown as JsonValue,
         session.header as unknown as JsonValue,
-        session.events as unknown as readonly JsonValue[],
+        (fromOffset, toOffsetExclusive) => session.snapshotEvents(
+          fromOffset as never,
+          toOffsetExclusive as never,
+        ) as unknown as readonly JsonValue[],
+        { inheritedEventCount: Number(session.inheritedEventCount) },
       );
     });
     const offFlush = ctx.on("session/flush", async (session) => {

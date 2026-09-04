@@ -57,7 +57,7 @@ export function validateRuntimeShutdownBody(
 }
 
 /**
- * Lets a process owner request Alpha2's official appExit path. The handler is
+ * Lets a process owner request DSH's official appExit path. The handler is
  * run-scoped and protected by the Engine capability; no filesystem path or
  * token is accepted in the request body.
  */

@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
-  Alpha2ProjectionPersistenceOverlay,
-  Alpha2SessionPersistenceProjection,
+  InMemoryProjectionPersistenceOverlay,
+  SessionPersistenceProjection,
   normalizeProjectionRuntimeDescriptor,
   ProjectionRuntimeRegistrar,
   RuntimeBrokerPluginClient,
@@ -33,7 +33,7 @@ describe("DSH projection runtime", () => {
       yield { type: "session-begin" as const, nativeSessionId: "native-alpha2" };
       yield { type: "session-end" as const, nativeSessionId: "native-alpha2", eventCount: 0 };
     }) };
-    const overlay = new Alpha2ProjectionPersistenceOverlay();
+    const overlay = new InMemoryProjectionPersistenceOverlay();
     const attach = vi.spyOn(overlay, "attach");
     const detach = vi.spyOn(overlay, "detach");
     const registrar = new ProjectionRuntimeRegistrar({
@@ -75,9 +75,9 @@ describe("DSH projection runtime", () => {
   it("registers every catalog header, hydrates only hot sessions at startup, and single-flights a cold click", async () => {
     const runId = "run-hot-cold";
     const hot = { nativeSessionId: "native-hot", updatedAt: "2026-09-01T02:00:00.000Z", hot: true, eventCount: 2,
-      payload: { logicalSessionId: "logical-hot", baseVersionId: "version-hot", projectId: "project-hot", projectTitle: "Hot project", title: "Hot title", header: { version: 0, id: "native-hot", createdAt: 2 }, events: [] } };
+      payload: { logicalSessionId: "logical-hot", baseVersionId: "version-hot", projectId: "project-hot", projectTitle: "Hot project", title: "Hot title", inheritedEventCount: 0, header: { version: 0, id: "native-hot", createdAt: 2, isSeeded: false }, events: [] } };
     const cold = { nativeSessionId: "native-cold", updatedAt: "2026-09-01T01:00:00.000Z", hot: false, eventCount: 1,
-      payload: { logicalSessionId: "logical-cold", baseVersionId: "version-cold", projectId: "project-cold", projectTitle: "Cold project", title: "Cold title", header: { version: 0, id: "native-cold", createdAt: 1 }, events: [] } };
+      payload: { logicalSessionId: "logical-cold", baseVersionId: "version-cold", projectId: "project-cold", projectTitle: "Cold project", title: "Cold title", inheritedEventCount: 0, header: { version: 0, id: "native-cold", createdAt: 1, isSeeded: false }, events: [] } };
     const catalog = { type: "catalog" as const, schemaVersion: 2 as const, runId, hotLimit: 1, sessions: [hot, cold] };
     const create = vi.fn(async () => undefined);
     const append = vi.fn(async () => undefined);
@@ -112,7 +112,7 @@ describe("DSH projection runtime", () => {
         yield { type: "session-end" as const, nativeSessionId, eventCount: 1 };
       }
     }) };
-    const overlay = new Alpha2SessionPersistenceProjection({
+    const overlay = new SessionPersistenceProjection({
       sessionPersistence: { root: persistenceRoot, create, append, list: async () => [] },
       workspaceRegistry: {
         replaceHeaderIndex,
@@ -142,11 +142,12 @@ describe("DSH projection runtime", () => {
       expect.objectContaining({ id: "native-cold" }),
     ]);
     expect(create).toHaveBeenCalledTimes(1);
-    expect(create).toHaveBeenCalledWith(expect.objectContaining({ id: "native-hot" }));
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ id: "native-hot", isSeeded: false }), undefined);
     expect(createWorkspace).toHaveBeenCalledTimes(2);
     expect(deleteWorkspace).toHaveBeenCalledWith("workspace-stale-run");
     expect(attached).toEqual(expect.arrayContaining(["native-hot", "native-cold"]));
     expect(projectionCache.get("native-hot")).toMatchObject({
+      identity: { createdAt: 2, isSeeded: false, inheritedEventCount: 0 },
       rows: {
         title: { ver: 1, seq: 1, val: "Hot title" },
         sessionListMetadata: { ver: 1, seq: 1, val: { blank: false } },
@@ -211,7 +212,7 @@ describe("DSH projection runtime", () => {
         yield { type: "catalog-begin" as const, schemaVersion: 2 as const, runId, hotLimit: 200, sessionCount: 0 };
         yield { type: "catalog-end" as const, sessionCount: 0 };
       }) },
-      overlay: new Alpha2ProjectionPersistenceOverlay(),
+      overlay: new InMemoryProjectionPersistenceOverlay(),
       clock: () => "2026-09-01T00:00:00.000Z",
     });
     const client = new RuntimeBrokerPluginClient({
@@ -227,10 +228,11 @@ describe("DSH projection runtime", () => {
     const header = { version: 0, id: nativeSessionId, cwd: "D:/synthetic/project" };
     const first = { seq: 0, type: "message", message: "first" };
     const second = { seq: 1, type: "message", message: "second" };
+    const readSuffix = vi.fn((from: number, to: number) => [first, second].slice(from, to));
 
     await client.attach();
-    client.observe(nativeSessionId, first, header, [first]);
-    client.observe(nativeSessionId, second, header, [first, second]);
+    client.observe(nativeSessionId, first, header, readSuffix);
+    client.observe(nativeSessionId, second, header, readSuffix);
     await client.flush(nativeSessionId);
     await client.drain("2026-09-01T00:00:02.000Z");
 
@@ -257,8 +259,93 @@ describe("DSH projection runtime", () => {
       { revision: 2, logicalSessionId: "logical-alpha2-live", baseVersionId: "version-alpha2-live", events: [first, second] },
     ]);
     expect(appends[0]!.body.operation).toEqual(appends[1]!.body.operation);
+    expect(readSuffix).not.toHaveBeenCalled();
     expect(requests.some((request) => request.path.endsWith("/drain"))).toBe(true);
     expect(requests.some((request) => request.path.endsWith("/close"))).toBe(false);
+  });
+
+  it("carries RC1 seeded lineage through registration, first append, and durable flush", async () => {
+    const endpoint = "http://127.0.0.1:41781";
+    const runId = "run-rc1-seeded-live";
+    const nativeSessionId = "native-rc1-seeded-live";
+    const requests: Array<{ readonly path: string; readonly body: Record<string, unknown> }> = [];
+    const json = (value: unknown, status = 200) => new Response(JSON.stringify(value), {
+      status,
+      headers: { "content-type": "application/json" },
+    });
+    const fetchImpl = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url);
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      requests.push({ path: url.pathname, body });
+      if (url.pathname.endsWith("/attach")) return json({ schemaVersion: 1, runId, state: "running" });
+      if (url.pathname.endsWith("/sessions")) {
+        return json({ schemaVersion: 1, session: { logicalSessionId: "logical-rc1-seeded", baseVersionId: "version-rc1-seeded" } });
+      }
+      if (url.pathname.endsWith("/append")) {
+        return json({
+          schemaVersion: 1,
+          receipt: {
+            status: "committed",
+            logicalSessionId: "logical-rc1-seeded",
+            canonicalVersionId: "version-rc1-seeded-appended",
+          },
+        });
+      }
+      if (url.pathname.endsWith("/flush")) return json({ schemaVersion: 1, pendingOperations: 0 });
+      return json({ error: { message: `unexpected route ${url.pathname}` } }, 404);
+    }) as typeof fetch;
+    const registrar = new ProjectionRuntimeRegistrar({
+      transport: { stream: vi.fn(async function* () {
+        yield { type: "catalog-begin" as const, schemaVersion: 2 as const, runId, hotLimit: 0, sessionCount: 0 };
+        yield { type: "catalog-end" as const, sessionCount: 0 };
+      }) },
+      overlay: new InMemoryProjectionPersistenceOverlay(),
+    });
+    const client = new RuntimeBrokerPluginClient({
+      connection: { current: async () => ({ origin: endpoint, token: "t".repeat(32) }) },
+      registrar,
+      clientId: "client-plugin-test",
+      runId,
+      temporaryPersistenceRootId: `projection:${runId}`,
+      maintenanceEndpoint: endpoint,
+      fetchImpl,
+    });
+    const header = {
+      version: 0,
+      id: nativeSessionId,
+      createdAt: 1,
+      cwd: "D:/synthetic/project",
+      parentSession: "native-parent",
+      isSeeded: true,
+    };
+    const events = [
+      { seq: 0, type: "user/message", data: { text: "seed" } },
+      { seq: 1, type: "assistant/message", data: { text: "answer" } },
+      { seq: 2, type: "session/end-seed", data: {} },
+    ];
+
+    await client.attach();
+    client.observe(
+      nativeSessionId,
+      events[2]!,
+      header,
+      (from, to) => events.slice(from, to),
+      { inheritedEventCount: 2 },
+    );
+    await client.flush(nativeSessionId);
+
+    const registration = requests.find((request) => request.path.endsWith("/sessions"));
+    expect(registration?.body).toMatchObject({
+      nativeSessionId,
+      header: { isSeeded: true, parentSession: "native-parent" },
+      adapterMetadata: { inheritedEventCount: 2 },
+    });
+    const append = requests.find((request) => request.path.endsWith("/append"));
+    expect(append?.body.operation).toMatchObject({
+      nativeRevision: 3,
+      payload: { events },
+    });
+    expect(requests.filter((request) => request.path.endsWith("/flush"))).toHaveLength(1);
   });
 
   it("batches streamed Alpha2 events that arrive while a durable append is in flight", async () => {
@@ -316,7 +403,7 @@ describe("DSH projection runtime", () => {
         yield { type: "catalog-sessions" as const, sessions: [catalogSession] };
         yield { type: "catalog-end" as const, sessionCount: 1 };
       }) },
-      overlay: new Alpha2ProjectionPersistenceOverlay(),
+      overlay: new InMemoryProjectionPersistenceOverlay(),
     });
     const client = new RuntimeBrokerPluginClient({
       connection: { current: async () => ({ origin: endpoint, token: "t".repeat(32) }) },
@@ -336,10 +423,10 @@ describe("DSH projection runtime", () => {
     }));
 
     await client.attach();
-    client.observe(nativeSessionId, events[0]!, header, [events[0]!]);
+    client.observe(nativeSessionId, events[0]!, header, (from, to) => events.slice(from, to));
     await firstAppendObserved;
     for (let seq = 1; seq < events.length; seq += 1) {
-      client.observe(nativeSessionId, events[seq]!, header, events.slice(0, seq + 1));
+      client.observe(nativeSessionId, events[seq]!, header, (from, to) => events.slice(from, to));
     }
     releaseFirstAppend();
     await client.flush(nativeSessionId);
@@ -402,7 +489,7 @@ describe("DSH projection runtime", () => {
         yield { type: "catalog-sessions" as const, sessions: [catalogSession] };
         yield { type: "catalog-end" as const, sessionCount: 1 };
       }) },
-      overlay: new Alpha2ProjectionPersistenceOverlay(),
+      overlay: new InMemoryProjectionPersistenceOverlay(),
     });
     const client = new RuntimeBrokerPluginClient({
       connection: { current: async () => ({ origin: endpoint, token: "t".repeat(32) }) },
@@ -421,13 +508,15 @@ describe("DSH projection runtime", () => {
     const continuation = { seq: 6, type: "user/message", data: { text: "continue" } };
 
     await client.attach();
-    client.observe(nativeSessionId, permission, header, [...seed, marker, permission]);
-    client.observe(nativeSessionId, sandbox, header, [...seed, marker, permission, sandbox]);
-    client.observe(nativeSessionId, approval, header, [...seed, marker, permission, sandbox, approval]);
+    const complete = [...seed, marker, permission, sandbox, approval, continuation];
+    const readSuffix = vi.fn((from: number, to: number) => complete.slice(from, to));
+    client.observe(nativeSessionId, permission, header, readSuffix);
+    client.observe(nativeSessionId, sandbox, header, readSuffix);
+    client.observe(nativeSessionId, approval, header, readSuffix);
     await client.flush(nativeSessionId);
     expect(requests.filter((request) => request.path.endsWith("/append"))).toHaveLength(0);
 
-    client.observe(nativeSessionId, continuation, header, [...seed, marker, permission, sandbox, approval, continuation]);
+    client.observe(nativeSessionId, continuation, header, readSuffix);
     await client.flush(nativeSessionId);
     const appends = requests.filter((request) => request.path.endsWith("/append"));
     expect(appends).toHaveLength(1);
@@ -437,6 +526,8 @@ describe("DSH projection runtime", () => {
     };
     expect(operation.nativeRevision).toBe(7);
     expect(operation.payload.events).toEqual([marker, permission, sandbox, approval, continuation]);
+    expect(readSuffix).toHaveBeenCalledTimes(1);
+    expect(readSuffix).toHaveBeenCalledWith(2, 4);
     expect(requests.some((request) => request.path.endsWith("/sessions"))).toBe(false);
   });
 });

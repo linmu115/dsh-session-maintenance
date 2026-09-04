@@ -83,7 +83,7 @@ export interface ProjectionPersistenceOverlay {
   detach(registrationId: string): Promise<void>;
 }
 
-export class Alpha2ProjectionPersistenceOverlay implements ProjectionPersistenceOverlay {
+export class InMemoryProjectionPersistenceOverlay implements ProjectionPersistenceOverlay {
   private readonly catalogs = new Map<string, ProjectionRuntimeCatalog>();
   private readonly hydrated = new Map<string, Set<string>>();
   private readonly counts = new Map<string, Map<string, number>>();
@@ -481,7 +481,10 @@ function validateCatalog(catalog: ProjectionRuntimeCatalog, runId: string): Proj
 interface SessionPersistenceProjectionContext {
   readonly sessionPersistence: {
     readonly root?: string;
-    create(header: { readonly version: number; readonly id: string; readonly createdAt: number; readonly delegationDepth: number; readonly cwd?: string }): Promise<void>;
+    create(
+      header: { readonly version: number; readonly id: string; readonly createdAt: number; readonly delegationDepth: number; readonly isSeeded?: boolean; readonly cwd?: string },
+      inheritedEventCount?: number,
+    ): Promise<void>;
     append(id: string, events: readonly JsonValue[]): Promise<void>;
     list(): Promise<readonly { readonly id: string }[]>;
   };
@@ -522,7 +525,7 @@ function object(value: JsonValue, description: string): { readonly [key: string]
 }
 
 /** Writes only into the startup-patched per-run persistence backend. */
-export class Alpha2SessionPersistenceProjection implements ProjectionPersistenceOverlay {
+export class SessionPersistenceProjection implements ProjectionPersistenceOverlay {
   private readonly context: SessionPersistenceProjectionContext;
   private readonly expectedRootId: string;
   private readonly status: ProjectionRuntimeStatusReporter;
@@ -548,15 +551,15 @@ export class Alpha2SessionPersistenceProjection implements ProjectionPersistence
     const registrationId = `projection:${catalog.runId}`;
     if (registrationId !== this.expectedRootId) throw new Error("Runtime snapshot does not match the startup-patched persistence root");
     if (this.catalogs.has(registrationId)) throw new Error(`Projection persistence is already attached: ${catalog.runId}`);
-    const headers: Array<{ readonly version: number; readonly id: string; readonly createdAt: number; readonly delegationDepth: number; readonly cwd?: string }> = [];
+    const headers: Array<{ readonly version: number; readonly id: string; readonly createdAt: number; readonly delegationDepth: number; readonly isSeeded?: boolean; readonly cwd?: string }> = [];
     const normalizedSessions: ProjectionRuntimeSessionMetadata[] = [];
     const workspaceGroups = new Map<string, { readonly title: string; readonly sessionIds: string[] }>();
     let managedCwds = 0;
     for (const item of catalog.sessions) {
-      const payload = object(item.payload, "Alpha2 projected session");
-      const projectedHeader = object(payload.header ?? null, "Alpha2 projected SessionHeader");
+      const payload = object(item.payload, "DSH projected session");
+      const projectedHeader = object(payload.header ?? null, "DSH projected SessionHeader");
       if (projectedHeader.id !== item.nativeSessionId || typeof projectedHeader.version !== "number" || typeof projectedHeader.createdAt !== "number") {
-        throw new TypeError("Alpha2 projected SessionHeader does not match its native session ID");
+        throw new TypeError("DSH projected SessionHeader does not match its native session ID");
       }
       const { header, managed } = await this.runtimeHeader(projectedHeader, payload);
       if (managed) managedCwds += 1;
@@ -586,7 +589,7 @@ export class Alpha2SessionPersistenceProjection implements ProjectionPersistence
         if (await this.context.workspaceRegistry.delete(workspace.id)) staleManagedWorkspaces += 1;
         continue;
       }
-      // Alpha2 prunes stale membership only when a workspace record mutates.
+      // DSH prunes stale membership only when a workspace record mutates.
       // Re-applying the same title therefore removes sessions whose canonical
       // cwd moved without guessing at the registry's private table format.
       await workspace.setTitle(workspace.title);
@@ -641,24 +644,34 @@ export class Alpha2SessionPersistenceProjection implements ProjectionPersistence
     this.catalog(registrationId);
     if (this.isHydrated(registrationId, session.nativeSessionId)) return;
     const projected = this.catalog(registrationId).sessions.find((item) => item.nativeSessionId === session.nativeSessionId);
-    if (projected === undefined) throw new Error(`Alpha2 projected session is not registered: ${session.nativeSessionId}`);
-    const payload = object(projected.payload, "Alpha2 projected session");
-    const header = object(payload.header ?? null, "Alpha2 projected SessionHeader");
-    await this.context.sessionPersistence.create(header as never);
+    if (projected === undefined) throw new Error(`DSH projected session is not registered: ${session.nativeSessionId}`);
+    const payload = object(projected.payload, "DSH projected session");
+    const header = object(payload.header ?? null, "DSH projected SessionHeader");
+    const inheritedEventCount = payload.inheritedEventCount === undefined ? 0 : Number(payload.inheritedEventCount);
+    if (!Number.isSafeInteger(inheritedEventCount) || inheritedEventCount < 0) {
+      throw new TypeError("Projected inheritedEventCount must be a non-negative SessionLogOffset");
+    }
+    if (header.isSeeded === false && inheritedEventCount !== 0) {
+      throw new TypeError("Unseeded RC1 projection must use inheritedEventCount zero");
+    }
+    await this.context.sessionPersistence.create(
+      header as never,
+      header.isSeeded === true ? inheritedEventCount : undefined,
+    );
     this.counts.get(registrationId)!.set(session.nativeSessionId, 0);
   }
 
   async appendHydrationEvents(registrationId: string, nativeSessionId: string, events: readonly JsonValue[]): Promise<void> {
     if (events.length === 0) return;
     const counts = this.countsFor(registrationId);
-    if (!counts.has(nativeSessionId)) throw new Error("Alpha2 hydration event chunk arrived before session begin");
+    if (!counts.has(nativeSessionId)) throw new Error("DSH hydration event chunk arrived before session begin");
     await this.context.sessionPersistence.append(nativeSessionId, events);
     counts.set(nativeSessionId, counts.get(nativeSessionId)! + events.length);
   }
 
   async finishHydration(registrationId: string, nativeSessionId: string, eventCount: number): Promise<void> {
     const count = this.countsFor(registrationId).get(nativeSessionId);
-    if (count !== eventCount) throw new Error(`Alpha2 projected event count mismatch: ${String(count)} != ${eventCount}`);
+    if (count !== eventCount) throw new Error(`DSH projected event count mismatch: ${String(count)} != ${eventCount}`);
     this.hydrated.get(registrationId)!.add(nativeSessionId);
   }
 
@@ -669,7 +682,7 @@ export class Alpha2SessionPersistenceProjection implements ProjectionPersistence
 
   listHeaders(registrationId: string): readonly JsonValue[] {
     return this.catalog(registrationId).sessions.map((session) => {
-      const payload = object(session.payload, "Alpha2 projected session");
+      const payload = object(session.payload, "DSH projected session");
       return structuredClone(payload.header ?? null);
     });
   }
@@ -685,7 +698,7 @@ export class Alpha2SessionPersistenceProjection implements ProjectionPersistence
   }
 
   async hideSession(_registrationId: string, _nativeSessionId: string): Promise<void> {
-    throw new Error("Alpha2 temporary persistence has no in-process delete; hide is broker-controlled");
+    throw new Error("DSH temporary persistence has no in-process delete; hide is broker-controlled");
   }
 
   async detach(registrationId: string): Promise<void> {
@@ -710,16 +723,17 @@ export class Alpha2SessionPersistenceProjection implements ProjectionPersistence
   private async runtimeHeader(
     header: { readonly [key: string]: JsonValue },
     payload: { readonly [key: string]: JsonValue },
-  ): Promise<{ readonly header: { readonly version: number; readonly id: string; readonly createdAt: number; readonly delegationDepth: number; readonly cwd: string }; readonly managed: boolean }> {
+  ): Promise<{ readonly header: { readonly version: number; readonly id: string; readonly createdAt: number; readonly delegationDepth: number; readonly isSeeded?: boolean; readonly cwd: string }; readonly managed: boolean }> {
     const delegationDepth = header.delegationDepth === undefined ? 0 : Number(header.delegationDepth);
     if (!Number.isSafeInteger(delegationDepth) || delegationDepth < 0) {
-      throw new TypeError("Alpha2 projected SessionHeader has an invalid delegationDepth");
+      throw new TypeError("DSH projected SessionHeader has an invalid delegationDepth");
     }
     const baseHeader = {
       version: Number(header.version),
       id: String(header.id),
       createdAt: Number(header.createdAt),
       delegationDepth,
+      ...(typeof header.isSeeded === "boolean" ? { isSeeded: header.isSeeded } : {}),
     };
     const projectedCwd = typeof header.cwd === "string" && header.cwd.length > 0 ? header.cwd : null;
     if (projectedCwd !== null) {
@@ -733,7 +747,7 @@ export class Alpha2SessionPersistenceProjection implements ProjectionPersistence
     }
     const persistenceRoot = this.context.sessionPersistence.root;
     if (typeof persistenceRoot !== "string" || persistenceRoot.length === 0) {
-      throw new Error("Alpha2 temporary persistence root is unavailable for a project-only cwd projection");
+      throw new Error("DSH temporary persistence root is unavailable for a project-only cwd projection");
     }
     const projectId = typeof payload.projectId === "string" && payload.projectId.length > 0 ? payload.projectId : null;
     const cwd = join(
@@ -761,24 +775,34 @@ export class Alpha2SessionPersistenceProjection implements ProjectionPersistence
   private async seedProjectionCache(
     item: ProjectionRuntimeSessionMetadata,
   ): Promise<{ readonly title: 0 | 1; readonly metadata: 1 }> {
-    const payload = object(item.payload, "Alpha2 projected session");
-    const header = object(payload.header ?? null, "Alpha2 projected SessionHeader");
+    const payload = object(item.payload, "DSH projected session");
+    const header = object(payload.header ?? null, "DSH projected SessionHeader");
     const identity = {
       createdAt: Number(header.createdAt),
       ...(typeof header.cwd === "string" ? { cwd: header.cwd } : {}),
+      ...(typeof header.isSeeded === "boolean" ? {
+        isSeeded: header.isSeeded,
+        inheritedEventCount: payload.inheritedEventCount === undefined ? 0 : Number(payload.inheritedEventCount),
+      } : {}),
     };
     const current = this.context.sessionProjectionCache.table.get(item.nativeSessionId);
     const currentRecord = current !== null && typeof current === "object" && !Array.isArray(current)
       ? current as { readonly identity?: unknown; readonly rows?: unknown }
       : undefined;
     const currentIdentity = currentRecord?.identity !== null && typeof currentRecord?.identity === "object" && !Array.isArray(currentRecord.identity)
-      ? currentRecord.identity as { readonly createdAt?: unknown; readonly cwd?: unknown }
+      ? currentRecord.identity as { readonly createdAt?: unknown; readonly cwd?: unknown; readonly isSeeded?: unknown; readonly inheritedEventCount?: unknown }
       : undefined;
-    const sameIdentity = currentIdentity?.createdAt === identity.createdAt && currentIdentity.cwd === identity.cwd;
+    const lineageMatches = identity.isSeeded === undefined
+      || ((currentIdentity?.isSeeded ?? false) === identity.isSeeded
+        && (currentIdentity?.inheritedEventCount ?? 0) === identity.inheritedEventCount);
+    const sameIdentity = currentIdentity?.createdAt === identity.createdAt
+      && currentIdentity.cwd === identity.cwd
+      && lineageMatches;
     const rows = sameIdentity && currentRecord?.rows !== null && typeof currentRecord?.rows === "object" && !Array.isArray(currentRecord.rows)
       ? { ...(currentRecord.rows as Record<string, unknown>) }
       : {};
-    const seq = item.eventCount - 1;
+    const seq = item.eventCount === 0 ? -1 : item.eventCount - 1;
+    if (!Number.isSafeInteger(seq) || seq < -1) throw new TypeError("Projection cache requires a valid SessionSeqCursor");
     const updatedAt = Date.parse(item.updatedAt);
     rows.sessionListMetadata = {
       ver: 1,
@@ -803,6 +827,7 @@ interface ProjectedSessionMetadata {
 interface QueuedRuntimeEvent {
   readonly event: JsonValue;
   readonly header: JsonValue;
+  readonly adapterMetadata?: JsonValue;
   readonly initialPrefix: readonly JsonValue[];
 }
 
@@ -827,7 +852,7 @@ function isDeferredSessionPrelude(value: JsonValue): boolean {
 }
 
 function projectedMetadata(value: JsonValue): ProjectedSessionMetadata {
-  const payload = object(value, "Alpha2 projected session");
+  const payload = object(value, "DSH projected session");
   if (typeof payload.logicalSessionId !== "string") throw new TypeError("Projected session lacks logicalSessionId");
   if (payload.baseVersionId !== null && typeof payload.baseVersionId !== "string") throw new TypeError("Projected session has invalid baseVersionId");
   return { logicalSessionId: payload.logicalSessionId, baseVersionId: payload.baseVersionId as string | null };
@@ -917,24 +942,28 @@ export class RuntimeBrokerPluginClient {
     await this.registrar.hydrate({ runId: this.runId, maintenanceEndpoint: this.endpoint }, nativeSessionId);
   }
 
-  observe(nativeSessionId: string, event: JsonValue, header: JsonValue, eventPrefix: readonly JsonValue[]): void {
+  observe(
+    nativeSessionId: string,
+    event: JsonValue,
+    header: JsonValue,
+    readSuffix: (fromOffset: number, toOffsetExclusive: number) => readonly JsonValue[],
+    adapterMetadata?: JsonValue,
+  ): void {
     if (this.registrationId === null || this.draining) return;
     const projected = this.registrar.session(this.runId, nativeSessionId);
-    const envelope = object(event, "Alpha2 session/event");
+    const envelope = object(event, "DSH session/event");
     if (!Number.isSafeInteger(envelope.seq) || Number(envelope.seq) < 0) {
-      this.failures.set(nativeSessionId, new TypeError("Alpha2 session/event lacks a safe seq"));
+      this.failures.set(nativeSessionId, new TypeError("DSH session/event lacks a safe seq"));
       return;
     }
     const nextRevision = Number(envelope.seq) + 1;
     const currentRevision = this.observedRevisions.get(nativeSessionId) ?? projected?.eventCount ?? 0;
     if (nextRevision <= currentRevision) return;
-    if (eventPrefix.length < nextRevision) {
-      this.failures.set(nativeSessionId, new TypeError("Alpha2 session/event prefix is shorter than its revision"));
-      return;
-    }
-    const missingTail = eventPrefix.slice(currentRevision, nextRevision);
+    const missingTail = nextRevision === currentRevision + 1
+      ? [event]
+      : [...readSuffix(currentRevision, nextRevision)];
     if (missingTail.length !== nextRevision - currentRevision) {
-      this.failures.set(nativeSessionId, new TypeError("Alpha2 session/event prefix is not contiguous"));
+      this.failures.set(nativeSessionId, new TypeError("DSH session/event prefix is not contiguous"));
       return;
     }
     this.observedRevisions.set(nativeSessionId, nextRevision);
@@ -957,7 +986,8 @@ export class RuntimeBrokerPluginClient {
     queue.push({
       event,
       header,
-      initialPrefix: firstDynamicEvent && currentRevision === 0 ? eventPrefix : combinedPrefix,
+      ...(adapterMetadata === undefined ? {} : { adapterMetadata }),
+      initialPrefix: combinedPrefix,
     });
     this.queues.set(nativeSessionId, queue);
     this.schedule(nativeSessionId);
@@ -1008,16 +1038,16 @@ export class RuntimeBrokerPluginClient {
           let batch = this.pendingBatches.get(nativeSessionId);
           if (batch === undefined) {
             const first = queue![0]!;
-            const metadata = await this.metadata(nativeSessionId, first.header);
+            const metadata = await this.metadata(nativeSessionId, first.header, first.adapterMetadata);
             const queueLength = queue!.length;
             const queuedBatch = queue!.slice(0, queueLength);
             const last = queuedBatch.at(-1)!;
-            const envelope = object(last.event, "Alpha2 session/event");
-            if (!Number.isSafeInteger(envelope.seq)) throw new TypeError("Alpha2 session/event lacks a safe seq");
+            const envelope = object(last.event, "DSH session/event");
+            if (!Number.isSafeInteger(envelope.seq)) throw new TypeError("DSH session/event lacks a safe seq");
             const events = queuedBatch.flatMap((queued) => [...queued.initialPrefix]);
             const nativeRevision = Number(envelope.seq) + 1;
             if (events.length === 0 || nativeRevision < events.length) {
-              throw new TypeError("Alpha2 runtime batch does not form a valid native revision");
+              throw new TypeError("DSH runtime batch does not form a valid native revision");
             }
             batch = {
               queueLength,
@@ -1059,7 +1089,11 @@ export class RuntimeBrokerPluginClient {
     });
   }
 
-  private async metadata(nativeSessionId: string, header: JsonValue): Promise<ProjectedSessionMetadata> {
+  private async metadata(
+    nativeSessionId: string,
+    header: JsonValue,
+    adapterMetadata: JsonValue | undefined,
+  ): Promise<ProjectedSessionMetadata> {
     const existing = this.dynamicMetadata.get(nativeSessionId);
     if (existing !== undefined) return existing;
     const projected = this.registrar.session(this.runId, nativeSessionId);
@@ -1071,6 +1105,7 @@ export class RuntimeBrokerPluginClient {
       nativeSessionId,
       header,
       title: `DSH session ${nativeSessionId}`,
+      ...(adapterMetadata === undefined ? {} : { adapterMetadata }),
     }) as { readonly session?: { readonly logicalSessionId?: unknown; readonly baseVersionId?: unknown } };
     if (typeof response.session?.logicalSessionId !== "string"
       || (response.session.baseVersionId !== null && typeof response.session.baseVersionId !== "string")) {

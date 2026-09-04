@@ -40,7 +40,10 @@ const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 15_000;
 const ENGINE_START_TIMEOUT_MS = 240_000;
 const HANDLE_DIRECTORY = "external-lifecycle-handles";
 const SHUTDOWN_PATH = "/dsh-session-maintenance/runtime/shutdown";
-const SUPPORTED_RUNTIME_VERSION = "0.1.2-alpha.2";
+const SUPPORTED_RUNTIME_ADAPTERS = new Map<string, null | "dsh-rc1">([
+  ["0.1.2-alpha.2", null],
+  ["0.1.2-rc.1", "dsh-rc1"],
+]);
 
 const idSchema = z.string().regex(SAFE_ID);
 const handleSchema = z.string().regex(SAFE_HANDLE);
@@ -238,12 +241,13 @@ export class MaintenanceExternalLifecycleProvider {
   }
 
   private async prepare(request: ExternalLifecyclePrepareRequest): Promise<ExternalLifecyclePrepareResponse> {
-    if (!request.web || request.runtimeVersion !== SUPPORTED_RUNTIME_VERSION) {
+    if (!request.web || !SUPPORTED_RUNTIME_ADAPTERS.has(request.runtimeVersion)) {
       return { schemaVersion: 1, enabled: false, handle: null, launch: null };
     }
+    const pinnedAdapterId = SUPPORTED_RUNTIME_ADAPTERS.get(request.runtimeVersion) ?? null;
     const configuration = {
       branchId: "main",
-      pinnedAdapterId: null,
+      pinnedAdapterId,
       projectSelection: { kind: "all" } as const,
     };
     const connection = await this.ensureConnection();

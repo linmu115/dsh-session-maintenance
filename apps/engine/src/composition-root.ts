@@ -9,8 +9,10 @@ import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation"
 import { DshReadAdapter } from "@linmu/dsh-adapter-dsh";
 import { AdapterHost, AdapterRegistry, NodeAdapterWorkerFactory } from "@linmu/dsh-session-adapter-host";
 import { manifest as alpha2AdapterManifest } from "@linmu/dsh-session-adapter-alpha2";
+import { manifest as rc1AdapterManifest } from "@linmu/dsh-session-adapter-rc1";
 import { manifest as rc2AdapterManifest } from "@linmu/dsh-session-adapter-rc2";
 import { adapter as alpha2Adapter } from "@linmu/dsh-session-adapter-alpha2";
+import { adapter as rc1Adapter } from "@linmu/dsh-session-adapter-rc1";
 import { adapter as rc2Adapter } from "@linmu/dsh-session-adapter-rc2";
 import { DshWriteAdapter } from "@linmu/dsh-adapter-dsh-write";
 import { RemoteDshHostGateway } from "@linmu/dsh-host-gateway";
@@ -175,6 +177,19 @@ async function createComposition(
     enabled: true,
   });
   await adapterRegistry.register({
+    manifest: rc1AdapterManifest,
+    source: {
+      kind: "generation",
+      generationId: "builtin-canonical-rc1",
+      packageName: "@linmu/dsh-session-adapter-rc1",
+      entryPoint: adapterWorkerEntryPoint(
+        "@linmu/dsh-session-adapter-rc1",
+        "dsh-rc1-rpc-worker.mjs",
+      ),
+    },
+    enabled: true,
+  });
+  await adapterRegistry.register({
     manifest: rc2AdapterManifest,
     source: {
       kind: "generation",
@@ -249,9 +264,11 @@ async function createComposition(
     projectionLifecycleFactory: ({ adapterId, bridge }) => {
       const adapter = adapterId === alpha2Adapter.manifest.id
         ? alpha2Adapter
-        : adapterId === rc2Adapter.manifest.id
-          ? rc2Adapter
-          : undefined;
+        : adapterId === rc1Adapter.manifest.id
+          ? rc1Adapter
+          : adapterId === rc2Adapter.manifest.id
+            ? rc2Adapter
+            : undefined;
       if (adapter === undefined) throw new TypeError(`Unsupported built-in projection adapter: ${adapterId}`);
       return new ProjectionLifecycle({
         runRepository: projectionRunRepository,

@@ -135,6 +135,18 @@ const alpha2WorkerBundle = await build({
   legalComments: "none",
   metafile: true,
 });
+const rc1WorkerBundle = await build({
+  absWorkingDir: root,
+  entryPoints: ["packages/adapter-dsh-rc1/src/rpc-worker.ts"],
+  outfile: join(engine, "engine", "adapters", "dsh-rc1-rpc-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node22",
+  conditions: ["development"],
+  legalComments: "none",
+  metafile: true,
+});
 const rc2WorkerBundle = await build({
   absWorkingDir: root,
   entryPoints: ["packages/adapter-dsh-rc2/src/rpc-worker.ts"],
@@ -179,7 +191,7 @@ const manifest = {
   version,
   sourceCommit,
   sourceDirty,
-  supportedContracts: { dsh: "0.1.1-rc.2", cordis: "4.0.1", codexRead: "0.146.0" },
+  supportedContracts: { dsh: "0.1.1-rc.2", dshRc1: "0.1.2-rc.1", cordis: "4.0.2", codexRead: "0.146.0" },
   artifacts: [
     { name: engineName, sha256: sha256(engineBytes), bytes: engineBytes.byteLength, kind: "engine-dashboard" },
     { name: pluginName, sha256: sha256(pluginBytes), bytes: pluginBytes.byteLength, kind: "dsh-plugin" },
@@ -188,6 +200,7 @@ const manifest = {
     engine: portableInputs(engineBundle.metafile),
     adapterWorkers: {
       alpha2: portableInputs(alpha2WorkerBundle.metafile),
+      rc1: portableInputs(rc1WorkerBundle.metafile),
       rc2: portableInputs(rc2WorkerBundle.metafile),
     },
     pluginHost: portableInputs(pluginHost.metafile),

@@ -1,0 +1,26 @@
+{
+  "name": "@linmu/dsh-session-adapter-rc1",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./rpc-worker": {
+      "types": "./dist/rpc-worker.d.ts",
+      "default": "./dist/rpc-worker.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": ["dist", "CHANGELOG.md", "BREAKING-CHANGES.md", "COMPATIBILITY.md"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@linmu/dsh-session-adapter-sdk": "workspace:*"
+  }
+}

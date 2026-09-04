@@ -42,6 +42,38 @@ function request() {
 }
 
 describe("ProjectionRuntimeBroker", () => {
+  it("prepares the exact RC1 runtime bridge without falling back to Alpha2", async () => {
+    const lifecycle = {
+      prepareRun: async () => ({
+        run: { id: runId, leaseId: "lease-rc1", state: "preparing" },
+        projectionRoot: "D:/synthetic/rc1-projection-run",
+        manifest: {}, inspection: {}, verification: {}, maintenanceEndpoint: "runtime-broker",
+      }),
+    };
+    const broker = new ProjectionRuntimeBroker({
+      lifecycleFactory: ({ adapterId }) => {
+        expect(adapterId).toBe("dsh-rc1");
+        return lifecycle as never;
+      },
+      selectAdapter: async () => "dsh-rc1" as AdapterId,
+      statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
+      projectResolver: { resolveProject: async () => "project-test", assignProject: async () => undefined } as never,
+    });
+
+    await expect(broker.prepareRun({
+      ...request(),
+      instanceId: "rc1-test",
+      dshVersion: "0.1.2-rc.1",
+      environment: {
+        packageVersions: {
+          "@deepseek-ai/dsh-session": "0.1.2-rc.1",
+          "@deepseek-ai/dsh-session-persistence": "0.1.2-rc.1",
+        },
+        runtimeCapabilities: ["sessionPersistence", "session/event", "session/flush"],
+      },
+    })).resolves.toMatchObject({ adapterId: "dsh-rc1", state: "preparing" });
+  });
+
   it("keeps P3 pending until the runtime acknowledges the prepared temporary root", async () => {
     const calls: string[] = [];
     const lifecycle = {
@@ -186,6 +218,7 @@ describe("ProjectionRuntimeBroker", () => {
       nativeSessionId,
       header,
       title: "DSH live-created session",
+      adapterMetadata: { inheritedEventCount: 0 },
     });
 
     expect(registered).toMatchObject({ nativeSessionId, baseVersionId: "version-live-created" });
@@ -196,6 +229,7 @@ describe("ProjectionRuntimeBroker", () => {
       title: "DSH live-created session",
       workspaceId: null,
       projectId: "project-deepseek",
+      adapterMetadata: { inheritedEventCount: 0 },
     })]);
     await broker.append(request().runtimeClientId, {
       runId,

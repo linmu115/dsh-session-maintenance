@@ -18,7 +18,7 @@ export interface LazyReadableSessionPersistence {
 export type LazyHydrationStage = "lazy.catalog.ready" | "lazy.borrow.request" | "lazy.materialize.commit" | "lazy.materialize.failed";
 
 /**
- * Alpha2 has no before-open middleware, but all cold history paths cross these
+ * DSH has no before-open middleware, but all cold history paths cross these
  * public SessionPersistence read methods. Decorate only that boundary and
  * restore every descriptor when the plugin fiber is disposed.
  */
@@ -31,7 +31,7 @@ export function installLazyProjectionPersistence(
   const descriptors = new Map<typeof names[number], PropertyDescriptor | undefined>();
   const listDescriptor = Object.getOwnPropertyDescriptor(persistence, "list");
   const originalList = persistence.list;
-  if (typeof originalList !== "function") throw new TypeError("Alpha2 SessionPersistence lacks list()");
+  if (typeof originalList !== "function") throw new TypeError("DSH SessionPersistence lacks list()");
   const tails = new Map<string, Promise<void>>();
   status("lazy.catalog.ready");
 
@@ -51,7 +51,7 @@ export function installLazyProjectionPersistence(
 
   for (const name of names) {
     const original = persistence[name];
-    if (typeof original !== "function") throw new TypeError(`Alpha2 SessionPersistence lacks ${name}()`);
+    if (typeof original !== "function") throw new TypeError(`DSH SessionPersistence lacks ${name}()`);
     descriptors.set(name, Object.getOwnPropertyDescriptor(persistence, name));
     const wrapped: AsyncMethod = async function(this: LazyReadableSessionPersistence, sessionId, ...args) {
       if (runtime.coldSessionIds().includes(sessionId)) await hydrate(sessionId);

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.2.14 - 2026-09-04
+
+- Add the independent, exact-version `dsh-rc1` Adapter for DeepSeek Harness
+  `0.1.2-rc.1`; no RC1 compatibility branches were added to `dsh-alpha2`.
+- Project RC1 lineage through `SessionHeader.isSeeded` and the separate
+  `inheritedEventCount` log offset, and include both fields in projection-cache
+  identity checks.
+- Carry a live RC1 fork's inherited-event count through the Runtime Broker as
+  opaque Adapter metadata before its first append; the shared runtime remains
+  format-neutral and Alpha2 behavior is unchanged.
+- Separate logical RC1 lineage headers from physical JSONL `seedLength` during
+  crash-tail recovery, and reject negative-zero native positions.
+- Consume the RC1 `session/event` payload directly for contiguous appends.
+  `snapshotEvents` is now read only when an offset gap must be repaired, while
+  `session/flush` remains the durable Maintenance receipt barrier.
+- Let the external lifecycle provider select `dsh-rc1` for an exact RC1
+  runtime without changing Launcher profiles or official DSH compaction,
+  Token Meter, or preset configuration.
+- Preserve the canonical authority boundary: Codex remains read-only,
+  Maintenance remains the DSH truth source, and cold catalog/hydration,
+  project/title projection, and tool-call pairing retain their existing
+  behavior.
+
 ## 0.2.13 - 2026-09-03
 
 - Package the isolated Alpha2 and RC2 probe workers beside the standalone

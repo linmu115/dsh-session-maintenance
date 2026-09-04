@@ -39,6 +39,7 @@ if (engine !== undefined) {
   else {
     const workerEntries = [
       "dsh-session-maintenance/engine/adapters/dsh-alpha2-rpc-worker.mjs",
+      "dsh-session-maintenance/engine/adapters/dsh-rc1-rpc-worker.mjs",
       "dsh-session-maintenance/engine/adapters/dsh-rc2-rpc-worker.mjs",
     ];
     for (const entry of workerEntries) {
