@@ -275,6 +275,7 @@ export class CodexCanonicalImportService {
           `canonical=${normalized.codexClassification.canonicalEventCount}`,
           `evidenceOnly=${normalized.codexClassification.evidenceOnlyCount}`,
           `other=${normalized.codexClassification.otherEventCount}`,
+          `transportWhitespaceNormalized=${normalized.codexClassification.transportWhitespaceNormalizedEventCount}`,
         ].join("; "),
       });
       const project = resolveCodexProject(

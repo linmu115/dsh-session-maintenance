@@ -106,7 +106,12 @@ function toolEvent(
   };
 }
 
-function visibleUserText(value: string): string {
+interface VisibleUserText {
+  readonly text: string;
+  readonly transportWhitespacePrefixRemoved: boolean;
+}
+
+function visibleUserText(value: string): VisibleUserText {
   let visible = value
     .replace(/<codex_internal_context\b[^>]*>[\s\S]*?<\/codex_internal_context>/giu, "")
     .replace(/<in-app-browser-context\b[^>]*>[\s\S]*?<\/in-app-browser-context>/giu, "")
@@ -119,7 +124,16 @@ function visibleUserText(value: string): string {
     /<codex_delegation\b[^>]*>[\s\S]*?<input>([\s\S]*?)<\/input>[\s\S]*?<\/codex_delegation>/giu,
     "$1",
   );
-  return visible.trim();
+  // Codex Desktop can persist one encoded leading U+0020 as the literal
+  // transport prefix `&#x20;`. It is not part of the user's visible text. Keep
+  // every other entity byte-for-byte; broad HTML decoding would corrupt code,
+  // quoted evidence and intentional entity examples.
+  const transportPrefix = /^(?:\s*&#x0*20;)+/iu.exec(visible);
+  if (transportPrefix !== null) visible = visible.slice(transportPrefix[0].length);
+  return {
+    text: visible.trim(),
+    transportWhitespacePrefixRemoved: transportPrefix !== null,
+  };
 }
 
 function textParts(value: JsonValue | undefined): string[] {
@@ -211,10 +225,13 @@ function messageEvent(
   }
 
   const joinedContent = text.join("\n");
+  const visibleUser = payload.role === "user" && imported === undefined
+    ? visibleUserText(joinedContent)
+    : undefined;
   const importedContent = importedMode === "visible-record" || importedMode === "metadata-record"
     ? joinedContent.replace(/^\[DSH 导入记录 · [^\]]+\]\n/u, "")
-    : payload.role === "user"
-      ? visibleUserText(joinedContent)
+    : visibleUser !== undefined
+      ? visibleUser.text
       : joinedContent;
   if (payload.role === "user"
     && imported === undefined
@@ -235,6 +252,9 @@ function messageEvent(
     extensions: {
       ...(unknownContent.length === 0 ? {} : { unknownContent }),
       ...(imported === undefined ? {} : { dshImport: imported as JsonValue }),
+      ...(visibleUser?.transportWhitespacePrefixRemoved === true
+        ? { codexTextNormalization: { transportWhitespacePrefixRemoved: true } }
+        : {}),
     },
   };
 }
@@ -586,6 +606,9 @@ export function normalizeCodexObservation(observation: StableObservation): Codex
     canonicalEventCount,
     evidenceOnlyCount,
     otherEventCount,
+    transportWhitespaceNormalizedEventCount: events.filter((event) =>
+      isRecord(event.extensions.codexTextNormalization)
+      && event.extensions.codexTextNormalization.transportWhitespacePrefixRemoved === true).length,
     sourceKindCounts,
   };
   return { ...normalized, codexClassification };

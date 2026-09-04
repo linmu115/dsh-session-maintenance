@@ -478,6 +478,46 @@ describe("CodexReadAdapter", () => {
     expect(JSON.stringify(normalized.events)).not.toContain("response-annotations");
   });
 
+  it("removes only Codex Desktop's encoded leading-space transport artifact", async () => {
+    const sandbox = await createFixtureSandbox("codex-leading-space-entity");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    await appendFile(
+      join(sandbox.codexHome, "rollouts", "thread-fixture.jsonl"),
+      [
+        {
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "&#x20;确认，开始施工" }],
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "message",
+            role: "user",
+            content: [{ type: "input_text", text: "保留字面实体 &#x20;、&lt;tag&gt; 和 &amp;" }],
+          },
+        },
+      ].map((item) => JSON.stringify(item)).join("\n") + "\n",
+    );
+    const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    const registered = instance(sandbox);
+    const [summary] = await collect(adapter.list(registered));
+    const normalized = await adapter.normalize(
+      expectStable(await adapter.observe(registered, summary!.key, summary!.hint)),
+    );
+
+    expect(normalized.events.filter((event) => event.role === "user").map((event) => event.content)).toEqual([
+      "hello from fixture",
+      "确认，开始施工",
+      "保留字面实体 &#x20;、&lt;tag&gt; 和 &amp;",
+    ]);
+    expect(normalized.codexClassification.transportWhitespaceNormalizedEventCount).toBe(1);
+  });
+
   it("uses the latest Codex compacted replacement history as the active conversation", async () => {
     const sandbox = await createFixtureSandbox("codex-compacted-history");
     cleanups.push(sandbox.cleanup);

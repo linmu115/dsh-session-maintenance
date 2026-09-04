@@ -27,6 +27,7 @@ export interface CodexClassificationSummaryV1 {
   readonly canonicalEventCount: number;
   readonly evidenceOnlyCount: number;
   readonly otherEventCount: number;
+  readonly transportWhitespaceNormalizedEventCount: number;
   readonly sourceKindCounts: Readonly<Record<string, number>>;
 }
 
