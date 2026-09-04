@@ -2,6 +2,12 @@
 
 ## 0.2.13 - 2026-09-03
 
+- Recognize Codex `compacted` rollout boundaries and project only the latest
+  `replacement_history` plus subsequent response items as active conversation
+  history. Pre-compaction rows remain authoritative in the untouched Codex
+  source, while the compacted envelope is retained as adapter evidence; its
+  provider-encrypted summary is never guessed or exposed as a user/assistant
+  message in DSH.
 - Allow the external lifecycle provider up to four minutes to observe Engine
   readiness. Opening and migrating a multi-gigabyte canonical store no longer
   fails after the former five-second startup window while the Engine is still

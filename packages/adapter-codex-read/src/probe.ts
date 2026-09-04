@@ -32,13 +32,14 @@ export const CODEX_REQUIRED_THREAD_COLUMNS = [
   ["thread_section_id", "TEXT", 0, 0], ["section_position", "INTEGER", 0, 0],
   ["section_entered_at_ms", "INTEGER", 0, 0], ["project_id", "TEXT", 0, 0],
 ] as const;
-export const CODEX_SUPPORTED_ENVELOPES = ["response_item", "session_meta"] as const;
+export const CODEX_REQUIRED_ENVELOPES = ["response_item", "session_meta"] as const;
+export const CODEX_SUPPORTED_ENVELOPES = [...CODEX_REQUIRED_ENVELOPES, "compacted"] as const;
 const schemaHex = sha256Canonical({
   tables: [{ name: "threads", columns: CODEX_REQUIRED_THREAD_COLUMNS }],
   sessionIndex: ["id", "thread_name", "updated_at"],
   envelopes: [...CODEX_SUPPORTED_ENVELOPES],
 });
-export const CODEX_SCHEMA_FINGERPRINT = `codex-read/0.146.0/schema-2:${schemaHex}`;
+export const CODEX_SCHEMA_FINGERPRINT = `codex-read/0.146.0/schema-3:${schemaHex}`;
 
 const contract = (version: string, fingerprint = CODEX_SCHEMA_FINGERPRINT): AdapterContractRef => ({
   adapter: "codex-read",
@@ -104,8 +105,8 @@ export async function probeCodexInstance(
     }
     onProbeRead();
     const observedTypes = new Set(parseCodexJsonl(await readFile(resolved)).map((item) => item.type));
-    if (!CODEX_SUPPORTED_ENVELOPES.every((type) => observedTypes.has(type))) {
-      throw new Error("Codex probe sample is missing supported envelope names");
+    if (!CODEX_REQUIRED_ENVELOPES.every((type) => observedTypes.has(type))) {
+      throw new Error("Codex probe sample is missing required envelope names");
     }
 
     return {

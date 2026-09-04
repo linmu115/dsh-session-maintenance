@@ -44,7 +44,7 @@ function toolOutputText(value: JsonValue | undefined): string {
 
 function toolEvent(
   envelope: CodexEnvelope,
-  lineIndex: number,
+  sourceIndex: number | string,
   sequence: number,
 ): RawSessionEvent | undefined {
   const payload = envelope.payload;
@@ -75,7 +75,7 @@ function toolEvent(
     ?? "";
   const outputText = toolOutputText(payload.output);
   return {
-    sourceEventId: stringValue(payload.id) ?? `${sourceType}-${lineIndex}`,
+    sourceEventId: stringValue(payload.id) ?? `${sourceType}-${sourceIndex}`,
     parentSourceEventId: null,
     sequence,
     kind: "tool-import",
@@ -115,7 +115,7 @@ function visibleUserText(value: string): string {
 
 function messageEvent(
   envelope: CodexEnvelope,
-  lineIndex: number,
+  sourceIndex: number | string,
   sequence: number,
 ): RawSessionEvent | null | undefined {
   const payload = envelope.payload;
@@ -177,7 +177,7 @@ function messageEvent(
   }
   return {
     sourceEventId:
-      typeof payload.id === "string" && payload.id.length > 0 ? payload.id : `line-${lineIndex}`,
+      typeof payload.id === "string" && payload.id.length > 0 ? payload.id : `line-${sourceIndex}`,
     parentSourceEventId: null,
     sequence,
     kind: importedMode === "visible-record" ? "tool-import" : importedMode === "metadata-record" ? "metadata" : "message",
@@ -191,6 +191,80 @@ function messageEvent(
   };
 }
 
+interface IndexedCodexEnvelope {
+  readonly envelope: CodexEnvelope;
+  readonly sourceIndex: number | string;
+  readonly compactionBoundary?: true;
+}
+
+/**
+ * Codex persists a `compacted` envelope whose `replacement_history` is the
+ * model-visible history after compaction. Rows before that boundary remain in
+ * the rollout for audit, but replaying them as active messages defeats Codex's
+ * compaction and can make the first DSH continuation exceed the model window.
+ */
+function activeCodexEnvelopes(envelopes: readonly CodexEnvelope[]): readonly IndexedCodexEnvelope[] {
+  let compactedIndex = -1;
+  for (const [index, envelope] of envelopes.entries()) {
+    if (envelope.type === "compacted" && Array.isArray(envelope.payload.replacement_history)) {
+      compactedIndex = index;
+    }
+  }
+  if (compactedIndex < 0) {
+    return envelopes.map((envelope, sourceIndex) => ({ envelope, sourceIndex }));
+  }
+
+  const boundary = envelopes[compactedIndex]!;
+  const replacementHistory = boundary.payload.replacement_history as readonly JsonValue[];
+  const active: IndexedCodexEnvelope[] = [{
+    envelope: boundary,
+    sourceIndex: compactedIndex,
+    compactionBoundary: true,
+  }];
+  for (const [replacementIndex, value] of replacementHistory.entries()) {
+    if (!isRecord(value)) continue;
+    // The encrypted Codex compaction item is source-specific and cannot be
+    // replayed through a different provider. It remains available inside the
+    // boundary evidence above; only portable response items become active.
+    if (value.type === "compaction") continue;
+    // Codex developer scaffolding is not a user/assistant turn and must not be
+    // widened into a DSH conversation. The boundary evidence retains it.
+    if (value.type === "message" && value.role === "developer") continue;
+    active.push({
+      envelope: {
+        ...(boundary.timestamp === undefined ? {} : { timestamp: boundary.timestamp }),
+        type: "response_item",
+        payload: value,
+      },
+      sourceIndex: `${compactedIndex}:replacement:${replacementIndex}`,
+    });
+  }
+  for (let index = compactedIndex + 1; index < envelopes.length; index += 1) {
+    active.push({ envelope: envelopes[index]!, sourceIndex: index });
+  }
+  return active;
+}
+
+function preservedEnvelopeEvent(
+  envelope: CodexEnvelope,
+  sourceIndex: number | string,
+  sequence: number,
+): RawSessionEvent {
+  return {
+    sourceEventId: stringValue(envelope.payload.id) ?? `line-${sourceIndex}`,
+    parentSourceEventId: null,
+    sequence,
+    kind: "metadata",
+    role: "unknown",
+    content: "",
+    attachments: [],
+    extensions: {
+      sourceType: envelope.type,
+      codexEnvelope: asJson(envelope),
+    },
+  };
+}
+
 export function normalizeCodexObservation(observation: StableObservation): NormalizedSession {
   if (!isCodexObservationPayload(observation.payload)) {
     throw new TypeError("Stable observation is not a supported Codex payload");
@@ -198,34 +272,30 @@ export function normalizeCodexObservation(observation: StableObservation): Norma
   const payload = observation.payload;
   const events: RawSessionEvent[] = [];
   const issues: CompatibilityIssue[] = [];
-  for (const [lineIndex, envelope] of payload.envelopes.entries()) {
+  for (const item of activeCodexEnvelopes(payload.envelopes)) {
+    const { envelope, sourceIndex } = item;
     if (envelope.type === "session_meta") {
       continue;
     }
+    if (item.compactionBoundary === true) {
+      events.push(preservedEnvelopeEvent(envelope, sourceIndex, events.length));
+      continue;
+    }
     if (envelope.type === "response_item") {
-      const message = messageEvent(envelope, lineIndex, events.length);
+      const message = messageEvent(envelope, sourceIndex, events.length);
       if (message === null) continue;
       if (message !== undefined) {
         events.push(message);
         continue;
       }
-      const tool = toolEvent(envelope, lineIndex, events.length);
+      const tool = toolEvent(envelope, sourceIndex, events.length);
       if (tool !== undefined) {
         events.push(tool);
         continue;
       }
     }
 
-    events.push({
-      sourceEventId: `line-${lineIndex}`,
-      parentSourceEventId: null,
-      sequence: events.length,
-      kind: "metadata",
-      role: "unknown",
-      content: "",
-      attachments: [],
-      extensions: { codexEnvelope: asJson(envelope) },
-    });
+    events.push(preservedEnvelopeEvent(envelope, sourceIndex, events.length));
     issues.push({
       code: "CODEX_EVENT_DEGRADED",
       message: `Unsupported Codex envelope preserved as source metadata: ${envelope.type}`,

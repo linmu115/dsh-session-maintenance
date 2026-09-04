@@ -393,6 +393,91 @@ describe("CodexReadAdapter", () => {
     expect(JSON.stringify(normalized.events)).not.toContain("response-annotations");
   });
 
+  it("uses the latest Codex compacted replacement history as the active conversation", async () => {
+    const sandbox = await createFixtureSandbox("codex-compacted-history");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    await appendFile(
+      join(sandbox.codexHome, "rollouts", "thread-fixture.jsonl"),
+      [
+        {
+          type: "response_item",
+          payload: {
+            type: "message",
+            id: "pre-compaction-noise",
+            role: "user",
+            content: [{ type: "input_text", text: "这段历史已经被 Codex 压缩" }],
+          },
+        },
+        {
+          timestamp: "2026-09-03T00:00:00.000Z",
+          type: "compacted",
+          payload: {
+            window_number: 2,
+            replacement_history: [
+              {
+                type: "message",
+                id: "developer-scaffolding",
+                role: "developer",
+                content: [{ type: "input_text", text: "Codex-only developer instructions" }],
+              },
+              {
+                type: "message",
+                id: "retained-user",
+                role: "user",
+                content: [{ type: "input_text", text: "压缩后仍需保留的用户上下文" }],
+              },
+              {
+                type: "message",
+                id: "retained-assistant",
+                role: "assistant",
+                content: [{ type: "output_text", text: "可移植的压缩后助手上下文" }],
+              },
+              {
+                type: "compaction",
+                id: "encrypted-codex-summary",
+                encrypted_content: "source-provider-only",
+              },
+            ],
+          },
+        },
+        {
+          type: "response_item",
+          payload: {
+            type: "message",
+            id: "post-compaction-user",
+            role: "user",
+            content: [{ type: "input_text", text: "压缩后新增的消息" }],
+          },
+        },
+      ].map((item) => JSON.stringify(item)).join("\n") + "\n",
+    );
+    const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    const registered = instance(sandbox);
+    const [summary] = await collect(adapter.list(registered));
+    const normalized = await adapter.normalize(
+      expectStable(await adapter.observe(registered, summary!.key, summary!.hint)),
+    );
+
+    const visible = normalized.events
+      .filter((event) => event.role === "user" || event.role === "assistant")
+      .map((event) => event.content);
+    expect(visible).toEqual([
+      "压缩后仍需保留的用户上下文",
+      "可移植的压缩后助手上下文",
+      "压缩后新增的消息",
+    ]);
+    expect(JSON.stringify(visible)).not.toContain("hello from fixture");
+    expect(JSON.stringify(visible)).not.toContain("这段历史已经被 Codex 压缩");
+    expect(JSON.stringify(visible)).not.toContain("Codex-only developer instructions");
+    expect(normalized.events[0]).toMatchObject({
+      kind: "metadata",
+      role: "unknown",
+      extensions: { sourceType: "compacted" },
+    });
+    expect(normalized.compatibility.status).toBe("compatible");
+  });
+
   it("accepts append-only growth after capturing a bounded prefix", async () => {
     const sandbox = await createFixtureSandbox("codex-unstable");
     cleanups.push(sandbox.cleanup);
