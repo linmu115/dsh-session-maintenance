@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Scope normalized DSH event IDs to the projection run. Alpha2 can reuse one
+  native session's sequence numbers after rematerialization without colliding
+  with canonical events committed by an earlier run; replaying the same WAL
+  operation still produces identical IDs.
 - Add the MCSF v1 `other` projection. Unsupported cross-Harness semantics are
   emitted as `maintenance/other`, `ignorable: true`, tool-card presentation
   with no message-surface operation.

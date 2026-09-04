@@ -85,7 +85,7 @@ export async function normalizeAlpha2Append(
       : event.data;
     events.push({
       schemaVersion: 1 as const,
-      id: `dsh-alpha2:${operation.nativeSessionId}:${event.seq}`,
+      id: `dsh-alpha2:${operation.runId}:${operation.nativeSessionId}:${event.seq}`,
       logicalSessionId,
       sequence: event.seq,
       kind: heldOut ? "other" : identity.kind,

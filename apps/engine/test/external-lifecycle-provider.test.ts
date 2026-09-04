@@ -203,10 +203,15 @@ describe("Maintenance external lifecycle provider", () => {
       schemaVersion: 1,
       phase: "beforeStop",
       handle: prepared.handle,
-      runtimeUrl: "http://127.0.0.1:3080",
+      runtimeUrl: "http://127.0.0.1:3080/?token=runtime-secret#launcher",
     });
     expect(stopping).toEqual({ schemaVersion: 1, action: "wait", timeoutMs: 15_000 });
     expect(reasons).toEqual([]);
+    expect(await readFile(join(
+      stateRoot,
+      "external-lifecycle-handles",
+      "maintenance-0123456789abcdefghijklmnopqrstuv.json",
+    ), "utf8")).not.toContain("runtime-secret");
 
     const finalized = await provider.handle({
       schemaVersion: 1,

@@ -170,8 +170,6 @@ function loopbackOrigin(value: string): string {
     || !["127.0.0.1", "localhost", "[::1]"].includes(parsed.hostname)
     || parsed.username.length > 0
     || parsed.password.length > 0
-    || parsed.search.length > 0
-    || parsed.hash.length > 0
   ) throw new ProviderError("INVALID_RUNTIME_ORIGIN", "Runtime origin must be loopback HTTP", false);
   return parsed.origin;
 }

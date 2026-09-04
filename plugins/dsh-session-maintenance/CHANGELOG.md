@@ -2,6 +2,13 @@
 
 ## 0.2.13 - 2026-09-03
 
+- Accept a Launcher's full loopback runtime URL during graceful shutdown while
+  retaining only its origin. Path, token query and fragment data are discarded,
+  so a normal stop no longer falls into crash recovery merely because the
+  Launcher supplied its authenticated page URL.
+- Scope Alpha2 canonical event identities to the projection run. Native event
+  sequence numbers reused by a later run can no longer collide with an older
+  canonical session, while replaying the same run's WAL remains idempotent.
 - Recognize Codex `compacted` rollout boundaries and project only the latest
   `replacement_history` plus subsequent response items as active conversation
   history. Pre-compaction rows remain authoritative in the untouched Codex

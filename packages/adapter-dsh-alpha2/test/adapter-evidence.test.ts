@@ -35,6 +35,32 @@ class MemoryEvidence implements AdapterEvidencePort {
 }
 
 describe("Alpha2 Adapter evidence boundary", () => {
+  it("scopes native event identities to one projection run while keeping retries idempotent", async () => {
+    const operation = {
+      runId: "run-event-identity-a",
+      operationId: "operation-event-identity-a",
+      nativeSessionId: "native-event-identity",
+      nativeRevision: 1,
+      observedAt: at,
+      payload: {
+        logicalSessionId: "logical-event-identity",
+        events: [{ type: "user/message", seq: 0, time: Date.parse(at), data: { text: "hello" } }],
+      },
+    } as unknown as NativeAppendOperation;
+
+    const first = await normalizeAlpha2Append(operation);
+    const retry = await normalizeAlpha2Append(operation);
+    const anotherRun = await normalizeAlpha2Append({
+      ...operation,
+      runId: "run-event-identity-b" as never,
+      operationId: "operation-event-identity-b" as never,
+    });
+
+    expect(first.events[0]?.id).toBe("dsh-alpha2:run-event-identity-a:native-event-identity:0");
+    expect(retry.events[0]?.id).toBe(first.events[0]?.id);
+    expect(anotherRun.events[0]?.id).not.toBe(first.events[0]?.id);
+  });
+
   it("places unknown native events in MCSF other and keeps their payload behind evidenceRef", async () => {
     const evidence = new MemoryEvidence();
     const operation = {
