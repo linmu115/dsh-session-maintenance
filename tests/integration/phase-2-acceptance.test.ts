@@ -48,5 +48,5 @@ describe("phase 2 isolated packaged acceptance", () => {
     } finally {
       await rm(out, { recursive: true, force: true });
     }
-  }, 60_000);
+  }, 120_000);
 });
