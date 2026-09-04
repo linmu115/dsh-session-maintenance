@@ -1,10 +1,14 @@
 import type {
   AttachmentRef,
+  CanonicalConversationPhase,
+  CanonicalConversationTopologyV1,
+  CanonicalEventKind,
+  CanonicalEventRole,
   CompatibilityIssue,
   JsonValue,
-  NormalizedSession,
   StableObservation,
 } from "@linmu/dsh-session-contracts";
+import { CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION } from "@linmu/dsh-session-contracts";
 import {
   normalizeSession,
   type RawSessionEvent,
@@ -16,6 +20,13 @@ import {
 } from "./parser.js";
 import { codexDisplayTitle } from "./thread.js";
 import { codexWorkspaceId } from "./workspace.js";
+import {
+  CODEX_CANONICAL_SEMANTICS_EXTENSION,
+  codexCanonicalSemantics,
+  type CodexCanonicalSemanticsV1,
+  type CodexClassificationSummaryV1,
+  type CodexNormalizedSession,
+} from "./semantics.js";
 
 function asJson(value: unknown): JsonValue {
   return JSON.parse(JSON.stringify(value)) as JsonValue;
@@ -59,11 +70,9 @@ function toolEvent(
 
   // A Codex output row is correlated only by its explicit call_id. Falling
   // back to the row id turns coordination/status outputs into orphan DSH tool
-  // results, which later makes the model request invalid. Call rows may still
-  // use their own id as the protocol call identity.
-  const callId = phase === "result"
-    ? stringValue(payload.call_id)
-    : stringValue(payload.call_id) ?? stringValue(payload.id);
+  // results, which later makes the model request invalid. Both sides of the
+  // portable tool pair therefore require Codex's explicit call_id.
+  const callId = stringValue(payload.call_id);
   if (callId === undefined) return undefined;
   const protocol = sourceType.startsWith("custom_") ? "custom" : "function";
   const name = stringValue(payload.name)
@@ -111,6 +120,45 @@ function visibleUserText(value: string): string {
     "$1",
   );
   return visible.trim();
+}
+
+function textParts(value: JsonValue | undefined): string[] {
+  if (typeof value === "string") return value.length === 0 ? [] : [value];
+  if (!Array.isArray(value)) return [];
+  const result: string[] = [];
+  for (const part of value) {
+    if (typeof part === "string") {
+      if (part.length > 0) result.push(part);
+      continue;
+    }
+    if (!isRecord(part)) continue;
+    const text = stringValue(part.text) ?? stringValue(part.summary_text);
+    if (text !== undefined) result.push(text);
+  }
+  return result;
+}
+
+function reasoningEvent(
+  envelope: CodexEnvelope,
+  sourceIndex: number | string,
+  sequence: number,
+): RawSessionEvent | undefined {
+  if (envelope.payload.type !== "reasoning") return undefined;
+  const content = [
+    ...textParts(envelope.payload.summary),
+    ...textParts(envelope.payload.content),
+  ].join("\n").trim();
+  if (content.length === 0) return undefined;
+  return {
+    sourceEventId: stringValue(envelope.payload.id) ?? `reasoning-${sourceIndex}`,
+    parentSourceEventId: null,
+    sequence,
+    kind: "message",
+    role: "assistant",
+    content,
+    attachments: [],
+    extensions: { sourceType: "reasoning" },
+  };
 }
 
 function messageEvent(
@@ -265,45 +313,261 @@ function preservedEnvelopeEvent(
   };
 }
 
-export function normalizeCodexObservation(observation: StableObservation): NormalizedSession {
+interface CodexTurnAssignmentState {
+  activeTurnId: string | null;
+  activeTurnIsExplicit: boolean;
+  currentConversationTurnId: string | null;
+  readonly turnOrdinals: Map<string, number>;
+}
+
+function responseItemTurnId(payload: Readonly<Record<string, JsonValue>>): string | undefined {
+  const metadata = payload.internal_chat_message_metadata_passthrough;
+  return isRecord(metadata) ? stringValue(metadata.turn_id) : undefined;
+}
+
+function assignTopology(
+  state: CodexTurnAssignmentState,
+  payload: Readonly<Record<string, JsonValue>>,
+  phase: CanonicalConversationPhase,
+  sourceIndex: number | string,
+): CanonicalConversationTopologyV1 {
+  const payloadTurnId = responseItemTurnId(payload);
+  let turnId = payloadTurnId ?? state.activeTurnId;
+  let inference: CanonicalConversationTopologyV1["inference"] =
+    payloadTurnId !== undefined || (turnId !== null && state.activeTurnIsExplicit) ? "explicit" : "derived";
+  if (turnId === null && phase !== "user") turnId = state.currentConversationTurnId;
+  if (turnId === null) {
+    turnId = `codex-turn:${sourceIndex}`;
+    inference = "derived";
+  }
+  state.currentConversationTurnId = turnId;
+  let turnOrdinal = state.turnOrdinals.get(turnId);
+  if (turnOrdinal === undefined) {
+    turnOrdinal = state.turnOrdinals.size;
+    state.turnOrdinals.set(turnId, turnOrdinal);
+  }
+  return {
+    schemaVersion: 1,
+    turnId,
+    turnOrdinal,
+    stepId: null,
+    stepOrdinal: null,
+    phase,
+    inference,
+  };
+}
+
+function withCanonicalSemantics(
+  event: RawSessionEvent,
+  semantics: CodexCanonicalSemanticsV1,
+  topology?: CanonicalConversationTopologyV1,
+): RawSessionEvent {
+  return {
+    ...event,
+    role: semantics.role,
+    extensions: {
+      ...event.extensions,
+      [CODEX_CANONICAL_SEMANTICS_EXTENSION]: semantics,
+      ...(topology === undefined ? {} : { [CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION]: topology }),
+    },
+  };
+}
+
+function canonicalSemantics(
+  kind: CanonicalEventKind,
+  role: CanonicalEventRole,
+  sourceKind: string,
+): CodexCanonicalSemanticsV1 {
+  return codexCanonicalSemantics({
+    disposition: "canonical",
+    kind,
+    role,
+    sourceKind,
+    otherReason: null,
+  });
+}
+
+function otherSemantics(
+  sourceKind: string,
+  reason: "unsupported-source-event" | "orphan-tool-result" = "unsupported-source-event",
+): CodexCanonicalSemanticsV1 {
+  return codexCanonicalSemantics({
+    disposition: "other",
+    kind: "other",
+    role: "unknown",
+    sourceKind,
+    otherReason: reason,
+  });
+}
+
+function sourceKind(envelope: CodexEnvelope): string {
+  const payloadType = stringValue(envelope.payload.type);
+  return `codex/${envelope.type}${payloadType === undefined ? "" : `:${payloadType}`}`;
+}
+
+function updateTurnBoundaryBefore(
+  state: CodexTurnAssignmentState,
+  envelope: CodexEnvelope,
+): void {
+  if (envelope.type === "turn_context") {
+    const turnId = stringValue(envelope.payload.turn_id);
+    if (turnId !== undefined) {
+      state.activeTurnId = turnId;
+      state.activeTurnIsExplicit = true;
+    }
+    return;
+  }
+  if (envelope.type !== "event_msg") return;
+  const type = stringValue(envelope.payload.type);
+  if (type !== "task_started" && type !== "turn_started") return;
+  const turnId = stringValue(envelope.payload.turn_id);
+  if (turnId !== undefined) {
+    state.activeTurnId = turnId;
+    state.activeTurnIsExplicit = true;
+  }
+}
+
+function updateTurnBoundaryAfter(
+  state: CodexTurnAssignmentState,
+  envelope: CodexEnvelope,
+): void {
+  if (envelope.type !== "event_msg") return;
+  const type = stringValue(envelope.payload.type);
+  if (type === "task_complete" || type === "turn_complete" || type === "turn_aborted") {
+    state.activeTurnId = null;
+    state.activeTurnIsExplicit = false;
+  }
+}
+
+function classifyMessage(
+  envelope: CodexEnvelope,
+  sourceIndex: number | string,
+  sequence: number,
+  state: CodexTurnAssignmentState,
+): { readonly event?: RawSessionEvent; readonly evidenceOnly: boolean; readonly other: boolean } | undefined {
+  if (envelope.payload.type !== "message") return undefined;
+  const parsed = messageEvent(envelope, sourceIndex, sequence);
+  if (parsed === null) return { evidenceOnly: true, other: false };
+  if (parsed === undefined) return undefined;
+  if (parsed.extensions.dshImport !== undefined) {
+    if (parsed.kind === "metadata") return { evidenceOnly: true, other: false };
+    return {
+      event: withCanonicalSemantics(parsed, otherSemantics("codex/response_item:dsh-import-visible-record")),
+      evidenceOnly: false,
+      other: true,
+    };
+  }
+  if (parsed.role !== "user" && parsed.role !== "assistant") {
+    return { evidenceOnly: true, other: false };
+  }
+  const phase = parsed.role === "user" ? "user" : "assistant";
+  const kind = parsed.role === "user" ? "user-message" : "assistant-message";
+  return {
+    event: withCanonicalSemantics(
+      parsed,
+      canonicalSemantics(kind, parsed.role, "codex/response_item:message"),
+      assignTopology(state, envelope.payload, phase, sourceIndex),
+    ),
+    evidenceOnly: false,
+    other: false,
+  };
+}
+
+export function normalizeCodexObservation(observation: StableObservation): CodexNormalizedSession {
   if (!isCodexObservationPayload(observation.payload)) {
     throw new TypeError("Stable observation is not a supported Codex payload");
   }
   const payload = observation.payload;
   const events: RawSessionEvent[] = [];
   const issues: CompatibilityIssue[] = [];
-  for (const item of activeCodexEnvelopes(payload.envelopes)) {
+  const active = activeCodexEnvelopes(payload.envelopes);
+  const sourceKindCounts: Record<string, number> = {};
+  const turnState: CodexTurnAssignmentState = {
+    activeTurnId: null,
+    activeTurnIsExplicit: false,
+    currentConversationTurnId: null,
+    turnOrdinals: new Map(),
+  };
+  let canonicalEventCount = 0;
+  let evidenceOnlyCount = 0;
+  let otherEventCount = 0;
+  for (const item of active) {
     const { envelope, sourceIndex } = item;
+    const envelopeSourceKind = sourceKind(envelope);
+    sourceKindCounts[envelopeSourceKind] = (sourceKindCounts[envelopeSourceKind] ?? 0) + 1;
+    updateTurnBoundaryBefore(turnState, envelope);
     if (envelope.type === "session_meta") {
+      evidenceOnlyCount += 1;
       continue;
     }
     if (item.compactionBoundary === true) {
-      events.push(preservedEnvelopeEvent(envelope, sourceIndex, events.length));
+      evidenceOnlyCount += 1;
       continue;
     }
     if (envelope.type === "response_item") {
-      const message = messageEvent(envelope, sourceIndex, events.length);
-      if (message === null) continue;
+      const message = classifyMessage(envelope, sourceIndex, events.length, turnState);
       if (message !== undefined) {
-        events.push(message);
+        if (message.event !== undefined) events.push(message.event);
+        if (message.evidenceOnly) evidenceOnlyCount += 1;
+        else if (message.other) otherEventCount += 1;
+        else canonicalEventCount += 1;
         continue;
       }
       const tool = toolEvent(envelope, sourceIndex, events.length);
       if (tool !== undefined) {
-        events.push(tool);
+        const codexTool = tool.extensions.codexTool;
+        const phase = isRecord(codexTool) && codexTool.phase === "call" ? "tool-call" : "tool-result";
+        events.push(withCanonicalSemantics(
+          tool,
+          canonicalSemantics(
+            phase,
+            phase === "tool-call" ? "assistant" : "tool",
+            envelopeSourceKind,
+          ),
+          assignTopology(turnState, envelope.payload, phase, sourceIndex),
+        ));
+        canonicalEventCount += 1;
+        continue;
+      }
+      const reasoning = reasoningEvent(envelope, sourceIndex, events.length);
+      if (reasoning !== undefined) {
+        events.push(withCanonicalSemantics(
+          reasoning,
+          canonicalSemantics("reasoning", "assistant", envelopeSourceKind),
+          assignTopology(turnState, envelope.payload, "reasoning", sourceIndex),
+        ));
+        canonicalEventCount += 1;
+        continue;
+      }
+      if (envelope.payload.type === "reasoning") {
+        evidenceOnlyCount += 1;
         continue;
       }
     }
+    if (["event_msg", "turn_context", "token_usage_record", "world_state", "compacted"].includes(envelope.type)) {
+      evidenceOnlyCount += 1;
+      updateTurnBoundaryAfter(turnState, envelope);
+      continue;
+    }
 
-    events.push(preservedEnvelopeEvent(envelope, sourceIndex, events.length));
+    const reason = envelope.type === "response_item"
+      && (envelope.payload.type === "custom_tool_call_output" || envelope.payload.type === "function_call_output")
+      ? "orphan-tool-result"
+      : "unsupported-source-event";
+    events.push(withCanonicalSemantics(
+      preservedEnvelopeEvent(envelope, sourceIndex, events.length),
+      otherSemantics(envelopeSourceKind, reason),
+    ));
+    otherEventCount += 1;
     issues.push({
       code: "CODEX_EVENT_DEGRADED",
-      message: `Unsupported Codex envelope preserved as source metadata: ${envelope.type}`,
-      sourceType: envelope.type,
+      message: `Unsupported Codex envelope preserved as Adapter evidence: ${envelopeSourceKind}`,
+      sourceType: envelopeSourceKind,
     });
+    updateTurnBoundaryAfter(turnState, envelope);
   }
 
-  return normalizeSession({
+  const normalized = normalizeSession({
     key: observation.key,
     title: codexDisplayTitle(payload.thread),
     archived: Boolean(payload.thread.archived),
@@ -316,4 +580,13 @@ export function normalizeCodexObservation(observation: StableObservation): Norma
     compatibility: { status: issues.length === 0 ? "compatible" : "degraded", issues },
     events,
   });
+  const codexClassification: CodexClassificationSummaryV1 = {
+    schemaVersion: 1,
+    sourceEnvelopeCount: active.length,
+    canonicalEventCount,
+    evidenceOnlyCount,
+    otherEventCount,
+    sourceKindCounts,
+  };
+  return { ...normalized, codexClassification };
 }

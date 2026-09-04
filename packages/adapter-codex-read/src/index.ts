@@ -1,7 +1,6 @@
 import type {
   AdapterProbe,
   ExpectedPlatformState,
-  NormalizedSession,
   ObservationHint,
   PlatformSessionKey,
   PlatformSessionSummary,
@@ -18,6 +17,7 @@ import { listCodexSessions } from "./catalog.js";
 import { normalizeCodexObservation } from "./normalizer.js";
 import { probeCodexInstance } from "./probe.js";
 import { observeCodexSession, type CodexReadHooks } from "./stable-read.js";
+import type { CodexNormalizedSession } from "./semantics.js";
 import type { CodexReadStatusEvent } from "./status.js";
 
 export interface CodexReadAdapterOptions {
@@ -94,7 +94,7 @@ export class CodexReadAdapter implements SessionReadAdapter {
     return observeCodexSession(instance, key, hint, hooks);
   }
 
-  normalize(observation: StableObservation): Promise<NormalizedSession> {
+  normalize(observation: StableObservation): Promise<CodexNormalizedSession> {
     return Promise.resolve(normalizeCodexObservation(observation));
   }
 
@@ -141,6 +141,7 @@ export * from "./normalizer.js";
 export * from "./parser.js";
 export * from "./probe.js";
 export * from "./projects.js";
+export * from "./semantics.js";
 export * from "./stable-read.js";
 export * from "./status.js";
 export * from "./thread.js";

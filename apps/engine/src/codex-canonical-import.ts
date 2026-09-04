@@ -1,5 +1,6 @@
 import {
   CodexReadAdapter,
+  readCodexCanonicalSemantics,
   isCodexObservationPayload,
   readCodexProjectCatalog,
   resolveCodexProject,
@@ -8,12 +9,11 @@ import {
   type CodexReadStatusEvent,
 } from "@linmu/dsh-adapter-codex-read";
 import type { CanonicalEngineReceipt, CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
+import { CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION } from "@linmu/dsh-session-contracts";
 import type {
   AdapterEvidencePort,
   AdapterEvidenceRef,
   AdapterId,
-  CanonicalEventKind,
-  CanonicalEventRole,
   CanonicalEventV1,
   CanonicalOtherContentV1,
   JsonValue,
@@ -22,7 +22,13 @@ import type {
   NormalizedEvent,
   RegisteredInstance,
 } from "@linmu/dsh-session-contracts";
-import { bindingIdFor, canonicalJson, logicalSessionIdFor, sha256Canonical } from "@linmu/dsh-session-domain";
+import {
+  bindingIdFor,
+  canonicalJson,
+  logicalSessionIdFor,
+  planConversationTopology,
+  sha256Canonical,
+} from "@linmu/dsh-session-domain";
 
 export type CodexCanonicalImportStatusEvent = CodexReadStatusEvent | {
   readonly stage: "canonical.import";
@@ -31,6 +37,13 @@ export type CodexCanonicalImportStatusEvent = CodexReadStatusEvent | {
   readonly sessionId: string;
   readonly logicalSessionId: string;
   readonly outcome: CanonicalEngineReceipt["outcome"] | "unstable";
+  readonly detail: string;
+} | {
+  readonly stage: "codex.classification" | "codex.topology.plan";
+  readonly state: "succeeded";
+  readonly instanceId: string;
+  readonly sessionId: string;
+  readonly logicalSessionId: string;
   readonly detail: string;
 } | {
   readonly stage: "adapter.evidence";
@@ -80,55 +93,59 @@ function isJsonRecord(value: JsonValue | undefined): value is Readonly<Record<st
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function mappedKind(event: NormalizedEvent): CanonicalEventKind {
-  if (event.kind === "attachment") return "attachment";
-  if (event.kind === "metadata") {
-    return isJsonRecord(event.extensions.codexEnvelope) ? "other" : "system-metadata";
-  }
-  if (event.kind === "tool-import") {
-    const tool = event.extensions.codexTool;
-    if (isJsonRecord(tool)) {
-      if (tool.phase === "call") return "tool-call";
-      if (tool.phase === "result") return "tool-result";
-    }
-    return event.role === "tool" ? "tool-result" : "other";
-  }
-  if (event.role === "user") return "user-message";
-  if (event.role === "assistant") return "assistant-message";
-  if (event.role === "system") return "system-message";
-  if (event.role === "tool") return "tool-result";
-  return "other";
-}
-
-function mappedRole(event: NormalizedEvent): CanonicalEventRole {
-  return mappedKind(event) === "other" ? "unknown" : event.role;
-}
-
-function codexOtherSourceKind(event: NormalizedEvent): string {
-  const envelope = isJsonRecord(event.extensions.codexEnvelope)
-    ? event.extensions.codexEnvelope
-    : undefined;
-  const payload = envelope !== undefined && isJsonRecord(envelope.payload)
-    ? envelope.payload
-    : undefined;
-  const envelopeType = typeof envelope?.type === "string" ? envelope.type : "unknown-envelope";
-  const payloadType = typeof payload?.type === "string" ? payload.type : undefined;
-  return `codex/${envelopeType}${payloadType === undefined ? "" : `:${payloadType}`}`;
-}
-
 function codexOtherContent(
-  event: NormalizedEvent,
+  sourceKind: string,
+  reason: CanonicalOtherContentV1["reason"],
   evidenceRef: AdapterEvidenceRef | null,
 ): CanonicalOtherContentV1 {
-  const sourceKind = codexOtherSourceKind(event);
   return {
     schemaVersion: 1,
     type: "other",
-    reason: "unsupported-source-event",
+    reason,
     sourceKind,
     label: "未映射的 Codex 记录",
     summary: `MCSF v1 没有 ${sourceKind} 的公共语义；该记录仅作为维护卡片展示。`,
     evidenceRef,
+  };
+}
+
+function codexToolContent(
+  event: NormalizedEvent,
+  kind: "tool-call" | "tool-result",
+): JsonValue {
+  const tool = event.extensions.codexTool;
+  const expectedPhase = kind === "tool-call" ? "call" : "result";
+  if (event.kind !== "tool-import" || !isJsonRecord(tool) || tool.phase !== expectedPhase) {
+    throw new TypeError(`Normalized Codex ${kind} lacks a matching codexTool payload`);
+  }
+  if (typeof tool.callId !== "string" || tool.callId.length === 0) {
+    throw new TypeError(`Normalized Codex ${kind} lacks an explicit call_id`);
+  }
+  if (typeof tool.name !== "string" || tool.name.length === 0) {
+    throw new TypeError(`Normalized Codex ${kind} lacks a tool name`);
+  }
+  if (typeof tool.protocol !== "string" || tool.protocol.length === 0) {
+    throw new TypeError(`Normalized Codex ${kind} lacks a tool protocol`);
+  }
+  if (kind === "tool-call") {
+    if (typeof tool.arguments !== "string") {
+      throw new TypeError("Normalized Codex tool-call lacks arguments");
+    }
+    return {
+      callId: tool.callId,
+      name: tool.name,
+      protocol: tool.protocol,
+      arguments: tool.arguments,
+    };
+  }
+  if (typeof tool.outputText !== "string") {
+    throw new TypeError("Normalized Codex tool-result lacks outputText");
+  }
+  return {
+    callId: tool.callId,
+    name: tool.name,
+    protocol: tool.protocol,
+    outputText: tool.outputText,
   };
 }
 
@@ -137,20 +154,16 @@ export function canonicalCodexEvent(
   event: NormalizedEvent,
   evidenceRef: AdapterEvidenceRef | null = null,
 ): CanonicalEventV1 {
-  const kind = mappedKind(event);
-  const tool = event.extensions.codexTool;
+  const semantics = readCodexCanonicalSemantics(event);
+  const kind = semantics.kind;
   const content: JsonValue = kind === "other"
-    ? codexOtherContent(event, evidenceRef) as unknown as JsonValue
-    : event.kind === "tool-import"
-    && isJsonRecord(tool)
-    ? {
-        callId: typeof tool.callId === "string" ? tool.callId : event.id,
-        name: typeof tool.name === "string" ? tool.name : "codex-tool",
-        protocol: typeof tool.protocol === "string" ? tool.protocol : "unknown",
-        ...(tool.phase === "call"
-          ? { arguments: typeof tool.arguments === "string" ? tool.arguments : event.content }
-          : { outputText: typeof tool.outputText === "string" ? tool.outputText : event.content }),
-      } as JsonValue
+    ? codexOtherContent(
+        semantics.sourceKind,
+        semantics.otherReason ?? "unsupported-source-event",
+        evidenceRef,
+      ) as unknown as JsonValue
+    : kind === "tool-call" || kind === "tool-result"
+    ? codexToolContent(event, kind)
     : {
         text: event.content,
         attachments: event.attachments.map((attachment) => ({
@@ -168,7 +181,7 @@ export function canonicalCodexEvent(
     logicalSessionId,
     sequence: event.sequence,
     kind,
-    role: mappedRole(event),
+    role: semantics.role,
     content,
     source: {
       platform: event.source.platform,
@@ -183,8 +196,15 @@ export function canonicalCodexEvent(
       migratedFrom: "normalized-session-v1",
       normalizedEventKind: event.kind,
       normalizedExtensionsDigest: sha256Canonical(event.extensions as unknown as JsonValue),
+      codexSourceKind: semantics.sourceKind,
       ...(sourceType === undefined ? {} : { sourceType }),
       ...(event.parentId === null ? {} : { parentEventId: event.parentId }),
+      ...(event.extensions[CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION] === undefined
+        ? {}
+        : {
+            [CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION]:
+              event.extensions[CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION],
+          }),
     },
   } as unknown as CanonicalEventV1;
 }
@@ -244,6 +264,19 @@ export class CodexCanonicalImportService {
         throw new TypeError(`Codex observation payload drifted: ${summary.key.sessionId}`);
       }
       const normalized = await adapter.normalize(observation);
+      await input.onStatus?.({
+        stage: "codex.classification",
+        state: "succeeded",
+        instanceId: input.instance.id,
+        sessionId: summary.key.sessionId,
+        logicalSessionId,
+        detail: [
+          `source=${normalized.codexClassification.sourceEnvelopeCount}`,
+          `canonical=${normalized.codexClassification.canonicalEventCount}`,
+          `evidenceOnly=${normalized.codexClassification.evidenceOnlyCount}`,
+          `other=${normalized.codexClassification.otherEventCount}`,
+        ].join("; "),
+      });
       const project = resolveCodexProject(
         observation.payload.thread,
         projectCatalog,
@@ -264,10 +297,11 @@ export class CodexCanonicalImportService {
       await this.options.projectPort.ensureWorkspace(assignment);
       const canonicalEvents: CanonicalEventV1[] = [];
       for (const event of normalized.events) {
+        const semantics = readCodexCanonicalSemantics(event);
         let evidenceRef: AdapterEvidenceRef | null = null;
-        if (mappedKind(event) === "other" && this.options.evidencePort !== undefined) {
+        if (semantics.disposition === "other" && this.options.evidencePort !== undefined) {
           const adapterId = probe.contract.adapter as AdapterId;
-          const sourceKind = codexOtherSourceKind(event);
+          const sourceKind = semantics.sourceKind;
           await input.onStatus?.({
             stage: "adapter.evidence",
             state: "started",
@@ -317,13 +351,45 @@ export class CodexCanonicalImportService {
         }
         canonicalEvents.push(canonicalCodexEvent(logicalSessionId, event, evidenceRef));
       }
+      const topologyPlan = planConversationTopology(canonicalEvents);
+      const topologyByEventId = new Map(
+        topologyPlan.events.map((event) => [event.eventId, event.topology] as const),
+      );
+      const plannedCanonicalEvents = canonicalEvents.map((event) => {
+        const topology = topologyByEventId.get(event.id);
+        return topology === undefined
+          ? event
+          : {
+              ...event,
+              extensions: {
+                ...event.extensions,
+                [CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION]: topology,
+              },
+            };
+      });
+      await input.onStatus?.({
+        stage: "codex.topology.plan",
+        state: "succeeded",
+        instanceId: input.instance.id,
+        sessionId: summary.key.sessionId,
+        logicalSessionId,
+        detail: [
+          `events=${topologyPlan.diagnostics.conversationalEventCount}`,
+          `turns=${topologyPlan.diagnostics.turnCount}`,
+          `steps=${topologyPlan.diagnostics.stepCount}`,
+          `matchedTools=${topologyPlan.diagnostics.matchedToolResultCount}`,
+          `orphanTools=${topologyPlan.diagnostics.orphanToolResultCount}`,
+          `unclosedTools=${topologyPlan.diagnostics.unclosedToolCallCount}`,
+          `conflicts=${topologyPlan.diagnostics.topologyConflictCount}`,
+        ].join("; "),
+      });
       const receipt = await this.options.canonicalEngine.observeCodex({
         logicalSessionId,
         title: normalized.title,
         tags: [],
         archivedAt: normalized.archived ? normalized.provenance.observedAt : null,
         workspaceId: normalized.workspaceId as LogicalWorkspaceId | null,
-        events: canonicalEvents,
+        events: plannedCanonicalEvents,
         sourceCursor: canonicalJson(observation.fingerprint as unknown as JsonValue),
         observedAt: normalized.provenance.observedAt,
         authorityBinding: {

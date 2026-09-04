@@ -198,12 +198,12 @@ export function planConversationTopology(
     const explicit = readCanonicalConversationTopologyV1(event);
     let topology: CanonicalConversationTopologyV1;
     if (explicit !== null) {
-      topology = explicit;
       highestTurnOrdinal = Math.max(highestTurnOrdinal, explicit.turnOrdinal);
       if (explicit.phase !== phase) {
         addTopologyIssue(issue("phase-mismatch", [event.id]));
       }
       if (explicit.stepId !== null && explicit.stepOrdinal !== null) {
+        topology = explicit;
         cursor = {
           turnId: explicit.turnId,
           turnOrdinal: explicit.turnOrdinal,
@@ -211,9 +211,29 @@ export function planConversationTopology(
           stepOrdinal: explicit.stepOrdinal,
         };
       } else {
-        cursor = null;
+        if (cursor === null || cursor.turnId !== explicit.turnId || phase === "user") {
+          cursor = {
+            turnId: explicit.turnId,
+            turnOrdinal: explicit.turnOrdinal,
+            stepId: `${explicit.turnId}:step:0`,
+            stepOrdinal: 0,
+          };
+          advanceBeforeNextModelPhase = false;
+        } else if (
+          advanceBeforeNextModelPhase
+          && (phase === "reasoning" || phase === "assistant" || phase === "tool-call")
+        ) {
+          cursor = nextStep(cursor);
+          advanceBeforeNextModelPhase = false;
+        }
+        topology = {
+          ...explicit,
+          stepId: cursor.stepId,
+          stepOrdinal: cursor.stepOrdinal,
+          inference: "derived",
+        };
       }
-      advanceBeforeNextModelPhase = false;
+      if (explicit.stepId !== null) advanceBeforeNextModelPhase = false;
     } else {
       if (phase === "user" || cursor === null) {
         highestTurnOrdinal += 1;

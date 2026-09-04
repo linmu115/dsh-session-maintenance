@@ -122,6 +122,33 @@ describe("conversation topology planning", () => {
     expect(plan.turns[0]).toMatchObject({ turnId: "turn-explicit", turnOrdinal: 7 });
   });
 
+  it("keeps an explicit Codex turn while deriving its missing step coordinates", () => {
+    const partial = (phase: CanonicalConversationTopologyV1["phase"]): CanonicalConversationTopologyV1 => ({
+      schemaVersion: 1,
+      turnId: "codex-turn-explicit",
+      turnOrdinal: 2,
+      stepId: null,
+      stepOrdinal: null,
+      phase,
+      inference: "explicit",
+    });
+    const plan = planConversationTopology([
+      event("user", 0, "user-message", "user", "run", partial("user")),
+      event("call", 1, "tool-call", "assistant", { callId: "call-1" }, partial("tool-call")),
+      event("result", 2, "tool-result", "tool", { callId: "call-1" }, partial("tool-result")),
+      event("assistant", 3, "assistant-message", "assistant", "done", partial("assistant")),
+    ]);
+
+    expect(plan.events.map((item) => item.topology.turnId)).toEqual([
+      "codex-turn-explicit",
+      "codex-turn-explicit",
+      "codex-turn-explicit",
+      "codex-turn-explicit",
+    ]);
+    expect(plan.events.map((item) => item.topology.stepOrdinal)).toEqual([0, 0, 0, 1]);
+    expect(plan.events.every((item) => item.topology.inference === "derived")).toBe(true);
+  });
+
   it("blocks continuation for an unclosed call without manufacturing a result", () => {
     const plan = planConversationTopology([
       event("user", 0, "user-message", "user", "run"),

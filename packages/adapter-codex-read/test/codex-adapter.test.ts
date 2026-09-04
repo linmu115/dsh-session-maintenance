@@ -9,6 +9,7 @@ import type {
   StableObservation,
   StableObservation as StableObservationType,
 } from "@linmu/dsh-session-contracts";
+import { readCanonicalConversationTopologyV1 } from "@linmu/dsh-session-contracts";
 import {
   assertFixtureSandbox,
   createFixtureSandbox,
@@ -16,7 +17,12 @@ import {
   type FixtureSandbox,
 } from "@linmu/dsh-session-test-support";
 
-import { CodexReadAdapter, codexDisplayTitle, type CodexReadStatusEvent } from "../src/index.js";
+import {
+  CodexReadAdapter,
+  codexDisplayTitle,
+  readCodexCanonicalSemantics,
+  type CodexReadStatusEvent,
+} from "../src/index.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -278,6 +284,81 @@ describe("CodexReadAdapter", () => {
       expect.objectContaining({ phase: "call", callId: "call-2", name: "send_message" }),
       expect.objectContaining({ phase: "result", callId: "call-2", outputText: "sent" }),
     ]);
+    expect(tools.map((event) => readCodexCanonicalSemantics(event).kind)).toEqual([
+      "tool-call",
+      "tool-result",
+      "tool-call",
+      "tool-result",
+    ]);
+    expect(tools.map((event) => readCanonicalConversationTopologyV1(event)?.turnId))
+      .toEqual(["codex-turn:1", "codex-turn:1", "codex-turn:1", "codex-turn:1"]);
+    expect(normalized.compatibility.status).toBe("compatible");
+  });
+
+  it("classifies official Codex lifecycle rows as evidence and preserves explicit turn topology", async () => {
+    const sandbox = await createFixtureSandbox("codex-turn-topology");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    const withTurn = (turnId: string) => ({
+      internal_chat_message_metadata_passthrough: { turn_id: turnId },
+    });
+    const rows = [
+      { type: "session_meta", payload: { id: "thread-fixture", cwd: "C:\\fixture\\workspace" } },
+      { type: "event_msg", payload: { type: "task_started", turn_id: "turn-a" } },
+      { type: "turn_context", payload: { turn_id: "turn-a", cwd: "C:\\fixture\\workspace" } },
+      { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "first" }], ...withTurn("turn-a") } },
+      { type: "response_item", payload: { type: "reasoning", summary: [{ type: "summary_text", text: "thinking" }], ...withTurn("turn-a") } },
+      { type: "event_msg", payload: { type: "item_completed", item: { type: "reasoning", id: "duplicate-presentation" } } },
+      { type: "response_item", payload: { type: "custom_tool_call", call_id: "call-a", name: "exec", input: "work", ...withTurn("turn-a") } },
+      { type: "response_item", payload: { type: "custom_tool_call_output", call_id: "call-a", output: "done", ...withTurn("turn-a") } },
+      { type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "first answer" }], ...withTurn("turn-a") } },
+      { type: "event_msg", payload: { type: "task_complete", turn_id: "turn-a" } },
+      { type: "event_msg", payload: { type: "task_started", turn_id: "turn-b" } },
+      { type: "turn_context", payload: { turn_id: "turn-b", cwd: "C:\\fixture\\workspace" } },
+      { type: "response_item", payload: { type: "message", role: "user", content: [{ type: "input_text", text: "second" }], ...withTurn("turn-b") } },
+      { type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "second answer" }], ...withTurn("turn-b") } },
+      { type: "event_msg", payload: { type: "task_complete", turn_id: "turn-b" } },
+      { type: "token_usage_record", payload: { input_tokens: 100, output_tokens: 20 } },
+    ];
+    await writeFile(
+      join(sandbox.codexHome, "rollouts", "thread-fixture.jsonl"),
+      `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+    );
+    const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    const registered = instance(sandbox);
+    const [summary] = await collect(adapter.list(registered));
+    const normalized = await adapter.normalize(
+      expectStable(await adapter.observe(registered, summary!.key, summary!.hint)),
+    );
+
+    expect(normalized.events.map((event) => readCodexCanonicalSemantics(event).kind)).toEqual([
+      "user-message",
+      "reasoning",
+      "tool-call",
+      "tool-result",
+      "assistant-message",
+      "user-message",
+      "assistant-message",
+    ]);
+    expect(normalized.events.map((event) => readCanonicalConversationTopologyV1(event)?.turnId)).toEqual([
+      "turn-a",
+      "turn-a",
+      "turn-a",
+      "turn-a",
+      "turn-a",
+      "turn-b",
+      "turn-b",
+    ]);
+    expect(normalized.events.map((event) => readCanonicalConversationTopologyV1(event)?.turnOrdinal)).toEqual([
+      0, 0, 0, 0, 0, 1, 1,
+    ]);
+    expect(normalized.codexClassification).toMatchObject({
+      sourceEnvelopeCount: 16,
+      canonicalEventCount: 7,
+      evidenceOnlyCount: 9,
+      otherEventCount: 0,
+    });
+    expect(normalized.events.every((event) => event.extensions.codexEnvelope === undefined)).toBe(true);
     expect(normalized.compatibility.status).toBe("compatible");
   });
 
@@ -310,8 +391,12 @@ describe("CodexReadAdapter", () => {
     expect(normalized.compatibility.status).toBe("degraded");
     expect(normalized.compatibility.issues).toContainEqual(expect.objectContaining({
       code: "CODEX_EVENT_DEGRADED",
-      sourceType: "response_item",
+      sourceType: "codex/response_item:function_call_output",
     }));
+    expect(readCodexCanonicalSemantics(degraded!)).toMatchObject({
+      disposition: "other",
+      otherReason: "orphan-tool-result",
+    });
   });
 
   it("removes Codex-only goal and annotation scaffolding from projected user messages", async () => {
@@ -470,11 +555,14 @@ describe("CodexReadAdapter", () => {
     expect(JSON.stringify(visible)).not.toContain("hello from fixture");
     expect(JSON.stringify(visible)).not.toContain("这段历史已经被 Codex 压缩");
     expect(JSON.stringify(visible)).not.toContain("Codex-only developer instructions");
-    expect(normalized.events[0]).toMatchObject({
-      kind: "metadata",
-      role: "unknown",
-      extensions: { sourceType: "compacted" },
+    expect(normalized.events[0]).toMatchObject({ kind: "message", role: "user" });
+    expect(normalized.codexClassification).toMatchObject({
+      sourceEnvelopeCount: 4,
+      canonicalEventCount: 3,
+      evidenceOnlyCount: 1,
+      otherEventCount: 0,
     });
+    expect(normalized.events.some((event) => event.extensions.sourceType === "compacted")).toBe(false);
     expect(normalized.compatibility.status).toBe("compatible");
   });
 
