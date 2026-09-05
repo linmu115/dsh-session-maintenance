@@ -24,7 +24,7 @@ describe("canonical migration preview API", () => {
       };
     };
     expect(body.preview).toMatchObject({
-      sourceSchemaVersion: 16,
+      sourceSchemaVersion: 17,
       candidate: { exists: false, created: false },
       rollback: { sourcePreserved: true },
     });

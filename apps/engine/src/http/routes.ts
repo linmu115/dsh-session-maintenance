@@ -74,6 +74,19 @@ function send(response: ServerResponse, status: number, value: unknown): void {
   response.end(`${JSON.stringify(value)}\n`);
 }
 
+/** Projection failures retain their WAL/recovery wrapper; expose only typed metadata causes to clients. */
+function metadataFailureCause(error: unknown): SessionMaintenanceError | undefined {
+  const seen = new Set<Error>();
+  let current = error;
+  for (let depth = 0; depth < 8 && current instanceof Error && !seen.has(current); depth += 1) {
+    seen.add(current);
+    if (current instanceof SessionMaintenanceError &&
+        (current.code === "HISTORICAL_METADATA_UNAVAILABLE" || current.code === "OBJECT_CORRUPT")) return current;
+    current = current.cause;
+  }
+  return undefined;
+}
+
 async function sendNdjson(response: ServerResponse, frames: AsyncIterable<string>): Promise<void> {
   response.statusCode = 200;
   response.setHeader("content-type", "application/x-ndjson; charset=utf-8");
@@ -747,18 +760,19 @@ export async function routeRequest(
     }
     send(response, 404, errorBody("NOT_FOUND", "Route not found"));
   } catch (error) {
+    const domainError = error instanceof SessionMaintenanceError ? error : metadataFailureCause(error);
     if (response.headersSent) {
       response.destroy(error instanceof Error ? error : undefined);
     } else if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
     else if (error instanceof ZodError) send(response, 400, errorBody("INVALID_REQUEST", "Request does not match the API schema"));
     else if (error instanceof ProjectionRuntimeStreamError) send(response, 422, errorBody(error.code, error.message));
-    else if (error instanceof SessionMaintenanceError) {
-      const status = error.code === "CAPABILITY_NOT_AVAILABLE"
+    else if (domainError !== undefined) {
+      const status = domainError.code === "CAPABILITY_NOT_AVAILABLE"
         ? 501
-        : error.code === "CONTINUATION_NOT_FOUND"
+        : domainError.code === "CONTINUATION_NOT_FOUND"
           ? 404
           : 409;
-      send(response, status, errorBody(error.code, error.message));
+      send(response, status, errorBody(domainError.code, domainError.message));
     } else {
       const message = error instanceof Error ? error.message.replaceAll(context.token, "[REDACTED]") : "Unknown error";
       send(response, 500, errorBody("INTERNAL_ERROR", message));

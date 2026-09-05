@@ -59,6 +59,9 @@ import {
   versionIdFor,
 } from "@linmu/dsh-session-domain";
 
+import { metadataFromStoredBody, saveVersionMetadataSnapshot } from "./version-metadata.js";
+import { advanceCanonicalSessionMetadata } from "./canonical-metadata.js";
+
 import { SqliteCanonicalRepository } from "./canonical-repository.js";
 
 interface ManifestRow {
@@ -534,7 +537,8 @@ export class SqliteSessionRepository {
   }
 
   async putVersion(input: NewVersion): Promise<SessionVersionManifest> {
-    await this.objectStore.get(input.bodyObject);
+    const storedBody = await this.objectStore.get(input.bodyObject);
+    const metadata = metadataFromStoredBody(storedBody, input.metadataHash);
     const id = versionIdFor({
       logicalSessionId: input.logicalSessionId,
       parents: input.parents,
@@ -582,6 +586,7 @@ export class SqliteSessionRepository {
             `Version ID has different immutable content: ${id}`,
           );
         }
+        if (metadata !== undefined) saveVersionMetadataSnapshot(this.database, id, metadata, "reconstructed-body");
         this.database.exec("COMMIT");
         return parsed;
       }
@@ -605,6 +610,7 @@ export class SqliteSessionRepository {
         "INSERT INTO version_parents (version_id, ordinal, parent_id) VALUES (?, ?, ?)",
       );
       input.parents.forEach((parent, ordinal) => insertParent.run(id, ordinal, parent));
+      if (metadata !== undefined) saveVersionMetadataSnapshot(this.database, id, metadata, "reconstructed-body");
       this.database.exec("COMMIT");
       return manifest;
     } catch (error) {
@@ -957,7 +963,8 @@ export class SqliteSessionRepository {
     ) {
       throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Observation record contains inconsistent identities");
     }
-    await this.objectStore.get(input.version.bodyObject);
+    const storedBody = await this.objectStore.get(input.version.bodyObject);
+    const metadata = metadataFromStoredBody(storedBody, input.version.metadataHash);
 
     let createdLogicalSessions = 0;
     let createdBindings = 0;
@@ -966,8 +973,8 @@ export class SqliteSessionRepository {
     this.database.exec("BEGIN IMMEDIATE");
     try {
       const logical = this.database
-        .prepare("SELECT id FROM logical_sessions WHERE id = ?")
-        .get(input.logicalSession.id) as { readonly id: string } | undefined;
+        .prepare("SELECT id, authority_scope FROM logical_sessions WHERE id = ?")
+        .get(input.logicalSession.id) as { readonly id: string; readonly authority_scope: string | null } | undefined;
       if (logical === undefined) {
         this.database
           .prepare(
@@ -985,6 +992,12 @@ export class SqliteSessionRepository {
             input.logicalSession.createdAt,
           );
         createdLogicalSessions = 1;
+      } else if (logical.authority_scope !== null) {
+        advanceCanonicalSessionMetadata(this.database, {
+          logicalSessionId: input.logicalSession.id,
+          patch: { title: input.logicalSession.displayTitle, archived: input.logicalSession.archived },
+          appliedAt: input.head.observedAt,
+        });
       } else {
         this.database
           .prepare("UPDATE logical_sessions SET display_title = ?, archived = ? WHERE id = ?")
@@ -1051,6 +1064,8 @@ export class SqliteSessionRepository {
           throw new SessionMaintenanceError("VERSION_ID_COLLISION", `Version ID has different content: ${input.version.id}`);
         }
       }
+
+      if (metadata !== undefined) saveVersionMetadataSnapshot(this.database, input.version.id, metadata, "reconstructed-body");
 
       this.database
         .prepare(

@@ -405,7 +405,23 @@ export const canonicalLineageRelationSchema = z.strictObject({
   derivation: sessionDerivationSchema,
   session: canonicalSessionRecordSchema,
 });
+export const versionMetadataSnapshotSchema = z.discriminatedUnion("metadataAvailability", [
+  z.strictObject({
+    metadata: jsonValueSchema.refine((value) => value !== null),
+    metadataAvailability: z.literal("available"),
+    metadataProvenance: z.enum(["captured", "reconstructed-current", "reconstructed-body"]),
+    firstPersistedAt: z.string().nullable(),
+  }),
+  z.strictObject({
+    metadata: z.null(),
+    metadataAvailability: z.enum(["unknown", "corrupt"]),
+    metadataProvenance: z.literal("unavailable"),
+    firstPersistedAt: z.string().nullable(),
+  }),
+]);
+
 export const canonicalDashboardSessionDetailSchema = z.strictObject({
+  headMetadata: versionMetadataSnapshotSchema.nullable(),
   schemaVersion: z.literal(1),
   session: canonicalSessionRecordSchema,
   membership: workspaceMembershipSchema.nullable(),

@@ -1,7 +1,12 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { MaintenanceClient } from "../../../packages/local-api-client/src/index.js";
 import { SqliteCanonicalRepository } from "../../../packages/session-store/src/index.js";
+import { SqliteCanonicalSessionEngineStore } from "../../../packages/session-store/src/index.js";
+import { CanonicalSessionEngine } from "../../../packages/canonical-session-engine/src/index.js";
+import { sha256Canonical } from "../../../packages/session-domain/src/index.js";
+import { SessionMaintenanceError } from "../../../packages/contracts/src/index.js";
+import { ProjectionAppendError } from "../../../packages/projection-lifecycle/src/index.js";
 import { createEngineFixture } from "./helpers.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -63,7 +68,59 @@ describe("canonical dashboard API", () => {
     expect(parent.events.map((event) => event.content)).toEqual(["静态正文"]);
     expect(parent.nativeReferences).toEqual({ schemaVersion: 1, logicalSessionId: "logical-parent", references: [] });
     expect(parent.children[0]?.session.id).toBe("logical-child");
+    expect(parent.headMetadata).toMatchObject({ metadataAvailability: "unknown", metadata: null });
     const child = await client.getCanonicalSession("logical-child");
     expect(child.parent?.session.id).toBe("logical-parent");
+  });
+
+  it("versions metadata patches and rolls back the new head when a membership update fails", async () => {
+    const fixture = await createEngineFixture("sm02-synthetic-metadata-api");
+    cleanups.push(fixture.cleanupAll);
+    const database = fixture.engine.repository.database;
+    const store = new SqliteCanonicalSessionEngineStore(database, fixture.engine.repository.objectStore);
+    const result = await new CanonicalSessionEngine(store).observeCodex({ logicalSessionId: "logical-metadata-api" as never,
+      title: "Original", tags: [], archivedAt: null, workspaceId: null, events: [], sourceCursor: null, observedAt: at });
+    const original = await store.getVersion(result.versionId!);
+    const server = await fixture.startServer();
+    const client = new MaintenanceClient({ origin: server.origin, token: server.token });
+    const patched = await client.updateCanonicalSession(result.logicalSessionId, { title: "Edited", tags: ["kept"], archived: true });
+    expect(patched.session.headVersionId).not.toBe(result.versionId);
+    expect(patched.headMetadata).toMatchObject({ metadataAvailability: "available",
+      metadata: { title: "Edited", tags: ["kept"], archivedAt: patched.session.archivedAt } });
+    const newHead = (await store.getVersion(patched.session.headVersionId!))!;
+    expect(newHead.metadataDigest).toBe(sha256Canonical(newHead.metadata));
+    expect(await store.getVersion(result.versionId!)).toEqual(original);
+    const versionCount = database.prepare("SELECT COUNT(*) AS count FROM session_versions").get();
+    await expect(client.updateCanonicalSession(result.logicalSessionId, { title: "Must roll back", workspaceId: "missing-workspace" as never })).rejects.toThrow();
+    expect((await client.getCanonicalSession(result.logicalSessionId)).session).toEqual(patched.session);
+    expect(database.prepare("SELECT COUNT(*) AS count FROM session_versions").get()).toEqual(versionCount);
+    const unauthenticated = await fetch(`${server.origin}/v1/canonical/sessions/${result.logicalSessionId}`);
+    expect(unauthenticated.status).toBe(401);
+  });
+
+  it("maps typed metadata causes in projection wrappers and bounds cyclic cause chains", async () => {
+    const fixture = await createEngineFixture("sm02-synthetic-metadata-error-api");
+    cleanups.push(fixture.cleanupAll);
+    const append = vi.spyOn(fixture.engine, "appendProjectionRuntimeEvent");
+    const server = await fixture.startServer();
+    const request = () => fetch(`${server.origin}/v1/runtime-broker/runs/run-sm02/append`, {
+      method: "POST", headers: { authorization: `Bearer ${server.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ schemaVersion: 1, clientId: "client-sm02", operation: { runId: "run-sm02", operationId: "operation-sm02",
+        nativeSessionId: "native-sm02", nativeRevision: 1, payload: {}, observedAt: at } }),
+    });
+    for (const code of ["HISTORICAL_METADATA_UNAVAILABLE", "OBJECT_CORRUPT"] as const) {
+      append.mockRejectedValueOnce(new ProjectionAppendError("CANONICAL_COMMIT_FAILED", "Wrapped failure", {
+        cause: new SessionMaintenanceError(code, "Synthetic historical metadata failure"),
+      }));
+      const response = await request();
+      expect(response.status).toBe(409);
+      expect(await response.json()).toMatchObject({ error: { code } });
+    }
+    const cyclic = new Error("HISTORICAL_METADATA_UNAVAILABLE is only message text");
+    cyclic.cause = cyclic;
+    append.mockRejectedValueOnce(cyclic);
+    const response = await request();
+    expect(response.status).toBe(500);
+    expect(await response.json()).toMatchObject({ error: { code: "INTERNAL_ERROR" } });
   });
 });

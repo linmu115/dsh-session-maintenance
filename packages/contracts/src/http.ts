@@ -206,6 +206,7 @@ export interface CanonicalLineageRelation {
 }
 
 export interface CanonicalDashboardSessionDetail {
+  readonly headMetadata: import("./canonical.js").VersionMetadataSnapshot | null;
   readonly schemaVersion: 1;
   readonly session: CanonicalSessionRecord;
   readonly membership: WorkspaceMembership | null;

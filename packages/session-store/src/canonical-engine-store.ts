@@ -24,21 +24,11 @@ import {
 } from "@linmu/dsh-session-contracts";
 import { canonicalJson, sha256Canonical, versionIdFor } from "@linmu/dsh-session-domain";
 
+import { advanceCanonicalSessionMetadata } from "./canonical-metadata.js";
+import { readVersionMetadataSnapshot, saveVersionMetadataSnapshot } from "./version-metadata.js";
+
 import { SqliteCanonicalRepository } from "./canonical-repository.js";
 import { SqliteLogicalWorkspaceRepository } from "./logical-workspace-repository.js";
-
-interface SessionRow {
-  readonly id: string;
-  readonly display_title: string;
-  readonly labels_json: string;
-  readonly authority_scope: CanonicalSessionRecord["authorityScope"];
-  readonly origin_kind: CanonicalSessionRecord["originKind"];
-  readonly head_version_id: string | null;
-  readonly archived_at: string | null;
-  readonly tombstoned_at: string | null;
-  readonly created_at: string;
-  readonly updated_at: string;
-}
 
 interface VersionRow {
   readonly id: string;
@@ -49,30 +39,8 @@ interface VersionRow {
   readonly created_at: string;
 }
 
-interface RetitleHeadRow {
-  readonly id: string;
-  readonly body_object: string;
-  readonly body_hash: string;
-}
-
 interface ParentRow { readonly parent_id: string }
 interface ReceiptRow { readonly receipt_json: string }
-
-function sessionFromRow(row: SessionRow): CanonicalSessionRecord {
-  return canonicalSessionRecordSchema.parse({
-    schemaVersion: 1,
-    id: row.id,
-    authorityScope: row.authority_scope,
-    originKind: row.origin_kind,
-    headVersionId: row.head_version_id,
-    title: row.display_title,
-    tags: JSON.parse(row.labels_json) as unknown,
-    archivedAt: row.archived_at,
-    tombstonedAt: row.tombstoned_at,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  }) as unknown as CanonicalSessionRecord;
-}
 
 export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngineStore {
   readonly database: DatabaseSync;
@@ -107,12 +75,6 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
        FROM session_versions WHERE id = ?`,
     ).get(id) as VersionRow | undefined;
     if (row === undefined) return undefined;
-    const sessionRow = this.database.prepare(
-      `SELECT id, display_title, labels_json, authority_scope, origin_kind, head_version_id,
-              archived_at, tombstoned_at, created_at, updated_at
-       FROM logical_sessions WHERE id = ?`,
-    ).get(row.logical_session_id) as unknown as SessionRow;
-    const session = sessionFromRow(sessionRow);
     const storedBody = JSON.parse(
       Buffer.from(await this.objectStore.get(row.body_object)).toString("utf8"),
     ) as { readonly schemaVersion?: unknown; readonly workspaceId?: unknown; readonly events?: unknown };
@@ -122,21 +84,21 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     const events = storedBody.events.map((event) => canonicalEventV1Schema.parse(event) as unknown as CanonicalEventV1);
     const workspaceId = typeof storedBody.workspaceId === "string" ? storedBody.workspaceId as LogicalWorkspaceId : null;
     const body = { schemaVersion: 1, workspaceId, events } as unknown as JsonValue;
-    const metadata = { title: session.title, tags: session.tags, archivedAt: session.archivedAt } as JsonValue;
+    const snapshot = readVersionMetadataSnapshot(this.database, id);
     const parents = this.database.prepare(
       "SELECT parent_id FROM version_parents WHERE version_id = ? ORDER BY ordinal",
     ).all(id) as unknown as ParentRow[];
     return {
       id,
-      logicalSessionId: session.id,
+      logicalSessionId: row.logical_session_id as LogicalSessionId,
       parentVersionIds: parents.map((parent) => parent.parent_id as SessionVersionId),
       events,
       workspaceId,
       body,
-      metadata,
+      ...snapshot,
       bodyDigest: row.body_hash,
       metadataDigest: row.metadata_hash,
-      contentDigest: row.id,
+      contentDigest: snapshot.metadataAvailability === "available" ? sha256Canonical({ body, metadata: snapshot.metadata }) : null,
       createdAt: row.created_at,
     };
   }
@@ -179,106 +141,39 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     readonly title: string;
     readonly appliedAt: string;
   }): Promise<CanonicalEngineReceipt | undefined> {
-    const row = this.database.prepare(
-      `SELECT id, display_title, labels_json, authority_scope, origin_kind, head_version_id,
-              archived_at, tombstoned_at, created_at, updated_at
-         FROM logical_sessions WHERE id = ?`,
-    ).get(input.logicalSessionId) as unknown as SessionRow | undefined;
-    if (row === undefined) return undefined;
-    const session = sessionFromRow(row);
-    if (session.authorityScope !== "codex" || session.originKind !== "codex-mirror") {
-      throw new Error(`Codex catalog title cannot update a Maintenance-owned session: ${input.logicalSessionId}`);
-    }
-    if (session.title === input.title) {
-      return {
-        outcome: "noop",
-        operationId: null,
-        logicalSessionId: input.logicalSessionId,
-        versionId: session.headVersionId,
-        tombstoneState: null,
-        committedAt: input.appliedAt,
-      };
-    }
-    if (session.headVersionId === null) throw new Error(`Codex mirror has no canonical head: ${input.logicalSessionId}`);
-    const head = this.database.prepare(
-      "SELECT id, body_object, body_hash FROM session_versions WHERE id = ?",
-    ).get(session.headVersionId) as unknown as RetitleHeadRow | undefined;
-    if (head === undefined) throw new Error(`Canonical head version is missing: ${session.headVersionId}`);
-    const metadataHash = sha256Canonical({
-      title: input.title,
-      tags: [...session.tags],
-      archivedAt: session.archivedAt,
+    return advanceCanonicalSessionMetadata(this.database, {
+      logicalSessionId: input.logicalSessionId, patch: { title: input.title },
+      appliedAt: input.appliedAt, codexCatalog: true,
     });
-    const versionId = versionIdFor({
-      logicalSessionId: input.logicalSessionId,
-      parents: [session.headVersionId],
-      bodyHash: head.body_hash,
-      metadataHash,
-    }) as SessionVersionId;
-    const manifest = {
-      schemaVersion: 1,
-      id: versionId,
-      logicalSessionId: input.logicalSessionId,
-      parents: [session.headVersionId],
-      bodyObject: head.body_object,
-      bodyHash: head.body_hash,
-      metadataHash,
-      source: {
-        platform: "codex",
-        instanceId: "catalog-title-sync",
-        sessionId: input.logicalSessionId,
-        observedAt: input.appliedAt,
-      },
-      compatibility: { status: "compatible", issues: [] },
-    };
-    const receipt: CanonicalEngineReceipt = {
-      outcome: "advanced",
-      operationId: null,
-      logicalSessionId: input.logicalSessionId,
-      versionId,
-      tombstoneState: null,
-      committedAt: input.appliedAt,
-    };
-    this.database.exec("BEGIN IMMEDIATE");
-    try {
-      this.database.prepare(
-        `INSERT INTO session_versions
-          (id, logical_session_id, body_object, body_hash, metadata_hash, manifest_json, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(id) DO NOTHING`,
-      ).run(
-        versionId,
-        input.logicalSessionId,
-        head.body_object,
-        head.body_hash,
-        metadataHash,
-        canonicalJson(manifest),
-        input.appliedAt,
-      );
-      this.database.prepare(
-        `INSERT INTO version_parents (version_id, ordinal, parent_id)
-         VALUES (?, 0, ?) ON CONFLICT(version_id, ordinal) DO NOTHING`,
-      ).run(versionId, session.headVersionId);
-      const updated = this.database.prepare(
-        `UPDATE logical_sessions
-            SET display_title = ?, canonical_version_id = ?, head_version_id = ?
-          WHERE id = ? AND head_version_id = ?`,
-      ).run(input.title, versionId, versionId, input.logicalSessionId, session.headVersionId);
-      if (Number(updated.changes) !== 1) throw new Error(`Codex mirror title changed concurrently: ${input.logicalSessionId}`);
-      this.database.exec("COMMIT");
-      return receipt;
-    } catch (error) {
-      try { this.database.exec("ROLLBACK"); } catch { /* preserve write failure */ }
-      throw error;
-    }
   }
 
   async commit(input: CanonicalEngineMutation): Promise<CanonicalEngineReceipt> {
+    if (input.version !== null) {
+      const version = input.version;
+      if (version.metadataAvailability !== "available" || version.metadata === null ||
+          sha256Canonical(version.body) !== version.bodyDigest || sha256Canonical(version.metadata) !== version.metadataDigest ||
+          sha256Canonical({ body: version.body, metadata: version.metadata }) !== version.contentDigest ||
+          versionIdFor({ logicalSessionId: version.logicalSessionId, parents: version.parentVersionIds,
+            bodyHash: version.bodyDigest, metadataHash: version.metadataDigest }) !== version.id ||
+          version.logicalSessionId !== input.session.id || version.id !== input.session.headVersionId ||
+          sha256Canonical({ title: input.session.title, tags: [...input.session.tags], archivedAt: input.session.archivedAt }) !== version.metadataDigest) {
+        throw new Error(`Canonical version digest or session metadata mismatch: ${version.id}`);
+      }
+    }
     const bodyObject = input.version === null
       ? null
       : await this.objectStore.put(Buffer.from(canonicalJson(input.version.body), "utf8"));
     this.database.exec("BEGIN IMMEDIATE");
     try {
+      if (input.version === null) {
+        const current = this.database.prepare(
+          "SELECT display_title, labels_json, archived_at FROM logical_sessions WHERE id = ?",
+        ).get(input.session.id) as { display_title: string; labels_json: string; archived_at: string | null } | undefined;
+        if (current !== undefined && sha256Canonical({ title: current.display_title, tags: JSON.parse(current.labels_json), archivedAt: current.archived_at }) !==
+            sha256Canonical({ title: input.session.title, tags: [...input.session.tags], archivedAt: input.session.archivedAt })) {
+          throw new Error(`Canonical metadata change requires a version: ${input.session.id}`);
+        }
+      }
       this.ensureSession(input.session);
       if (input.version !== null && bodyObject !== null) this.putVersion(input.version, bodyObject);
       if (input.observation !== null && input.observation.authorityBinding !== null) {
@@ -335,6 +230,7 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
       if (existing.body_hash !== input.bodyDigest || existing.metadata_hash !== input.metadataDigest) {
         throw new Error(`Canonical version ID collision: ${input.id}`);
       }
+      saveVersionMetadataSnapshot(this.database, input.id, input.metadata, "captured");
       return;
     }
     const manifest = {
@@ -358,6 +254,7 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
         (id, logical_session_id, body_object, body_hash, metadata_hash, manifest_json, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ).run(input.id, input.logicalSessionId, bodyObject, input.bodyDigest, input.metadataDigest, canonicalJson(manifest), input.createdAt);
+    saveVersionMetadataSnapshot(this.database, input.id, input.metadata, "captured");
     const parent = this.database.prepare(
       "INSERT INTO version_parents (version_id, ordinal, parent_id) VALUES (?, ?, ?)",
     );

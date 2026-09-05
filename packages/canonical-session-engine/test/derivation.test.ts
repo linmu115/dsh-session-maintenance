@@ -119,6 +119,13 @@ describe("Codex delayed derivation", () => {
         nativeRevision: 2,
       },
     } as const;
+    const historical = store.versions.get(base.versionId!)!;
+    store.versions.set(historical.id, { ...historical, metadata: null, metadataAvailability: "unknown",
+      metadataProvenance: "unavailable", contentDigest: null });
+    await expect(engine.appendDsh(appendInput)).rejects.toThrow("Historical metadata is unavailable for derivation");
+    expect(store.sessions).toHaveLength(1);
+    expect(store.receipts.size).toBe(0);
+    store.versions.set(historical.id, historical);
     store.failOperationOnce = operationId;
     await expect(engine.appendDsh(appendInput)).rejects.toThrow("synthetic transaction interruption");
     expect(store.sessions).toHaveLength(1);

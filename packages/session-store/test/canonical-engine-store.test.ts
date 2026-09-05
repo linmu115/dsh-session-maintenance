@@ -143,6 +143,12 @@ describe("SQLite canonical engine store", () => {
     expect(observed.outcome).toBe("created");
     expect(observed.versionId).not.toBeNull();
 
+    await engine.observeCodex({
+      logicalSessionId: parentId, title: "Later title", tags: ["later"], archivedAt: at,
+      workspaceId: null, events: [event("event-parent", parentId, 0, "codex")],
+      sourceCursor: "2", observedAt: "2026-09-01T00:00:00.500Z",
+    });
+
     database.prepare(
       `INSERT INTO adapter_registrations
         (adapter_id, manifest_json, package_location, enabled, registered_at, updated_at)
@@ -188,11 +194,31 @@ describe("SQLite canonical engine store", () => {
       authorityScope: "maintenance",
       originKind: "codex-derived",
       headVersionId: receipt.versionId,
+      title: "Codex source", tags: [], archivedAt: null,
     });
     expect((await store.getVersion(receipt.versionId!))?.events.map((item) => item.id)).toEqual([
       "event-parent",
       "event-child",
     ]);
     expect(await store.getOperationReceipt("operation-1" as never)).toEqual(receipt);
+
+    // Model a legacy current head whose metadata was never captured. Current
+    // appends have explicit metadata and do not require historical inheritance.
+    database.prepare("DELETE FROM version_metadata_snapshots WHERE version_id = ?").run(receipt.versionId);
+    database.prepare(`INSERT INTO version_metadata_snapshots
+      (version_id, metadata_json, availability, provenance, first_persisted_at)
+      VALUES (?, NULL, 'unknown', 'unavailable', NULL)`).run(receipt.versionId);
+    expect((await store.getVersion(receipt.versionId!))?.metadataAvailability).toBe("unknown");
+    const continued = await engine.appendDsh({
+      logicalSessionId: childId, baseVersionId: receipt.versionId!, title: "Explicit current title", tags: ["current"],
+      archivedAt: null, workspaceId: null, appendedEvents: [event("event-current", childId, 2, "dsh")],
+      observedAt: "2026-09-01T00:00:02.000Z",
+      projection: { runId: "run-1" as never, leaseId: "lease-1" as never, branchId: "main" as never,
+        adapterId: "adapter-alpha2" as never, nativeSessionId: "native-1" as never,
+        operationId: "operation-2" as never, nativeRevision: 3 },
+    });
+    expect(continued.outcome).toBe("advanced");
+    expect((await store.getVersion(continued.versionId!))?.metadata).toEqual({ title: "Explicit current title", tags: ["current"], archivedAt: null });
+    expect((await store.getVersion(receipt.versionId!))?.metadataAvailability).toBe("unknown");
   });
 });

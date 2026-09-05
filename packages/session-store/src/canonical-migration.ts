@@ -20,6 +20,7 @@ import { canonicalJson, sha256Canonical } from "@linmu/dsh-session-domain";
 
 import { openMaintenanceDatabase } from "./database.js";
 import { ZstdContentObjectStore } from "./object-store.js";
+import { saveVersionMetadataSnapshot } from "./version-metadata.js";
 
 interface MirrorRow {
   readonly logical_session_id: string;
@@ -593,6 +594,12 @@ export async function activateCanonicalMigration(input: {
             item.versionCreatedAt,
             item.session.id,
           );
+          const metadata = { title: item.normalized!.title, archived: item.normalized!.archived };
+          const storedHash = candidate.prepare("SELECT metadata_hash FROM session_versions WHERE id = ?")
+            .get(item.versionId) as { readonly metadata_hash: string };
+          if (sha256Canonical(metadata) === storedHash.metadata_hash) {
+            saveVersionMetadataSnapshot(candidate, item.versionId, metadata, "reconstructed-body");
+          }
           insertMembership.run(
             item.session.id,
             item.classification.workspaceIds[0] ?? null,

@@ -185,6 +185,30 @@ export interface CanonicalSessionRecord {
   readonly updatedAt: string;
 }
 
+/** Metadata is unknown when no candidate can be proven against the version's hash. */
+export interface VersionMetadataSnapshot {
+  readonly metadata: JsonValue | null;
+  readonly metadataAvailability: "available" | "unknown" | "corrupt";
+  readonly metadataProvenance: "captured" | "reconstructed-current" | "reconstructed-body" | "unavailable";
+  /** Trusted local persistence time; null protects versions saved before tracking began. */
+  readonly firstPersistedAt: string | null;
+}
+
+export interface CanonicalVersionRecord extends VersionMetadataSnapshot {
+  readonly id: SessionVersionId;
+  readonly logicalSessionId: LogicalSessionId;
+  readonly parentVersionIds: readonly SessionVersionId[];
+  readonly events: readonly CanonicalEventV1[];
+  readonly workspaceId: LogicalWorkspaceId | null;
+  readonly body: JsonValue;
+  readonly bodyDigest: string;
+  readonly metadataDigest: string;
+  /** Hash of { body, metadata }, distinct from the version ID that also includes parents. */
+  readonly contentDigest: string | null;
+  /** Original event/import timestamp; never a retention clock. */
+  readonly createdAt: string;
+}
+
 /** Lightweight, monotonically ordered reason that a native projection may be stale. */
 export type CanonicalChangeKind =
   | "session-created"

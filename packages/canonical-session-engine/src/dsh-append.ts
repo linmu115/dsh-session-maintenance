@@ -140,7 +140,7 @@ export async function appendDsh(
     }
     baseEvents = base.events;
     parentVersionIds = [base.id];
-    const inherited = metadataAtDerivationBase(base, source.session);
+    const inherited = metadataAtDerivationBase(base);
     title = inherited.title;
     tags = inherited.tags;
     archivedAt = inherited.archivedAt;

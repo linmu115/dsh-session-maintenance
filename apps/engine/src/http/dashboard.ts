@@ -34,6 +34,8 @@ import {
 import {
   SqliteCanonicalRepository,
   SqliteNativeSessionReferenceRepository,
+  advanceCanonicalSessionMetadata,
+  readVersionMetadataSnapshot,
 } from "@linmu/dsh-session-store";
 
 const ASSET = /^\/dashboard\/assets\/([A-Za-z0-9][A-Za-z0-9._-]{0,255})$/u;
@@ -341,6 +343,7 @@ export async function readCanonicalDashboardSession(
     events: events as never,
     parent,
     children,
+    headMetadata: session.headVersionId === null ? null : readVersionMetadataSnapshot(database, session.headVersionId),
   };
 }
 
@@ -376,11 +379,7 @@ export async function updateCanonicalDashboardSession(
   if (exists === undefined) return undefined;
   transaction(database, () => {
     if (patch.title !== undefined || patch.tags !== undefined || patch.archived !== undefined) {
-      const row = database.prepare("SELECT display_title, labels_json, archived_at FROM logical_sessions WHERE id = ?").get(logicalSessionId) as { readonly display_title: string; readonly labels_json: string; readonly archived_at: string | null };
-      const archivedAt = patch.archived === undefined ? row.archived_at : patch.archived ? at : null;
-      database.prepare(
-        `UPDATE logical_sessions SET display_title = ?, labels_json = ?, archived = ?, archived_at = ?, updated_at = ? WHERE id = ?`,
-      ).run(patch.title ?? row.display_title, JSON.stringify(patch.tags ?? JSON.parse(row.labels_json)), archivedAt === null ? 0 : 1, archivedAt, at, logicalSessionId);
+      advanceCanonicalSessionMetadata(database, { logicalSessionId, patch, appliedAt: at });
     }
     if (patch.workspaceId !== undefined || patch.displayOrder !== undefined || patch.pinned !== undefined || patch.archived !== undefined) {
       const current = getMembership(database, logicalSessionId);

@@ -1,12 +1,12 @@
 import type {
   CanonicalEventV1,
-  CanonicalSessionRecord,
   JsonValue,
   LogicalSessionId,
   LogicalWorkspaceId,
   OperationId,
 } from "@linmu/dsh-session-contracts";
 import { sha256Canonical } from "@linmu/dsh-session-domain";
+import { SessionMaintenanceError } from "@linmu/dsh-session-contracts";
 
 import type { CanonicalVersionRecord } from "./engine.js";
 
@@ -33,16 +33,20 @@ export function derivedLogicalSessionIdFor(
 
 export function metadataAtDerivationBase(
   base: CanonicalVersionRecord,
-  fallback: CanonicalSessionRecord,
 ): DerivedSessionMetadata {
   const metadata = record(base.metadata);
-  const title = typeof metadata?.title === "string" ? metadata.title : fallback.title;
-  const tags = Array.isArray(metadata?.tags) && metadata.tags.every((tag) => typeof tag === "string")
-    ? metadata.tags as string[]
-    : fallback.tags;
-  const archivedAt = metadata?.archivedAt === null || typeof metadata?.archivedAt === "string"
-    ? metadata.archivedAt
-    : fallback.archivedAt;
+  if (base.metadataAvailability === "corrupt" ||
+      (base.metadataAvailability === "available" && (metadata === undefined || sha256Canonical(metadata) !== base.metadataDigest))) {
+    throw new SessionMaintenanceError("OBJECT_CORRUPT", `Historical metadata digest is corrupt: ${base.id}`);
+  }
+  if (base.metadataAvailability !== "available" || metadata === undefined ||
+      typeof metadata.title !== "string" || !Array.isArray(metadata.tags) ||
+      !metadata.tags.every((tag) => typeof tag === "string") ||
+      !(metadata.archivedAt === null || typeof metadata.archivedAt === "string")) {
+    throw new SessionMaintenanceError("HISTORICAL_METADATA_UNAVAILABLE", `Historical metadata is unavailable for derivation: ${base.id}`);
+  }
+  const { title, archivedAt } = metadata;
+  const tags = metadata.tags as string[];
   return { title, tags, archivedAt, workspaceId: base.workspaceId };
 }
 

@@ -18,6 +18,7 @@ import { MIGRATION_004 } from "../../packages/session-store/src/migrations/004-c
 import { MIGRATION_005 } from "../../packages/session-store/src/migrations/005-native-mirrors.js";
 import { MIGRATION_006 } from "../../packages/session-store/src/migrations/006-workspace-directory.js";
 import { MIGRATION_001 } from "../../packages/session-store/src/schema.js";
+import { sha256Canonical } from "../../packages/session-domain/src/index.js";
 
 const roots: string[] = [];
 const databases: DatabaseSync[] = [];
@@ -59,7 +60,7 @@ async function seed(database: DatabaseSync, store: ZstdContentObjectStore, input
       extensions: {},
     }],
     bodyHash: `body-${input.id}`,
-    metadataHash: `metadata-${input.id}`,
+    metadataHash: sha256Canonical({ title: `Title ${input.id}`, archived: false }),
     provenance: { platform: input.platform, instanceId: `${input.platform}-fixture`, sessionId: `native-${input.id}`, observedAt: at },
     compatibility: { status: "compatible", issues: [] },
   };
@@ -68,7 +69,7 @@ async function seed(database: DatabaseSync, store: ZstdContentObjectStore, input
     `INSERT INTO logical_sessions
       (id, display_title, canonical_version_id, sync_mode, archived, labels_json, created_at)
      VALUES (?, ?, NULL, 'paused', 0, '[]', ?)`,
-  ).run(input.id, normalized.title, at);
+  ).run(input.id, `Later current title ${input.id}`, at);
   database.prepare(
     `INSERT INTO session_versions
       (id, logical_session_id, body_object, body_hash, metadata_hash, manifest_json, created_at)
@@ -123,7 +124,7 @@ describe("canonical migration activation", () => {
     });
 
     expect(activation).toMatchObject({
-      schemaVersion: 16,
+      schemaVersion: 17,
       sourcePreserved: true,
       pointerSwitchRequired: true,
       counts: { logicalSessions: 2, canonicalEvents: 2, logicalWorkspaces: 1, workspaceMemberships: 2 },
@@ -131,12 +132,14 @@ describe("canonical migration activation", () => {
     expect(await fileDigest(source)).toBe(sourceBefore);
     await expect(access(archive)).resolves.toBeUndefined();
     const migrated = new DatabaseSync(candidate, { readOnly: true });
+    databases.push(migrated);
     expect(migrated.prepare("SELECT id, authority_scope, origin_kind FROM logical_sessions ORDER BY id").all()).toEqual([
       { id: "codex-session", authority_scope: "codex", origin_kind: "codex-mirror" },
       { id: "dsh-session", authority_scope: "maintenance", origin_kind: "maintenance-native" },
     ]);
     expect(migrated.prepare("SELECT COUNT(*) AS count FROM canonical_events").get()).toEqual({ count: 2 });
-    migrated.close();
+    expect(migrated.prepare("SELECT COUNT(*) AS count FROM version_metadata_snapshots WHERE availability = 'available' AND provenance = 'reconstructed-body' AND first_persisted_at IS NULL").get())
+      .toEqual({ count: 2 });
 
     await initializeStateRoot(root);
     expect((await loadConfig(root)).databaseFile).toBe("metadata.sqlite");

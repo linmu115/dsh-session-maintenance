@@ -1,8 +1,7 @@
 import type {
   AdapterContractRef,
-  CanonicalEventV1,
   CanonicalSessionRecord,
-  JsonValue,
+  CanonicalVersionRecord,
   LogicalSessionId,
   LogicalWorkspaceId,
   OperationId,
@@ -30,19 +29,7 @@ import {
   type TombstoneSessionInput,
 } from "./tombstone.js";
 
-export interface CanonicalVersionRecord {
-  readonly id: SessionVersionId;
-  readonly logicalSessionId: LogicalSessionId;
-  readonly parentVersionIds: readonly SessionVersionId[];
-  readonly events: readonly CanonicalEventV1[];
-  readonly workspaceId: LogicalWorkspaceId | null;
-  readonly body: JsonValue;
-  readonly metadata: JsonValue;
-  readonly bodyDigest: string;
-  readonly metadataDigest: string;
-  readonly contentDigest: string;
-  readonly createdAt: string;
-}
+export type { CanonicalVersionRecord } from "@linmu/dsh-session-contracts";
 
 export interface CanonicalSessionSnapshot {
   readonly session: CanonicalSessionRecord;
