@@ -33,6 +33,7 @@ import {
   registeredInstances,
 } from "./config.js";
 import { startMaintenanceServer } from "./http/server.js";
+import { resolveEngineDashboardRoot } from "./dashboard-root.js";
 import { MaintenanceExternalLifecycleProvider, runExternalLifecycleStdio } from "./external-lifecycle-provider.js";
 
 export interface CliOptions {
@@ -474,6 +475,7 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
       const port = Number.parseInt(value.port, 10);
       if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) throw new TypeError(`Invalid port: ${value.port}`);
       const targets = gatewayTargets(value.dshGateway);
+      const dashboardRoot = await resolveEngineDashboardRoot(value.dashboardRoot);
       const engine = targets.length === 0
         ? await createReadOnlyComposition(compositionOptions())
         : await createDshWritableComposition({ ...compositionOptions(), dshGatewayTargets: targets });
@@ -482,7 +484,7 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
         stateRoot: compositionOptions().stateRoot,
         host: value.host,
         port,
-        ...(value.dashboardRoot === undefined ? {} : { dashboardRoot: resolve(value.dashboardRoot) }),
+        ...(dashboardRoot === undefined ? {} : { dashboardRoot }),
       });
       output(stdout, { origin: server.origin, connectionFile: "connection.json" });
       await new Promise<void>((resolveSignal) => {
