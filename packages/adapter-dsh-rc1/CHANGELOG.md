@@ -1,5 +1,17 @@
 # Changelog
 
+## Engine 0.1.15 recovery fix - 2026-09-06
+
+- Treat omitted logical `delegationDepth` as zero when comparing the official
+  persisted RC1 header. The JSONL writer already persists this optional field as
+  `header.delegationDepth ?? 0`; a normal unseeded session could otherwise block
+  shutdown recovery and retain the single-writer lease indefinitely.
+- Keep nonzero delegation depth, creation time, preset, lineage and committed
+  event-prefix checks strict. No native artifact, version or receipt is edited
+  to force recovery. Add five focused positive and negative regressions.
+- This private embedded reader fix leaves the 0.1.2 projection/cache format
+  unchanged. Engine 0.1.15's source commit and package digest identify the build.
+
 ## 0.1.2 - 2026-09-05
 
 - Preserve RC1's known turn/step, request and seed controls as native

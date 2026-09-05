@@ -301,6 +301,38 @@ describe("recoverRc1RuntimeTail", () => {
     });
   });
 
+  it("accepts the official zero delegation-depth default without losing a real tail", async () => {
+    const root = await fixtureRoot();
+    const { delegationDepth: _depth, ...publicHeader } = header;
+    const tail = { type: "turn/start", seq: 1, time: first.time + 1, data: { turn: 0 } };
+    await writeArtifact(root, [first, tail]);
+    const operations = await recover(root, [mapping({ header: publicHeader })]);
+    expect(operations).toHaveLength(1);
+    expect(operations[0]!.payload.events).toEqual([tail]);
+  });
+
+  it.each([
+    { delegationDepth: 1 },
+    { createdAt: storageHeader.createdAt + 1 },
+    { agentPreset: "different-preset" },
+  ])("does not hide other header changes behind an omitted depth: %j", async (change) => {
+    const root = await fixtureRoot();
+    const { delegationDepth: _depth, ...publicHeader } = header;
+    await writeArtifact(root, [first], { header: { ...storageHeader, ...change } });
+    await expect(recover(root, [mapping({ header: publicHeader })])).rejects.toMatchObject({
+      code: "RECOVERY_HEADER_MISMATCH",
+    });
+  });
+
+  it("still rejects a rewritten committed prefix when delegation depth was omitted", async () => {
+    const root = await fixtureRoot();
+    const { delegationDepth: _depth, ...publicHeader } = header;
+    await writeArtifact(root, [{ ...first, data: { text: "rewritten" } }]);
+    await expect(recover(root, [mapping({ header: publicHeader })])).rejects.toMatchObject({
+      code: "RECOVERY_PREFIX_REWRITTEN",
+    });
+  });
+
   it("fails closed on an unknown format, header path mismatch, or unmapped artifact", async () => {
     const futureRoot = await fixtureRoot();
     await writeArtifact(futureRoot, [first], { header: { ...storageHeader, version: 1 } });

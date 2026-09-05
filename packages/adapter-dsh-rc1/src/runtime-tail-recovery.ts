@@ -552,10 +552,16 @@ function isControlledManagedCwd(root: string, cwd: JsonValue | undefined): cwd i
 }
 
 function sameRuntimeHeader(root: string, runtime: JsonRecord, mapping: JsonValue): boolean {
-  if (sameJson(runtime, mapping)) return true;
-  if (!isRecord(mapping) || !isControlledManagedCwd(root, runtime.cwd)) return false;
+  if (!isRecord(mapping)) return false;
+  // The official RC1 JSONL writer persists header.delegationDepth ?? 0,
+  // while a newly created public SessionHeader may omit this optional field.
+  // Normalize only that documented storage default; nonzero depth and every
+  // other identity/lineage field must still compare exactly.
+  const persistedMapping: JsonRecord = { ...mapping, delegationDepth: mapping.delegationDepth ?? 0 };
+  if (sameJson(runtime, persistedMapping)) return true;
+  if (!isControlledManagedCwd(root, runtime.cwd)) return false;
   const { cwd: _runtimeCwd, ...runtimeRest } = runtime;
-  const { cwd: _mappingCwd, ...mappingRest } = mapping;
+  const { cwd: _mappingCwd, ...mappingRest } = persistedMapping;
   return sameJson(runtimeRest, mappingRest);
 }
 
