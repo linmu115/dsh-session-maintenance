@@ -1,76 +1,40 @@
 # 安装
 
-## 前提
+本页适用于当前 Canonical 投影体系。已记录运行组合为 DSH `0.1.2-rc.1`、Engine `0.1.14`、Maintenance `0.2.16`、SCM `0.3.1`；它是 2026-09-05 快照，不是任意新版兼容承诺。其他 Adapter 的证据与 Provider 限制见[支持矩阵](../adapters/compatibility-matrix.md)。早期 RC2 Gateway 安装不代表当前启动链。
 
-- Windows 10/11、Node.js 22.19 或更高版本；
-- 官方 DeepSeek Harness `0.1.1-rc.2`；
-- 一个调用方选定的官方 DSH profile，例如 `web`；
-- 构建产物 `dsh-session-maintenance-engine-0.1.0.tgz` 与 `dsh-session-maintenance-0.1.1.tgz`。
+## 产物与前提
 
-不需要 EAC、`web-desktop`、旧 Codex 同步插件或源码工作树。
+源码声明 Node.js >=22.19.0、pnpm 11.19.0，已有本地部署证据来自 Windows。`pnpm package:phase2` 生成 Engine+Dashboard 与 Maintenance 插件两个 tgz，文件名版本取自各自 package.json；校验 `phase2-manifest.json` 中的 SHA-256，不使用旧文档硬编码的包版本。
 
-## 1. 校验并解压 Engine
+Engine 包包含 `engine/dsh-session-maint.mjs`、`dashboard/` 和 `Start-Session-Maintenance.cmd`。SCM 属于配套仓库；Launcher Hook 属于 Launcher，Maintenance Provider 随 Engine。完整组合发布需另记录 Adapter、DSH 和 Launcher 版本。无需 EAC、旧同步插件或 Native Mirror。
 
-先对照 `phase2-manifest.json` 校验两个 tgz 的 SHA-256。将 Engine 包解压到用户选择的固定目录。包内包含：
+## 安装步骤
 
-- `engine/dsh-session-maint.mjs`；
-- `dashboard/`；
-- `Start-Session-Maintenance.cmd`。
-
-双击启动脚本默认把状态写入 `%LOCALAPPDATA%\DSH-Session-Maintenance`。首次启动前也可以设置 `DSM_STATE_ROOT` 选择其他持久目录。
-
-如要让 Engine 写入官方 DSH，在启动脚本后附加：
-
-```text
---dsh-gateway dsh-web=http://127.0.0.1:3080
-```
-
-这里的 `dsh-web` 必须和下一步登记的 DSH 实例 ID 一致；端口必须是该官方 DSH 实例的 loopback 地址。
-
-## 2. 登记平台实例
-
-使用包内 Engine：
+1. 校验清单并解压到一个新的版本目录。保留原构建以供回退。
+2. 选择持久 state root。启动脚本默认使用 `%LOCALAPPDATA%\DSH-Session-Maintenance`；可提前设置 `DSM_STATE_ROOT`。首次空目录可用以下 CLI 初始化；不要在已有部署中改指向另一份空库。
 
 ```powershell
-node .\engine\dsh-session-maint.mjs --state-root "$env:LOCALAPPDATA\DSH-Session-Maintenance" init --json
-
-node .\engine\dsh-session-maint.mjs --state-root "$env:LOCALAPPDATA\DSH-Session-Maintenance" instance add `
-  --id dsh-web --platform dsh --root "<DSH_HOME>" --platform-version 0.1.1-rc.2 --json
+node .\engine\dsh-session-maint.mjs --state-root "<维护状态目录>" init --json
 ```
 
-需要读取 Codex 会话时，再登记 Codex 实例；路径只在这类可信 CLI 登记命令中出现，普通看板和插件操作只使用 ID。
-
-## 3. 安装 DSH 插件
-
-先让当前终端指向官方 DSH，再使用官方插件管理命令：
+3. 通过可信 CLI `instance add` 登记需要读取的来源。Codex 是只读源；首次导入和后续正文导入应按对应导入流程执行。`scan`、标题同步及启动投影不应被视作相同操作。现有导入脚本另开存储连接，在线并发入口尚待计划中的统一调度，不应据此声称已提供新的在线导入命令。
+4. 使用与目标 DSH 安装匹配的官方 CLI 安装已校验插件。下面 `$dshBin` 表示该安装实际的 `lib/bin.js`，`web` 是选定 profile；不要复制旧 RC2 runtime 路径套用到 RC1。
 
 ```powershell
-$env:DSH_HOME = "<DSH_HOME>"
-$env:DSH_INSTALL_ROOT = "<DeepSeek-Harness安装目录>"
-$dshBin = Join-Path $env:DSH_INSTALL_ROOT "runtime-0.1.1-rc.2\node_modules\@deepseek-ai\dsh\lib\bin.js"
-node $dshBin plugin --profile web add "<产物目录>\dsh-session-maintenance-0.1.1.tgz"
+node $dshBin plugin --profile web add "<Maintenance插件tgz>"
 ```
 
-官方命令会把包登记为 profile 顶层依赖，并把它加入 `dsh.profile.bundles`。不要手工复制到全局 `node_modules`。
-
-## 4. 把 DSH host 连接到 Engine
-
-Engine 启动后会在状态目录写入受保护的 `connection.json`。启动 DSH 的同一可信脚本或终端需要设置：
+5. 按 [Hook 接入](launcher-hook.md)配置匹配的 Launcher 宿主和本仓库 Provider，使运行按 prepare / beforeStop / afterExit / abort 收尾。Provider 返回运行投影及插件所需启动环境；不要只设置连接路径后绕开投影准备来启动 Canonical 运行。
+6. 独立看板可使用包内启动脚本，或明确使用同一个 state root：
 
 ```powershell
-$env:DSH_SESSION_MAINTENANCE_CONNECTION_PRIMARY = "$env:LOCALAPPDATA\DSH-Session-Maintenance\connection.json"
-node $dshBin --profile web --host 127.0.0.1 --port 3080 --no-open
+node .\engine\dsh-session-maint.mjs --state-root "<维护状态目录>" serve --host 127.0.0.1 --port 0 --dashboard-root ".\dashboard" --json
 ```
 
-不要把 token 复制到 DSH 设置、浏览器、本项目 README 或 Git。Engine 每次启动都会轮换 capability；插件 host 按描述符更新时间自动重读。
+便携脚本已显式指定包内 Dashboard。`a6b4053` 候选构建还支持省略目录后的自动发现，但历史运行进程不会自动获得该修复。避免同时为同一状态目录另启 Engine。
 
-## 5. 首次验收
+## 验收
 
-1. 打开官方 DSH 页面，确认没有 “Failed to load plugins”。
-2. 页面出现“会话维护”入口；会话右键出现扫描、版本图、比较和 Checkpoint 等操作。
-3. 打开 Plugin Manager 中的 `dsh-session-maintenance`，确认“参数设置”页出现检查 Engine、扫描会话和打开完整看板三个按钮。
-4. 点击“扫描当前会话”，确认返回 job ID 或明确的离线提示。
-5. 打开独立看板，确认版本图、计划和 Checkpoint 页面可访问。
-6. 在任何写入前先建立 Checkpoint；需要人工复核的计划不会从菜单直接执行。
+确认插件加载、准确会话身份、只读来源可见、首次续写派生、追加回执及正常退出排空。保留 RC1 官方空会话生命周期，不靠伪造消息使其持久化。设置页直接打开看板后，验证认证跳转、页面和应用脚本均成功；未认证业务 API 仍应拒绝。
 
-自动化验收命令及证据见 `docs/validation/phase-2-acceptance.md`。
+菜单入口的共享整理尚有后续工作，不能保证 Maintenance 专有右键动作在所有组合均可见。设置页看板入口应单独验证。Engine 会轮换 `connection.json` capability，插件 host 按描述符更新时间重读；不要向浏览器、设置或 Git 复制 token。

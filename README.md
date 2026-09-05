@@ -1,111 +1,61 @@
 # DSH Session Maintenance
 
-一个以不可变版本图管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。
+一个以 Canonical 会话、不可变版本图和可恢复运行投影管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。保留版本比较、Checkpoint、逻辑删除与恢复、稳定引用，以及明确发起的 Codex 延续任务。
 
-当前已完成只读版本图、可恢复事务、官方 DSH `0.1.1-rc.2` 写入链、独立 Dashboard、DSH 入口插件和 Phase 3 Codex 延续任务。DSH 写入只有在 Engine 启动时明确登记对应 Core gateway 才会开启；未登记时保持只读。正式 `web` profile 尚未替换旧同步插件，仓库只生成了可审查的替换预览。
+截至 2026-09-05 的已记录运行基线是 Engine **0.1.14**、Maintenance 插件 **0.2.16**、Session Context Menu（SCM）**0.3.1**，Maintenance 源码对应 `4b49927`，运行于 DSH **0.1.2-rc.1** Canonical 投影体系。正式 `web` profile 已使用新体系；早期“尚未替换旧同步插件”的说明仅属于历史阶段。
 
-## 支持范围
+看板自动发现补丁 `a6b4053` 已通过合成测试和独立 CLI 验证，但在上述运行快照中**尚未部署**。源码可启动看板不代表已运行进程的入口已经恢复；实际切换和浏览器验收应单独记录。依据见[审查存档](docs/validation/2026-09-05-maintenance-architecture-review.md)和[看板补丁说明](docs/changes/DASHBOARD-DEFAULT-ROOT-20260905.md)。
 
-- Windows 10/11
-- Node.js 22.19 或更高版本
-- pnpm 11.19
-- Codex `0.146.0`
-- 官方 DSH `0.1.1-rc.2`
+## 当前架构
 
-## 从源码开发
+| 组件 | 责任 |
+| --- | --- |
+| Engine | Canonical 身份、导入与提交、版本/Checkpoint、删除回执、运行租约、WAL、恢复和本地 API；SQLite 与正文对象属于其存储层 |
+| WebUI / Dashboard | 通过 Engine API 展示目录、版本、比较、维护操作及状态；可独立构建，不直接读写会话库 |
+| DSH 插件 | 接入官方会话生命周期，按需载入投影，捕获追加并确认提交，提供菜单与设置入口 |
+| DSH Adapter | 探测指定原生格式、生成投影、规范化追加、验证摘要及解析稳定引用；不决定全局身份或删除规则 |
+| Maintenance Provider | 本仓库的宿主接入层，将启动/停止通知转换为 Engine Runtime Broker 操作 |
+| Launcher Hook | Launcher 仓库中的通用宿主能力，负责调用时机、协议、超时和失败回收；不读取 Codex 或会话 SQL |
+
+Codex 原始会话是只读来源。**导入**把源内容纳入 Maintenance；**启动投影**把已经纳入的 Canonical 内容转换为本次 DSH 运行需要的格式。当前 `prepare` 前还同步 Codex 标题目录，但不完整导入源正文。投影准备成功不能解释为 Codex 新消息已经全部导入。运行期间插件直接向 Engine 回写，消息不逐条经过 Launcher；首次续写只读来源时保留来源与派生关系。
+
+接入细节见 [Adapter 架构](docs/adapters/architecture.md)、[支持与验证矩阵](docs/adapters/compatibility-matrix.md)和 [Launcher Hook 接入](docs/deployment/launcher-hook.md)。不启用 EAC、旧 `dsh-codex-session-sync` 或 Native Mirror 运行链。
+
+## 支持与发布
+
+开发环境声明为 Node.js >=22.19.0、pnpm 11.19.0；已有本地部署证据来自 Windows。源码内置 alpha2、RC1、RC2 三类 DSH Adapter，不等于任意 Harness 版本或任意插件组合已通过验证。RC1 限定 `0.1.2-rc.1`；alpha2/RC2 的宽探测范围仅提供试验入口，具体证据见矩阵。
+
+Engine+Dashboard 与 DSH 插件是两个独立产物；Adapter/SDK 和 Launcher 宿主有各自版本与验证责任。SCM 来自配套仓库。组合发布必须记录这些版本、源码提交与产物摘要。旧脚本名 `phase2` 不表示现在只运行 RC2 Gateway。
 
 ```powershell
-git clone <repository-url> dsh-session-maintenance
-cd dsh-session-maintenance
 pnpm bootstrap
 pnpm check
-```
-
-完整部署请使用 `pnpm package:phase2` 生成的两个独立产物：Engine+Dashboard 和 `dsh-session-maintenance` DSH 插件。安装、升级、卸载和恢复分别见 [INSTALL](docs/deployment/INSTALL.md)、[UPGRADE](docs/deployment/UPGRADE.md)、[UNINSTALL](docs/deployment/UNINSTALL.md) 与 [RECOVERY](docs/deployment/RECOVERY.md)。部署不依赖 EAC、`web-desktop` 或旧 `dsh-codex-session-sync`。
-
-所有运行状态默认位于当前目录的 `.dsh-session-maintenance`；发布包启动脚本默认使用 `%LOCALAPPDATA%\DSH-Session-Maintenance`。也可以用 `--state-root <目录>` 指定独立状态目录。
-
-## 使用
-
-```powershell
-pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint init --json
-
-pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint instance add `
-  --id codex-main --platform codex --root "C:\路径\.codex" --platform-version 0.146.0 --json
-
-pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint instance add `
-  --id dsh-main --platform dsh --root "D:\路径\DeepSeek-Harness\home" --platform-version 0.1.1-rc.2 --json
-
-pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint scan --all --json
-pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint status --json
-```
-
-登记一个只接受 ID 引用的 Codex 目标预设：
-
-```powershell
-dsh-session-maint codex-target add `
-  --id codex-default --codex-instance codex-main `
-  --cwd "D:\工作区" --workspace-root "D:\工作区" `
-  --context-window 120000 --input-budget-ratio 0.2 --json
-```
-
-先预览预算，再明确创建延续任务：
-
-```powershell
-dsh-session-maint continuation preview `
-  --logical-session <id> --source-version <version-id> `
-  --target codex-default --mode full --json
-
-dsh-session-maint continuation create `
-  --logical-session <id> --source-version <version-id> `
-  --target codex-default --mode full --json
-```
-
-`checkpoint` 和 `structured-summary` 是完整模式超出预算时的显式替代；系统不会静默截断。分叉会话使用 `continuation resolution-preview` 和 `continuation resolution-create`，并必须提供左右版本及合并说明。
-
-先通过会话列表或本地 API 获取 logical session 与 binding ID，再运行：
-
-```powershell
-dsh-session-maint diff --logical-session <id> --source <binding> --target <binding> --json
-dsh-session-maint plan --logical-session <id> --source <binding> --target <binding> --json
-```
-
-启动本地 API 与 Dashboard：
-
-```powershell
-dsh-session-maint serve --host 127.0.0.1 --port 0 --dashboard-root <dashboard目录> --json
-```
-
-需要启用官方 DSH 写入时，再增加受信任的 host gateway 映射：
-
-```powershell
-dsh-session-maint serve `
-  --host 127.0.0.1 --port 0 --dashboard-root <dashboard目录> `
-  --dsh-gateway dsh-web=http://127.0.0.1:3080 --json
-```
-
-连接信息写入状态目录的 `connection.json`。API 只绑定 `127.0.0.1`；浏览器使用一次性 launch code、HttpOnly cookie 与 CSRF，不会读取 bearer capability。
-
-## 安全边界
-
-- `instance add` 和管理员使用的 `codex-target add` 是仅有的路径登记入口；平台根、cwd 和 workspace roots 都会解析 realpath。普通 API/MCP 只接受 ID。
-- `scan` 只读取平台数据；结果中的 `platformWrites` 固定为 0。
-- 标题相同不会自动合并会话，只生成低置信候选。
-- DSH `apply` 和 `restore` 只有在显式附着版本锁定的 Core Gateway 后可用；默认 composition 返回 `CAPABILITY_NOT_AVAILABLE`。
-- Codex 延续只调用 app-server 创建新任务，不修改 Codex rollout、索引或 SQLite。
-- 不要把 `connection.json` 提交到 Git 或发给其他人。
-
-## 验证
-
-```powershell
-pnpm verify:clean
-pnpm test:phase1
-pnpm test:phase2
-pnpm test:phase3
+pnpm package:phase2
 pnpm verify:phase2-package
-pnpm accept:phase2-isolated
-pnpm accept:phase2-official
-pnpm assert:portable
 ```
 
-`accept:phase2-official` 只在本机已设置 `DSH_INSTALL_ROOT` 时运行，并把 DSH_HOME/profile/state 全部放在带标记的 Windows 临时目录；它不会修改正式 profile。详细证据见 `docs/validation/`。
+安装、升级、卸载和恢复见 [INSTALL](docs/deployment/INSTALL.md)、[UPGRADE](docs/deployment/UPGRADE.md)、[UNINSTALL](docs/deployment/UNINSTALL.md)与 [RECOVERY](docs/deployment/RECOVERY.md)。[Generation 打包说明](docs/deployment/canonical-projection-generation.md)单独说明旧组合脚本的适用范围。
+
+## CLI 与看板
+
+下列命令使用调用者选定的独立状态目录；不应把测试目录替换为真实 home 做试验。
+
+```powershell
+pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint --state-root "<维护状态目录>" init --json
+pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint --state-root "<维护状态目录>" status --json
+pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint --state-root "<维护状态目录>" serve --host 127.0.0.1 --port 0 --json
+```
+
+候选源码默认相对 Engine 安装位置查找 Dashboard 构建；也可传 `--dashboard-root <目录>`。显式目录无效会报错，不含 UI 的安装仍可只启动 API。旧运行构建需要显式目录或正常升级后才获得自动发现能力。
+
+CLI 优先使用显式 `--state-root`，其次读取 `DSH_SESSION_MAINTENANCE_STATE_ROOT`，两者均未提供时使用当前目录下 `.dsh-session-maintenance`。便携包启动脚本默认使用 `%LOCALAPPDATA%\DSH-Session-Maintenance`，支持 `DSM_STATE_ROOT`。不要让不同启动方式无意连接不同状态库。
+
+可信 CLI 的 `instance add` 登记平台路径，`scan --all --json` 只读扫描登记源；它与 Canonical 启动投影是不同操作。Codex 目标通过 `codex-target add` 登记；`continuation preview` / `continuation create` 明确发起新任务，完整上下文超预算时需明确选择 `checkpoint` 或 `structured-summary`，不会静默截断。
+
+连接描述符 `connection.json` 含 capability，不应提交或分享。API 仅绑定 loopback；浏览器通过一次性 launch code、HttpOnly cookie 和 CSRF 机制访问看板。标题相同不会自动合并身份。
+
+旧 RC2 Core Gateway 的 `--dsh-gateway <instance=origin>` 仅用于对应的历史事务写入通道，默认未附着时不可用；它不是当前 RC1 Canonical 运行回写的启用开关。CLI `apply` / `restore` 当前仍返回不可用，不应照旧阶段说明直接执行。
+
+## 验证记录
+
+`pnpm check` 执行类型检查、构建和测试；`pnpm test:phase1`、`pnpm test:phase2`、`pnpm test:phase3` 保留分阶段验证入口。历史报告位于 [docs/validation](docs/validation)，其日期、候选状态和未完成的人工验收均应保留，不能据此推断今天的全部组合已经上线。

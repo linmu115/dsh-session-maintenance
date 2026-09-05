@@ -3,7 +3,7 @@
 - Use semantic versioning for the Adapter package itself.
 - Set `adapterApiVersion` to the SDK interface major, not the DSH version.
 - List versions with completed evidence in `testedDshVersions`.
-- Keep `declaredDshRange` descriptive and broad enough for experimental probes.
+- Make `declaredDshRange` match the actual policy: RC1 is exact-versioned; broader Alpha2/RC2 probes do not establish verified support.
 - Publish a changelog, breaking-change notes, compatibility evidence, and the
   exact Core Smoke result.
 - Do not bundle user data, DSH homes, projection output, credentials, or a

@@ -1,33 +1,24 @@
-# Canonical Projection Generation
+# Canonical Projection Generation packaging
 
-## Contents
+This page describes the existing multi-repository Generation script, not the current live release receipt. The 2026-09-01 candidate and its uncompleted manual gates remain in the [historical validation report](../validation/canonical-projection-final.md). Current runtime baseline and Dashboard candidate status are in [README](../../README.md).
 
-The Generation contains the Session Maintenance 0.2.0 DSH entry, Engine and WebUI bundle, public contracts and Adapter SDK, Alpha2 and RC2 adapters, Launcher Profile templates, the verified Stable 1.5 plugin combination, and the Obsidian Bridge Companion snapshot.
+## Current script scope
 
-The DSH plugin set is inherited from `gen-4a88122cf2a71716`: Sidechat, Agent Teams, Annotation Core, Better Sidebar, Resource Management, Session Context Menu, Session Maintenance, Sticker Board and Settings Scroll Fix. `dsh-codex-session-sync` remains deprecated and excluded. Obsidian Bridge is recorded as a Companion and is not inserted into the DSH bundle list.
+`package-canonical-projection.mjs` assembles Engine+WebUI, the Maintenance plugin, public contracts/SDK, standalone Alpha2 and RC2 adapters, pinned Alpha2/RC2 Launcher profile templates, a baseline plugin Generation and Companion packages. Package versions come from source manifests; the old Maintenance 0.2.0 description is not a current release version.
 
-## Build
+The script defaults to baseline `gen-4a88122cf2a71716` and reads adjacent repository/build inputs plus the configured Maintenance state root for Generation packaging inputs. It requires that environment; it is not a standalone RC1 release recipe. RC1 exists in current Engine source, but this script's standalone adapter/template list has not been extended to RC1. Do not infer a tested RC1 combination from successful legacy Generation packaging.
 
-From a clean, built source tree:
-
-```text
-node scripts/package-canonical-projection.mjs
-node scripts/verify-canonical-projection-package.mjs
+```powershell
+pnpm package:canonical
+pnpm verify:canonical-package
 ```
 
-The output is `.artifacts/canonical-projection/`. `canonical-projection-generation.json` is the content-addressed manifest; `launcher-profiles.json` provides pinned Alpha2 and RC2 Profile values. The verifier builds the complete output twice, compares every file and rejects session logs, projection homes and SQLite databases inside package archives.
+Default output is `.artifacts/canonical-projection/`. `canonical-projection-generation.json` records the content-addressed manifest; `launcher-profiles.json` holds the template values. The verifier compares repeated output and checks that archives exclude session logs, projection homes and SQLite databases. This is packaging evidence, not live UI acceptance.
 
-## Data boundary
+For Engine+Dashboard and the Maintenance plugin alone, use `pnpm package:phase2` and `pnpm verify:phase2-package`; see [INSTALL](INSTALL.md). SCM, Launcher Hook and the chosen DSH runtime still need their own matching release evidence.
 
-The Generation never contains user session content, Maintenance object data, a Maintenance database, Codex logs or a DSH Profile Home. Those remain external state. Only executable packages, public documentation, manifests and profile templates are archived.
+## Data and activation
 
-## Activation and rollback
+Executable packages, documentation and manifests may be archived; user session content, Canonical objects/database, credentials and DSH Profile Homes remain external state. Old synchronization runtime remains excluded. Obsidian Bridge is a Companion, not a DSH bundle entry.
 
-The same Generation is configured into both Launcher Profiles. Only one Profile is run for the first acceptance cycle. A normal close must drain writes, verify P8 and clear the temporary projection before the other Profile opens.
-
-Rollback has two independent controls:
-
-1. restore the previous plugin Generation `gen-4a88122cf2a71716`;
-2. stop Engine and point `databaseFile` back to the readonly pre-canonical `metadata.sqlite` archive.
-
-Do not register this output as stable until the user completes the single manual Alpha2 → RC2 chain documented in the final validation report.
+A build does not activate or register a stable Generation. Activation must record actual runtime versions, normal shutdown/drain, restart, source/derived identity, append acknowledgement, stable references and recovery. Historical candidate gates remain historical until separately completed. Upgrade and rollback use [UPGRADE](UPGRADE.md) and [RECOVERY](RECOVERY.md); do not blindly restore the old pre-canonical database or baseline Generation from the 2026-09-01 instructions.

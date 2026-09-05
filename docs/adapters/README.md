@@ -11,5 +11,4 @@ Start here:
 4. Run the Core Smoke described in [testing-guide.md](./testing-guide.md).
 5. Record evidence in [compatibility-matrix.md](./compatibility-matrix.md).
 
-The public interface major is `adapterApiVersion: 1`. DSH product versions are
-probed by behavior and capability; they are not exact peer-dependency locks.
+The public interface major is `adapterApiVersion: 1`. DSH format support is Adapter-specific: RC1 enforces its exact package set; Alpha2 and RC2 retain broader experimental probes. See the compatibility matrix before selecting a runtime.
