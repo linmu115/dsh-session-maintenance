@@ -42,6 +42,16 @@ async function finish(value) {
   try { return await value.completed; } finally { clearTimeout(fallback); }
 }
 
+// Drain every response, including large built assets, before testing server shutdown.
+// Leaving an unread body can keep an otherwise completed HTTP exchange active.
+async function fetchComplete(url, options = {}) {
+  const response = await fetch(url, { ...options, signal: AbortSignal.timeout(5000) });
+  const bytes = await response.arrayBuffer();
+  return new Response(bytes.byteLength === 0 ? null : bytes, {
+    status: response.status, statusText: response.statusText, headers: response.headers,
+  });
+}
+
 try {
   await mkdir(installation);
   await mkdir(cwd);
@@ -58,7 +68,10 @@ try {
   const wrapper = join(fixture.root, "cli-entry.mjs");
   // IPC asks the CLI to take its own signal shutdown path on Windows as well.
   await writeFile(wrapper, [
-    'process.on("message", value => { if (value === "verify-stop") process.emit("SIGTERM"); });',
+    'process.on("message", value => { if (value === "verify-stop") {',
+    '  if (!process.emit("SIGTERM")) throw new Error("CLI is not ready for shutdown");',
+    '  setTimeout(() => process.stderr.write("[verify] resources=" + JSON.stringify(process.getActiveResourcesInfo()) + "\\n"), 2000).unref();',
+    '} });',
     `await import(${JSON.stringify(pathToFileURL(entry).href)});`,
     "if (process.connected) process.disconnect();",
   ].join("\n"));
@@ -68,14 +81,17 @@ try {
   let connection;
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
-    try { connection = JSON.parse(await readFile(join(state, "connection.json"), "utf8")); break; }
+    try { connection = JSON.parse(await readFile(join(state, "connection.json"), "utf8")); }
     catch (error) { if (error?.code !== "ENOENT") throw error; }
+    // connection.json is created before Windows ACL setup and signal registration finish.
+    if (connection && running.output().includes('"connectionFile":"connection.json"')) break;
     assert.equal(running.processHandle.exitCode, null, running.output());
     await delay(100);
   }
   assert.ok(connection, running.output());
+  assert.ok(running.output().includes('"connectionFile":"connection.json"'), "CLI did not finish startup");
   const origin = `http://${connection.host}:${connection.port}`;
-  const request = (path, options = {}) => fetch(`${origin}${path}`, { ...options, signal: AbortSignal.timeout(5000) });
+  const request = (path, options = {}) => fetchComplete(`${origin}${path}`, options);
   const page = await request("/dashboard/");
   assert.equal(page.status, 200);
   const html = await page.text();
@@ -90,7 +106,7 @@ try {
   const launch = await launchResponse.json();
   const launchUrl = launch.launch?.url;
   assert.equal(new URL(launchUrl).origin, origin);
-  const claim = await fetch(launchUrl, { redirect: "manual", signal: AbortSignal.timeout(5000) });
+  const claim = await fetchComplete(launchUrl, { redirect: "manual" });
   assert.equal(claim.status, 303);
   assert.equal(claim.headers.get("location"), "/dashboard/");
   const cookie = claim.headers.get("set-cookie")?.split(";", 1)[0];
@@ -99,7 +115,7 @@ try {
   assert.equal(bootstrap.status, 200);
   const session = await bootstrap.json();
   assert.equal((await request("/v1/overview", { headers: { cookie, origin, "x-dsh-csrf": session.session.csrfToken } })).status, 200);
-  assert.equal((await fetch(launchUrl, { redirect: "manual", signal: AbortSignal.timeout(5000) })).status, 410);
+  assert.equal((await fetchComplete(launchUrl, { redirect: "manual" })).status, 410);
   assert.equal(await finish(running), 0, running.output());
   running = undefined;
   process.stdout.write(`${JSON.stringify({ verified: true, packageSha256: sha256(archive), packageRoot: relative(root, resolve(archivePath)), defaultDashboardDiscovery: true, unrelatedWorkingDirectory: true, uiClaimAndBootstrap: true, apiAuthentication: true, gracefulCliShutdown: true, state: "marked-synthetic-fixture-only" })}\n`);

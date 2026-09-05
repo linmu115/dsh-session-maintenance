@@ -178,19 +178,40 @@ await writeFile(join(engine, "INSTALL-INPUTS.json"), `${stableJson({
   connectionEnvironmentId: "primary",
 })}\n`);
 
+const sourceCommit = await git("rev-parse", "HEAD");
+const sourceDirty = (await git("status", "--porcelain")) !== "";
+const componentPaths = [
+  "apps/engine", "apps/dashboard", "plugins/dsh-session-maintenance", "packages/contracts",
+  "packages/adapter-dsh-alpha2", "packages/adapter-dsh-rc1", "packages/adapter-dsh-rc2",
+];
+const components = await Promise.all(componentPaths.map(async (path) => {
+  const value = JSON.parse(await readFile(join(root, path, "package.json"), "utf8"));
+  return { name: value.name, version: value.version, sourcePath: path };
+}));
+const schemaSource = await readFile(join(root, "packages/session-store/src/schema.ts"), "utf8");
+const schemaMatch = /export const MAINTENANCE_SCHEMA_VERSION = (\d+) as const;/u.exec(schemaSource);
+if (schemaMatch === null) throw new Error("Cannot identify the packaged metadata schema version");
+const lockfileSha256 = sha256(await readFile(join(root, "pnpm-lock.yaml")));
+const buildInfo = {
+  schemaVersion: 1,
+  version,
+  engineVersion,
+  sourceCommit,
+  sourceDirty,
+  metadataSchemaVersion: Number(schemaMatch[1]),
+  protocolVersions: { adapterApi: 1, projection: 1, externalLifecycle: 1 },
+  components,
+  lockfile: { name: "pnpm-lock.yaml", sha256: lockfileSha256 },
+};
+await writeFile(join(engine, "BUILD-INFO.json"), `${stableJson(buildInfo)}\n`);
 const pluginBytes = await deterministicTarGz(plugin, "package");
 const engineBytes = await deterministicTarGz(engine, "dsh-session-maintenance");
 const pluginName = `dsh-session-maintenance-${version}.tgz`;
 const engineName = `dsh-session-maintenance-engine-${engineVersion}.tgz`;
 await writeFile(join(out, pluginName), pluginBytes);
 await writeFile(join(out, engineName), engineBytes);
-const sourceCommit = await git("rev-parse", "HEAD");
-const sourceDirty = (await git("status", "--porcelain")) !== "";
 const manifest = {
-  schemaVersion: 1,
-  version,
-  sourceCommit,
-  sourceDirty,
+  ...buildInfo,
   supportedContracts: { dsh: "0.1.1-rc.2", dshRc1: "0.1.2-rc.1", cordis: "4.0.2", codexRead: "0.146.0" },
   artifacts: [
     { name: engineName, sha256: sha256(engineBytes), bytes: engineBytes.byteLength, kind: "engine-dashboard" },

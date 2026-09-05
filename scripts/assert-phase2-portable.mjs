@@ -10,6 +10,35 @@ const outFlag = process.argv.indexOf("--out");
 const out = resolve(outFlag >= 0 ? process.argv[outFlag + 1] : ".artifacts/phase2");
 const manifest = JSON.parse(await readFile(join(out, "phase2-manifest.json"), "utf8"));
 const failures = [];
+const expectedEngine = JSON.parse(await readFile(resolve("apps/engine/package.json"), "utf8"));
+const expectedPlugin = JSON.parse(await readFile(resolve("plugins/dsh-session-maintenance/package.json"), "utf8"));
+const expectedSchema = /MAINTENANCE_SCHEMA_VERSION = (\d+) as const;/u.exec(
+  await readFile(resolve("packages/session-store/src/schema.ts"), "utf8"),
+);
+if (manifest.engineVersion !== expectedEngine.version || manifest.version !== expectedPlugin.version) {
+  failures.push("release component versions do not match the source");
+}
+if (expectedSchema === null || manifest.metadataSchemaVersion !== Number(expectedSchema[1])) {
+  failures.push("release metadata schema does not match the source");
+}
+if (manifest.lockfile?.name !== "pnpm-lock.yaml" ||
+    manifest.lockfile.sha256 !== sha256(await readFile(resolve("pnpm-lock.yaml")))) {
+  failures.push("release lockfile digest does not match the source");
+}
+for (const component of manifest.components ?? []) {
+  const componentPath = resolve(component.sourcePath);
+  if (!componentPath.startsWith(resolve(".") + "/") && !componentPath.startsWith(resolve(".") + "\\")) {
+    failures.push("release component source path is outside the workspace");
+    continue;
+  }
+  const expected = JSON.parse(await readFile(join(componentPath, "package.json"), "utf8"));
+  if (component.name !== expected.name || component.version !== expected.version) {
+    failures.push("release component identity does not match its source: " + component.sourcePath);
+  }
+}
+if (manifest.components?.length !== 7) failures.push("release component inventory is incomplete");
+if (manifest.protocolVersions?.adapterApi !== 1 || manifest.protocolVersions?.projection !== 1 ||
+    manifest.protocolVersions?.externalLifecycle !== 1) failures.push("release protocol versions are incompatible");
 const archives = new Map();
 for (const artifact of manifest.artifacts ?? []) {
   const bytes = await readFile(join(out, artifact.name));
@@ -32,6 +61,10 @@ if (plugin !== undefined) {
   }
 }
 if (engine !== undefined) {
+  const buildInfo = JSON.parse(engine.get("dsh-session-maintenance/BUILD-INFO.json")?.toString("utf8") ?? "null");
+  for (const key of ["schemaVersion", "version", "engineVersion", "sourceCommit", "sourceDirty", "metadataSchemaVersion", "protocolVersions", "components", "lockfile"]) {
+    if (JSON.stringify(buildInfo?.[key]) !== JSON.stringify(manifest[key])) failures.push("packaged build identity does not match manifest: " + key);
+  }
   const index = engine.get("dsh-session-maintenance/dashboard/index.html")?.toString("utf8") ?? "";
   if (!index.includes("/dashboard/assets/")) failures.push("Dashboard asset base is not /dashboard/");
   const engineBundle = engine.get("dsh-session-maintenance/engine/dsh-session-maint.mjs")?.toString("utf8");
