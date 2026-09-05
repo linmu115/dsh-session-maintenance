@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { appendFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 
 import { describe, expect, it } from "vitest";
@@ -187,12 +188,21 @@ describe("M06 RC1 conversation topology repair", () => {
         "SELECT id, head_version_id FROM logical_sessions ORDER BY id",
       ).all()).toEqual(sourceHeadsBefore);
 
+      // Codex may keep running after preview. Staging must use the reviewed
+      // snapshot, not require the live source to stop changing.
+      await appendFile(join(fixture.codexHome, "rollouts", "thread-fixture.jsonl"),
+        `${JSON.stringify({ type: "response_item", payload: {
+          type: "message", role: "user", content: [{ type: "input_text", text: "after-preview-live-message" }],
+        } })}\n`);
+      const codexAfterAppend = await hashTree(fixture.codexHome);
+      expect(codexAfterAppend).not.toBe(codexBefore);
+
       const manifest = await stageConversationTopologyRepair({
         stateRoot: fixture.stateRoot,
         sourceDatabasePath,
         candidateFile,
         codexInstance: instance,
-        fixtureGuard: fixture.fixturePolicy,
+        fixtureGuard: () => { throw new Error("Staging must not reopen Codex"); },
         expectedSourceDigest: preview.sourceDigest,
         expectedCodexPlanDigest: preview.codexPlanDigest,
         now: () => at,
@@ -205,7 +215,7 @@ describe("M06 RC1 conversation topology repair", () => {
         integrityCheck: "ok",
         foreignKeyViolations: 0,
       });
-      expect(await hashTree(fixture.codexHome)).toBe(codexBefore);
+      expect(await hashTree(fixture.codexHome)).toBe(codexAfterAppend);
       expect(fixture.engine.repository.database.prepare(
         "SELECT id, head_version_id FROM logical_sessions ORDER BY id",
       ).all()).toEqual(sourceHeadsBefore);
@@ -233,6 +243,7 @@ describe("M06 RC1 conversation topology repair", () => {
       try {
         const child = await candidateStore.getSession(childId);
         const head = await candidateStore.getVersion(child!.headVersionId!);
+        expect(JSON.stringify(head!.events)).not.toContain("after-preview-live-message");
         const suffix = head!.events.find((event) => event.id === "old-dsh-native-suffix")!;
         expect(suffix.rawPayload).toBeNull();
         expect(suffix.extensions.portableFromRc1).toBe(true);

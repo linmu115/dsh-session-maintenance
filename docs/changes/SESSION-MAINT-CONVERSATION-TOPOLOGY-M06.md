@@ -41,9 +41,14 @@ parents.
 ## Bounded read and write path
 
 Codex planning and candidate import are streamed one normalized session at a
-time. The plan retained in memory contains only lightweight descriptors and a
-digest, not every event body. Staging repeats the same read and refuses to
-continue if its digest changed.
+time. Preview writes an exclusive, inactive `.conversation-plan` directory
+next to the candidate path, with one digest-named body file per session and a
+manifest written last. The plan retained in memory contains only lightweight
+descriptors and digests, not every event body. The reviewed plan digest binds
+the complete session bodies, source binding, assignments and source database
+revision. Staging verifies this frozen manifest and each body instead of
+reopening a moving Codex source. New Codex events remain available to normal
+incremental synchronization after migration; staging does not overwrite them.
 
 Codex classification totals remain Adapter-local process diagnostics. They
 are not fields in the shared `NormalizedSession` DTO and are never serialized
@@ -81,7 +86,10 @@ dsh-session-maint canonical repair-rc1-activate \
   --candidate-digest <staged-candidate-digest> --json
 ```
 
-Preview does not create the candidate. Stage creates a new SQLite candidate,
+Preview does not create a candidate database or modify either source, but it
+does persist the reviewed import-plan snapshot. Use a fresh candidate filename
+after an incomplete capture; existing snapshots are never overwritten.
+Stage creates a new SQLite candidate,
 a pre-repair Checkpoint and a sidecar manifest. A failed candidate remains
 inactive for diagnosis. Activation rechecks the source digest, candidate
 digest, SQLite integrity, foreign keys and absence of an active projection
@@ -127,3 +135,8 @@ that preview is read-only, staging preserves old heads and versions, the
 candidate retires only the obsolete mirror, the derived suffix survives as
 portable events, RC1 validation passes, activation switches only the supplied
 pointer, and the complete synthetic Codex Home digest is unchanged.
+
+The live-source follow-up verifies that Codex may append after preview while
+staging still consumes exactly the approved snapshot without opening Codex.
+Tampered manifests, tampered bodies, absent snapshots and duplicate capture
+targets are rejected. Codex data written after the preview remains unchanged.

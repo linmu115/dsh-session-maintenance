@@ -50,6 +50,7 @@ import {
   type CodexCanonicalImportResult,
 } from "./codex-canonical-import.js";
 import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
+import { loadRepairPlan, RepairPlanWriter, visitRepairPlan } from "./conversation-repair-plan.js";
 
 export type ConversationTopologyRepairStage =
   | "repair.preview"
@@ -72,6 +73,7 @@ export interface ConversationTopologyRepairPreviewV1 {
   readonly candidateDatabasePath: string;
   readonly sourceDigest: string;
   readonly codexPlanDigest: string;
+  readonly planSnapshotPath: string;
   readonly currentRevision: number;
   readonly scannedCodexSessions: number;
   readonly plannedCodexMirrors: number;
@@ -212,23 +214,6 @@ function sourceState(database: DatabaseSync): {
   return { digest: sha256Canonical(snapshot), currentRevision: revision.revision };
 }
 
-function planDigest(plan: CanonicalImportPlanSummaryV1): string {
-  return sha256Canonical({
-    schemaVersion: 1,
-    instanceId: plan.instanceId,
-    scanned: plan.scanned,
-    retried: plan.retried,
-    sessions: plan.sessions.map((item) => ({
-      logicalSessionId: item.logicalSessionId,
-      sourceSessionId: item.sourceSessionId,
-      sourceCursor: item.sourceCursor,
-      project: item.assignment.project,
-      workspaceId: item.assignment.workspaceId,
-      normalizedDigest: item.normalizedDigest,
-    })),
-  } as unknown as JsonValue);
-}
-
 function mirrorIds(database: DatabaseSync): readonly string[] {
   return (database.prepare(
     `SELECT id FROM logical_sessions
@@ -257,6 +242,7 @@ async function buildStablePlan(input: ConversationTopologyRepairInput): Promise<
   readonly source: ReturnType<typeof sourceState>;
   readonly plan: CanonicalImportPlanSummaryV1;
   readonly digest: string;
+  readonly snapshotPath: string;
 }> {
   const source = resolveSourcePath(input.stateRoot, input.sourceDatabasePath);
   const database = openReadOnlyDatabase(source);
@@ -265,10 +251,11 @@ async function buildStablePlan(input: ConversationTopologyRepairInput): Promise<
     const before = sourceState(database);
     await status(input.onStatus, "repair.codex-plan", "started", `reading ${input.codexInstance.id} without write capability`);
     try {
+      const writer = await RepairPlanWriter.create(resolveCandidatePath(input.stateRoot, input.candidateFile));
       const plan = await visitCodexCanonicalImportPlan({
         instance: input.codexInstance,
         ...(input.fixtureGuard === undefined ? {} : { fixtureGuard: input.fixtureGuard }),
-        visitSession: () => undefined,
+        visitSession: (item) => writer.capture(item),
       });
       const after = sourceState(database);
       if (after.digest !== before.digest) {
@@ -277,9 +264,16 @@ async function buildStablePlan(input: ConversationTopologyRepairInput): Promise<
       if (plan.retried > 0) {
         throw new Error(`Codex repair plan has ${plan.retried} unstable reads; retry preview after the source settles`);
       }
-      const digest = planDigest(plan);
+      const frozen = await writer.seal({
+        sourceDatabasePath: source,
+        sourceDigest: before.digest,
+        currentRevision: before.currentRevision,
+        instance: input.codexInstance,
+        summary: plan,
+      });
+      const digest = frozen.digest;
       await status(input.onStatus, "repair.codex-plan", "succeeded", `planned=${plan.sessions.length}; digest=${digest}`);
-      return { source: before, plan, digest };
+      return { source: before, plan, digest, snapshotPath: frozen.path };
     } catch (error) {
       await status(input.onStatus, "repair.codex-plan", "failed", error instanceof Error ? error.message : "unknown failure");
       throw error;
@@ -310,6 +304,7 @@ export async function previewConversationTopologyRepair(
         candidateDatabasePath: candidate,
         sourceDigest: planned.source.digest,
         codexPlanDigest: planned.digest,
+        planSnapshotPath: planned.snapshotPath,
         currentRevision: planned.source.currentRevision,
         scannedCodexSessions: planned.plan.scanned,
         plannedCodexMirrors: planned.plan.sessions.length,
@@ -525,13 +520,18 @@ export async function stageConversationTopologyRepair(
   const sourcePath = resolveSourcePath(input.stateRoot, input.sourceDatabasePath);
   const candidatePath = resolveCandidatePath(input.stateRoot, input.candidateFile);
   if (existsSync(candidatePath)) throw new Error(`Conversation repair candidate already exists: ${candidatePath}`);
-  const planned = await buildStablePlan(input);
-  if (planned.source.digest !== input.expectedSourceDigest) {
-    throw new Error(`Maintenance source digest changed: expected ${input.expectedSourceDigest}, got ${planned.source.digest}`);
+  await status(input.onStatus, "repair.codex-plan", "started", "loading the frozen, reviewed Codex snapshot");
+  const frozen = await loadRepairPlan({
+    candidatePath,
+    sourceDatabasePath: sourcePath,
+    instance: input.codexInstance,
+    expectedDigest: input.expectedCodexPlanDigest,
+  });
+  const planned = { plan: frozen.data.summary };
+  if (frozen.data.sourceDigest !== input.expectedSourceDigest) {
+    throw new Error("Maintenance source digest does not match the frozen Codex repair snapshot");
   }
-  if (planned.digest !== input.expectedCodexPlanDigest) {
-    throw new Error(`Codex repair plan changed: expected ${input.expectedCodexPlanDigest}, got ${planned.digest}`);
-  }
+  await status(input.onStatus, "repair.codex-plan", "succeeded", `frozen=${frozen.digest}; planned=${planned.plan.sessions.length}`);
 
   const source = openReadOnlyDatabase(sourcePath);
   try {
@@ -585,31 +585,24 @@ export async function stageConversationTopologyRepair(
       retried: 0,
     };
     const projectPort = new SqliteCodexProjectPort(new SqliteCanonicalRepository(candidate));
-    const replayedPlan = await visitCodexCanonicalImportPlan({
-      instance: input.codexInstance,
-      ...(input.fixtureGuard === undefined ? {} : { fixtureGuard: input.fixtureGuard }),
-      visitSession: async (item) => {
-        const applied = await applyCodexCanonicalImportPlan({
-          plan: {
-            schemaVersion: 1,
-            instanceId: planned.plan.instanceId,
-            scanned: 1,
-            retried: 0,
-            sessions: [item],
-            projectAssignments: planned.plan.projectAssignments,
-          },
-          canonicalEngine: engine,
-          projectPort,
-          evidencePort: evidence,
-        });
-        codexImportCounts.created += applied.created;
-        codexImportCounts.advanced += applied.advanced;
-        codexImportCounts.noop += applied.noop;
-      },
+    await visitRepairPlan(frozen, async (item) => {
+      const applied = await applyCodexCanonicalImportPlan({
+        plan: {
+          schemaVersion: 1,
+          instanceId: planned.plan.instanceId,
+          scanned: 1,
+          retried: 0,
+          sessions: [item],
+          projectAssignments: planned.plan.projectAssignments,
+        },
+        canonicalEngine: engine,
+        projectPort,
+        evidencePort: evidence,
+      });
+      codexImportCounts.created += applied.created;
+      codexImportCounts.advanced += applied.advanced;
+      codexImportCounts.noop += applied.noop;
     });
-    if (replayedPlan.retried > 0 || planDigest(replayedPlan) !== input.expectedCodexPlanDigest) {
-      throw new Error("Codex source changed between repair planning and candidate import");
-    }
     const codexImport: CodexCanonicalImportResult = {
       ...codexImportCounts,
       projectAssignments: planned.plan.projectAssignments,
