@@ -187,6 +187,57 @@ function assertRc1Lifecycle(events: readonly Array<{
 }
 
 describe("Rc1 Codex tool projection", () => {
+  it("retains steering and both model responses in separate native steps of the same turn", async () => {
+    const projected = await project([
+      event("question", 0, "user-message", "user", "inspect"),
+      event("first-answer", 1, "assistant-message", "assistant", "first"),
+      event("correction", 2, "user-message", "user", "correction", { turn: 0, step: 1 }),
+      event("call", 3, "tool-call", "assistant", { callId: "c", name: "read", arguments: "{}", protocol: "function" }, { turn: 0, step: 1 }),
+      event("result", 4, "tool-result", "tool", { callId: "c", outputText: "read" }, { turn: 0, step: 1 }),
+      event("revised-answer", 5, "assistant-message", "assistant", "revised", { turn: 0, step: 2 }),
+      event("trailing-correction", 6, "user-message", "user", "stop", { turn: 0, step: 3 }),
+    ]);
+    assertRc1Lifecycle(projected.events);
+    assertRc1SessionInvariants(projected.events as never);
+    expect(projected.events.filter((item) => item.type === "turn/start")).toHaveLength(1);
+    const surface = projected.events.filter((item) => item.surfaceOp === "append");
+    expect(surface.map((item) => item.type)).toEqual([
+      "user/message", "assistant/message", "user/message", "assistant/message",
+      "tool/result", "assistant/message", "user/message",
+    ]);
+    const modelSteps = surface.filter((item) => item.type === "assistant/message");
+    expect(modelSteps.map((item) => item.data.step)).toEqual([1, 2, 3]);
+    expect(modelSteps.flatMap(assistantBlocks).filter((block) => block.type === "text")
+      .map((block) => block.text)).toEqual(["first", "revised"]);
+    const call = projected.events.find((item) => item.type === "tool/call")!;
+    expect(surface.find((item) => item.type === "tool/result")?.sourceEventSeqs).toEqual([call.seq]);
+    expect(projected.events.some((item) => item.type.startsWith("maintenance/"))).toBe(false);
+  });
+
+  it("retains a steering position within a pending tool step without changing call/result coordinates", async () => {
+    const projected = await project([
+      event("call", 0, "tool-call", "assistant", { callId: "c", name: "read", arguments: "{}", protocol: "function" }),
+      event("steer", 1, "user-message", "user", "correction"),
+      event("result", 2, "tool-result", "tool", { callId: "c", outputText: "read" }),
+      event("answer", 3, "assistant-message", "assistant", "revised", { turn: 0, step: 1 }),
+    ]);
+    assertRc1Lifecycle(projected.events);
+    assertRc1SessionInvariants(projected.events as never);
+    expect(projected.events.filter((item) => item.surfaceOp === "append").map((item) => item.type))
+      .toEqual(["assistant/message", "user/message", "tool/result", "assistant/message"]);
+    // This checks the native storage contract, not provider request eligibility.
+    expect(projected.events.filter((item) => item.type === "tool/call" || item.type === "tool/result")
+      .map((item) => item.data.step)).toEqual([1, 1]);
+  });
+
+  it("rejects an explicit step that would combine assistant output across a user", async () => {
+    await expect(project([
+      event("before", 0, "assistant-message", "assistant", "before"),
+      event("steer", 1, "user-message", "user", "correction"),
+      event("after", 2, "assistant-message", "assistant", "after"),
+    ])).rejects.toThrow("crosses a user steering boundary");
+  });
+
   it("materializes a request-valid assistant/message -> tool/call -> tool/result chain", async () => {
     const projected = await project([
       event("user-event", 0, "user-message", "user", "run it"),

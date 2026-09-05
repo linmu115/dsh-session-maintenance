@@ -693,13 +693,6 @@ function collectPortableTurns(events: readonly CanonicalEventV1[]): readonly Por
     const maximum = turn.events.at(-1)!.event.sequence;
     if (minimum <= priorMaximum) throw new TypeError(`Canonical turn ${turn.id} is not contiguous`);
     priorMaximum = maximum;
-    const firstModelSequence = turn.events.find(({ event }) => event.kind !== "user-message")?.event.sequence;
-    if (
-      firstModelSequence !== undefined
-      && turn.events.some(({ event }) => event.kind === "user-message" && event.sequence > firstModelSequence)
-    ) {
-      throw new TypeError(`Canonical turn ${turn.id} contains a user message after model work`);
-    }
   }
   return turns;
 }
@@ -930,6 +923,16 @@ function materializePortableConversationEvents(
         event.kind === "reasoning"
         || event.kind === "assistant-message"
         || (event.kind === "tool-call" && matchedToolCallEventIds.has(event.id)));
+      // RC1 Chat has one assistant node per turn/step. Combining across a
+      // steering message would move later output before that user; emitting
+      // two assistant messages in the same step would overwrite its first UI
+      // node. Require a planned step boundary instead of silently doing either.
+      if (assistantEvents.length > 1 && turn.events.some(({ event }) =>
+        event.kind === "user-message"
+        && event.sequence > assistantEvents[0]!.event.sequence
+        && event.sequence < assistantEvents.at(-1)!.event.sequence)) {
+        throw new TypeError(`Canonical step ${step.id} crosses a user steering boundary`);
+      }
       const blocks = assistantContentBlocks(assistantEvents, matchedToolCallEventIds);
       if (blocks.length > 0) {
         const assistantSequence = assistantEvents[0]!.event.sequence;

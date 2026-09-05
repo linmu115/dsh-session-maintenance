@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Accept user steering after model work inside a Canonical turn, preserving
+  encounter order and the existing tool-call/result step coordinates.
+- Reject a single explicit model step spanning both sides of a user steering
+  message: RC1 Chat would otherwise overwrite an earlier response, or merging
+  its content would move a later response before the user.
 - Mark projected histories as `native` or `portable` and preserve that mode
   across later durable appends.
 - Convert portable RC1 appends into exact MCSF user, assistant, reasoning,

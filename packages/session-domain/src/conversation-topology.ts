@@ -176,6 +176,7 @@ export function planConversationTopology(
   const stepCoordinates = new Map<string, { readonly turnId: string; readonly stepOrdinal: number }>();
   const pendingToolCalls = new Map<string, PendingToolCall>();
   const pendingToolCallsByStep = new Map<string, number>();
+  const stepsWithModelWork = new Set<string>();
   const seenToolCallIds = new Set<string>();
   let cursor: Cursor | null = null;
   let highestTurnOrdinal = -1;
@@ -212,13 +213,23 @@ export function planConversationTopology(
           stepOrdinal: explicit.stepOrdinal,
         };
       } else {
-        if (cursor === null || cursor.turnId !== explicit.turnId || phase === "user") {
+        if (cursor === null || cursor.turnId !== explicit.turnId) {
           cursor = {
             turnId: explicit.turnId,
             turnOrdinal: explicit.turnOrdinal,
             stepId: `${explicit.turnId}:step:0`,
             stepOrdinal: 0,
           };
+          advanceBeforeNextModelPhase = false;
+        } else if (
+          phase === "user"
+          && stepsWithModelWork.has(pendingStepKey(cursor.turnId, cursor.stepId))
+          && !pendingToolCallsByStep.has(pendingStepKey(cursor.turnId, cursor.stepId))
+        ) {
+          // A source turn may receive steering after model work. Keep its
+          // identity and advance, rather than merging later output into step 0.
+          // Never separate an outstanding call from its result for steering.
+          cursor = nextStep(cursor);
           advanceBeforeNextModelPhase = false;
         } else if (
           advanceBeforeNextModelPhase
@@ -303,6 +314,10 @@ export function planConversationTopology(
       kind: event.kind,
       topology,
     });
+
+    if (phase === "reasoning" || phase === "assistant" || phase === "tool-call") {
+      stepsWithModelWork.add(pendingStepKey(topology.turnId, topology.stepId));
+    }
 
     if (phase === "tool-call") {
       toolCallCount += 1;

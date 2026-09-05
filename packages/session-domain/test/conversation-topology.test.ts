@@ -9,7 +9,7 @@ import {
   type JsonValue,
 } from "@linmu/dsh-session-contracts";
 
-import { planConversationTopology } from "../src/index.js";
+import { planConversationTopology, withPlannedConversationTopology } from "../src/index.js";
 
 function event(
   id: string,
@@ -147,6 +147,49 @@ describe("conversation topology planning", () => {
     ]);
     expect(plan.events.map((item) => item.topology.stepOrdinal)).toEqual([0, 0, 0, 1]);
     expect(plan.events.every((item) => item.topology.inference === "derived")).toBe(true);
+  });
+
+  it("keeps in-turn steering ordered and advances steps without resetting or skipping them", () => {
+    const partial = (phase: CanonicalConversationTopologyV1["phase"]): CanonicalConversationTopologyV1 => ({
+      schemaVersion: 1, turnId: "steered-turn", turnOrdinal: 0,
+      stepId: null, stepOrdinal: null, phase, inference: "explicit",
+    });
+    const events = [
+      event("user", 0, "user-message", "user", "inspect", partial("user")),
+      event("call", 1, "tool-call", "assistant", { callId: "call-1" }, partial("tool-call")),
+      event("result", 2, "tool-result", "tool", { callId: "call-1" }, partial("tool-result")),
+      event("answer", 3, "assistant-message", "assistant", "first answer", partial("assistant")),
+      event("steer", 4, "user-message", "user", "correction", partial("user")),
+      event("steer-again", 5, "user-message", "user", "one detail", partial("user")),
+      event("reasoning", 6, "reasoning", "assistant", "reconsider", partial("reasoning")),
+      event("answer-two", 7, "assistant-message", "assistant", "revised answer", partial("assistant")),
+      event("trailing-steer", 8, "user-message", "user", "stop", partial("user")),
+    ];
+    const planned = withPlannedConversationTopology(events);
+    expect(planned.plan.turns).toHaveLength(1);
+    expect(planned.plan.events.map((item) => item.topology.stepOrdinal))
+      .toEqual([0, 0, 0, 1, 2, 2, 2, 2, 3]);
+    expect(planned.plan.continuationEligibility).toEqual({ status: "eligible", reasons: [] });
+    const withoutExtensions = ({ extensions: _ignored, ...rest }: CanonicalEventV1) => rest;
+    expect(planned.events.map(withoutExtensions)).toEqual(events.map(withoutExtensions));
+    expect(withPlannedConversationTopology(planned.events).events).toEqual(planned.events);
+  });
+
+  it("does not split pending parallel calls from their results when steering arrives", () => {
+    const partial = (phase: CanonicalConversationTopologyV1["phase"]): CanonicalConversationTopologyV1 => ({
+      schemaVersion: 1, turnId: "steered-turn", turnOrdinal: 0,
+      stepId: null, stepOrdinal: null, phase, inference: "explicit",
+    });
+    const plan = planConversationTopology([
+      event("call-a", 0, "tool-call", "assistant", { callId: "a" }, partial("tool-call")),
+      event("call-b", 1, "tool-call", "assistant", { callId: "b" }, partial("tool-call")),
+      event("result-a", 2, "tool-result", "tool", { callId: "a" }, partial("tool-result")),
+      event("steer", 3, "user-message", "user", "correction", partial("user")),
+      event("result-b", 4, "tool-result", "tool", { callId: "b" }, partial("tool-result")),
+      event("answer", 5, "assistant-message", "assistant", "revised", partial("assistant")),
+    ]);
+    expect(plan.events.map((item) => item.topology.stepOrdinal)).toEqual([0, 0, 0, 0, 0, 1]);
+    expect(plan.diagnostics).toMatchObject({ matchedToolResultCount: 2, topologyConflictCount: 0 });
   });
 
   it("blocks continuation for an unclosed call without manufacturing a result", () => {
