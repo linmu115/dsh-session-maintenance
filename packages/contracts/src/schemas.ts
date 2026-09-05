@@ -599,6 +599,7 @@ export const adapterCapabilitySchema = z.enum([
   "stable-native-session-id",
   "metadata-hot-update",
   "deep-link-resolution",
+  "verified-anchor-resolution",
   "recovery",
   "projection-verification",
 ]);

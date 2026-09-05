@@ -48,6 +48,8 @@ export interface Rc1ProjectionSession {
   readonly tags: readonly string[];
   /** Determines whether later RC1 appends remain native or extend portable MCSF history. */
   readonly canonicalHistoryMode: "native" | "portable";
+  /** Projection-local aliases; never part of model-facing SessionEvents. */
+  readonly anchorAliases?: Readonly<Record<string, string>>;
   /** Exact fork-inherited prefix length carried outside the RC1 SessionHeader. */
   readonly inheritedEventCount: Rc1SessionLogOffset;
   readonly header: {
@@ -826,6 +828,7 @@ function groupedOtherEvent(group: PortableOtherGroup, createdAt: number): Rc1Ses
 function materializePortableConversationEvents(
   events: readonly CanonicalEventV1[],
   createdAt: number,
+  anchorAliases: Map<string, string>,
 ): readonly Rc1SessionEvent[] {
   validateCanonicalSequence(events);
   const turns = collectPortableTurns(events);
@@ -852,6 +855,15 @@ function materializePortableConversationEvents(
   }
 
   const drafts: PositionedDraft[] = [];
+  const eventsBySequence = new Map(events.map((event) => [event.sequence, event]));
+  const messageIds = new Set<string>();
+  const addAnchorAlias = (alias: string, messageId: string): void => {
+    const existing = anchorAliases.get(alias);
+    if (existing !== undefined && existing !== messageId) {
+      throw new TypeError(`Rc1 portable projection has ambiguous message anchor ${alias}`);
+    }
+    anchorAliases.set(alias, messageId);
+  };
   let insertionOrder = 0;
   const push = (
     sourceSequence: number,
@@ -860,6 +872,25 @@ function materializePortableConversationEvents(
     originSequences: readonly number[] = [],
     resultCallId?: string,
   ): void => {
+    if (event.surfaceOp === "append"
+      && (event.type === "user/message" || event.type === "assistant/message" || event.type === "tool/result")) {
+      const data = isRecord(event.data) ? event.data : undefined;
+      const message = event.type === "user/message" ? data
+        : isRecord(data?.message) ? data.message : undefined;
+      const messageId = nonEmptyString(message?.id);
+      if (messageId === undefined) throw new TypeError("Rc1 portable projection has an empty message ID");
+      if (messageIds.has(messageId)) throw new TypeError(`Rc1 portable projection repeats message ID ${messageId}`);
+      messageIds.add(messageId);
+      // Reserve actual identities too, so an alias can never redirect another
+      // real message. Ambiguity is rejected rather than silently renamed.
+      addAnchorAlias(messageId, messageId);
+      for (const sequence of originSequences) {
+        const origin = eventsBySequence.get(sequence)!;
+        addAnchorAlias(origin.id, messageId);
+        const historicalId = nonEmptyString(canonicalMessageRecord(origin)?.id);
+        if (historicalId !== undefined) addAnchorAlias(historicalId, messageId);
+      }
+    }
     drafts.push({
       sourceSequence,
       rank,
@@ -938,7 +969,8 @@ function materializePortableConversationEvents(
         const assistantSequence = assistantEvents[0]!.event.sequence;
         const assistantId = assistantEvents.length === 1
           && assistantEvents[0]!.event.kind === "assistant-message"
-          ? assistantEvents[0]!.event.id
+          ? nonEmptyString(canonicalMessageRecord(assistantEvents[0]!.event)?.id)
+            ?? assistantEvents[0]!.event.id
           : `mcsf:${turn.id}:${step.id}:assistant`;
         push(assistantSequence, -200, {
           type: "assistant/message",
@@ -1071,7 +1103,11 @@ function materializePortableConversationEvents(
   });
 }
 
-function materializeEvents(events: readonly CanonicalEventV1[], createdAt: number): readonly Rc1SessionEvent[] {
+function materializeEvents(
+  events: readonly CanonicalEventV1[],
+  createdAt: number,
+  anchorAliases = new Map<string, string>(),
+): readonly Rc1SessionEvent[] {
   const hasPortableConversation = events.some((event) =>
     isPortableConversationKind(event.kind)
     && rawEnvelope(event) === undefined);
@@ -1101,7 +1137,7 @@ function materializeEvents(events: readonly CanonicalEventV1[], createdAt: numbe
       "Rc1 projection cannot mix portable conversation topology with native envelopes in one canonical version",
     );
   }
-  return materializePortableConversationEvents(events, createdAt);
+  return materializePortableConversationEvents(events, createdAt, anchorAliases);
 }
 
 function canonicalHistoryMode(
@@ -1187,6 +1223,9 @@ export async function materializeRc1(
       if (!Number.isSafeInteger(updatedAt) || updatedAt < 0) {
         throw new TypeError(`Canonical session ${item.session.id} has an invalid updatedAt timestamp`);
       }
+      const historyMode = canonicalHistoryMode(item.events);
+      const anchorAliases = new Map<string, string>();
+      const events = materializeEvents(item.events, createdAt, anchorAliases);
       const payload: Rc1ProjectionSession = {
         schemaVersion: 1,
         logicalSessionId: item.session.id,
@@ -1197,7 +1236,8 @@ export async function materializeRc1(
         updatedAt: item.session.updatedAt,
         title: item.session.title,
         tags: item.session.tags,
-        canonicalHistoryMode: canonicalHistoryMode(item.events),
+        canonicalHistoryMode: historyMode,
+        ...(historyMode === "portable" ? { anchorAliases: Object.fromEntries(anchorAliases) } : {}),
         inheritedEventCount: rc1SessionLogOffset(0),
         header: {
           version: 0,
@@ -1207,7 +1247,7 @@ export async function materializeRc1(
           isSeeded: false,
           ...(item.projectRoot === null ? {} : { cwd: item.projectRoot }),
         },
-        events: materializeEvents(item.events, createdAt),
+        events,
       };
       await output.writeSession(nativeSessionId, payload as unknown as JsonValue);
       sessionDigests[nativeSessionId] = digest(payload as unknown as JsonValue);

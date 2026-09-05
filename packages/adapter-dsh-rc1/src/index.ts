@@ -41,7 +41,7 @@ export const adapter = defineDshSessionAdapter({
   normalizeAppend: (operation, evidencePort) => normalizeRc1Append(operation, evidencePort),
   inspect: inspectRc1,
   verify: async (expected, actual) => verifyRc1(expected, actual),
-  resolveReference: async (reference, run) => resolveRc1Reference(reference, run),
+  resolveReference: (reference, run, reader) => resolveRc1Reference(reference, run, reader),
   projectedNativeRevision: (canonical, payload) => rc1ProjectedNativeRevision(canonical, payload),
   recoverProjectionSession: recoverRc1ProjectionSession,
   recoverUnmappedProjectionSession: recoverUnmappedRc1ProjectionSession,

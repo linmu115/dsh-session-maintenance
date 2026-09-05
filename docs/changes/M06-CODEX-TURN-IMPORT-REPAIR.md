@@ -136,3 +136,7 @@ candidate has therefore not been activated. A separately reviewed identity
 preservation/alias strategy and focused reference acceptance are required
 before claiming that this topology repair preserves existing deep links.
 No reference protocol or ID algorithm was changed in this three-fix batch.
+
+Follow-up: the r4 identity/anchor implementation and controlled activation are
+documented in [M06-STABLE-REFERENCE-IDENTITY.md](M06-STABLE-REFERENCE-IDENTITY.md).
+The r3 observations above remain a historical audit of that inactive candidate.

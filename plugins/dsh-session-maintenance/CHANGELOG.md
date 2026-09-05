@@ -1,6 +1,19 @@
 # Changelog
 
-## Unreleased
+## 0.2.15 - 2026-09-05
+
+- Retain existing canonical event IDs by complete source identity when Codex
+  mirrors are repaired or incrementally synchronized. Corrected content and
+  topology still create a new immutable version; old versions remain intact.
+- Preserve native RC1 assistant message IDs through portable reconstruction.
+  Keep projection-local aliases when several canonical records share one RC1
+  message; these aliases never enter model-facing history.
+- Verify referenced anchors against the active RC1 projection instead of
+  reporting an unchecked pass-through as resolved. Missing/ambiguous targets
+  return unavailable and produce a failed reference diagnostic checkpoint.
+- Upgrade the RC1 Adapter to 0.1.1 so retained caches refresh for the changed
+  anchor representation. No Obsidian protocol or official model/compaction
+  configuration is changed.
 
 - Use Codex's enclosing rollout task/turn context for imported conversation
   turns. Per-response passthrough IDs no longer split a tool call from its

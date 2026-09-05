@@ -105,6 +105,28 @@ function projection(operationId: string) {
 }
 
 describe("CanonicalSessionEngine", () => {
+  it("keeps imported source IDs stable after repair and a subsequent ordinary synchronization", async () => {
+    const store = new MemoryEngineStore();
+    const engine = new CanonicalSessionEngine(store);
+    const logicalSessionId = "logical-repair-identity" as LogicalSessionId;
+    const input = { logicalSessionId, title: "fixture", tags: [], archivedAt: null,
+      workspaceId: null, sourceCursor: "1", observedAt: at };
+    const oldEvent = event(logicalSessionId, "old-anchor", 0, "old text");
+    const created = await engine.observeCodex({ ...input, events: [oldEvent] });
+    const corrected = { ...oldEvent, id: "new-content-hash", content: { text: "corrected text" },
+      contentDigest: "sha256:corrected" };
+    const advanced = await engine.observeCodex({ ...input, events: [corrected] });
+    expect(advanced.outcome).toBe("advanced");
+    expect(store.versions.get(advanced.versionId!)?.events[0]).toMatchObject({
+      id: "old-anchor", content: { text: "corrected text" }, contentDigest: "sha256:corrected",
+    });
+    expect(store.versions.get(created.versionId!)?.events[0]).toEqual(oldEvent);
+    const repeated = await engine.observeCodex({ ...input, events: [corrected], sourceCursor: "2" });
+    expect(repeated).toMatchObject({ outcome: "noop", versionId: advanced.versionId });
+    const appended = await engine.observeCodex({ ...input, events: [corrected,
+      event(logicalSessionId, "new-tail", 1, "new answer")] });
+    expect(store.versions.get(appended.versionId!)?.events.map((item) => item.id)).toEqual(["old-anchor", "new-tail"]);
+  });
   it("retitles a Codex mirror without changing its events or activity timestamp", async () => {
     const store = new MemoryEngineStore();
     const engine = new CanonicalSessionEngine(store);

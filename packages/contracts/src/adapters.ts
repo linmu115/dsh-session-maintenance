@@ -157,6 +157,8 @@ export interface DshSessionAdapterV1 {
   resolveReference(
     reference: StableSessionReference,
     run: ProjectionRun,
+    /** Read only the requested session; aliases never enter model-facing events. */
+    projection?: ProjectionReader,
   ): Promise<NativeReferenceResolution>;
   /**
    * Returns the native revision represented by the canonical prefix in one

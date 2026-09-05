@@ -64,6 +64,7 @@ export type AdapterCapability =
   | "stable-native-session-id"
   | "metadata-hot-update"
   | "deep-link-resolution"
+  | "verified-anchor-resolution"
   | "recovery"
   | "projection-verification";
 

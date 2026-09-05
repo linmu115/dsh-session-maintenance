@@ -57,6 +57,7 @@ import {
   type StatusEventV1,
   type AdapterId,
   type DshRuntimeBridgeV1,
+  type DshSessionAdapterV1,
   type NativeAppendOperation,
   type NativeSessionId,
   type ProjectionOperationReceipt,
@@ -78,6 +79,8 @@ import type { ContinuationService } from "@linmu/dsh-session-continuation-engine
 import type { StatusLog } from "@linmu/dsh-session-status-log";
 import type { AdapterRegistry } from "@linmu/dsh-session-adapter-host";
 import {
+  JsonProjectionDirectory,
+  projectionRootFor,
   openProjectionRuntimeSessionStream,
   openProjectionRuntimeStream,
   readProjectionRuntimeSnapshot,
@@ -192,6 +195,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly projectionRuntimeRoot: string;
   readonly canonicalEngine: CanonicalSessionEngine;
   readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
+  readonly resolveProjectionAdapter: (adapterId: AdapterId) => DshSessionAdapterV1 | undefined;
   readonly runtimeBroker: ProjectionRuntimeBroker;
   private readonly beforeProjectionPrepare: () => Promise<void>;
   private readonly discovery: DiscoveryService;
@@ -226,6 +230,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly projectionRuntimeRoot: string;
     readonly canonicalEngine: CanonicalSessionEngine;
     readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
+    readonly resolveProjectionAdapter?: (adapterId: AdapterId) => DshSessionAdapterV1 | undefined;
     readonly beforeProjectionPrepare?: () => Promise<void>;
   }) {
     this.instances = input.instances;
@@ -253,6 +258,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.projectionRuntimeRoot = input.projectionRuntimeRoot;
     this.canonicalEngine = input.canonicalEngine;
     this.projectionLifecycleFactory = input.projectionLifecycleFactory;
+    this.resolveProjectionAdapter = input.resolveProjectionAdapter ?? (() => undefined);
     this.beforeProjectionPrepare = input.beforeProjectionPrepare ?? (async () => undefined);
     this.runtimeBroker = new ProjectionRuntimeBroker({
       lifecycleFactory: input.projectionLifecycleFactory,
@@ -322,7 +328,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   }
 
   async resolveStableReference(input: StableLogicalReference): Promise<StableLogicalReferenceResolution> {
-    const resolution = await this.sessionAliases.resolveStableReference(input);
+    let resolution = await this.sessionAliases.resolveStableReference(input);
     if (resolution.runId === null) return resolution;
     const run = await this.projectionRunRepository.getProjectionRun(resolution.runId);
     if (run === undefined) return resolution;
@@ -353,6 +359,31 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       operationId: null,
       diagnosticDetailRef: `diag:reference-${input.referenceType}-${resolution.status}`,
     });
+    const adapter = this.resolveProjectionAdapter(run.adapterId);
+    if (resolution.logicalSessionId !== null && resolution.status === "resolved"
+      && adapter?.manifest.capabilities.includes("verified-anchor-resolution")) {
+      try {
+        const native = await adapter.resolveReference({
+          logicalSessionId: resolution.logicalSessionId,
+          logicalAnchorId: input.logicalAnchorId ?? input.legacyNativeAnchorId,
+          legacyNativeSessionId: resolution.nativeSessionId,
+        }, run, new JsonProjectionDirectory(projectionRootFor(this.projectionRuntimeRoot, run.id)));
+        resolution = { ...resolution, ...native, logicalAnchorId: input.logicalAnchorId };
+        if (resolution.status !== "resolved") {
+          await this.statusLog.fail(span, {
+            errorCode: "REFERENCE_ANCHOR_UNAVAILABLE",
+            diagnosticDetailRef: `diag:reference-${input.referenceType}-unavailable`,
+          });
+          return resolution;
+        }
+      } catch (error) {
+        await this.statusLog.fail(span, {
+          errorCode: "REFERENCE_RESOLUTION_FAILED",
+          diagnosticDetailRef: `diag:reference-resolution-${error instanceof Error ? error.name : "error"}`,
+        });
+        return { ...resolution, nativeAnchorId: null, status: "unavailable" };
+      }
+    }
     await this.statusLog.succeed(span, {
       diagnosticDetailRef: `diag:reference-${input.referenceType}-${resolution.status}`,
     });

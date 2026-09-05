@@ -12,6 +12,7 @@ import {
   type WorkspaceMembership,
 } from "@linmu/dsh-session-contracts";
 import { sha256Canonical, versionIdFor } from "@linmu/dsh-session-domain";
+import { retainCanonicalEventIdentities } from "./retained-event-identity.js";
 
 import type {
   CanonicalEngineReceipt,
@@ -147,10 +148,14 @@ export async function observeCodex(
   const parentVersionIds = current?.headVersionId === null || current === undefined
     ? []
     : [current.headVersionId];
+  const head = parentVersionIds.length === 0 ? undefined : await store.getVersion(parentVersionIds[0]!);
+  if (parentVersionIds.length > 0 && head === undefined) {
+    throw new Error(`Canonical head version is missing: ${current!.headVersionId}`);
+  }
   const version = buildCanonicalVersion({
     logicalSessionId: input.logicalSessionId,
     parentVersionIds,
-    events: input.events,
+    events: retainCanonicalEventIdentities(head?.events ?? [], input.events),
     workspaceId: input.workspaceId,
     title: input.title,
     tags: input.tags,
@@ -167,7 +172,6 @@ export async function observeCodex(
     authorityBinding: input.authorityBinding ?? null,
   };
   if (current?.headVersionId !== null && current !== undefined) {
-    const head = await store.getVersion(current.headVersionId);
     if (head === undefined) {
       throw new Error(`Canonical head version is missing: ${current.headVersionId}`);
     }

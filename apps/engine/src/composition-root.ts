@@ -261,6 +261,9 @@ async function createComposition(
     continuations,
     canonicalEngine,
     beforeProjectionPrepare: async () => { await codexCatalogTitleSync.sync(); },
+    resolveProjectionAdapter: (adapterId) => adapterId === rc1Adapter.manifest.id ? rc1Adapter
+      : adapterId === alpha2Adapter.manifest.id ? alpha2Adapter
+        : adapterId === rc2Adapter.manifest.id ? rc2Adapter : undefined,
     projectionLifecycleFactory: ({ adapterId, bridge }) => {
       const adapter = adapterId === alpha2Adapter.manifest.id
         ? alpha2Adapter

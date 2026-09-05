@@ -84,7 +84,7 @@ export async function runAdapterCoreSmoke(
   ) {
     throw new Error("Normalized append changed its operation identity");
   }
-  const reference = await input.adapter.resolveReference(input.reference, input.projection.run);
+  const reference = await input.adapter.resolveReference(input.reference, input.projection.run, input.reader);
   if (reference.logicalSessionId !== input.reference.logicalSessionId) {
     throw new Error("Reference resolution changed logical session identity");
   }
