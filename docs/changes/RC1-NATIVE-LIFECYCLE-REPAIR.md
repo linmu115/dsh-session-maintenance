@@ -69,3 +69,9 @@ manual acceptance on the basis of synthetic tests alone.
   passes. Maintenance Engine was reloaded, health returned ready and its
   registry reports Adapter 0.1.2. Launcher and DSH were not started by this
   repair. RC1 Profile plugin remains 0.2.15; no Profile reinstall is required.
+
+## User acceptance
+
+On 2026-09-05 the user reported that actual usage no longer had problems and
+authorized committing and pushing this version. This is user-performed
+acceptance, separate from the synthetic and read-only checks above.
