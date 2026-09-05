@@ -56,7 +56,7 @@ function oldNativeSuffix(logicalSessionId: LogicalSessionId): CanonicalEventV1 {
 }
 
 describe("M06 RC1 conversation topology repair", () => {
-  it.each(["active", "tombstoned", "parent-advanced"] as const)("stages a synthetic %s candidate without widening derived history", async (scenario) => {
+  it.each(["active", "tombstoned", "parent-advanced", "invalid-native"] as const)("stages a synthetic %s candidate without widening derived history", async (scenario) => {
     const fixture = await createEngineFixture(`conversation-topology-repair-${scenario}`);
     const sourceDatabasePath = join(fixture.stateRoot, "metadata.sqlite");
     const candidateFile = "metadata.m06-fixture.sqlite";
@@ -83,6 +83,18 @@ describe("M06 RC1 conversation topology repair", () => {
 
     try {
       await importer.sync({ instance });
+      const retainedNativeId = "logical-retained-native" as LogicalSessionId;
+      const chunk = { type: "assistant/chunk", seq: 0, time: Date.parse(at),
+        data: { turn: 1, step: 1, chunk: { type: "text-delta", index: 0, text: "synthetic" } } };
+      await fixture.engine.canonicalEngine.importDshNative({
+        operationId: "import-retained-native" as never,
+        logicalSessionId: retainedNativeId, nativeSessionId: "retained-native" as never,
+        title: "Retained native session", tags: [], archivedAt: null, workspaceId: null, importedAt: at,
+        events: scenario === "invalid-native" ? [{ ...oldNativeSuffix(retainedNativeId),
+          id: "native-orphan-chunk", sequence: 0, kind: "reasoning", role: "assistant",
+          content: chunk.data, rawPayload: chunk, contentDigest: sha256Canonical(chunk.data),
+        }] : [],
+      });
       const retiredMirrorId = "logical-old-internal-codex" as LogicalSessionId;
       await fixture.engine.canonicalEngine.observeCodex({
         logicalSessionId: retiredMirrorId,
@@ -261,11 +273,23 @@ describe("M06 RC1 conversation topology repair", () => {
         expect(statuses.some((event) => event.stage === "repair.rc1-verify")).toBe(false);
         return;
       }
+      if (scenario === "invalid-native") {
+        await expect(staging).rejects.toThrow(/logical-retained-native.*assistant\/chunk/);
+        expect(statuses).toEqual(expect.arrayContaining([
+          expect.objectContaining({ stage: "repair.rc1-verify", state: "failed" }),
+        ]));
+        expect(statuses.some((event) => event.stage === "repair.candidate-ready" && event.state === "succeeded")).toBe(false);
+        expect(fixture.engine.repository.database.prepare(
+          "SELECT id, head_version_id FROM logical_sessions ORDER BY id",
+        ).all()).toEqual(sourceHeadsBefore);
+        expect(await hashTree(fixture.codexHome)).toBe(codexAfterAppend);
+        return;
+      }
       const manifest = await staging;
       expect(manifest).toMatchObject({
         recomposedDerivedSessions: scenario === "tombstoned" ? 0 : 1,
         retiredCodexMirrors: 1,
-        verifiedRc1Sessions: scenario === "tombstoned" ? 1 : 2,
+        verifiedRc1Sessions: scenario === "tombstoned" ? 2 : 3,
         integrityCheck: "ok",
         foreignKeyViolations: 0,
       });

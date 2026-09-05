@@ -643,10 +643,14 @@ export async function stageConversationTopologyRepair(
     });
     await status(input.onStatus, "repair.derived-recompose", "succeeded", `recomposed=${recomposed.length}`);
 
-    const verifyIds = [...new Set([
-      ...planned.plan.sessions.map((item) => item.logicalSessionId),
-      ...recomposed,
-    ])];
+    // Startup materializes the whole active catalog, not only the repaired
+    // Codex subset. A retained native head can block the same launch.
+    const verifyIds = (candidate.prepare(`SELECT id, head_version_id FROM logical_sessions s
+      WHERE s.head_version_id IS NOT NULL AND s.tombstoned_at IS NULL
+      AND NOT EXISTS (SELECT 1 FROM session_tombstones t
+        WHERE t.logical_session_id = s.id AND t.restored_at IS NULL)
+      ORDER BY s.id`).all() as unknown as SessionHeadRow[])
+      .map((row) => row.id as LogicalSessionId);
     failedStage = "repair.rc1-verify";
     await status(input.onStatus, "repair.rc1-verify", "started", `sessions=${verifyIds.length}`);
     const verifiedRc1Sessions = await verifyRc1Sessions({

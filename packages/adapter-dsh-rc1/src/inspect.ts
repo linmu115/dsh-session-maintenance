@@ -57,7 +57,7 @@ function requireOpenStep(
   const step = integerField(event.data, "step", event.type);
   if (turn !== openTurn || step !== openStep) {
     throw new TypeError(
-      `Rc1 ${event.type} names turn ${turn}/step ${step} but open is turn ${String(openTurn)}/step ${String(openStep)}`,
+      `Rc1 ${event.type} names turn ${turn}/step ${step} but open is turn ${String(openTurn)}/step ${String(openStep)} (seq ${event.seq})`,
     );
   }
 }
@@ -154,7 +154,14 @@ export async function inspectRc1(reader: ProjectionReader): Promise<ProjectionIn
     const value = await reader.readSession(id);
     const payload = parsePayload(value);
     if (payload.header.id !== id) throw new TypeError(`Rc1 payload identity mismatch for ${id}`);
-    assertRc1SessionInvariants(payload.events);
+    try {
+      assertRc1SessionInvariants(payload.events);
+    } catch (error) {
+      throw new TypeError(
+        `Rc1 projection session ${payload.logicalSessionId} failed inspection: ${error instanceof Error ? error.message : "invalid native lifecycle"}`,
+        { cause: error },
+      );
+    }
     sessionDigests[id] = digest(value);
     if (workspaceReader.listNativeWorkspaceIds === undefined && payload.workspaceId !== null) {
       workspaceIds.push(payload.workspaceId);

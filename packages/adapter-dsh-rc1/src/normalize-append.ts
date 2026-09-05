@@ -23,6 +23,13 @@ interface NativeEvent {
 
 type CanonicalHistoryMode = "native" | "portable";
 
+// These are known SessionEvent controls, not unknown conversation semantics.
+// Native history must retain them or later chunks/results have no open turn.
+const NATIVE_CONTROL_TYPES = new Set([
+  "turn/start", "turn/end", "step/start", "step/end",
+  "request/header", "request/context", "session/end-seed",
+]);
+
 const PORTABLE_EVIDENCE_ONLY_TYPES = new Set([
   "turn/start",
   "turn/end",
@@ -42,6 +49,7 @@ function eventIdentity(type: string): {
   readonly kind: CanonicalEventV1["kind"];
   readonly role: CanonicalEventV1["role"];
 } {
+  if (NATIVE_CONTROL_TYPES.has(type)) return { kind: "system-metadata", role: "system" };
   if (type === "user/message") return { kind: "user-message", role: "user" };
   if (type === "assistant/message" || type === "assistant/chunk") return { kind: type === "assistant/message" ? "assistant-message" : "reasoning", role: "assistant" };
   if (type === "tool/call") return { kind: "tool-call", role: "assistant" };

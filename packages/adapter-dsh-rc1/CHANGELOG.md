@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.2 - 2026-09-05
+
+- Preserve RC1's known turn/step, request and seed controls as native
+  `system-metadata` during native appends. Previously they became `other`,
+  removing the enclosing lifecycle on the next projection and causing
+  `assistant/chunk ... open is turn null/step null` startup failures.
+- Keep portable lifecycle records evidence-only and unknown events isolated.
+- Include the logical session ID and failing event sequence in inspection
+  failures; do not bypass the RC1 relational checks.
+- Add native append/materialize/reload roundtrip regression coverage.
+
 ## Unreleased
 
 - Accept user steering after model work inside a Canonical turn, preserving
