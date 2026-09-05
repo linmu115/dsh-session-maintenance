@@ -1,7 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
 import { z, ZodError } from "zod";
-import { resolveProjectionSessionIdentity } from "./projection-identity.js";
 
 import {
   SessionMaintenanceError,
@@ -48,15 +47,6 @@ import {
   DASHBOARD_CANONICAL_MIGRATION_PREVIEW_PATH,
   DASHBOARD_CANONICAL_WORKSPACES_PATH,
   DASHBOARD_CANONICAL_PROJECTS_PATH,
-  readCanonicalDashboardSession,
-  readCanonicalWorkspaceDirectory,
-  readCanonicalProjectDirectory,
-  updateCanonicalDashboardSession,
-  deleteCanonicalDashboardSession,
-  restoreCanonicalDashboardSession,
-  deleteLogicalWorkspace,
-  readRecentlyDeleted,
-  readRunCenter,
 } from "./dashboard.js";
 
 export interface RouteContext {
@@ -329,8 +319,7 @@ export async function routeRequest(
     }
     const projectionIdentity = /^\/v1\/projection-runs\/([^/]+)\/sessions\/([^/]+)\/identity$/u.exec(url.pathname);
     if (request.method === "GET" && projectionIdentity !== null) {
-      const resolution = resolveProjectionSessionIdentity(context.engine.repository.database,
-        pathId(projectionIdentity[1]!), pathId(projectionIdentity[2]!));
+      const resolution = context.engine.sessionQueries.resolveProjectionSessionIdentity(pathId(projectionIdentity[1]!), pathId(projectionIdentity[2]!));
       if (resolution === undefined) send(response, 404, errorBody("SESSION_NOT_MAPPED", "Session is not mapped in this active projection run"));
       else send(response, 200, { resolution });
       return;
@@ -339,28 +328,9 @@ export async function routeRequest(
     if (request.method === "DELETE" && projectionDelete !== null) {
       const runId = pathId(projectionDelete[1]!);
       const nativeSessionId = pathId(projectionDelete[2]!);
-      const run = await context.engine.projectionRunRepository.getProjectionRun(runId as never);
-      if (run === undefined) { send(response, 404, errorBody("SESSION_NOT_MAPPED", "Projection run not found")); return; }
-      const span = await context.engine.statusLog.start({
-        runId: run.id, leaseId: run.leaseId, profileId: run.profileId, adapterId: run.adapterId,
-        dshVersion: run.dshVersion, stage: "run.shutdown-recovery", logicalSessionId: null,
-        nativeSessionId: nativeSessionId as never, operationId: null, diagnosticDetailRef: "diag:session-delete",
-      });
-      // Resolve and mutate synchronously with no await in between. A first-write
-      // derivation cannot switch the native identity between two HTTP calls.
-      const resolution = resolveProjectionSessionIdentity(context.engine.repository.database, runId, nativeSessionId);
-      const at = new Date();
-      const deletion = resolution === undefined ? undefined : deleteCanonicalDashboardSession(
-        context.engine.repository.database, resolution.logicalSessionId, at.toISOString(),
-        new Date(at.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      );
-      if (deletion === undefined) {
-        await context.engine.statusLog.fail(span, { errorCode: "SESSION_NOT_MAPPED" });
-        send(response, 404, errorBody("SESSION_NOT_MAPPED", "Session is not mapped in this active projection run"));
-      } else {
-        await context.engine.statusLog.succeed(span, { diagnosticDetailRef: `diag:session-delete:${deletion.logicalSessionId}:${deletion.state}` });
-        send(response, deletion.state === "pending-delete" ? 202 : 200, { resolution, deletion });
-      }
+      const receipt = await context.engine.sessionCommands.deleteProjectedSession(runId, nativeSessionId);
+      if (receipt === undefined) send(response, 404, errorBody("SESSION_NOT_MAPPED", "Session is not mapped in this active projection run"));
+      else send(response, receipt.deletion.state === "pending-delete" ? 202 : 200, receipt);
       return;
     }
     const projectionRuntimeMatch = /^\/v1\/projection-runs\/([^/]+)\/runtime$/u.exec(url.pathname);
@@ -410,19 +380,19 @@ export async function routeRequest(
       return;
     }
     if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_WORKSPACES_PATH) {
-      send(response, 200, { directory: await readCanonicalWorkspaceDirectory(context.engine.repository.database) });
+      send(response, 200, { directory: await context.engine.sessionQueries.readCanonicalWorkspaceDirectory() });
       return;
     }
     if (request.method === "GET" && url.pathname === DASHBOARD_CANONICAL_PROJECTS_PATH) {
-      send(response, 200, { directory: await readCanonicalProjectDirectory(context.engine.repository.database) });
+      send(response, 200, { directory: await context.engine.sessionQueries.readCanonicalProjectDirectory() });
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/canonical/recently-deleted") {
-      send(response, 200, { sessions: await readRecentlyDeleted(context.engine.repository.database) });
+      send(response, 200, { sessions: await context.engine.sessionQueries.readRecentlyDeleted() });
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/canonical/run-center") {
-      send(response, 200, { runs: readRunCenter(context.engine.repository.database) });
+      send(response, 200, { runs: context.engine.sessionQueries.readRunCenter() });
       return;
     }
     if (request.method === "GET" && url.pathname === "/v1/canonical/adapters") {
@@ -465,15 +435,14 @@ export async function routeRequest(
     }
     const canonicalWorkspace = url.pathname.match(/^\/v1\/canonical\/workspaces\/([^/]+)$/u);
     if (request.method === "DELETE" && canonicalWorkspace !== null) {
-      const deleted = deleteLogicalWorkspace(context.engine.repository.database, pathId(canonicalWorkspace[1]!), new Date().toISOString());
+      const deleted = context.engine.sessionCommands.deleteWorkspace(pathId(canonicalWorkspace[1]!));
       if (!deleted) send(response, 404, errorBody("CANONICAL_WORKSPACE_NOT_FOUND", "Canonical workspace not found"));
       else send(response, 200, { deleted: true });
       return;
     }
     const canonicalSession = url.pathname.match(/^\/v1\/canonical\/sessions\/([^/]+)$/u);
     if (request.method === "GET" && canonicalSession !== null) {
-      const detail = await readCanonicalDashboardSession(
-        context.engine.repository.database,
+      const detail = await context.engine.sessionQueries.readCanonicalDashboardSession(
         pathId(canonicalSession[1]!),
       );
       if (detail === undefined) {
@@ -484,11 +453,9 @@ export async function routeRequest(
       return;
     }
     if (request.method === "PATCH" && canonicalSession !== null) {
-      const detail = await updateCanonicalDashboardSession(
-        context.engine.repository.database,
+      const detail = await context.engine.sessionCommands.updateSession(
         pathId(canonicalSession[1]!),
         canonicalSessionPatchSchema.parse(await readJsonBody(request)) as CanonicalSessionMaintenancePatch,
-        new Date().toISOString(),
       );
       if (detail === undefined) send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
       else send(response, 200, { session: detail });
@@ -496,47 +463,15 @@ export async function routeRequest(
     }
     if (request.method === "DELETE" && canonicalSession !== null) {
       const logicalSessionId = pathId(canonicalSession[1]!);
-      const activeRows = context.engine.repository.database.prepare(
-        `SELECT DISTINCT pr.id, pr.lease_id, pr.profile_id, pr.adapter_id, pr.dsh_version
-         FROM projection_runs pr JOIN projection_sessions ps ON ps.run_id = pr.id
-         WHERE ps.logical_session_id = ? AND pr.state IN ('preparing','running','draining','verifying','recovery-required','recovering')`,
-      ).all(logicalSessionId) as unknown as Array<{ readonly id: string; readonly lease_id: string; readonly profile_id: string; readonly adapter_id: string; readonly dsh_version: string }>;
-      const spans = [];
-      for (const run of activeRows) spans.push(await context.engine.statusLog.start({
-        runId: run.id as never,
-        leaseId: run.lease_id as never,
-        profileId: run.profile_id,
-        adapterId: run.adapter_id as never,
-        dshVersion: run.dsh_version,
-        stage: "run.shutdown-recovery",
-        logicalSessionId: logicalSessionId as never,
-        nativeSessionId: null,
-        operationId: null,
-        diagnosticDetailRef: "diag:session-delete",
-      }));
-      const at = new Date();
-      const result = deleteCanonicalDashboardSession(
-        context.engine.repository.database,
-        logicalSessionId,
-        at.toISOString(),
-        new Date(at.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      );
-      if (result === undefined) {
-        for (const span of spans) await context.engine.statusLog.fail(span, { errorCode: "SESSION_NOT_FOUND" });
-        send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
-      } else {
-        for (const span of spans) {
-          if (result.state === "pending-delete") await context.engine.statusLog.fail(span, { errorCode: "DELETE_PENDING_WRITES", diagnosticDetailRef: "diag:session-delete-pending" });
-          else await context.engine.statusLog.succeed(span, { diagnosticDetailRef: "diag:session-delete-hidden" });
-        }
-        send(response, result.state === "pending-delete" ? 202 : 200, { deletion: result });
-      }
+      const result = await context.engine.sessionCommands.deleteSession(logicalSessionId);
+      if (result === undefined) send(response, 404, errorBody("CANONICAL_SESSION_NOT_FOUND", "Canonical session not found"));
+      else send(response, result.state === "pending-delete" ? 202 : 200, { deletion: result });
       return;
     }
     const canonicalRestore = url.pathname.match(/^\/v1\/canonical\/sessions\/([^/]+)\/restore$/u);
     if (request.method === "POST" && canonicalRestore !== null) {
       emptyRequestSchema.parse(await readJsonBody(request));
-      const restored = restoreCanonicalDashboardSession(context.engine.repository.database, pathId(canonicalRestore[1]!), new Date().toISOString());
+      const restored = context.engine.sessionCommands.restoreSession(pathId(canonicalRestore[1]!));
       if (restored === undefined) send(response, 404, errorBody("CANONICAL_SESSION_NOT_DELETED", "Canonical session is not deleted"));
       else send(response, 200, { restoration: restored });
       return;

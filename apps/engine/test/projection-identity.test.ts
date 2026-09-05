@@ -1,9 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
 import { expect, it } from "vitest";
-import { resolveProjectionSessionIdentity } from "../src/http/projection-identity.js";
+import { SessionMaintenanceQueries } from "../src/session-maintenance-queries.js";
 
 it("resolves by exact run/native identity, including same-title mirrors and branches, never an old run", () => {
   const db = new DatabaseSync(":memory:");
+  const queries = new SessionMaintenanceQueries(db);
   try {
     db.exec(`
       CREATE TABLE projection_runs (id TEXT PRIMARY KEY, state TEXT);
@@ -13,12 +14,12 @@ it("resolves by exact run/native identity, including same-title mirrors and bran
       INSERT INTO logical_sessions VALUES ('mirror','Same title',NULL,'codex'), ('derived','Same title',NULL,'maintenance');
       INSERT INTO projection_sessions VALUES ('run-current','native-mirror','mirror'), ('run-current','native-derived','derived'), ('run-closed','native-stale','mirror');
     `);
-    expect(resolveProjectionSessionIdentity(db, "run-current", "native-mirror")).toEqual({ logicalSessionId: "mirror", title: "Same title", status: "active" });
-    expect(resolveProjectionSessionIdentity(db, "run-current", "native-derived")?.logicalSessionId).toBe("derived");
-    expect(resolveProjectionSessionIdentity(db, "run-current", "native-stale")).toBeUndefined();
-    expect(resolveProjectionSessionIdentity(db, "run-closed", "native-stale")).toBeUndefined();
+    expect(queries.resolveProjectionSessionIdentity("run-current", "native-mirror")).toEqual({ logicalSessionId: "mirror", title: "Same title", status: "active" });
+    expect(queries.resolveProjectionSessionIdentity("run-current", "native-derived")?.logicalSessionId).toBe("derived");
+    expect(queries.resolveProjectionSessionIdentity("run-current", "native-stale")).toBeUndefined();
+    expect(queries.resolveProjectionSessionIdentity("run-closed", "native-stale")).toBeUndefined();
     db.exec("UPDATE logical_sessions SET tombstoned_at='2026-09-05' WHERE id='mirror'");
-    expect(resolveProjectionSessionIdentity(db, "run-current", "native-mirror")?.status).toBe("deleted");
+    expect(queries.resolveProjectionSessionIdentity("run-current", "native-mirror")?.status).toBe("deleted");
     expect(db.prepare("SELECT count(*) AS count FROM logical_sessions").get()?.count).toBe(2);
   } finally { db.close(); }
 });

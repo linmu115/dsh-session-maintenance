@@ -101,6 +101,8 @@ import {
 import type { StableLogicalReference, StableLogicalReferenceResolution } from "@linmu/dsh-session-contracts";
 
 import type { WriteService } from "./write-service.js";
+import { SessionMaintenanceCommands } from "./session-maintenance-commands.js";
+import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
 import { ProjectionRuntimeBroker } from "./runtime-broker.js";
 import { SqliteRuntimeProjectResolver } from "./runtime-project-resolver.js";
 
@@ -197,6 +199,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
   readonly resolveProjectionAdapter: (adapterId: AdapterId) => DshSessionAdapterV1 | undefined;
   readonly runtimeBroker: ProjectionRuntimeBroker;
+  readonly sessionCommands: SessionMaintenanceCommands;
+  readonly sessionQueries: SessionMaintenanceQueries;
   private readonly beforeProjectionPrepare: () => Promise<void>;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
@@ -252,6 +256,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.statusLog = input.statusLog;
     this.adapterRegistry = input.adapterRegistry;
     this.projectionRunRepository = input.projectionRunRepository;
+    this.sessionQueries = new SessionMaintenanceQueries(input.repository.database);
+    this.sessionCommands = new SessionMaintenanceCommands(
+      input.repository.database, this.sessionQueries, this.statusLog, this.projectionRunRepository, this.clock,
+    );
     this.canonicalProjectionSource = input.canonicalProjectionSource;
     this.sessionAliases = input.sessionAliases
       ?? new SqliteSessionAliasRepository(input.repository.database);
