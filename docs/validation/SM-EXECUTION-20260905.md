@@ -8,21 +8,21 @@ This ledger distinguishes source completion, package verification, and live use.
 
 | Task | Status | Evidence / next step |
 | --- | --- | --- |
-| SM-00 | Source and portable package verified; live activation pending | 20 focused tests + 1 built UI test; full build; archive CLI/authentication/shutdown verification; `docs/changes/SM-00.md` |
+| SM-00 | Deployed; user UI acceptance pending | Engine 0.1.15; real Dashboard HTML, script and authentication verified |
 | SM-01 | Integrated | Reviewed commit `7a37006`; 38 local links checked |
 | SM-02 | Integrated | `4162ecb` from agent `d008942`; schema 17; 98 agent tests and 16 integration regression tests passed |
 | SM-03 | Integrated | `e7c372a`; command/query services and exact identity transaction boundary |
 | SM-04 | Integrated | `77736dd`; Store read ports and unified Adapter Registry |
 | SM-05 | Paused outside release | Uncommitted import coordination work remains in its separate worktree |
 | SM-06 | Pending SM-04/05 | Runtime/plugin internal responsibilities |
-| SM-07 | SCM host committed and reviewed; Maintenance consumer pending SM-03/06 | SCM `e8ba84e` on exact installed `3833cb9`; 34 tests; separate repository |
+| SM-07 | SCM host 0.3.2 deployed; Maintenance consumer pending | Release `0a98ea9` on exact installed `3833cb9`; 34 tests; separate repository |
 | SM-08 | Read-only design complete; implementation pending SM-05 | Full reference inventory, external source coverage and writer coordination requirements documented by storage agent |
 | SM-09 | Pending SM-06/08 | Runtime/cache/backup reclamation |
 | SM-10 | Pending SM-07/08/09 | Five-day history retention |
 | SM-11 | Pending SM-10 | Incremental index writes and measured benchmark |
 | SM-12 | Conditional after SM-11 measurement | Chunking/compression/range reads |
 | SM-13 | Paused outside release | Unverified hook changes remain isolated; deployed Launcher and its five prior dirty files are preserved |
-| SM-14 | Current completed batch authorized for release | Engine 0.1.15, Maintenance 0.2.17, SCM 0.3.2; see release preparation and subsequent activation record |
+| SM-14 | Completed batch committed and live; user acceptance pending | Engine 0.1.15 (`37c1bfe`), Maintenance 0.2.17, SCM 0.3.2; see 2026-09-06 live release record |
 
 Construction agents are paused at the user's request. The user explicitly
 authorized committing and activating the completed batch, followed by their own

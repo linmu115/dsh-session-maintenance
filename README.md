@@ -2,9 +2,9 @@
 
 一个以 Canonical 会话、不可变版本图和可恢复运行投影管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。保留版本比较、Checkpoint、逻辑删除与恢复、稳定引用，以及明确发起的 Codex 延续任务。
 
-截至 2026-09-05 的已记录运行基线是 Engine **0.1.14**、Maintenance 插件 **0.2.16**、Session Context Menu（SCM）**0.3.1**，Maintenance 源码对应 `4b49927`，运行于 DSH **0.1.2-rc.1** Canonical 投影体系。正式 `web` profile 已使用新体系；早期“尚未替换旧同步插件”的说明仅属于历史阶段。
+截至 2026-09-06，实际运行版本为 Engine **0.1.15**、Maintenance 插件 **0.2.17**、Session Context Menu（SCM）**0.3.2**，Engine 产物对应 `37c1bfe`，SCM 对应 `0a98ea9`，运行于 DSH **0.1.2-rc.1** 的 `web` profile。原 `4b49927` 的身份与空会话修复完整保留在提交祖先中。
 
-看板自动发现补丁 `a6b4053` 已通过合成测试和独立 CLI 验证，但在上述运行快照中**尚未部署**。源码可启动看板不代表已运行进程的入口已经恢复；实际切换和浏览器验收应单独记录。依据见[审查存档](docs/validation/2026-09-05-maintenance-architecture-review.md)和[看板补丁说明](docs/changes/DASHBOARD-DEFAULT-ROOT-20260905.md)。
+看板自动发现已部署，页面、应用脚本、认证流程和真实插件到 Engine 的连接均已验证。用户界面点击验收仍由用户进行。发布包含 SM-00 至 SM-04 和 SCM action host，五天保留与自动回收尚未启用。完整产物、数据库升级、旧运行恢复与回退位置见[发布记录](docs/validation/2026-09-06-maintenance-0.1.15-live-release.md)。[审查存档](docs/validation/2026-09-05-maintenance-architecture-review.md)保留升级前的事实快照。
 
 ## 当前架构
 
@@ -46,7 +46,7 @@ pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint --sta
 pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint --state-root "<维护状态目录>" serve --host 127.0.0.1 --port 0 --json
 ```
 
-候选源码默认相对 Engine 安装位置查找 Dashboard 构建；也可传 `--dashboard-root <目录>`。显式目录无效会报错，不含 UI 的安装仍可只启动 API。旧运行构建需要显式目录或正常升级后才获得自动发现能力。
+Engine 0.1.15 默认相对安装位置查找 Dashboard 构建；也可传 `--dashboard-root <目录>`。显式目录无效会报错，不含 UI 的安装仍可只启动 API。旧构建需要显式目录或正常升级后才获得自动发现能力。
 
 CLI 优先使用显式 `--state-root`，其次读取 `DSH_SESSION_MAINTENANCE_STATE_ROOT`，两者均未提供时使用当前目录下 `.dsh-session-maintenance`。便携包启动脚本默认使用 `%LOCALAPPDATA%\DSH-Session-Maintenance`，支持 `DSM_STATE_ROOT`。不要让不同启动方式无意连接不同状态库。
 
