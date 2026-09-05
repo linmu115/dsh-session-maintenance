@@ -56,8 +56,8 @@ function oldNativeSuffix(logicalSessionId: LogicalSessionId): CanonicalEventV1 {
 }
 
 describe("M06 RC1 conversation topology repair", () => {
-  it("stages a candidate, preserves old versions and validates recomposed derived sessions", async () => {
-    const fixture = await createEngineFixture("conversation-topology-repair");
+  it.each(["active", "tombstoned", "parent-advanced"] as const)("stages a synthetic %s candidate without widening derived history", async (scenario) => {
+    const fixture = await createEngineFixture(`conversation-topology-repair-${scenario}`);
     const sourceDatabasePath = join(fixture.stateRoot, "metadata.sqlite");
     const candidateFile = "metadata.m06-fixture.sqlite";
     const candidatePath = join(fixture.stateRoot, candidateFile);
@@ -163,6 +163,37 @@ describe("M06 RC1 conversation topology repair", () => {
         },
       });
       const oldChildHead = (await fixture.engine.canonicalEngine.store.getSession(childId))!.headVersionId!;
+      if (scenario === "tombstoned") {
+        await fixture.engine.repository.saveCheckpoint({
+          id: "checkpoint-deleted-derived",
+          name: "Deleted derived fixture",
+          description: "Synthetic deletion preflight",
+          refs: { [childId]: oldChildHead },
+          backupTransactionIds: [],
+          createdBy: "fixture",
+          createdAt: at,
+        });
+        await fixture.engine.canonicalEngine.tombstone({
+          logicalSessionId: childId,
+          operationId: "operation-delete-derived" as never,
+          checkpointId: "checkpoint-deleted-derived" as never,
+          deletedAt: at,
+          retentionUntil: "2026-10-05T00:00:00.000Z",
+        });
+      }
+      if (scenario === "parent-advanced") {
+        await appendFile(join(fixture.codexHome, "rollouts", "thread-fixture.jsonl"),
+          `${JSON.stringify({ type: "response_item", payload: {
+            type: "message", id: "after-fork-source-event", role: "user",
+            content: [{ type: "input_text", text: "future parent work after the child's fork" }],
+          } })}\n`);
+      }
+      const deletionBefore = fixture.engine.repository.database.prepare(
+        "SELECT * FROM session_tombstones WHERE logical_session_id = ?",
+      ).get(childId);
+      const derivationBefore = fixture.engine.repository.database.prepare(
+        "SELECT * FROM session_derivations WHERE child_session_id = ?",
+      ).get(childId);
       const codexBefore = await hashTree(fixture.codexHome);
       const sourceHeadsBefore = fixture.engine.repository.database.prepare(
         "SELECT id, head_version_id FROM logical_sessions ORDER BY id",
@@ -181,7 +212,8 @@ describe("M06 RC1 conversation topology repair", () => {
         retriedCodexSessions: 0,
         existingCodexMirrors: 2,
         retiredCodexMirrors: 1,
-        derivedSessionsToRecompose: 1,
+        derivedSessionsToRecompose: scenario === "tombstoned" ? 0 : 1,
+        derivedSessionsWithRetiredParent: 0,
         candidateExists: false,
       });
       expect(fixture.engine.repository.database.prepare(
@@ -197,7 +229,7 @@ describe("M06 RC1 conversation topology repair", () => {
       const codexAfterAppend = await hashTree(fixture.codexHome);
       expect(codexAfterAppend).not.toBe(codexBefore);
 
-      const manifest = await stageConversationTopologyRepair({
+      const staging = stageConversationTopologyRepair({
         stateRoot: fixture.stateRoot,
         sourceDatabasePath,
         candidateFile,
@@ -208,10 +240,32 @@ describe("M06 RC1 conversation topology repair", () => {
         now: () => at,
         onStatus: (event) => { statuses.push(event); },
       });
+      if (scenario === "parent-advanced") {
+        await expect(staging).rejects.toThrow("fork boundary does not contain a repaired parent source event");
+        const rejectedCandidate = new DatabaseSync(candidatePath, { readOnly: true });
+        try {
+          expect(rejectedCandidate.prepare("SELECT head_version_id FROM logical_sessions WHERE id = ?").get(childId))
+            .toEqual({ head_version_id: oldChildHead });
+          expect(rejectedCandidate.prepare("SELECT * FROM session_derivations WHERE child_session_id = ?").get(childId))
+            .toEqual(derivationBefore);
+        } finally {
+          rejectedCandidate.close();
+        }
+        expect(await hashTree(fixture.codexHome)).toBe(codexAfterAppend);
+        expect(fixture.engine.repository.database.prepare(
+          "SELECT id, head_version_id FROM logical_sessions ORDER BY id",
+        ).all()).toEqual(sourceHeadsBefore);
+        expect(statuses).toEqual(expect.arrayContaining([
+          expect.objectContaining({ stage: "repair.derived-recompose", state: "failed" }),
+        ]));
+        expect(statuses.some((event) => event.stage === "repair.rc1-verify")).toBe(false);
+        return;
+      }
+      const manifest = await staging;
       expect(manifest).toMatchObject({
-        recomposedDerivedSessions: 1,
+        recomposedDerivedSessions: scenario === "tombstoned" ? 0 : 1,
         retiredCodexMirrors: 1,
-        verifiedRc1Sessions: 2,
+        verifiedRc1Sessions: scenario === "tombstoned" ? 1 : 2,
         integrityCheck: "ok",
         foreignKeyViolations: 0,
       });
@@ -225,7 +279,17 @@ describe("M06 RC1 conversation topology repair", () => {
         const childHeadRow = candidate.prepare(
           "SELECT head_version_id FROM logical_sessions WHERE id = ?",
         ).get(childId) as { readonly head_version_id: string };
-        expect(childHeadRow.head_version_id).not.toBe(oldChildHead);
+        if (scenario === "tombstoned") {
+          expect(childHeadRow.head_version_id).toBe(oldChildHead);
+          expect(candidate.prepare("SELECT tombstoned_at FROM logical_sessions WHERE id = ?").get(childId))
+            .toEqual({ tombstoned_at: at });
+        } else {
+          expect(childHeadRow.head_version_id).not.toBe(oldChildHead);
+        }
+        expect(candidate.prepare("SELECT * FROM session_tombstones WHERE logical_session_id = ?").get(childId))
+          .toEqual(deletionBefore);
+        expect(candidate.prepare("SELECT * FROM session_derivations WHERE child_session_id = ?").get(childId))
+          .toEqual(derivationBefore);
         expect(candidate.prepare("SELECT COUNT(*) AS count FROM session_versions WHERE id = ?").get(oldChildHead))
           .toEqual({ count: 1 });
         expect(candidate.prepare("SELECT COUNT(*) AS count FROM checkpoints WHERE id = ?").get(manifest.checkpointId))
@@ -245,9 +309,14 @@ describe("M06 RC1 conversation topology repair", () => {
         const head = await candidateStore.getVersion(child!.headVersionId!);
         expect(JSON.stringify(head!.events)).not.toContain("after-preview-live-message");
         const suffix = head!.events.find((event) => event.id === "old-dsh-native-suffix")!;
-        expect(suffix.rawPayload).toBeNull();
-        expect(suffix.extensions.portableFromRc1).toBe(true);
-        expect(readCanonicalConversationTopologyV1(suffix)).not.toBeNull();
+        if (scenario === "active") {
+          expect(suffix.rawPayload).toBeNull();
+          expect(suffix.extensions.portableFromRc1).toBe(true);
+          expect(readCanonicalConversationTopologyV1(suffix)).not.toBeNull();
+        } else {
+          expect(suffix.rawPayload).not.toBeNull();
+          expect(suffix.extensions.portableFromRc1).toBeUndefined();
+        }
       } finally {
         candidateStore.database.close();
       }

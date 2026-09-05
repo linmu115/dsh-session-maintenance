@@ -51,6 +51,7 @@ import {
 } from "./codex-canonical-import.js";
 import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
 import { loadRepairPlan, RepairPlanWriter, visitRepairPlan } from "./conversation-repair-plan.js";
+import { assertDerivedParentForkBoundary } from "./conversation-derived-boundary.js";
 
 export type ConversationTopologyRepairStage =
   | "repair.preview"
@@ -222,10 +223,17 @@ function mirrorIds(database: DatabaseSync): readonly string[] {
   ).all() as unknown as Array<{ readonly id: string }>).map((row) => row.id);
 }
 
-function derivations(database: DatabaseSync): readonly DerivationRow[] {
+function activeDerivations(database: DatabaseSync): readonly DerivationRow[] {
   return database.prepare(
-    `SELECT child_session_id, parent_session_id, base_version_id
-     FROM session_derivations ORDER BY child_session_id`,
+    `SELECT d.child_session_id, d.parent_session_id, d.base_version_id
+     FROM session_derivations d
+     JOIN logical_sessions child ON child.id = d.child_session_id
+     WHERE child.tombstoned_at IS NULL
+       AND NOT EXISTS (
+         SELECT 1 FROM session_tombstones tombstone
+         WHERE tombstone.logical_session_id = child.id AND tombstone.restored_at IS NULL
+       )
+     ORDER BY d.child_session_id`,
   ).all() as unknown as DerivationRow[];
 }
 
@@ -297,7 +305,7 @@ export async function previewConversationTopologyRepair(
       assertNoActiveProjectionRun(database);
       const existing = mirrorIds(database);
       const selected = new Set(planned.plan.sessions.map((item) => String(item.logicalSessionId)));
-      const derived = derivations(database);
+      const derived = activeDerivations(database);
       const result: ConversationTopologyRepairPreviewV1 = {
         schemaVersion: 1,
         sourceDatabasePath: source,
@@ -363,6 +371,8 @@ async function recomposeDerivedSessions(input: {
     const childId = row.child_session_id as LogicalSessionId;
     const parentId = row.parent_session_id as LogicalSessionId;
     const child = await input.store.getSession(childId);
+    if (child !== undefined && (child.session.tombstonedAt !== null
+      || (child.tombstone !== null && child.tombstone.restoredAt === null))) continue;
     const parent = await input.store.getSession(parentId);
     const oldBase = await input.store.getVersion(row.base_version_id as SessionVersionId);
     if (child?.headVersionId === null || child === undefined || parent?.headVersionId === null || parent === undefined || oldBase === undefined) {
@@ -376,6 +386,7 @@ async function recomposeDerivedSessions(input: {
     if (!sameFrozenPrefix(oldBase.events, oldChildHead.events)) {
       throw new Error(`Derived conversation no longer begins at its immutable Codex base: ${row.child_session_id}`);
     }
+    assertDerivedParentForkBoundary(oldBase.events, newParentHead.events, childId);
     const nativeSuffix = oldChildHead.events.slice(oldBase.events.length);
     const portableSuffix = portableizeRc1CanonicalHistory(nativeSuffix);
     const planned = withPlannedConversationTopology(resequence([
@@ -570,7 +581,7 @@ export async function stageConversationTopologyRepair(
 
     const oldMirrorIds = mirrorIds(candidate);
     const selectedMirrorIds = new Set(planned.plan.sessions.map((item) => String(item.logicalSessionId)));
-    const oldDerivations = derivations(candidate);
+    const oldDerivations = activeDerivations(candidate);
     const store = new SqliteCanonicalSessionEngineStore(candidate, objectStore);
     const engine = new CanonicalSessionEngine(store);
     const evidence = new SqliteAdapterEvidenceStore(candidate, objectStore, { clock: () => at });

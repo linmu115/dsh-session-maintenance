@@ -346,6 +346,45 @@ function responseItemTurnId(payload: Readonly<Record<string, JsonValue>>): strin
   return isRecord(metadata) ? stringValue(metadata.turn_id) : undefined;
 }
 
+/**
+ * Codex names this legacy text a ContextualUserFragment, not human input.
+ * Require its adjacent tool protocol as well: quoted examples, real steering,
+ * attachments, and unrelated warnings must stay visible.
+ */
+function isLegacyPatchWarning(items: readonly IndexedCodexEnvelope[], index: number): boolean {
+  const { envelope } = items[index]!;
+  const payload = envelope.payload;
+  if (envelope.type !== "response_item" || payload.type !== "message" || payload.role !== "user"
+    || payload.dsh_import !== undefined || !Array.isArray(payload.content) || payload.content.length !== 1) return false;
+  const part = payload.content[0];
+  if (!isRecord(part) || part.type !== "input_text" || typeof part.text !== "string") return false;
+  const text = part.text.trim();
+  if (!text.startsWith("Warning: apply_patch was requested via ")
+    || !text.endsWith("Use the apply_patch tool instead of exec_command.")) return false;
+
+  let callId: string | undefined;
+  for (let before = index - 1; before >= 0; before -= 1) {
+    const prior = items[before]!.envelope;
+    if (prior.type !== "response_item") continue;
+    if (prior.payload.type !== "function_call" && prior.payload.type !== "custom_tool_call") return false;
+    callId = stringValue(prior.payload.call_id);
+    break;
+  }
+  if (callId === undefined) return false;
+  let patchObserved = false;
+  for (let after = index + 1; after < items.length; after += 1) {
+    const next = items[after]!.envelope;
+    if (next.type === "event_msg" && next.payload.call_id === callId
+      && (next.payload.type === "patch_apply_begin" || next.payload.type === "patch_apply_end")) {
+      patchObserved = true;
+    }
+    if (next.type !== "response_item") continue;
+    return patchObserved && next.payload.call_id === callId
+      && (next.payload.type === "function_call_output" || next.payload.type === "custom_tool_call_output");
+  }
+  return false;
+}
+
 function assignTopology(
   state: CodexTurnAssignmentState,
   payload: Readonly<Record<string, JsonValue>>,
@@ -353,7 +392,10 @@ function assignTopology(
   sourceIndex: number | string,
 ): CanonicalConversationTopologyV1 {
   const payloadTurnId = responseItemTurnId(payload);
-  let turnId = payloadTurnId ?? state.activeTurnId;
+  // The enclosing rollout task is the conversational turn. Per-response
+  // passthrough metadata can identify model subrequests within that task;
+  // mixing these namespaces splits a call from its result.
+  let turnId = state.activeTurnId ?? payloadTurnId ?? null;
   let inference: CanonicalConversationTopologyV1["inference"] =
     payloadTurnId !== undefined || (turnId !== null && state.activeTurnIsExplicit) ? "explicit" : "derived";
   if (turnId === null && phase !== "user") turnId = state.currentConversationTurnId;
@@ -455,8 +497,11 @@ function updateTurnBoundaryAfter(
   if (envelope.type !== "event_msg") return;
   const type = stringValue(envelope.payload.type);
   if (type === "task_complete" || type === "turn_complete" || type === "turn_aborted") {
-    state.activeTurnId = null;
-    state.activeTurnIsExplicit = false;
+    const endedTurnId = stringValue(envelope.payload.turn_id);
+    if (endedTurnId === undefined || endedTurnId === state.activeTurnId) {
+      state.activeTurnId = null;
+      state.activeTurnIsExplicit = false;
+    }
   }
 }
 
@@ -512,7 +557,7 @@ export function normalizeCodexObservation(observation: StableObservation): Codex
   let canonicalEventCount = 0;
   let evidenceOnlyCount = 0;
   let otherEventCount = 0;
-  for (const item of active) {
+  for (const [activeIndex, item] of active.entries()) {
     const { envelope, sourceIndex } = item;
     const envelopeSourceKind = sourceKind(envelope);
     sourceKindCounts[envelopeSourceKind] = (sourceKindCounts[envelopeSourceKind] ?? 0) + 1;
@@ -526,6 +571,10 @@ export function normalizeCodexObservation(observation: StableObservation): Codex
       continue;
     }
     if (envelope.type === "response_item") {
+      if (isLegacyPatchWarning(active, activeIndex)) {
+        evidenceOnlyCount += 1;
+        continue;
+      }
       const message = classifyMessage(envelope, sourceIndex, events.length, turnState);
       if (message !== undefined) {
         if (message.event !== undefined) events.push(message.event);

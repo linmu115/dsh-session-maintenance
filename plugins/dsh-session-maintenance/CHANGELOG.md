@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+- Use Codex's enclosing rollout task/turn context for imported conversation
+  turns. Per-response passthrough IDs no longer split a tool call from its
+  result; a stale completion cannot clear a newer active turn.
+- Hold out the official legacy apply-patch shell warning only when its
+  adjacent call, patch execution and result establish the generated protocol
+  context. Human quotations and unrelated warnings remain visible.
+- Exclude already deleted derived conversations from candidate recomposition
+  and verification while retaining their heads, tombstones and lineage.
+- Validate repaired parent source identities against the immutable fork base
+  before recomposing an active DSH continuation. Unproven later parent history
+  is never silently joined into that child.
 - Preserve the RC1 projection's Canonical history mode through registration,
   retry, durable append receipts and later live events, so a repaired Codex
   mirror or derived conversation cannot fall back to native-history handling.

@@ -31,8 +31,11 @@ The staged candidate therefore:
   plus its existing DSH-owned suffix;
 - converts that retained suffix to portable MCSF semantics before replanning
   its conversation topology; and
-- preserves logical session IDs, event IDs, content digests and logical
-  anchors.
+- preserves logical session IDs, immutable old versions and retained source
+  identities. Re-normalized event IDs and content digests may change; external
+  anchor stability is a separate acceptance requirement, not a consequence of
+  successful RC1 schema validation. See the measured boundary in
+  [M06-CODEX-TURN-IMPORT-REPAIR.md](M06-CODEX-TURN-IMPORT-REPAIR.md).
 
 The derivation row remains the immutable historical fork point. The new child
 head records both the former child head and the refreshed parent head as its

@@ -367,6 +367,86 @@ describe("CodexReadAdapter", () => {
     expect(normalized.compatibility.status).toBe("compatible");
   });
 
+  it("uses the enclosing task turn despite per-response IDs and ignores a stale completion", async () => {
+    const sandbox = await createFixtureSandbox("codex-response-turn-namespace");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    const message = (id: string, role: string, text: string, turnId: string) => ({
+      type: "response_item", payload: { type: "message", id, role,
+        content: [{ type: role === "user" ? "input_text" : "output_text", text }],
+        internal_chat_message_metadata_passthrough: { turn_id: turnId } },
+    });
+    const rows = [
+      { type: "session_meta", payload: { id: "thread-fixture" } },
+      { type: "event_msg", payload: { type: "task_started", turn_id: "outer-a" } },
+      message("user", "user", "question", "outer-a"),
+      message("answer", "assistant", "first", "model-request-a1"),
+      { type: "response_item", payload: { type: "function_call", call_id: "c", name: "exec", arguments: "{}",
+        internal_chat_message_metadata_passthrough: { turn_id: "model-request-a1" } } },
+      { type: "response_item", payload: { type: "function_call_output", call_id: "c", output: "done",
+        internal_chat_message_metadata_passthrough: { turn_id: "outer-a" } } },
+      message("steer", "user", "correction", "model-request-a2"),
+      message("answer-two", "assistant", "revised", "model-request-a2"),
+      { type: "event_msg", payload: { type: "task_complete", turn_id: "outer-a" } },
+      { type: "event_msg", payload: { type: "task_started", turn_id: "outer-b" } },
+      { type: "event_msg", payload: { type: "turn_aborted", turn_id: "outer-a" } },
+      message("next", "user", "next question", "model-request-b"),
+      { type: "event_msg", payload: { type: "task_complete", turn_id: "outer-b" } },
+      message("metadata-only", "assistant", "standalone legacy response", "fallback-turn"),
+    ];
+    await writeFile(join(sandbox.codexHome, "rollouts", "thread-fixture.jsonl"),
+      `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+    const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    const registered = instance(sandbox);
+    const [summary] = await collect(adapter.list(registered));
+    const normalized = await adapter.normalize(expectStable(await adapter.observe(registered, summary!.key, summary!.hint)));
+    expect(normalized.events.map((event) => readCanonicalConversationTopologyV1(event)?.turnId))
+      .toEqual(["outer-a", "outer-a", "outer-a", "outer-a", "outer-a", "outer-a", "outer-b", "fallback-turn"]);
+    expect(normalized.events.filter((event) => event.kind === "tool-import")
+      .map((event) => event.extensions.codexTool)).toEqual([
+        expect.objectContaining({ callId: "c", phase: "call" }),
+        expect.objectContaining({ callId: "c", phase: "result" }),
+      ]);
+    expect(normalized.events.map((event) => event.content))
+      .toEqual(["question", "first", "{}", "done", "correction", "revised", "next question", "standalone legacy response"]);
+  });
+
+  it("holds out only protocol-correlated legacy patch warnings while retaining human quotations", async () => {
+    const sandbox = await createFixtureSandbox("codex-legacy-tool-warning");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    const warning = "Warning: apply_patch was requested via shell. Use the apply_patch tool instead of exec_command.";
+    const user = (text: string) => ({ type: "response_item", payload: {
+      type: "message", role: "user", content: [{ type: "input_text", text }],
+    } });
+    const rows = [
+      { type: "session_meta", payload: { id: "thread-fixture" } },
+      user(warning), // A standalone human quotation must not be hidden.
+      { type: "event_msg", payload: { type: "task_started", turn_id: "turn-a" } },
+      { type: "response_item", payload: { type: "function_call", call_id: "patch", name: "shell", arguments: "{}" } },
+      user(warning),
+      { type: "event_msg", payload: { type: "patch_apply_end", call_id: "patch", success: true } },
+      { type: "response_item", payload: { type: "function_call_output", call_id: "patch", output: "patched" } },
+      user(`请解释这个警告：${warning}`),
+      { type: "response_item", payload: { type: "function_call", call_id: "read", name: "exec", arguments: "{}" } },
+      user(warning), // No correlated patch protocol: keep it.
+      { type: "event_msg", payload: { type: "patch_apply_end", call_id: "different-call", success: true } },
+      { type: "response_item", payload: { type: "function_call_output", call_id: "read", output: "read" } },
+    ];
+    await writeFile(join(sandbox.codexHome, "rollouts", "thread-fixture.jsonl"),
+      `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`);
+    const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    const registered = instance(sandbox);
+    const [summary] = await collect(adapter.list(registered));
+    const observed = expectStable(await adapter.observe(registered, summary!.key, summary!.hint));
+    const original = JSON.stringify(observed.payload);
+    const normalized = await adapter.normalize(observed);
+    expect(normalized.events.filter((event) => event.role === "user").map((event) => event.content))
+      .toEqual([warning, `请解释这个警告：${warning}`, warning]);
+    expect(readCodexClassification(normalized)).toMatchObject({ evidenceOnlyCount: 5, otherEventCount: 0 });
+    expect(JSON.stringify(observed.payload)).toBe(original);
+  });
+
   it("preserves an output without call_id as metadata instead of inventing an orphan tool result", async () => {
     const sandbox = await createFixtureSandbox("codex-orphan-tool-output");
     cleanups.push(sandbox.cleanup);
