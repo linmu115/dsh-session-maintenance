@@ -8,10 +8,15 @@
 - 只读打开 Codex 镜像不会产生分支；第一次从 DSH 续写时只派生一个 Maintenance 会话。
 - Alpha2 与 RC2 Profile 使用同一逻辑工作区和会话目录，原生 session ID 仅作为当前投影映射。
 - Annotation、Sticker 与 Obsidian 链接保存 `logicalSessionId` / `logicalAnchorId`，并保留旧 native ID 作为历史别名。
-- 删除和恢复只能从 Maintenance WebUI 执行；删除前建立 Checkpoint，实例侧不会把本地删除误当成全局删除。
+- 删除由 Maintenance WebUI 或授权的 SCM 右键入口请求，统一在 Engine 真源执行；
+  沿用删除前 Checkpoint、墓碑与恢复策略。普通实例归档仍不视为全局删除。
 - P1-P8 状态入口覆盖租约、物化、持久化接管、增量提交、延迟派生、跨版本校验、引用回环和退出恢复。
 
 ## Launcher 配置
+
+0.2.16 修复 RC1 空会话头的惰性持久化，并增加按当前投影运行定位的直接删除入口。
+需配合 Engine 0.1.14 重载；不要求重建 Canonical/Codex 镜像或更改模型配置。
+详细断点及验收见仓库 `docs/changes/RC1-SCM-IDENTITY-AND-EMPTY-SESSION.md`。
 
 在目标 Profile 中选择：
 

@@ -20,6 +20,7 @@ export type ProxyOperation =
   | "unlink-candidate"
   | "archive-candidate"
   | "delete-candidate"
+  | "delete-session"
   | "settings:get"
   | "settings:patch";
 
@@ -43,6 +44,7 @@ export interface ProxyResult {
   readonly planId?: string;
   readonly jobId?: string;
   readonly url?: string;
+  readonly deletion?: { readonly logicalSessionId: string; readonly state: "deleted" | "pending-delete"; readonly pendingOperations: number };
   readonly settings?: unknown;
   readonly referenceResolution?: {
     readonly referenceType: "annotation" | "sticker" | "obsidian-reference";
@@ -89,7 +91,6 @@ export class FileConnectionProvider implements EngineConnectionProvider {
 
 interface Resolution {
   readonly logicalSessionId: string;
-  readonly bindingId: string;
   readonly title: string;
   readonly status: string;
 }
@@ -139,9 +140,12 @@ function assertRequest(value: unknown): ProxyRequest {
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("请求包含未允许字段");
   const operations: readonly ProxyOperation[] = [
     "status", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
-    "unlink-candidate", "archive-candidate", "delete-candidate", "settings:get", "settings:patch",
+    "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "settings:get", "settings:patch",
   ];
   if (!operations.includes(record.operation as ProxyOperation)) throw new TypeError("未知维护操作");
+  if (record.operation === "delete-session" && Object.keys(record).some(key => key !== "operation" && key !== "sessionId")) {
+    throw new TypeError("删除只接受当前实例的原生会话 ID，不能指定其他实例或真源 ID");
+  }
   if (record.instanceId !== undefined) safeId(record.instanceId, "instanceId");
   if (record.sessionId !== undefined) safeId(record.sessionId, "sessionId");
     if (record.applySafe !== undefined && typeof record.applySafe !== "boolean") throw new TypeError("applySafe 必须是布尔值");
@@ -171,7 +175,8 @@ export class RestrictedEngineProxy {
   private readonly fetchImpl: typeof fetch;
   private readonly pending = new Map<string, Promise<ProxyResult>>();
 
-  constructor(config: Config, connection: EngineConnectionProvider, fetchImpl: typeof fetch = fetch) {
+  constructor(config: Config, connection: EngineConnectionProvider, fetchImpl: typeof fetch = fetch,
+    private readonly projectionRunId?: string) {
     this.connection = connection;
     this.defaultInstanceId = config.dshInstanceId;
     this.fetchImpl = fetchImpl;
@@ -222,6 +227,22 @@ export class RestrictedEngineProxy {
       return { ok: true, message: "已打开会话维护看板", url: value.launch.url };
     }
     const sessionId = safeId(input.sessionId, "sessionId");
+    if (input.operation === "delete-session") {
+      // Active projection deletion resolves and tombstones in one Engine call.
+      const legacy = this.projectionRunId === undefined ? await this.resolve(instanceId, sessionId) : undefined;
+      const value = await this.engine(this.projectionRunId === undefined
+        ? `/v1/canonical/sessions/${encodeURIComponent(legacy!.logicalSessionId)}`
+        : `/v1/projection-runs/${encodeURIComponent(this.projectionRunId)}/sessions/${encodeURIComponent(sessionId)}`,
+      "DELETE") as { resolution?: Resolution; deletion?: NonNullable<ProxyResult["deletion"]> };
+      const resolution = legacy ?? value.resolution;
+      const deletion = value.deletion;
+      if (resolution === undefined || deletion === undefined || deletion.logicalSessionId !== resolution.logicalSessionId
+        || !["deleted", "pending-delete"].includes(deletion.state)
+        || !Number.isSafeInteger(deletion.pendingOperations) || deletion.pendingOperations < 0) throw new Error("Maintenance 未返回匹配的真源删除回执；请检查状态后重试");
+      return { ok: true, logicalSessionId: resolution.logicalSessionId, deletion,
+        message: deletion.state === "deleted" ? "Maintenance 真源已删除；Codex 原始会话未修改"
+          : "Maintenance 已登记删除，待现有写入收尾；Codex 原始会话未修改" };
+    }
     const resolution = await this.resolve(instanceId, sessionId);
     if (input.operation === "resolve") return { ok: true, message: "已定位逻辑会话", logicalSessionId: resolution.logicalSessionId };
 
@@ -278,6 +299,10 @@ export class RestrictedEngineProxy {
   }
 
   private async resolve(instanceId: string, sessionId: string): Promise<Resolution> {
+    if (this.projectionRunId !== undefined) {
+      const value = await this.engine(`/v1/projection-runs/${encodeURIComponent(this.projectionRunId)}/sessions/${encodeURIComponent(sessionId)}/identity`) as { resolution: Resolution };
+      return value.resolution;
+    }
     const value = await this.engine("/v1/session-resolution", "POST", { platform: "dsh", instanceId, sessionId }) as { resolution: Resolution };
     return value.resolution;
   }
@@ -325,6 +350,17 @@ export function createProxyHandler(proxy: RestrictedEngineProxy, endpoint = "/ds
     const path = new URL(request.url ?? "/", "http://localhost").pathname;
     if (path !== endpoint) { sendJson(response, 404, { ok: false, error: "接口不存在" }); return; }
     if (request.method !== "POST") { response.setHeader("allow", "POST"); sendJson(response, 405, { ok: false, error: "只允许 POST" }); return; }
+    if (request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase() !== "application/json") {
+      sendJson(response, 415, { ok: false, error: "只允许 application/json 请求" }); return;
+    }
+    if (request.headers.origin !== undefined) {
+      let sameOrigin = false;
+      try {
+        const origin = new URL(request.headers.origin);
+        sameOrigin = ["http:", "https:"].includes(origin.protocol) && origin.host === request.headers.host;
+      } catch { /* Opaque or malformed browser origins cannot mutate canonical state. */ }
+      if (!sameOrigin) { sendJson(response, 403, { ok: false, error: "只允许 DSH 同源页面调用" }); return; }
+    }
     if (request.headers["sec-fetch-site"] !== undefined && request.headers["sec-fetch-site"] !== "same-origin") {
       sendJson(response, 403, { ok: false, error: "只允许 DSH 同源页面调用" });
       return;

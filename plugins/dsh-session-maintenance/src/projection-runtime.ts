@@ -479,6 +479,11 @@ function validateCatalog(catalog: ProjectionRuntimeCatalog, runId: string): Proj
 }
 
 interface SessionPersistenceProjectionContext {
+  readonly sessions?: {
+    prepare(id: string, options: { readonly meta: unknown }): import("@deepseek-ai/dsh-session").Session;
+    enter(session: import("@deepseek-ai/dsh-session").Session): () => void;
+    announce(session: import("@deepseek-ai/dsh-session").Session): void;
+  };
   readonly sessionPersistence: {
     readonly root?: string;
     create(
@@ -487,6 +492,7 @@ interface SessionPersistenceProjectionContext {
     ): Promise<void>;
     append(id: string, events: readonly JsonValue[]): Promise<void>;
     list(): Promise<readonly { readonly id: string }[]>;
+    ensureMaterialized?(session: import("@deepseek-ai/dsh-session").Session): Promise<void>;
   };
   readonly workspaceRegistry: {
     replaceHeaderIndex(headers: readonly { readonly id: string }[]): Promise<void>;
@@ -515,7 +521,7 @@ interface SessionPersistenceProjectionContext {
 }
 
 export type ProjectionRuntimeStatusReporter = (
-  stage: "runtime.workspace.index" | "runtime.workspace.reconcile" | "runtime.projection-cache.seed",
+  stage: "runtime.workspace.index" | "runtime.workspace.reconcile" | "runtime.projection-cache.seed" | "runtime.empty-session.materialized",
   detail: Readonly<Record<string, string | number>>,
 ) => void;
 
@@ -672,6 +678,27 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
   async finishHydration(registrationId: string, nativeSessionId: string, eventCount: number): Promise<void> {
     const count = this.countsFor(registrationId).get(nativeSessionId);
     if (count !== eventCount) throw new Error(`DSH projected event count mismatch: ${String(count)} != ${eventCount}`);
+    if (eventCount === 0) {
+      // RC1 create() is lazy: no append means no file. Use the official live
+      // lifecycle + ensureMaterialized(), not a fabricated session event.
+      const sessions = this.context.sessions;
+      const persistence = this.context.sessionPersistence;
+      if (sessions === undefined || typeof persistence.ensureMaterialized !== "function") {
+        throw new Error("RC1 empty projection requires sessions lifecycle and ensureMaterialized()");
+      }
+      const item = this.catalog(registrationId).sessions.find((entry) => entry.nativeSessionId === nativeSessionId)!;
+      const payload = object(item.payload, "DSH projected session");
+      const header = object(payload.header ?? null, "DSH projected SessionHeader");
+      if (header.isSeeded === true) throw new Error("An empty seeded projection cannot be materialized as an ordinary blank session");
+      // Omit seed entirely: even seed: [] appends session/end-seed in RC1.
+      const session = sessions.prepare(nativeSessionId, { meta: structuredClone(header) });
+      const detach = sessions.enter(session);
+      try {
+        sessions.announce(session);
+        await persistence.ensureMaterialized(session);
+        this.status("runtime.empty-session.materialized", { nativeSessionId, eventCount: 0 });
+      } finally { detach(); }
+    }
     this.hydrated.get(registrationId)!.add(nativeSessionId);
   }
 

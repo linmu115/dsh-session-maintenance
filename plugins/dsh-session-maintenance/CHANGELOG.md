@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.16 - 2026-09-05
+
+- Fix RC1 zero-event projections: native `sessionPersistence.create()` registers
+  lazy metadata but does not create a readable artifact. Hydration now uses
+  `sessions.prepare/enter/announce` and `ensureMaterialized()` to persist the
+  empty header before marking the session ready; the temporary live handle is
+  detached afterward. No seed array, end-seed event or synthetic message is added.
+- This fixes `annotationCore/readPending -> session/not-found` when official
+  New Session reuses a projected blank session in the dsh project. Annotation
+  protection stays enabled; no empty canonical session is deleted or rewritten.
+- Resolve SCM native IDs using the server-attested projection run instead of
+  legacy dsh-web platform bindings. Same-title mirrors/derived sessions stay
+  distinct. Closed/missing run mappings refuse rather than guess or fall back.
+- Add restricted `delete-session`, forwarding only an exact resolved ID to the
+  existing canonical delete/checkpoint/tombstone endpoint. Preserve pending-write
+  deletion receipts. No Codex source writes or browser Engine credentials.
+- Reject simple-form and cross-origin proxy requests. Add RC1 official lifecycle,
+  run identity, receipt and proxy boundary regressions. Engine 0.1.14 supplies
+  the new read-only projection identity endpoint; restart both with this entry.
+- User click acceptance remains pending. No adapter format/cache invalidation,
+  model/compression settings, Launcher changes, or full mirror rebuild.
+
 ## 0.2.15 - 2026-09-05
 
 - Retain existing canonical event IDs by complete source identity when Codex

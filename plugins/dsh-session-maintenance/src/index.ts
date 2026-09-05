@@ -49,7 +49,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
   const connection = descriptorPath === undefined
     ? { current: async () => { throw new Error("维护引擎连接尚未由可信安装器登记"); } }
     : new FileConnectionProvider(descriptorPath);
-  const proxy = new RestrictedEngineProxy(config, connection);
+  const proxy = new RestrictedEngineProxy(config, connection, fetch, launchProfile?.runId);
   if (launchProfile !== null) {
     const transport = new HttpProjectionRuntimeTransport(fetch, async () => {
       const current = await connection.current();

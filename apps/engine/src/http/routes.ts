@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
 import { z, ZodError } from "zod";
+import { resolveProjectionSessionIdentity } from "./projection-identity.js";
 
 import {
   SessionMaintenanceError,
@@ -311,6 +312,42 @@ export async function routeRequest(
       const body = runtimeBrokerDrainSchema.parse(await readJsonBody(request));
       if (decodeURIComponent(runtimeBrokerDrain[1]!) !== body.runId) throw new HttpBodyError(400, "runId path/body mismatch");
       send(response, 200, { run: await context.engine.drainProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const projectionIdentity = /^\/v1\/projection-runs\/([^/]+)\/sessions\/([^/]+)\/identity$/u.exec(url.pathname);
+    if (request.method === "GET" && projectionIdentity !== null) {
+      const resolution = resolveProjectionSessionIdentity(context.engine.repository.database,
+        pathId(projectionIdentity[1]!), pathId(projectionIdentity[2]!));
+      if (resolution === undefined) send(response, 404, errorBody("SESSION_NOT_MAPPED", "Session is not mapped in this active projection run"));
+      else send(response, 200, { resolution });
+      return;
+    }
+    const projectionDelete = /^\/v1\/projection-runs\/([^/]+)\/sessions\/([^/]+)$/u.exec(url.pathname);
+    if (request.method === "DELETE" && projectionDelete !== null) {
+      const runId = pathId(projectionDelete[1]!);
+      const nativeSessionId = pathId(projectionDelete[2]!);
+      const run = await context.engine.projectionRunRepository.getProjectionRun(runId as never);
+      if (run === undefined) { send(response, 404, errorBody("SESSION_NOT_MAPPED", "Projection run not found")); return; }
+      const span = await context.engine.statusLog.start({
+        runId: run.id, leaseId: run.leaseId, profileId: run.profileId, adapterId: run.adapterId,
+        dshVersion: run.dshVersion, stage: "run.shutdown-recovery", logicalSessionId: null,
+        nativeSessionId: nativeSessionId as never, operationId: null, diagnosticDetailRef: "diag:session-delete",
+      });
+      // Resolve and mutate synchronously with no await in between. A first-write
+      // derivation cannot switch the native identity between two HTTP calls.
+      const resolution = resolveProjectionSessionIdentity(context.engine.repository.database, runId, nativeSessionId);
+      const at = new Date();
+      const deletion = resolution === undefined ? undefined : deleteCanonicalDashboardSession(
+        context.engine.repository.database, resolution.logicalSessionId, at.toISOString(),
+        new Date(at.getTime() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      );
+      if (deletion === undefined) {
+        await context.engine.statusLog.fail(span, { errorCode: "SESSION_NOT_MAPPED" });
+        send(response, 404, errorBody("SESSION_NOT_MAPPED", "Session is not mapped in this active projection run"));
+      } else {
+        await context.engine.statusLog.succeed(span, { diagnosticDetailRef: `diag:session-delete:${deletion.logicalSessionId}:${deletion.state}` });
+        send(response, deletion.state === "pending-delete" ? 202 : 200, { resolution, deletion });
+      }
       return;
     }
     const projectionRuntimeMatch = /^\/v1\/projection-runs\/([^/]+)\/runtime$/u.exec(url.pathname);
