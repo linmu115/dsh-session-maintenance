@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.2.17 - 2026-09-05
+
+- Release with Engine 0.1.15, which discovers the packaged Dashboard without a
+  development checkout and serves the authenticated launch flow.
+- Engine commands and queries now share explicit service boundaries; projection
+  reads use Store ports and built-in adapters use one registry. Exact RC1 session
+  identity, empty-session materialization and deletion receipts are preserved.
+- Schema 17 stores version-specific metadata snapshots. Historical metadata that
+  cannot be verified remains explicitly unknown; it is never replaced with the
+  current title or labels. Existing conversation bodies and version ancestry are
+  preserved. Back up the database before upgrading; schema 16 binaries cannot
+  directly reopen a migrated database.
+- Five-day retention and automatic object reclamation are not enabled by this
+  release. SCM 0.3.2 supplies an action host; the Maintenance menu consumer remains
+  a later construction task.
+
 ## 0.2.16 - 2026-09-05
 
 - Fix RC1 zero-event projections: native `sessionPersistence.create()` registers
