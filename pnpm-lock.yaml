@@ -204,6 +204,7 @@ importers:
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts
+    devDependencies:
       '@linmu/dsh-session-store':
         specifier: workspace:*
         version: link:../session-store

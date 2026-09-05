@@ -8,6 +8,7 @@ import { adapter, alpha2NativeSessionId } from "../../packages/adapter-dsh-alpha
 import { StatusLog, SqliteStatusEventAdapter } from "../../packages/session-status-log/src/index.js";
 import {
   SqliteAdapterRegistryRepository,
+  SqliteCanonicalProjectionSource,
   SqliteCanonicalRepository,
   SqliteProjectionRunRepository,
   SqliteStatusEventRepository,
@@ -16,7 +17,6 @@ import {
 import {
   JsonProjectionDirectory,
   ProjectionLifecycle,
-  SqliteCanonicalProjectionSource,
 } from "../../packages/projection-lifecycle/src/index.js";
 
 const roots: string[] = [];

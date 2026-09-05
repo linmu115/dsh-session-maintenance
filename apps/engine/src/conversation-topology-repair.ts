@@ -33,10 +33,10 @@ import {
   sha256Canonical,
   withPlannedConversationTopology,
 } from "@linmu/dsh-session-domain";
-import { SqliteCanonicalProjectionSource } from "@linmu/dsh-session-projection-lifecycle";
 import {
   openMaintenanceDatabase,
   SqliteAdapterEvidenceStore,
+  SqliteCanonicalProjectionSource,
   SqliteCanonicalRepository,
   SqliteCanonicalSessionEngineStore,
   SqliteSessionRepository,

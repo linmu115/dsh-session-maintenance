@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 
 import { afterEach, describe, expect, it } from "vitest";
-import type { AdapterId, AdapterProbeResult, JsonValue } from "@linmu/dsh-session-contracts";
+import type { AdapterId, AdapterProbeResult, AdapterRegistration, AdapterRegistrationRecord, AdapterRegistryRepository, AdapterVerificationRunRecord, DshSessionAdapterV1, JsonValue } from "@linmu/dsh-session-contracts";
 import { SqliteAdapterRegistryRepository, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 
 import {
@@ -130,5 +130,83 @@ describe("Adapter Host and Registry", () => {
       expect.objectContaining({ status: "experimental", result_json: expect.stringContaining("pinned") }),
       expect.objectContaining({ status: "verified", result_json: expect.stringContaining("verified") }),
     ]));
+  });
+});
+
+
+describe("Adapter runtime bindings", () => {
+  function fixture() {
+    const registrations: AdapterRegistrationRecord[] = [];
+    const verifications: AdapterVerificationRunRecord[] = [];
+    const repository: AdapterRegistryRepository = {
+      upsertRegistration: async (record) => { registrations.push(record); },
+      saveVerificationRun: async (record) => { verifications.push(record); },
+    };
+    const registry = new AdapterRegistry({
+      repository,
+      host: new AdapterHost({ launch: async ({ manifest: adapterManifest }) => new FakeWorker({
+        manifest: adapterManifest, status: "verified", detectedDshVersion: "fixture",
+        capabilities: [], issues: [],
+      }) }),
+      now: () => at,
+    });
+    const registration: AdapterRegistration = {
+      manifest: manifest("runtime-fixture"),
+      source: { kind: "local", directory: "synthetic", entryPoint: "fixture://runtime" },
+      enabled: true,
+    };
+    // No native operations are needed to exercise selection and binding ownership.
+    const runtime = { manifest: registration.manifest } as DshSessionAdapterV1;
+    return { repository, registrations, verifications, registry, registration, runtime };
+  }
+
+  it("uses a synthetic persistence port and keeps executable bindings out of registry DTOs", async () => {
+    const { registry, registration, runtime, registrations, verifications } = fixture();
+    await registry.register(registration, runtime);
+    expect(registry.resolveRuntimeAdapter(registration.manifest.id)).toBe(runtime);
+    expect(registry.resolveRuntimeAdapter("missing" as AdapterId)).toBeUndefined();
+    expect(registry.list()).toEqual([registration]);
+    expect(registrations).toEqual([{
+      manifest: registration.manifest, packageLocation: "local:synthetic#fixture://runtime",
+      enabled: true, registeredAt: at, updatedAt: at,
+    }]);
+    await registry.select({ environment: { dshVersion: "fixture", packageVersions: {}, runtimeCapabilities: [] } });
+    expect(verifications.at(-1)?.result).toMatchObject({ adapterId: registration.manifest.id, reason: "verified" });
+  });
+
+  it("disables runtime resolution and clears stale bindings when a registration is replaced", async () => {
+    const { registry, registration, runtime } = fixture();
+    await registry.register(registration, runtime);
+    await registry.register({ ...registration, enabled: false }, runtime);
+    expect(registry.resolveRuntimeAdapter(registration.manifest.id)).toBeUndefined();
+    await expect(registry.select({ environment: { dshVersion: "fixture", packageVersions: {}, runtimeCapabilities: [] } }))
+      .rejects.toThrow("No Adapter passed");
+    await registry.register(registration);
+    expect(registry.resolveRuntimeAdapter(registration.manifest.id)).toBeUndefined();
+    const replacement = { ...runtime };
+    await registry.register(registration, replacement);
+    expect(registry.resolveRuntimeAdapter(registration.manifest.id)).toBe(replacement);
+  });
+
+  it.each([
+    { id: "other-adapter" as AdapterId },
+    { packageVersion: "2.0.0" },
+    { testedDshVersions: ["different-format"] },
+  ])("rejects a mismatched runtime manifest without replacing the existing registration: %j", async (change) => {
+    const { registry, registration, runtime, registrations } = fixture();
+    await registry.register(registration, runtime);
+    await expect(registry.register(registration, { ...runtime, manifest: { ...runtime.manifest, ...change } }))
+      .rejects.toThrow("manifest does not match");
+    expect(registry.resolveRuntimeAdapter(registration.manifest.id)).toBe(runtime);
+    expect(registrations).toHaveLength(1);
+  });
+
+  it("does not publish a registration or binding when persistence fails", async () => {
+    const { registry, repository, registration, runtime } = fixture();
+    await registry.register(registration, runtime);
+    repository.upsertRegistration = async () => { throw new Error("synthetic store failure"); };
+    await expect(registry.register({ ...registration, enabled: false })).rejects.toThrow("synthetic store failure");
+    expect(registry.list()).toEqual([registration]);
+    expect(registry.resolveRuntimeAdapter(registration.manifest.id)).toBe(runtime);
   });
 });

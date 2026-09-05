@@ -1,3 +1,4 @@
+import type { IncrementalCanonicalProjectionSource } from "@linmu/dsh-session-contracts";
 import { access, mkdtemp, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -30,7 +31,6 @@ import {
   ProjectionWriteAheadLog,
   projectionCacheIdentity,
   projectionCacheRootFor,
-  type IncrementalCanonicalProjectionSource,
 } from "../src/index.js";
 
 const roots: string[] = [];

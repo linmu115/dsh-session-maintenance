@@ -1,35 +1,27 @@
+import { isDeepStrictEqual } from "node:util";
+
 import type {
   AdapterId,
-  AdapterManifestV1,
+  AdapterRegistration,
+  AdapterRegistrationSource,
+  AdapterRegistryRepository,
+  AdapterSelection,
+  AdapterSelectionReason,
+  DshSessionAdapterV1,
   AdapterProbeResult,
   DshEnvironmentDescriptor,
   JsonValue,
 } from "@linmu/dsh-session-contracts";
 import { defineAdapterManifest } from "@linmu/dsh-session-adapter-sdk";
-import type { SqliteAdapterRegistryRepository } from "@linmu/dsh-session-store";
 
 import type { AdapterHost } from "./host.js";
 
-export type AdapterRegistrationSource =
-  | { readonly kind: "npm"; readonly packageName: string; readonly entryPoint: string }
-  | { readonly kind: "local"; readonly directory: string; readonly entryPoint: string }
-  | { readonly kind: "generation"; readonly generationId: string; readonly packageName: string; readonly entryPoint: string };
-
-export interface AdapterRegistration {
-  readonly manifest: AdapterManifestV1;
-  readonly source: AdapterRegistrationSource;
-  readonly enabled: boolean;
-}
-
-export type AdapterSelectionReason = "pinned" | "verified" | "probe-compatible" | "experimental";
-
-export interface AdapterSelection {
-  readonly adapterId: AdapterId;
-  readonly registration: AdapterRegistration;
-  readonly probe: AdapterProbeResult;
-  readonly reason: AdapterSelectionReason;
-  readonly verificationRunId: string;
-}
+export type {
+  AdapterRegistrationSource,
+  AdapterRegistration,
+  AdapterSelectionReason,
+  AdapterSelection,
+} from "@linmu/dsh-session-contracts";
 
 interface Evaluation {
   readonly registration: AdapterRegistration;
@@ -51,14 +43,15 @@ function reasonFor(status: AdapterProbeResult["status"]): AdapterSelectionReason
 
 export class AdapterRegistry {
   readonly host: AdapterHost;
-  readonly repository: SqliteAdapterRegistryRepository;
+  readonly repository: AdapterRegistryRepository;
   private readonly registrations = new Map<string, AdapterRegistration>();
+  private readonly runtimeAdapters = new Map<AdapterId, DshSessionAdapterV1>();
   private readonly now: () => string;
   private readonly verificationId: () => string;
 
   constructor(input: {
     readonly host: AdapterHost;
-    readonly repository: SqliteAdapterRegistryRepository;
+    readonly repository: AdapterRegistryRepository;
     readonly now?: () => string;
     readonly verificationId?: () => string;
   }) {
@@ -69,11 +62,13 @@ export class AdapterRegistry {
     this.verificationId = input.verificationId ?? (() => `adapter-verification-${Date.now()}-${++sequence}`);
   }
 
-  async register(input: AdapterRegistration): Promise<void> {
+  async register(input: AdapterRegistration, runtimeAdapter?: DshSessionAdapterV1): Promise<void> {
     const manifest = defineAdapterManifest(input.manifest);
     if (input.source.entryPoint.length === 0) throw new TypeError("Adapter registration requires an entry point");
-    const registration = { ...input, manifest };
-    this.registrations.set(manifest.id, registration);
+    if (runtimeAdapter !== undefined && !isDeepStrictEqual(defineAdapterManifest(runtimeAdapter.manifest), manifest)) {
+      throw new TypeError(`Runtime Adapter manifest does not match registration: ${manifest.id}`);
+    }
+    const registration: AdapterRegistration = { manifest, source: input.source, enabled: input.enabled };
     const now = this.now();
     await this.repository.upsertRegistration({
       manifest,
@@ -82,6 +77,15 @@ export class AdapterRegistry {
       registeredAt: now,
       updatedAt: now,
     });
+    this.registrations.set(manifest.id, registration);
+    // Re-registration replaces the entire binding; an omitted runtime cannot retain stale code.
+    if (runtimeAdapter === undefined) this.runtimeAdapters.delete(manifest.id);
+    else this.runtimeAdapters.set(manifest.id, runtimeAdapter);
+  }
+
+  resolveRuntimeAdapter(adapterId: AdapterId): DshSessionAdapterV1 | undefined {
+    if (this.registrations.get(adapterId)?.enabled !== true) return undefined;
+    return this.runtimeAdapters.get(adapterId);
   }
 
   list(): readonly AdapterRegistration[] {

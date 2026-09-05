@@ -24,7 +24,7 @@ import type {
 import type { JobRef } from "./jobs.js";
 import type { SyncPlan } from "./plans.js";
 import type { StatusEventState, StatusEventV1, StatusStage } from "./status.js";
-import type { AdapterManifestV1, AdapterProbeResult } from "./adapter-sdk.js";
+import type { AdapterManifestV1, AdapterProbeResult, AdapterSelectionReason } from "./adapter-sdk.js";
 import type { ProjectionRun, ProjectionSessionMode } from "./projection.js";
 import type {
   CanonicalEventV1,
@@ -294,7 +294,7 @@ export interface AdapterExperimentalSelectionResponse {
     readonly adapterId: string;
     readonly manifest: AdapterManifestV1;
     readonly probe: AdapterProbeResult;
-    readonly reason: "pinned" | "verified" | "probe-compatible" | "experimental";
+    readonly reason: AdapterSelectionReason;
     readonly verificationRunId: string;
   };
 }

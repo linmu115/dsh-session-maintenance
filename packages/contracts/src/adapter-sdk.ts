@@ -235,3 +235,48 @@ export interface UnmappedNativeRecoverySession {
   readonly nativeRevision: 0;
   readonly recovered: NativeRecoverySession;
 }
+
+export type AdapterRegistrationSource =
+  | { readonly kind: "npm"; readonly packageName: string; readonly entryPoint: string }
+  | { readonly kind: "local"; readonly directory: string; readonly entryPoint: string }
+  | { readonly kind: "generation"; readonly generationId: string; readonly packageName: string; readonly entryPoint: string };
+
+export interface AdapterRegistration {
+  readonly manifest: AdapterManifestV1;
+  readonly source: AdapterRegistrationSource;
+  readonly enabled: boolean;
+}
+
+export type AdapterSelectionReason = "pinned" | "verified" | "probe-compatible" | "experimental";
+
+export interface AdapterSelection {
+  readonly adapterId: AdapterId;
+  readonly registration: AdapterRegistration;
+  readonly probe: AdapterProbeResult;
+  readonly reason: AdapterSelectionReason;
+  readonly verificationRunId: string;
+}
+
+export interface AdapterRegistrationRecord {
+  readonly manifest: AdapterManifestV1;
+  readonly packageLocation: string;
+  readonly enabled: boolean;
+  readonly registeredAt: string;
+  readonly updatedAt: string;
+}
+
+export interface AdapterVerificationRunRecord {
+  readonly id: string;
+  readonly adapterId: AdapterManifestV1["id"];
+  readonly dshVersion: string;
+  readonly status: AdapterVerificationStatus;
+  readonly result: JsonValue;
+  readonly startedAt: string;
+  readonly completedAt: string | null;
+}
+
+/** Persistence needed by Adapter selection; implementations may use SQLite or synthetic storage. */
+export interface AdapterRegistryRepository {
+  upsertRegistration(input: AdapterRegistrationRecord): Promise<void>;
+  saveVerificationRun(input: AdapterVerificationRunRecord): Promise<void>;
+}

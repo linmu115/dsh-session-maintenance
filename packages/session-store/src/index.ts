@@ -31,3 +31,4 @@ export * from "./adapter-registry-repository.js";
 export * from "./object-store.js";
 export * from "./repository.js";
 export * from "./schema.js";
+export * from "./canonical-projection-source.js";

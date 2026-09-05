@@ -1,3 +1,4 @@
+import type { CanonicalProjectionInput } from "./adapter-sdk.js";
 import type {
   GcPolicy,
   GcReport,
@@ -30,6 +31,8 @@ import type { ContinuationJob, ContinuationTransition } from "./continuations.js
 import type { SyncPlan } from "./plans.js";
 import type { PlanQuery, PlanSummary, TransactionQuery, TransactionSummary } from "./operations.js";
 import type {
+  CanonicalChangePage,
+  CanonicalChangeQuery,
   CanonicalEventV1,
   CanonicalSessionRecord,
   LogicalSessionId,
@@ -188,4 +191,14 @@ export interface ProjectionRunRepository {
 export interface StatusEventRepository {
   appendStatusEvent(input: StatusEventV1): Promise<void>;
   listStatusEvents(query: StatusEventQuery): Promise<Page<StatusEventV1>>;
+}
+
+export interface CanonicalProjectionSource {
+  load(run: ProjectionRun): Promise<CanonicalProjectionInput>;
+}
+
+export interface IncrementalCanonicalProjectionSource extends CanonicalProjectionSource {
+  currentRevision(): Promise<number>;
+  listChanges(input: CanonicalChangeQuery): Promise<CanonicalChangePage>;
+  loadSessions(run: ProjectionRun, logicalSessionIds: readonly LogicalSessionId[]): Promise<CanonicalProjectionInput>;
 }

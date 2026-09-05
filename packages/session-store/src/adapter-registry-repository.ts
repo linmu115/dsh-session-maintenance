@@ -3,28 +3,13 @@ import type { DatabaseSync } from "node:sqlite";
 import {
   adapterManifestV1Schema,
   type AdapterManifestV1,
+  type AdapterRegistrationRecord,
+  type AdapterRegistryRepository,
+  type AdapterVerificationRunRecord,
   type AdapterVerificationStatus,
   type JsonValue,
 } from "@linmu/dsh-session-contracts";
 import { canonicalJson } from "@linmu/dsh-session-domain";
-
-export interface AdapterRegistration {
-  readonly manifest: AdapterManifestV1;
-  readonly packageLocation: string;
-  readonly enabled: boolean;
-  readonly registeredAt: string;
-  readonly updatedAt: string;
-}
-
-export interface AdapterVerificationRunRecord {
-  readonly id: string;
-  readonly adapterId: AdapterManifestV1["id"];
-  readonly dshVersion: string;
-  readonly status: AdapterVerificationStatus;
-  readonly result: JsonValue;
-  readonly startedAt: string;
-  readonly completedAt: string | null;
-}
 
 interface RegistrationRow {
   readonly manifest_json: string;
@@ -44,7 +29,7 @@ interface VerificationRow {
   readonly completed_at: string | null;
 }
 
-function registrationFromRow(row: RegistrationRow): AdapterRegistration {
+function registrationFromRow(row: RegistrationRow): AdapterRegistrationRecord {
   return {
     manifest: adapterManifestV1Schema.parse(JSON.parse(row.manifest_json)) as unknown as AdapterManifestV1,
     packageLocation: row.package_location,
@@ -54,14 +39,14 @@ function registrationFromRow(row: RegistrationRow): AdapterRegistration {
   };
 }
 
-export class SqliteAdapterRegistryRepository {
+export class SqliteAdapterRegistryRepository implements AdapterRegistryRepository {
   readonly database: DatabaseSync;
 
   constructor(database: DatabaseSync) {
     this.database = database;
   }
 
-  async upsertRegistration(input: AdapterRegistration): Promise<void> {
+  async upsertRegistration(input: AdapterRegistrationRecord): Promise<void> {
     adapterManifestV1Schema.parse(input.manifest);
     if (input.packageLocation.length === 0) {
       throw new TypeError("Adapter registration requires a package location");
@@ -89,7 +74,7 @@ export class SqliteAdapterRegistryRepository {
 
   async getRegistration(
     adapterId: AdapterManifestV1["id"],
-  ): Promise<AdapterRegistration | undefined> {
+  ): Promise<AdapterRegistrationRecord | undefined> {
     const row = this.database
       .prepare(
         `SELECT manifest_json, package_location, enabled, registered_at, updated_at

@@ -7,9 +7,9 @@ import { afterEach, describe, expect, it } from "vitest";
 import { adapter, alpha2NativeSessionId } from "../../packages/adapter-dsh-alpha2/src/index.js";
 import {
   PersistentProjectionCache,
-  SqliteCanonicalProjectionSource,
 } from "../../packages/projection-lifecycle/src/index.js";
 import {
+  SqliteCanonicalProjectionSource,
   SqliteCanonicalRepository,
   openMaintenanceDatabase,
 } from "../../packages/session-store/src/index.js";
