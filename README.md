@@ -2,9 +2,9 @@
 
 一个以 Canonical 会话、不可变版本图和可恢复运行投影管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。保留版本比较、Checkpoint、逻辑删除与恢复、稳定引用，以及明确发起的 Codex 延续任务。
 
-截至 2026-09-06，实际运行版本为 Engine **0.1.15**、Maintenance 插件 **0.2.17**、Session Context Menu（SCM）**0.3.2**，Engine 产物对应 `37c1bfe`，SCM 对应 `0a98ea9`，运行于 DSH **0.1.2-rc.1** 的 `web` profile。原 `4b49927` 的身份与空会话修复完整保留在提交祖先中。
+当前源码发行组合为 Engine **0.1.18**、Maintenance 插件 **0.2.20**，配套 Launcher **0.2.3** 与 Session Context Menu（SCM）**0.3.2**，本批部署目标为 DSH **0.1.2-rc.1 / web**。原 `4b49927` 的身份与空会话修复以及后续已提交重构保留在提交祖先中。
 
-看板自动发现已部署，页面、应用脚本、认证流程和真实插件到 Engine 的连接均已验证。用户界面点击验收仍由用户进行。发布包含 SM-00 至 SM-04 和 SCM action host，五天保留与自动回收尚未启用。完整产物、数据库升级、旧运行恢复与回退位置见[发布记录](docs/validation/2026-09-06-maintenance-0.1.15-live-release.md)。[审查存档](docs/validation/2026-09-05-maintenance-architecture-review.md)保留升级前的事实快照。
+本批包含静态会话阅读看板、实例接入管理、工作区同步名单及恢复/存储界面整理，验证边界见[看板候选记录](docs/validation/2026-09-06-dashboard-integrations.md)。0.1.18 补齐真实部署发现的[配置型 bundle 误判](docs/changes/integration-bundle-entry-20260906.md)和[既有依赖缓存兼容](docs/changes/integration-existing-store-20260906.md)。实际安装状态以带源码提交和产物摘要的部署记录为准，用户启动与界面验收单独记录。Codex 原生回写和五天正文版本自动删除仍未启用。早期[0.1.15 发布记录](docs/validation/2026-09-06-maintenance-0.1.15-live-release.md)与[审查存档](docs/validation/2026-09-05-maintenance-architecture-review.md)保留当时的事实快照。
 
 ## 当前架构
 
