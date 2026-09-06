@@ -17,6 +17,7 @@ import type {
   RuntimeBrokerPrepareRunRequest,
   RuntimeBrokerPreparedRun,
 } from "@linmu/dsh-session-contracts";
+import { engineConnectionDescriptorSchema } from "@linmu/dsh-session-contracts";
 import { stringify } from "yaml";
 import { z } from "zod";
 
@@ -81,12 +82,6 @@ const requestSchema = z.discriminatedUnion("phase", [
   afterExitRequestSchema,
   abortRequestSchema,
 ]);
-const connectionSchema = z.strictObject({
-  schemaVersion: z.literal(1),
-  host: z.literal("127.0.0.1"),
-  port: z.number().int().min(1).max(65_535),
-  token: z.string().min(32).regex(/^[A-Za-z0-9_-]+$/u),
-});
 const finalReceiptSchema = z.strictObject({
   disposition: z.enum(["closed", "recovered"]),
   finalizedAt: z.iso.datetime(),
@@ -531,7 +526,7 @@ export class MaintenanceExternalLifecycleProvider {
 
   private async tryConnection(): Promise<EngineConnection | null> {
     try {
-      const descriptor = connectionSchema.parse(JSON.parse(await readFile(join(this.stateRoot, "connection.json"), "utf8")));
+      const descriptor = engineConnectionDescriptorSchema.parse(JSON.parse(await readFile(join(this.stateRoot, "connection.json"), "utf8")));
       const connection = { origin: `http://127.0.0.1:${descriptor.port}`, token: descriptor.token };
       const health = await this.fetchImpl(`${connection.origin}/v1/health`, { signal: AbortSignal.timeout(2_000) });
       return health.ok ? connection : null;

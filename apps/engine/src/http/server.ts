@@ -5,7 +5,7 @@ import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { SessionMaintenanceError } from "@linmu/dsh-session-contracts";
+import { engineConnectionDescriptorSchema, SessionMaintenanceError } from "@linmu/dsh-session-contracts";
 
 import type { SessionMaintenanceEngine } from "../engine.js";
 import type { JobRunner } from "../jobs/job-runner.js";
@@ -79,7 +79,11 @@ export async function startMaintenanceServer(input: {
   origin = `http://${host}:${address.port}`;
   const connectionPath = join(input.stateRoot, "connection.json");
   try {
-    await writeFile(connectionPath, `${JSON.stringify({ schemaVersion: 1, host, port: address.port, token, pid: process.pid, ownerId: input.engine.writes?.captureEvidence().ownerId })}\n`, { mode: 0o600 });
+    const descriptor = engineConnectionDescriptorSchema.parse({
+      schemaVersion: 1, host, port: address.port, token,
+      pid: process.pid, ownerId: input.engine.writes?.captureEvidence().ownerId,
+    });
+    await writeFile(connectionPath, `${JSON.stringify(descriptor)}\n`, { mode: 0o600 });
     if (input.skipAcl !== true) await secureConnectionFile(connectionPath);
   } catch (error) {
     await new Promise<void>((resolveClose) => server.close(() => resolveClose()));

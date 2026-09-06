@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { parse } from "yaml";
 
 import {
@@ -10,6 +10,8 @@ import {
   runExternalLifecycleStdio,
 } from "../src/external-lifecycle-provider.js";
 import { runCli } from "../src/cli.js";
+import { EngineDescriptorDshGatewayConnections } from "../src/dsh-gateway-connection.js";
+import { FileConnectionProvider } from "../../../plugins/dsh-session-maintenance/src/engine-proxy.js";
 import { createEngineFixture } from "./helpers.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -54,6 +56,44 @@ function rc1PrepareRequest() {
 }
 
 describe("Maintenance external lifecycle provider", () => {
+  it.each(["owned", "legacy"] as const)("reuses a running Engine through its %s connection file for repeated lifecycle phases", async (format) => {
+    const fixture = await createEngineFixture(`external-connection-${format}`);
+    cleanups.push(fixture.cleanupAll);
+    // This helper calls startMaintenanceServer, including the real connection.json writer.
+    const server = await fixture.startServer();
+    const path = join(fixture.stateRoot, "connection.json");
+    const descriptor = JSON.parse(await readFile(path, "utf8"));
+    expect(descriptor).toMatchObject({ pid: process.pid, ownerId: fixture.engine.writes!.captureEvidence().ownerId });
+    if (format === "legacy") {
+      const { schemaVersion, host, port, token } = descriptor;
+      await writeFile(path, JSON.stringify({ schemaVersion, host, port, token }));
+    }
+    expect(await new FileConnectionProvider(path).current()).toEqual({ origin: server.origin, token: server.token });
+    const gateway = new EngineDescriptorDshGatewayConnections(fixture.stateRoot, [{ instanceId: "fixture", origin: server.origin }]);
+    expect(await gateway.current("fixture")).toEqual({ origin: server.origin, secret: Buffer.from(server.token) });
+    const startEngine = vi.fn(async () => { throw new Error("Existing Engine must be reused"); });
+    const healthRequests: string[] = [];
+    const provider = new MaintenanceExternalLifecycleProvider(fixture.stateRoot, {
+      startEngine,
+      fetch: async (input, init) => {
+        if (String(input).endsWith("/v1/health")) healthRequests.push(String(input));
+        return fetch(input, init);
+      },
+    });
+    // No connection() override: every prepare/finalize reads the server's file.
+    for (const phase of ["abort", "afterExit"] as const) {
+      const prepared = await provider.handle(prepareRequest());
+      expect(prepared).toMatchObject({ enabled: true });
+      if (!("enabled" in prepared) || !prepared.enabled || prepared.handle === null) throw new Error("prepare failed");
+      const request = phase === "abort"
+        ? { schemaVersion: 1, phase, handle: prepared.handle, reason: "spawn-failed" }
+        : { schemaVersion: 1, phase, handle: prepared.handle, exitCode: 1, requestedStop: false, forced: false };
+      expect(await provider.handle(request)).toEqual({ schemaVersion: 1, ok: true });
+    }
+    expect(healthRequests).toEqual(Array(4).fill(`${server.origin}/v1/health`));
+    expect(startEngine).not.toHaveBeenCalled();
+  });
+
   it("completes prepare and abort through the authenticated Engine routes", async () => {
     const engine = await createEngineFixture("external-lifecycle-http");
     cleanups.push(engine.cleanupAll);

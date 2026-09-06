@@ -5,6 +5,7 @@ export * from "./adapters.js";
 export * from "./canonical.js";
 export * from "./continuations.js";
 export * from "./errors.js";
+export * from "./engine-connection.js";
 export * from "./external-lifecycle.js";
 export * from "./http.js";
 export * from "./jobs.js";
