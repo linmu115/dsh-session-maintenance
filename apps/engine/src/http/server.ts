@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
-import { rm, writeFile } from "node:fs/promises";
+import { rename, rm, writeFile } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -70,27 +70,33 @@ export async function startMaintenanceServer(input: {
       if (!response.writableEnded) response.end(JSON.stringify({ error: { code: "INTERNAL_ERROR" } }));
     });
   });
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(input.port ?? 0, host, () => { server.off("error", reject); resolve(); });
-  });
-  const address = server.address();
-  if (address === null || typeof address === "string") throw new Error("Loopback server did not expose a TCP address");
-  origin = `http://${host}:${address.port}`;
   const connectionPath = join(input.stateRoot, "connection.json");
+  const temporaryConnectionPath = `${connectionPath}.${randomBytes(12).toString("hex")}.tmp`;
   try {
+    // Recovery must not mistake a freshly accepted import for a previous
+    // process's interrupted job. No HTTP request is accepted before it finishes.
+    await input.engine.runWrite("job-recovery", () => jobs.start());
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(input.port ?? 0, host, () => { server.off("error", reject); resolve(); });
+    });
+    const address = server.address();
+    if (address === null || typeof address === "string") throw new Error("Loopback server did not expose a TCP address");
+    origin = `http://${host}:${address.port}`;
     const descriptor = engineConnectionDescriptorSchema.parse({
       schemaVersion: 1, host, port: address.port, token,
       pid: process.pid, ownerId: input.engine.writes?.captureEvidence().ownerId,
     });
-    await writeFile(connectionPath, `${JSON.stringify(descriptor)}\n`, { mode: 0o600 });
-    if (input.skipAcl !== true) await secureConnectionFile(connectionPath);
+    await writeFile(temporaryConnectionPath, `${JSON.stringify(descriptor)}\n`, { mode: 0o600, flag: "wx" });
+    if (input.skipAcl !== true) await secureConnectionFile(temporaryConnectionPath);
+    await rename(temporaryConnectionPath, connectionPath);
   } catch (error) {
     await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
-    await rm(connectionPath, { force: true });
+    await jobs.stopImports();
+    await input.engine.writes?.drain();
+    await rm(temporaryConnectionPath, { force: true });
     throw error;
   }
-  await input.engine.runWrite("job-recovery", () => jobs.start());
   return {
     origin,
     token,

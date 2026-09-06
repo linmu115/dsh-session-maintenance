@@ -1,0 +1,9 @@
+# Startup recovery readiness
+
+The server previously listened and published `connection.json` before Windows ACL setup and startup job recovery finished. A cold-start Provider could enqueue a title import in that interval. Recovery then requeued that same process's running import, causing the waiting prepare request to fail with `JOB_INTERRUPTED`. The reported real sequence was queued → running → queued about 600 ms later; a subsequent Engine completed the recovered job.
+
+Startup now completes the existing coordinated job recovery operation before binding the HTTP listener. Recovery schedules retained jobs without waiting for their entire imports; its reconciliation pass cannot see a newly accepted request. The connection descriptor is written to a unique temporary file, secured, and atomically published afterward. A failed startup closes the listener, stops scheduled work, drains the existing coordinator, and removes its own temporary descriptor.
+
+Regression coverage includes a deterministic delayed recovery gate (old code returned HTTP 200 and failed this test), recovery failure, publication failure cleanup, and a real separate CLI process invoking the unmodified defaultStartEngine path from a state root with no Engine or descriptor. The cold-start fixture uses 201 catalog entries and completes prepare/abort with exactly queued → running → progress → completed. Neither connection nor startEngine is overridden. Every configured root is checked with assertFixtureSandbox before launching the CLI in its ordinary process environment; only the Engine owning that marked fixture is terminated during cleanup.
+
+Focused readiness, Provider and HTTP tests and the Engine build are verified before handoff. The coordinator receives the commit immediately for packaging; the complete single-worker 30-second-per-test suite continues against this same code tree. No live data, owner recovery, deployment, version, or lockfile changes are included.
