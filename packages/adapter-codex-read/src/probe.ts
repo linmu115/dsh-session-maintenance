@@ -51,6 +51,7 @@ export async function probeCodexInstance(
   instance: RegisteredInstance,
   fixtureGuard: ((root: string) => void) | undefined,
   onProbeRead: () => void,
+  threadIds?: ReadonlySet<string>,
 ): Promise<AdapterProbe> {
   fixtureGuard?.(instance.root);
   if (instance.platform !== "codex" || instance.platformVersion !== CODEX_SUPPORTED_VERSION) {
@@ -77,11 +78,11 @@ export async function probeCodexInstance(
           readonly pk: number;
         }>
       ).map((row) => [row.name, row.type, row.notnull, row.pk] as const),
-      rolloutPath: (
+      rolloutPath: threadIds === undefined ? (
         database.prepare("SELECT rollout_path FROM threads ORDER BY id LIMIT 1").get() as
           | { readonly rollout_path: string }
           | undefined
-      )?.rollout_path,
+      )?.rollout_path : undefined,
     }));
     const { columns, rolloutPath } = snapshot;
 
@@ -95,6 +96,12 @@ export async function probeCodexInstance(
           message: `Codex threads schema fingerprint mismatch: ${schemaHex.slice(0, 12)}:${sha256Canonical(columns).slice(0, 12)}`,
         }],
       };
+    }
+    // A closed project scope validates the database contract here. Individual selected
+    // rollouts are validated by observe(); probing must never read another project's sample.
+    if (threadIds !== undefined) {
+      return { status: "compatible", contract: contract(instance.platformVersion),
+        capabilities: ["list", "observe", "normalize", "verify-read"], issues: [] };
     }
     if (rolloutPath === undefined) {
       throw new Error("Codex fixture has no rollout sample");

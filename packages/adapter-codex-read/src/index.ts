@@ -22,6 +22,8 @@ import type { CodexReadStatusEvent } from "./status.js";
 
 export interface CodexReadAdapterOptions {
   readonly fixtureGuard?: (root: string) => void;
+  /** Closed membership snapshot: an empty set reads no rollout files. */
+  readonly threadIds?: ReadonlySet<string>;
   readonly afterRead?: (path: string) => void | Promise<void>;
   /**
    * Structured breakpoint entry for live Codex imports. Consumers can persist
@@ -60,13 +62,13 @@ export class CodexReadAdapter implements SessionReadAdapter {
     if (process.env.VITEST !== undefined && options.fixtureGuard === undefined) {
       throw new Error("CodexReadAdapter requires a fixture guard under Vitest");
     }
-    this.options = options;
+    this.options = { ...options, ...(options.threadIds === undefined ? {} : { threadIds: new Set(options.threadIds) }) };
   }
 
   probe(instance: RegisteredInstance): Promise<AdapterProbe> {
     return probeCodexInstance(instance, this.options.fixtureGuard, () => {
       this.probeReads += 1;
-    });
+    }, this.options.threadIds);
   }
 
   list(instance: RegisteredInstance, cursor?: ScanCursor): AsyncIterable<PlatformSessionSummary> {
@@ -75,6 +77,7 @@ export class CodexReadAdapter implements SessionReadAdapter {
       cursor,
       this.options.fixtureGuard,
       this.options.onStatus,
+      this.options.threadIds,
     );
   }
 
@@ -83,6 +86,9 @@ export class CodexReadAdapter implements SessionReadAdapter {
     key: PlatformSessionKey,
     hint?: ObservationHint,
   ): Promise<StableObservation | UnstableRead> {
+    if (this.options.threadIds !== undefined && !this.options.threadIds.has(key.sessionId)) {
+      return Promise.reject(new Error(`Codex thread is outside the selected project membership: ${key.sessionId}`));
+    }
     const hooks: CodexReadHooks = {
       ...(this.options.fixtureGuard === undefined ? {} : { fixtureGuard: this.options.fixtureGuard }),
       ...(this.options.afterRead === undefined ? {} : { afterRead: this.options.afterRead }),
@@ -141,6 +147,8 @@ export * from "./normalizer.js";
 export * from "./parser.js";
 export * from "./probe.js";
 export * from "./projects.js";
+export * from "./project-directory.js";
+export * from "./session-change-fingerprint.js";
 export * from "./semantics.js";
 export * from "./stable-read.js";
 export * from "./status.js";

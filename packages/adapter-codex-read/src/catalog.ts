@@ -40,6 +40,7 @@ export async function* listCodexSessions(
   cursor: ScanCursor | undefined,
   fixtureGuard?: (root: string) => void,
   onStatus?: (event: CodexReadStatusEvent) => void | Promise<void>,
+  threadIds?: ReadonlySet<string>,
 ): AsyncIterable<PlatformSessionSummary> {
   fixtureGuard?.(instance.root);
   if (instance.platform !== "codex" || instance.platformVersion !== "0.146.0") {
@@ -50,14 +51,14 @@ export async function* listCodexSessions(
   }
 
   const rows = readCatalogRows(instance);
-  const visibleRows = rows.filter(isUserFacingCodexThread);
+  const visibleRows = rows.filter(row => isUserFacingCodexThread(row) && (threadIds === undefined || threadIds.has(row.id)));
   await onStatus?.({
     stage: "catalog.snapshot",
     state: "succeeded",
     instanceId: instance.id,
     sessionId: null,
     consistency: "sqlite-read-transaction",
-    detail: `captured ${visibleRows.length} user-facing threads; excluded ${rows.length - visibleRows.length} internal threads without requiring Codex quiescence`,
+    detail: `captured ${visibleRows.length} user-facing threads; excluded ${rows.length - visibleRows.length} ${threadIds === undefined ? "internal" : "internal or unselected"} threads without requiring Codex quiescence`,
   });
 
   const seen = new Set<string>();
