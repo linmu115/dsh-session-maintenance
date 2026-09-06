@@ -19,12 +19,12 @@ This ledger distinguishes source completion, package verification, and live use.
 | SM-06 | Selected local extraction integrated | `4799d86`; run cache selection/refresh only; one runtime identity and state owner remains |
 | SM-07 | Consumer integrated; host already live | Maintenance `159d92e`; SCM `0a98ea9` / 0.3.2; 34 host tests passed again |
 | SM-08 | Integrated | `9cf5c64`, `f570185`; complete reference preview, unknown/external owner blockers and shared-body protection |
-| SM-09 | Integrated | `a692fe1`, `f570185`, `323786f`; directory and flat SQLite governance, journal recovery and independent safety regressions |
+| SM-09 | Integrated and packaged | `a692fe1`, `f570185`, `323786f`, `a39f7e7`, `f2b3c16`; directory/flat governance, journal recovery, independent regressions, rebuilt cache identity and verified refresh ordering |
 | SM-10 | Outside this selected batch | Five-day history pruning remains disabled; all version bodies protected |
 | SM-11 | Integrated independently of SM-10 | `5f7c855`; exact-prefix incremental index and 1,000/5,000-event benchmark |
 | SM-12 | Outside this selected batch | Body chunking/compression/range-read migration not implemented |
 | SM-13 | Separate source series committed; candidate built | `7b9dc67` then `47b2d5d`; Windows GNU actual tests/Clippy/release/replay passed; deployed Launcher preserved |
-| SM-14 | Candidate validation | Engine 0.1.16 / plugin 0.2.18; build, typecheck and connected API tests passed; final full-suite/package evidence recorded with candidate handoff |
+| SM-14 | Candidate verified; activation pending | Engine 0.1.16 / plugin 0.2.18; 172 files / 541 tests passed, build/typecheck passed, 29 archive entries checked, packaged Dashboard authentication passed, schema 17 -> 20 copied-database invariants preserved |
 
 The earlier completed batch was committed and activated at the user's request;
 production remains Engine 0.1.15 / Maintenance 0.2.17 / SCM 0.3.2. The new selected
@@ -37,3 +37,11 @@ manual. Primary Maintenance was verified clean at `0dbf921` during construction.
 The original Launcher runtime-hook-seam worktree retains its five deployed
 dirty files unchanged; its new source series is isolated and replayable. No
 new candidate binary or package has replaced an installed component.
+
+Final package source is `f2b3c163477e0e2780c763eda25d8a8219592983`, clean at
+packaging. Later commits contain evidence documents only. The actual database
+was opened read-only for an online backup into a marked temporary fixture;
+migration and repeated opening affected only that copy. All six stable business
+table digests and 5,634 existing version metadata records remained identical.
+See [the final candidate record](2026-09-06-maintenance-0.1.16-candidate.md) for
+counts, package identities, validation logs and manual acceptance boundaries.

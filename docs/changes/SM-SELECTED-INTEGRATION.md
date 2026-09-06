@@ -40,7 +40,7 @@ UI、CLI 和导入脚本调用 Engine 服务，写入协调器控制排队和所
 
 ## 提交与验收
 
-各任务的细节分别见 [SM-05](SM-05.md)、[SM-06](SM-06.md)、[SM-07](SM-07.md)、[SM-08](SM-08.md)、[SM-09](SM-09.md)、[平铺数据库治理](SM-09-flat.md)、[缓存重建登记](SM-09-discovery-generation.md)、[独立安全复核](SM09-review.md) 和 [SM-11](SM-11.md)。本批合并后的测试、候选归档和升级验证记录由交付台账保存。
+各任务的细节分别见 [SM-05](SM-05.md)、[SM-06](SM-06.md)、[SM-07](SM-07.md)、[SM-08](SM-08.md)、[SM-09](SM-09.md)、[平铺数据库治理](SM-09-flat.md)、[缓存重建登记](SM-09-discovery-generation.md)、[独立安全复核](SM09-review.md) 和 [SM-11](SM-11.md)。最终 172 文件、541 项测试、构建与类型检查均通过；真实归档的看板入口和只读复制后的 schema 17 → 20 升级已验证。包来源与详细证据见 [候选交付验证](../validation/2026-09-06-maintenance-0.1.16-candidate.md)。
 
 Launcher 独立提交为 `7b9dc67aefe1bc4f96c6e55b6ca23ebdd516a8c3` 与 `47b2d5da6b46d169916c3353ada3680a245e5107`，父提交 `957e172`。独立 Git index 重放产生的树与交付 HEAD 完全一致。Windows GNU 实际执行 Hook/进程测试、Clippy 及前端嵌入 release 构建通过；没有将本机结果声称为 Linux/macOS/MSVC 验证。原 runtime-hook-seam 五处在用修改和部署程序保持原样。
 
