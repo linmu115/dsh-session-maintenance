@@ -15,3 +15,4 @@ export * from "./http/dashboard.js";
 export * from "./jobs/job-runner.js";
 export * from "./jobs/job-store.js";
 export * from "./write-service.js";
+export * from "./retention-service.js";

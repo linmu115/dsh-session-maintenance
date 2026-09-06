@@ -146,8 +146,15 @@ export interface RetentionBatchItem {
   readonly quarantinePath: string;
   readonly fingerprint: string;
   readonly bytes: number;
+  readonly files: readonly RetentionFile[];
   readonly state: "planned" | "quarantined" | "restored" | "purging" | "purged";
   readonly error: string | null;
+  readonly purgeGuard: {
+    readonly sourceRevisions: Readonly<Record<string,string>>;
+    readonly excludedSourceIds: readonly string[];
+    readonly registryFingerprint: string;
+    readonly otherResourceFingerprint: string;
+  } | null;
 }
 
 export interface RetentionBatch {
@@ -157,4 +164,14 @@ export interface RetentionBatch {
   readonly createdAt: string;
   readonly purgeAfter: string;
   readonly items: readonly RetentionBatchItem[];
+}
+
+export interface RetentionDiscoveryResult {
+  readonly registeredResourceIds: readonly string[];
+  readonly unknownPaths: readonly string[];
+}
+export interface RetentionRegistry {
+  readonly roots: readonly RetentionRoot[];
+  readonly sources: readonly RetentionSource[];
+  readonly resources: readonly RetentionResource[];
 }

@@ -92,4 +92,26 @@ describe("SM-08 reference-safe read-only planning",()=>{
     expect(()=>planRetention(inventory,{...DEFAULT_RETENTION_POLICY,history:"five-days" as never})).toThrow();
     const plan=planRetention(inventory); expect(plan.id).toBe(retentionDigest(Object.fromEntries(Object.entries(plan).filter(([key])=>key!=="id"))));
   });
+
+  it("reads schema-16 rollback references with explicitly unknown local clocks and rebinds a copied active selection",async()=>{
+    const f=await fixture();const body=await f.addVersion("old");const path=await f.external("rollback16");
+    const old=new DatabaseSync(path);
+    old.exec("DROP TRIGGER session_version_metadata_created; DROP TRIGGER version_metadata_immutable; DROP TABLE version_metadata_snapshots; DELETE FROM schema_migrations WHERE version>=17");old.close();
+    const inventory=await f.repository.capture(NOW);expect(inventory.blockers).toEqual([]);
+    expect(inventory.versions.find((version)=>version.source === "rollback16")).toMatchObject({objectId:body,firstPersistedAt:null});
+    const active=f.repository.sources().find((source)=>source.kind === "active-database")!;
+    f.database.prepare("UPDATE retention_sources SET source_json=? WHERE id=?").run(JSON.stringify({...active,relativePath:"rollback16.sqlite"}),active.id);
+    await f.repository.bindActiveSource("state","metadata.sqlite","state");
+    expect(f.repository.sources().filter((source)=>source.kind === "active-database")).toHaveLength(1);
+    expect(f.repository.sources().find((source)=>source.id === active.id)).toMatchObject({kind:"backup-database",retained:true,relativePath:"rollback16.sqlite"});
+    expect((await f.repository.capture(NOW)).blockers).toEqual([]);
+  });
+
+  it("plans thousands of independent version references with indexed object lookups",async()=>{
+    const f=await fixture(),inventory=await f.repository.capture(NOW),count=5000;
+    const versions=Array.from({length:count},(_,i)=>({source:"active",id:`v${i}`,objectId:`sha256:${i.toString(16).padStart(64,"0")}`,objectRootId:"state",parents:[],firstPersistedAt:null}));
+    const objects=versions.map((version)=>({rootId:"state",objectId:version.objectId,relativePath:`objects/${version.id}`,identity:version.id,bytes:17,mtimeMs:0}));
+    const references=versions.flatMap((version)=>[{source:"active",owner:version.id,targetKind:"content-object" as const,targetId:version.objectId,objectRootId:"state",reason:"retained-version-body"},{source:"active",owner:version.id,targetKind:"version-body" as const,targetId:version.id,objectRootId:null,reason:"current-head"}]);
+    const plan=planRetention({...inventory,versions,objects,references});expect(plan.protectedBytes).toBe(count*17);expect(plan.items).toHaveLength(count);expect(plan.items.every((item)=>item.references.length === 2)).toBe(true);
+  },10000);
 });

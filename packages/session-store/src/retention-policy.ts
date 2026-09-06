@@ -15,10 +15,19 @@ export function planRetention(inventory: RetentionInventory, policy: RetentionPo
   const at = Date.parse(inventory.asOf); if (!Number.isFinite(at)) throw new TypeError("Invalid inventory instant");
   const blocked = inventory.blockers.length > 0;
   const items: RetentionPlanItem[] = [];
+  const versionObjects = new Map<string,string[]>(), refsByObject = new Map<string, RetentionPlanItem["references"][number][]>();
+  const key=(root:string,id:string):string=>`${root}\0${id}`;
+  const activeSources=new Set(inventory.sources.filter((source)=>source.kind === "active-database").map((source)=>source.id));
+  for (const version of inventory.versions) {
+    versionObjects.set(key(version.source,version.id),[key(version.objectRootId,version.objectId)]);
+    if (activeSources.has(version.source)) for (const alias of ["cache","wal","runtime"]) versionObjects.set(key(alias,version.id),[key(version.objectRootId,version.objectId)]);
+  }
+  for (const ref of inventory.references) {
+    const targets=ref.targetKind === "content-object" && ref.objectRootId !== null ? [key(ref.objectRootId,ref.targetId)] : ref.targetKind === "version-body" ? versionObjects.get(key(ref.source,ref.targetId)) ?? [] : [];
+    for (const target of targets) { const refs=refsByObject.get(target) ?? []; refs.push(ref); refsByObject.set(target,refs); }
+  }
   for (const object of inventory.objects) {
-    const refs = inventory.references.filter((ref)=>
-      (ref.targetKind === "content-object" && ref.objectRootId === object.rootId && ref.targetId === object.objectId)
-      || (ref.targetKind === "version-body" && inventory.versions.some((version)=>version.id === ref.targetId && version.objectId === object.objectId && version.objectRootId === object.rootId && (version.source === ref.source || ["cache", "wal", "runtime"].includes(ref.source)))));
+    const refs = refsByObject.get(key(object.rootId,object.objectId)) ?? [];
     const reasons = refs.map((ref)=>ref.reason);
     if (object.mtimeMs >= at - policy.orphanGraceHours * 3600000) reasons.push("orphan-grace-window");
     const disposition = reasons.length ? "protected" : blocked ? "blocked" : "candidate";
@@ -53,7 +62,7 @@ export function planRetention(inventory: RetentionInventory, policy: RetentionPo
       if (!entry.completedAt || !Number.isFinite(Date.parse(entry.completedAt)) || Date.parse(entry.completedAt) > at) reasons.push("trusted-completion-time-unknown");
     }
     const disposition = reasons.length ? "protected" : blocked ? "blocked" : "candidate";
-    items.push({ id: resource.id, kind: resource.kind, rootId: resource.rootId, relativePath: resource.relativePath, bytes: entry.bytes, disposition, reasons: [...new Set(reasons.length ? reasons : blocked ? ["incomplete-reference-coverage"] : ["verified-governance-eligibility"])].sort(), references: inventory.references.filter((ref)=>ref.targetKind === resource.kind && ref.targetId === resource.ownerId), executable: disposition === "candidate" });
+    items.push({ id: resource.id, kind: resource.kind, rootId: resource.rootId, relativePath: resource.relativePath, bytes: entry.bytes, disposition, reasons: [...new Set(reasons.length ? reasons : blocked ? ["incomplete-reference-coverage"] : ["verified-governance-eligibility"])].sort(), references: inventory.references.filter((ref)=>ref.targetKind === resource.kind && ref.targetId === resource.ownerId), executable: disposition === "candidate" && resource.state === "registered" });
   }
   items.sort((a,b)=>a.id.localeCompare(b.id));
   const payload = { schemaVersion: 1 as const, asOf: inventory.asOf, policy, sourceRevisions: inventory.sourceRevisions, registryFingerprint: inventory.registryFingerprint, referenceFingerprint: inventory.referenceFingerprint, objectFingerprint: inventory.objectFingerprint, resourceFingerprint: inventory.resourceFingerprint, blockers: inventory.blockers, items, protectedBytes: items.filter((item)=>item.disposition === "protected").reduce((sum,item)=>sum + item.bytes,0), candidateBytes: items.filter((item)=>item.disposition === "candidate").reduce((sum,item)=>sum + item.bytes,0), executableBytes: items.filter((item)=>item.executable).reduce((sum,item)=>sum + item.bytes,0), cacheBytesAboveTarget: Math.max(0,cacheBytes-policy.cacheTargetBytes) };

@@ -18,7 +18,7 @@ export async function captureRetentionResources(
   // Read run evidence before caches so every retained sparse overlay protects its base.
   const ordered = [...registered].sort((a,b)=>(a.kind === "run" ? 0 : 1)-(b.kind === "run" ? 0 : 1) || a.id.localeCompare(b.id));
   for (const resource of ordered) {
-    if (resource.state !== "registered") continue;
+    if (resource.state === "purged") continue;
     const root = roots.get(resource.rootId), reasons: string[] = [];
     let completedAt: string | null = null, recoveryCompleted = false, valid = true;
     let files: RetentionResourceInventory["files"] = [], fingerprint = retentionDigest([]);

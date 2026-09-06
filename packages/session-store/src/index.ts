@@ -37,3 +37,7 @@ export * from "./retention-paths.js";
 export * from "./retention-repository.js";
 export * from "./retention-policy.js";
 export * from "./write-coordinator.js";
+export * from "./retention-registration.js";
+export * from "./retention-journal.js";
+export * from "./retention-executor.js";
+export * from "./migrations/020-retention-journal.js";

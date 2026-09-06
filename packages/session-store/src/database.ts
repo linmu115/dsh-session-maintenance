@@ -22,6 +22,7 @@ import { MIGRATION_016 } from "./migrations/016-projection-cache-retained-stage.
 import { MIGRATION_017 } from "./migrations/017-version-metadata-snapshots.js";
 import { reconstructCurrentVersionMetadata } from "./version-metadata.js";
 import { MIGRATION_019 } from "./migrations/019-retention-registry.js";
+import { MIGRATION_020 } from "./migrations/020-retention-journal.js";
 
 interface VersionRow {
   readonly version: number | null;
@@ -383,6 +384,17 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
       try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
       database.close();
       throw error;
+    }
+  }
+  if (currentVersion < 20) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_020);
+      database.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(20, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) {
+      try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
+      database.close();throw error;
     }
   }
   return database;

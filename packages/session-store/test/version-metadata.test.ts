@@ -198,7 +198,7 @@ describe("migration 017", () => {
     await f.engine.retitleCodexMirror({ logicalSessionId: id, title: "Current", appliedAt: originAt });
     f.database.exec(`DROP TRIGGER session_version_metadata_created;
       DROP TRIGGER version_metadata_immutable; DROP TABLE version_metadata_snapshots;
-      DROP TABLE retention_resources; DROP TABLE retention_sources; DROP TABLE retention_roots;
+      DROP TABLE retention_batches; DROP TABLE retention_resources; DROP TABLE retention_sources; DROP TABLE retention_roots;
       DELETE FROM schema_migrations WHERE version >= 17;`);
     return f;
   }
