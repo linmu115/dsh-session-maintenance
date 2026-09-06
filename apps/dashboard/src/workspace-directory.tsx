@@ -27,7 +27,11 @@ export function buildCanonicalWorkspaceTree(directory: CanonicalWorkspaceDirecto
     for (const item of items) sort(item.children as CanonicalWorkspaceNode[]);
   };
   sort(roots);
-  return roots;
+  const pruneEmpty = (node: CanonicalWorkspaceNode): CanonicalWorkspaceNode | undefined => {
+    const children = node.children.map(pruneEmpty).filter((child): child is CanonicalWorkspaceNode => child !== undefined);
+    return node.sessions.length === 0 && children.length === 0 ? undefined : { ...node, children };
+  };
+  return roots.map(pruneEmpty).filter((node): node is CanonicalWorkspaceNode => node !== undefined);
 }
 
 function SessionList(props: { readonly sessions: readonly CanonicalDashboardSessionSummary[]; readonly selectedSessionId: string | undefined; readonly onOpen: (id: string) => void }) {
@@ -90,9 +94,10 @@ export function WorkspaceDirectory(props: {
     || session.session.title.toLocaleLowerCase().includes(needle)
     || session.session.id.toLocaleLowerCase().includes(needle);
   const filterNode = (node: CanonicalWorkspaceNode): CanonicalWorkspaceNode | undefined => {
+    if (node.workspace.name.toLocaleLowerCase().includes(needle)) return node;
     const children = node.children.map(filterNode).filter((child): child is CanonicalWorkspaceNode => child !== undefined);
-    const sessions = node.workspace.name.toLocaleLowerCase().includes(needle) ? node.sessions : node.sessions.filter(matches);
-    if (needle.length === 0 || node.workspace.name.toLocaleLowerCase().includes(needle) || sessions.length > 0 || children.length > 0) return { ...node, sessions, children };
+    const sessions = node.sessions.filter(matches);
+    if (sessions.length > 0 || children.length > 0) return { ...node, sessions, children };
     return undefined;
   };
   const visibleExpanded = needle.length > 0 ? new Set(props.directory.workspaces.map((entry) => entry.workspace.id)) : expanded;

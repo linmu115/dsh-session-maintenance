@@ -35,6 +35,23 @@ describe("canonical dashboard workspace model", () => {
     expect([canonicalOriginLabel(tree[0]!.sessions[0]!.session.originKind), canonicalOriginLabel(directory.unclassified[0]!.session.originKind)]).toEqual(["Codex 同步", "Codex 派生"]);
   });
 
+  it("prunes empty branches while retaining every ancestor of a populated descendant", () => {
+    const entry = (id: string, parentId: string | null, populated = false) => ({
+      workspace: { schemaVersion: 1, id, parentId, name: id, sortKey: id, deletedAt: null, createdAt: at, updatedAt: at },
+      sessions: populated ? [session("live", "maintenance-native")] : [],
+    });
+    const directory = { schemaVersion: 1, workspaces: [entry("root", null), entry("middle", "root"),
+      entry("leaf", "middle", true), entry("empty-child", "root"), entry("empty-root", null),
+      entry("empty-grandchild", "empty-root")], unclassified: [] } as unknown as CanonicalWorkspaceDirectory;
+    const tree = buildCanonicalWorkspaceTree(directory);
+    expect(tree.map(node => node.workspace.id)).toEqual(["root"]);
+    expect(tree[0]?.children.map(node => node.workspace.id)).toEqual(["middle"]);
+    expect(tree[0]?.children[0]?.children.map(node => node.workspace.id)).toEqual(["leaf"]);
+    expect(tree[0]?.children[0]?.children[0]?.sessions[0]?.session.id).toBe("live");
+    expect(directory.workspaces).toHaveLength(6);
+    expect(buildCanonicalWorkspaceTree({ ...directory, workspaces: directory.workspaces.map(item => ({ ...item, sessions: [] })) })).toEqual([]);
+  });
+
   it("holds unknown events out and discards historical HTML from Markdown", () => {
     const unknown = {
       schemaVersion: 1, id: "event-unknown", logicalSessionId: "logical-1", sequence: 0,

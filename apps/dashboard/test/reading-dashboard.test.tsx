@@ -80,6 +80,31 @@ describe("reading-first dashboard behavior", () => {
     expect(getCanonicalSession).toHaveBeenCalledTimes(1);
   });
 
+  it("hides empty workspaces and keeps the ancestor route to visible descendants during search", async () => {
+    const leaf = directory.workspaces[0]!;
+    const nested = { ...directory, workspaces: [
+      { ...leaf, workspace: { ...leaf.workspace, id: "empty", name: "空工作区" }, sessions: [] },
+      { ...leaf, workspace: { ...leaf.workspace, id: "parent", name: "上级目录" }, sessions: [] },
+      { ...leaf, workspace: { ...leaf.workspace, parentId: "parent" } },
+    ] } as unknown as CanonicalWorkspaceDirectory;
+    await render(<DashboardApp api={{ listCanonicalWorkspaces: async () => nested, getCanonicalSession: async (id: string) => detail(id) } as unknown as DashboardApi} />);
+    expect(container.querySelector('[data-testid="canonical-workspace-empty"]')).toBeNull();
+    expect(container.querySelector('[data-testid="canonical-workspace-parent"]')).not.toBeNull();
+    const search = container.querySelector('.workspace-search input') as HTMLInputElement;
+    await input(search, "第一条");
+    expect(container.querySelector('[data-testid="canonical-workspace-parent"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="canonical-session-one"]')).not.toBeNull();
+    await click(container.querySelector('[data-testid="canonical-session-one"]')!);
+    await input(search, "空工作区");
+    expect(container.querySelector('[data-testid="canonical-workspace-empty"]')).toBeNull();
+    expect(container.textContent).toContain("没有匹配结果");
+    await input(search, "上级目录");
+    expect(container.querySelector('[data-testid="canonical-session-one"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="canonical-session-two"]')).not.toBeNull();
+    await input(search, "");
+    expect(container.querySelector('[aria-label="会话阅读"] h2')?.textContent).toBe("one");
+  });
+
   it("keeps the directory available when reading fails and retries the selected session", async () => {
     const getCanonicalSession = vi.fn().mockRejectedValueOnce(new Error("读取失败")).mockResolvedValue(detail("one"));
     await render(<DashboardApp api={{ listCanonicalWorkspaces: async () => directory, getCanonicalSession } as unknown as DashboardApi} />);
