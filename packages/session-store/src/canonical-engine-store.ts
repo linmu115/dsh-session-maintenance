@@ -25,6 +25,7 @@ import {
 import { canonicalJson, sha256Canonical, versionIdFor } from "@linmu/dsh-session-domain";
 
 import { advanceCanonicalSessionMetadata } from "./canonical-metadata.js";
+import { updateCanonicalEventIndex } from "./canonical-event-index.js";
 import { readVersionMetadataSnapshot, saveVersionMetadataSnapshot } from "./version-metadata.js";
 
 import { SqliteCanonicalRepository } from "./canonical-repository.js";
@@ -231,6 +232,7 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
         throw new Error(`Canonical version ID collision: ${input.id}`);
       }
       saveVersionMetadataSnapshot(this.database, input.id, input.metadata, "captured");
+      updateCanonicalEventIndex(this.database, input.logicalSessionId, input.events);
       return;
     }
     const manifest = {
@@ -259,22 +261,7 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
       "INSERT INTO version_parents (version_id, ordinal, parent_id) VALUES (?, ?, ?)",
     );
     input.parentVersionIds.forEach((parentId, ordinal) => parent.run(input.id, ordinal, parentId));
-    const eventInsert = this.database.prepare(
-      `INSERT INTO canonical_events
-        (id, logical_session_id, sequence, kind, content_digest, event_json)
-       VALUES (?, ?, ?, ?, ?, ?)`,
-    );
-    // `canonical_events` is the mutable latest-head index used by projection and
-    // the dashboard. Immutable historical bodies remain in the content object
-    // store, so an adapter normalization upgrade may atomically rebuild this
-    // index without rewriting an earlier version.
-    this.database.prepare(
-      "DELETE FROM canonical_events WHERE logical_session_id = ?",
-    ).run(input.logicalSessionId);
-    for (const event of input.events) {
-      if (event.logicalSessionId !== input.logicalSessionId) continue;
-      eventInsert.run(event.id, input.logicalSessionId, event.sequence, event.kind, event.contentDigest, canonicalJson(event as unknown as JsonValue));
-    }
+    updateCanonicalEventIndex(this.database, input.logicalSessionId, input.events);
   }
 
   private putCodexAuthorityBinding(input: CodexObservationRecord): void {

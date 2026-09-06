@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-09-06T01:25:52.006Z",
+  "environment": {
+    "node": "v24.7.0",
+    "os": "win32 10.0.26200",
+    "cpu": "13th Gen Intel(R) Core(TM) i9-13900HX",
+    "logicalCpus": 32
+  },
+  "notes": [
+    "Synthetic fixtures only; full event-body validation, serialization and compression remain in both modes.",
+    "Index writes counted with identical SQLite triggers in both modes; latency includes that instrumentation.",
+    "Reopen/read measures durable current-head reading, not full Launcher runtime recovery.",
+    "One warmup append excluded; retained bodies are not chunked and physical body bytes need not decrease."
+  ],
+  "results": [
+    {
+      "mode": "full-rebuild",
+      "initialEvents": 1000,
+      "measuredAppends": 12,
+      "eventsPerAppend": 1,
+      "finalEvents": 1013,
+      "initialBodyBytes": 676451,
+      "commitMs": {
+        "p50": 92.10890000000006,
+        "p95": 134.8809000000001,
+        "samples": [
+          113.26329999999996,
+          93.9026,
+          92.10890000000006,
+          134.8809000000001,
+          87.47270000000003,
+          102.22890000000007,
+          119.17590000000018,
+          89.00839999999994,
+          89.44839999999999,
+          84.64879999999994,
+          96.84710000000018,
+          91.42890000000011
+        ]
+      },
+      "eventLoopDelayMs": {
+        "p50": 2.351103,
+        "p95": 52.330495,
+        "max": 81.330175
+      },
+      "indexWrites": {
+        "inserted": 12090,
+        "deleted": 12078
+      },
+      "addedObjectBytes": 1069111,
+      "versionCount": 14,
+      "reopenAndReadMs": 13.343099999999822
+    },
+    {
+      "mode": "incremental",
+      "initialEvents": 1000,
+      "measuredAppends": 12,
+      "eventsPerAppend": 1,
+      "finalEvents": 1013,
+      "initialBodyBytes": 676451,
+      "commitMs": {
+        "p50": 73.55479999999989,
+        "p95": 107.75769999999966,
+        "samples": [
+          93.01150000000007,
+          79.93110000000024,
+          74.38740000000007,
+          71.84119999999984,
+          75.35020000000031,
+          71.28900000000021,
+          72.22159999999985,
+          73.55479999999989,
+          71.22520000000031,
+          73.48219999999992,
+          99.76319999999987,
+          107.75769999999966
+        ]
+      },
+      "eventLoopDelayMs": {
+        "p50": 2.275327,
+        "p95": 49.938431,
+        "max": 70.189055
+      },
+      "indexWrites": {
+        "inserted": 12,
+        "deleted": 0
+      },
+      "addedObjectBytes": 1069111,
+      "versionCount": 14,
+      "reopenAndReadMs": 19.884599999999864
+    },
+    {
+      "mode": "full-rebuild",
+      "initialEvents": 5000,
+      "measuredAppends": 12,
+      "eventsPerAppend": 1,
+      "finalEvents": 5013,
+      "initialBodyBytes": 3404451,
+      "commitMs": {
+        "p50": 1093.9321,
+        "p95": 1223.727600000002,
+        "samples": [
+          1063.6383000000005,
+          1175.6812,
+          1157.3570999999993,
+          1151.5596000000005,
+          1139.4305000000004,
+          1068.731099999999,
+          1093.9321,
+          1125.0375999999997,
+          1092.9688999999998,
+          986.9683000000005,
+          1070.9373000000014,
+          1223.727600000002
+        ]
+      },
+      "eventLoopDelayMs": {
+        "p50": 3.043327,
+        "p95": 680.525823,
+        "max": 807.403519
+      },
+      "indexWrites": {
+        "inserted": 60090,
+        "deleted": 60078
+      },
+      "addedObjectBytes": 5430610,
+      "versionCount": 14,
+      "reopenAndReadMs": 172.79300000000148
+    },
+    {
+      "mode": "incremental",
+      "initialEvents": 5000,
+      "measuredAppends": 12,
+      "eventsPerAppend": 1,
+      "finalEvents": 5013,
+      "initialBodyBytes": 3404451,
+      "commitMs": {
+        "p50": 471.2582999999977,
+        "p95": 1069.2358999999997,
+        "samples": [
+          473.0829999999987,
+          451.5792000000001,
+          471.2582999999977,
+          470.2214000000022,
+          455.9618999999984,
+          482.65509999999995,
+          459.4428000000007,
+          459.6683000000012,
+          483.9782000000014,
+          483.8840999999993,
+          503.7846000000027,
+          1069.2358999999997
+        ]
+      },
+      "eventLoopDelayMs": {
+        "p50": 3.487743,
+        "p95": 365.166591,
+        "max": 403.701759
+      },
+      "indexWrites": {
+        "inserted": 12,
+        "deleted": 0
+      },
+      "addedObjectBytes": 5430610,
+      "versionCount": 14,
+      "reopenAndReadMs": 89.04579999999987
+    }
+  ]
+}
