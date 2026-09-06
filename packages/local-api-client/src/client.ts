@@ -90,6 +90,8 @@ import {
 
 import { decodeJobEventStream } from "./event-stream.js";
 import {
+  codexProjectMappingConfigurationSchema, codexProjectMappingUpdateSchema,
+  type CodexProjectMappingConfiguration, type CodexProjectMappingUpdate,
   integrationDirectorySchema, workspaceSyncConfigurationSchema, integrationActionRequestSchema, workspaceSyncUpdateSchema,
   type IntegrationDirectory, type IntegrationAction, type WorkspaceSyncConfiguration, type WorkspaceSyncUpdate,
 } from "@linmu/dsh-session-contracts";
@@ -164,6 +166,14 @@ class ApiClient {
   async integrationAction(targetId: string, action: IntegrationAction, signal?: AbortSignal): Promise<IntegrationDirectory> {
     const input = integrationActionRequestSchema.parse({ targetId, action });
     return (await this.request("/v1/integrations/actions", this.jsonPost(input), z.strictObject({ directory: integrationDirectorySchema }), signal)).directory;
+  }
+
+  async getCodexProjectMapping(signal?: AbortSignal): Promise<CodexProjectMappingConfiguration> {
+    return (await this.request("/v1/codex-project-mapping", {}, z.strictObject({ configuration: codexProjectMappingConfigurationSchema }), signal)).configuration;
+  }
+
+  async saveCodexProjectMapping(input: CodexProjectMappingUpdate, signal?: AbortSignal): Promise<CodexProjectMappingConfiguration> {
+    return (await this.request("/v1/codex-project-mapping", this.jsonPatch(codexProjectMappingUpdateSchema.parse(input)), z.strictObject({ configuration: codexProjectMappingConfigurationSchema }), signal)).configuration;
   }
 
   async getWorkspaceSync(signal?: AbortSignal): Promise<WorkspaceSyncConfiguration> {

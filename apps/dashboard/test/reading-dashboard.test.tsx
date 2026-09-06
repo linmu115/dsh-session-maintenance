@@ -6,7 +6,7 @@ import type { CanonicalDashboardSessionDetail, CanonicalWorkspaceDirectory, Chec
 import { DashboardApp, type DashboardApi } from "../src/app.js";
 import { SessionWorkbench } from "../src/session-workbench.js";
 import { IntegrationPage } from "../src/integration-page.js";
-import { SyncPage } from "../src/sync-page.js";
+import { NativeWorkspaceSyncPage } from "../src/sync-page.js";
 import { SettingsPage, type OperationsApi } from "../src/operations-pages.js";
 import { RecentlyDeletedPage } from "../src/recently-deleted.js";
 import { CheckpointsPage, type CatalogApi } from "../src/catalog-pages.js";
@@ -137,7 +137,7 @@ describe("integration and sync controls", () => {
 
   it("saves a revisioned whitelist including future sessions without claiming native sync", async () => {
     const saveWorkspaceSync = vi.fn(async (value) => ({ ...sync, policy: { ...sync.policy, revision: 4, workspaceIds: value.workspaceIds } }));
-    await render(<SyncPage api={{ getWorkspaceSync: async () => sync, saveWorkspaceSync }} />);
+    await render(<NativeWorkspaceSyncPage api={{ getWorkspaceSync: async () => sync, saveWorkspaceSync }} />);
     expect(button("保存同步范围").disabled).toBe(true);
     await click(container.querySelector('input[type="checkbox"]')!);
     await click(button("保存同步范围"));
@@ -157,12 +157,12 @@ describe("integration and sync controls", () => {
   });
 
   it("keeps edits after save failure and does not allow missing save capability", async () => {
-    await render(<SyncPage api={{ getWorkspaceSync: async () => sync, saveWorkspaceSync: async () => { throw new Error("版本冲突，请重新读取"); } }} />);
+    await render(<NativeWorkspaceSyncPage api={{ getWorkspaceSync: async () => sync, saveWorkspaceSync: async () => { throw new Error("版本冲突，请重新读取"); } }} />);
     await click(container.querySelector('input[type="checkbox"]')!); await click(button("保存同步范围"));
     expect(container.querySelector('[role="alert"]')?.textContent).toContain("版本冲突");
     expect((container.querySelector('input[type="checkbox"]') as HTMLInputElement).checked).toBe(true);
     expect(container.querySelector('[role="status"]')).toBeNull();
-    await render(<SyncPage api={{ getWorkspaceSync: async () => sync }} />);
+    await render(<NativeWorkspaceSyncPage api={{ getWorkspaceSync: async () => sync }} />);
     expect(container.textContent).toContain("未提供保存同步配置");
     expect(button("保存同步范围").disabled).toBe(true);
   });

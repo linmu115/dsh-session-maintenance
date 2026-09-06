@@ -325,3 +325,27 @@ button:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px 
   .reader-details { padding-inline: 20px; }
   .reading-label { display: none; }
 }
+
+.mapping-policy-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 20px 0; }
+.mapping-policy-status section, .mapping-observer { border: 1px solid var(--dsm-border); border-radius: 10px; padding: 16px; overflow-wrap: anywhere; }
+.mapping-policy-status h3 { margin: 0 0 8px; font-size: 14px; }
+.mapping-policy-status p, .mapping-observer p { margin: 5px 0; }
+.mapping-policy-status small, .mapping-project small, .mapping-project-detail { color: var(--dsm-muted); font-size: 12px; }
+.mapping-policy-status ul { padding-left: 18px; }
+.mapping-observer { margin-bottom: 20px; background: var(--dsm-soft-surface); }
+.mapping-project { border: 1px solid var(--dsm-border); border-radius: 10px; padding: 18px; }
+.mapping-project[data-selected="true"] { border-color: #bdd5c7; background: #f4f8f4; }
+.mapping-project-choice { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 14px; cursor: pointer; }
+.mapping-project-choice input { margin-top: 5px; accent-color: var(--dsm-primary); }
+.mapping-project-choice strong, .mapping-project-choice small { display: block; overflow-wrap: anywhere; }
+.mapping-project-detail { margin: 8px 0 0 30px; overflow-wrap: anywhere; }
+.mapping-project-detail details { margin-top: 6px; }
+.mapping-project-detail summary, .mapping-advanced > summary { cursor: pointer; }
+.mapping-missing { margin: 18px 0; overflow-wrap: anywhere; }
+.mapping-missing label { display: block; }
+.mapping-advanced > summary { margin: 20px 0; color: var(--dsm-muted); font-size: 13px; }
+@media (max-width: 700px) {
+  .mapping-policy-status { grid-template-columns: 1fr; }
+  .mapping-project-choice { grid-template-columns: auto minmax(0, 1fr); }
+  .mapping-project-choice > :last-child { grid-column: 2; justify-self: start; }
+}
