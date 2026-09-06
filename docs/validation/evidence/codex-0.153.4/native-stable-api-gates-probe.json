@@ -1,0 +1,42 @@
+{
+  "syntheticOnly": true,
+  "root": "C:\\Users\\19717\\AppData\\Local\\Temp\\dsh-api-gates-SYNTHETIC-13pSLq",
+  "codexVersion": "0.153.4",
+  "experimentalApi": false,
+  "realCodexHomeTargeted": false,
+  "externalModelServiceUsed": false,
+  "gates": {
+    "resumeHistory": {
+      "accepted": false,
+      "error": "{\"code\":-32600,\"message\":\"thread/resume.history requires experimentalApi capability\"}"
+    },
+    "resumePath": {
+      "accepted": false,
+      "error": "{\"code\":-32600,\"message\":\"thread/resume.path requires experimentalApi capability\"}"
+    },
+    "resumeExcludeTurns": {
+      "accepted": false,
+      "error": "{\"code\":-32600,\"message\":\"no rollout found for thread id 01a075e8-4969-7ff2-b1f5-b54d6455905e\"}"
+    },
+    "injectItems": {
+      "accepted": false,
+      "error": "{\"code\":-32600,\"message\":\"items must not be empty\"}"
+    },
+    "turnsList": {
+      "accepted": false,
+      "error": "{\"code\":-32600,\"message\":\"thread 01a075e8-4969-7ff2-b1f5-b54d6455905e is not materialized yet; thread/turns/list is unavailable before first user message\"}"
+    },
+    "itemsList": {
+      "accepted": false,
+      "error": "{\"code\":-32601,\"message\":\"thread/items/list is not supported yet\"}"
+    },
+    "realtimeStart": {
+      "accepted": false,
+      "error": "{\"code\":-32600,\"message\":\"thread/realtime/start requires experimentalApi capability\"}"
+    }
+  },
+  "threadId": "01a075e8-4969-7ff2-b1f5-b54d6455905e",
+  "defaultHistoryMode": "paginated",
+  "modelRequests": 0,
+  "completed": true
+}

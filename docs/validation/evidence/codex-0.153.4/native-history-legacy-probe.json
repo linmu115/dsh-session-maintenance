@@ -1,0 +1,34 @@
+{
+  "syntheticOnly": true,
+  "root": "C:\\Users\\19717\\AppData\\Local\\Temp\\dsh-native-history-SYNTHETIC-5PG8AR",
+  "codexVersion": "0.153.4",
+  "historyMode": "legacy",
+  "externalModelServiceUsed": false,
+  "realCodexHomeAccessed": false,
+  "threadId": "01a0759a-895b-7a93-98cd-067b9ce3ac42",
+  "baseModelRequests": 1,
+  "immediateTranscript": {
+    "user": false,
+    "assistant": false
+  },
+  "turnCounts": {
+    "before": 1,
+    "after": 1
+  },
+  "injectionNotifications": [],
+  "sameThreadAfterRestart": true,
+  "reloadedTranscript": {
+    "user": false,
+    "assistant": false
+  },
+  "continuationModelInput": {
+    "user": true,
+    "assistant": true
+  },
+  "modelRequests": 2,
+  "afterContinuationTranscript": {
+    "user": false,
+    "assistant": false
+  },
+  "completed": true
+}

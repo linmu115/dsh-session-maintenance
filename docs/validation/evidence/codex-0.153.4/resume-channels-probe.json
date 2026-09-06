@@ -1,0 +1,665 @@
+{
+  "syntheticOnly": true,
+  "root": "C:\\Users\\19717\\AppData\\Local\\Temp\\dsh-resume-channels-SYNTHETIC-uW4kxk",
+  "codexVersion": "0.153.4",
+  "historyMode": "paginated",
+  "externalModelServiceUsed": false,
+  "realCodexHomeAccessed": false,
+  "cases": {
+    "resumeHistoryLoaded": {
+      "error": "{\"code\":-32600,\"message\":\"cannot resume thread 01a075e4-748b-7813-83e3-8d6e2a5be13c with history while it is already running\"}"
+    },
+    "resumeHistoryUnloaded": {
+      "returnedId": "01a075e5-0f79-7650-bfab-b1d42d7be9f8",
+      "sameId": false,
+      "historyMode": "legacy",
+      "transcript": {
+        "turns": 0,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [],
+            "nextCursor": null,
+            "backwardsCursor": null
+          },
+          "items": []
+        }
+      },
+      "continuationModelInput": {
+        "user": true,
+        "assistant": true
+      },
+      "afterContinuation": {
+        "error": "{\"code\":-32601,\"message\":\"thread/items/list is not supported yet\"}"
+      }
+    },
+    "originalResume": {
+      "sameId": true,
+      "beforeContinuation": {
+        "turns": 1,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_1",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "summary",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684302,
+                "completedAt": 1788684302,
+                "durationMs": 560
+              }
+            ],
+            "nextCursor": null,
+            "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":1,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}"
+          },
+          "items": [
+            {
+              "data": [
+                {
+                  "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                  "item": {
+                    "type": "userMessage",
+                    "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                  "item": {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_1",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                }
+              ],
+              "nextCursor": null,
+              "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":7,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+            }
+          ]
+        }
+      },
+      "afterContinuation": {
+        "turns": 2,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_1",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "summary",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684302,
+                "completedAt": 1788684302,
+                "durationMs": 560
+              },
+              {
+                "id": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "01a075e5-148a-7fd3-ba19-d0b5e6833693",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_3",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "summary",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684342,
+                "completedAt": 1788684342,
+                "durationMs": 299
+              }
+            ],
+            "nextCursor": null,
+            "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":1,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}"
+          },
+          "items": [
+            {
+              "data": [
+                {
+                  "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                  "item": {
+                    "type": "userMessage",
+                    "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                  "item": {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_1",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                }
+              ],
+              "nextCursor": null,
+              "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":7,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+            },
+            {
+              "data": [
+                {
+                  "turnId": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                  "item": {
+                    "type": "userMessage",
+                    "id": "01a075e5-148a-7fd3-ba19-d0b5e6833693",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "turnId": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                  "item": {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_3",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                }
+              ],
+              "nextCursor": null,
+              "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":16,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+            }
+          ]
+        }
+      },
+      "notifications": [
+        "turn/started",
+        "item/started",
+        "item/completed",
+        "item/agentMessage/delta",
+        "turn/completed"
+      ]
+    },
+    "resumeOriginalPath": {
+      "sameId": true,
+      "transcript": {
+        "turns": 2,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_1",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "summary",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684302,
+                "completedAt": 1788684302,
+                "durationMs": 560
+              },
+              {
+                "id": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "01a075e5-148a-7fd3-ba19-d0b5e6833693",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_3",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "summary",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684342,
+                "completedAt": 1788684342,
+                "durationMs": 299
+              }
+            ],
+            "nextCursor": null,
+            "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":1,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}"
+          },
+          "items": [
+            {
+              "data": [
+                {
+                  "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                  "item": {
+                    "type": "userMessage",
+                    "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                  "item": {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_1",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                }
+              ],
+              "nextCursor": null,
+              "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":7,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+            },
+            {
+              "data": [
+                {
+                  "turnId": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                  "item": {
+                    "type": "userMessage",
+                    "id": "01a075e5-148a-7fd3-ba19-d0b5e6833693",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "turnId": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                  "item": {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_3",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                }
+              ],
+              "nextCursor": null,
+              "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":16,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+            }
+          ]
+        }
+      }
+    },
+    "fork": {
+      "sameId": false,
+      "returnedId": "01a075e5-6586-73d0-bb4b-ce333bcd1a1f",
+      "transcript": {
+        "turns": 2,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_1",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "summary",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684302,
+                "completedAt": 1788684302,
+                "durationMs": 560
+              },
+              {
+                "id": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "01a075e5-148a-7fd3-ba19-d0b5e6833693",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_3",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "summary",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684342,
+                "completedAt": 1788684342,
+                "durationMs": 299
+              }
+            ],
+            "nextCursor": null,
+            "backwardsCursor": "{\"requestedThreadId\":\"01a075e5-6586-73d0-bb4b-ce333bcd1a1f\",\"rolloutOrdinal\":1,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}"
+          },
+          "items": [
+            {
+              "data": [
+                {
+                  "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                  "item": {
+                    "type": "userMessage",
+                    "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+                  "item": {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_1",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                }
+              ],
+              "nextCursor": null,
+              "backwardsCursor": "{\"requestedThreadId\":\"01a075e5-6586-73d0-bb4b-ce333bcd1a1f\",\"rolloutOrdinal\":7,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+            },
+            {
+              "data": [
+                {
+                  "turnId": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                  "item": {
+                    "type": "userMessage",
+                    "id": "01a075e5-148a-7fd3-ba19-d0b5e6833693",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  }
+                },
+                {
+                  "turnId": "01a075e5-136d-74e0-b57a-c8292d5c6898",
+                  "item": {
+                    "type": "agentMessage",
+                    "id": "msg_synthetic_3",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                }
+              ],
+              "nextCursor": null,
+              "backwardsCursor": "{\"requestedThreadId\":\"01a075e5-6586-73d0-bb4b-ce333bcd1a1f\",\"rolloutOrdinal\":16,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+            }
+          ]
+        }
+      }
+    }
+  },
+  "threadId": "01a075e4-748b-7813-83e3-8d6e2a5be13c",
+  "rolloutPath": "C:\\Users\\19717\\AppData\\Local\\Temp\\dsh-resume-channels-SYNTHETIC-uW4kxk\\codex-home\\sessions\\2026\\09\\06\\rollout-2026-09-06T16-45-01-01a075e4-748b-7813-83e3-8d6e2a5be13c.jsonl",
+  "before": {
+    "turns": 1,
+    "markers": {
+      "user": false,
+      "assistant": false
+    },
+    "data": {
+      "page": {
+        "data": [
+          {
+            "id": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+            "items": [
+              {
+                "type": "userMessage",
+                "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                "clientId": null,
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                    "text_elements": []
+                  }
+                ]
+              },
+              {
+                "type": "agentMessage",
+                "id": "msg_synthetic_1",
+                "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                "phase": null,
+                "memoryCitation": null,
+                "delivery": null,
+                "questions": null
+              }
+            ],
+            "itemsView": "summary",
+            "status": "completed",
+            "error": null,
+            "startedAt": 1788684302,
+            "completedAt": 1788684302,
+            "durationMs": 560
+          }
+        ],
+        "nextCursor": null,
+        "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":1,\"includeAnchor\":true,\"scope\":{\"kind\":\"turns\"}}"
+      },
+      "items": [
+        {
+          "data": [
+            {
+              "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+              "item": {
+                "type": "userMessage",
+                "id": "01a075e4-78cd-7d13-b99b-98c6279ea983",
+                "clientId": null,
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                    "text_elements": []
+                  }
+                ]
+              }
+            },
+            {
+              "turnId": "01a075e4-76a6-7af2-a71f-47e2d7ea4657",
+              "item": {
+                "type": "agentMessage",
+                "id": "msg_synthetic_1",
+                "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                "phase": null,
+                "memoryCitation": null,
+                "delivery": null,
+                "questions": null
+              }
+            }
+          ],
+          "nextCursor": null,
+          "backwardsCursor": "{\"requestedThreadId\":\"01a075e4-748b-7813-83e3-8d6e2a5be13c\",\"rolloutOrdinal\":7,\"includeAnchor\":true,\"scope\":{\"kind\":\"itemsByCreatedAtOrdinal\"}}"
+        }
+      ]
+    }
+  },
+  "completed": true
+}

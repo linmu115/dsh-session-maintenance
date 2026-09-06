@@ -1,0 +1,1440 @@
+{
+  "version": "0.153.4",
+  "source": "Generated locally from actual desktop codex.exe; full schema remains alongside this extraction",
+  "methods": [
+    {
+      "method": "thread/start",
+      "description": "NEW APIs",
+      "params": {
+        "$ref": "#/definitions/ThreadStartParams"
+      }
+    },
+    {
+      "method": "thread/resume",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadResumeParams"
+      }
+    },
+    {
+      "method": "thread/fork",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadForkParams"
+      }
+    },
+    {
+      "method": "thread/archive",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadArchiveParams"
+      }
+    },
+    {
+      "method": "thread/delete",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadDeleteParams"
+      }
+    },
+    {
+      "method": "thread/unsubscribe",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadUnsubscribeParams"
+      }
+    },
+    {
+      "method": "thread/increment_elicitation",
+      "description": "Increment the thread-local out-of-band elicitation counter.\n\nThis is used by external helpers to pause timeout accounting while a user approval or other elicitation is pending outside the app-server request flow.",
+      "params": {
+        "$ref": "#/definitions/ThreadIncrementElicitationParams"
+      }
+    },
+    {
+      "method": "thread/decrement_elicitation",
+      "description": "Decrement the thread-local out-of-band elicitation counter.\n\nWhen the count reaches zero, timeout accounting resumes for the thread.",
+      "params": {
+        "$ref": "#/definitions/ThreadDecrementElicitationParams"
+      }
+    },
+    {
+      "method": "thread/name/set",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSetNameParams"
+      }
+    },
+    {
+      "method": "thread/goal/set",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadGoalSetParams"
+      }
+    },
+    {
+      "method": "thread/goal/get",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadGoalGetParams"
+      }
+    },
+    {
+      "method": "thread/goal/clear",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadGoalClearParams"
+      }
+    },
+    {
+      "method": "thread/queue/add",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadQueueAddParams"
+      }
+    },
+    {
+      "method": "thread/queue/list",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadQueueListParams"
+      }
+    },
+    {
+      "method": "thread/queue/update",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadQueueUpdateParams"
+      }
+    },
+    {
+      "method": "thread/queue/delete",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadQueueDeleteParams"
+      }
+    },
+    {
+      "method": "thread/queue/reorder",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadQueueReorderParams"
+      }
+    },
+    {
+      "method": "thread/queue/start",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadQueueStartParams"
+      }
+    },
+    {
+      "method": "thread/metadata/update",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadMetadataUpdateParams"
+      }
+    },
+    {
+      "method": "thread/section/move",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSectionMoveParams"
+      }
+    },
+    {
+      "method": "thread/settings/update",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSettingsUpdateParams"
+      }
+    },
+    {
+      "method": "thread/memoryMode/set",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadMemoryModeSetParams"
+      }
+    },
+    {
+      "method": "thread/unarchive",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadUnarchiveParams"
+      }
+    },
+    {
+      "method": "thread/compact/start",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadCompactStartParams"
+      }
+    },
+    {
+      "method": "thread/shellCommand",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadShellCommandParams"
+      }
+    },
+    {
+      "method": "thread/approveGuardianDeniedAction",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadApproveGuardianDeniedActionParams"
+      }
+    },
+    {
+      "method": "thread/backgroundTerminals/clean",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadBackgroundTerminalsCleanParams"
+      }
+    },
+    {
+      "method": "thread/backgroundTerminals/list",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadBackgroundTerminalsListParams"
+      }
+    },
+    {
+      "method": "thread/backgroundTerminals/terminate",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadBackgroundTerminalsTerminateParams"
+      }
+    },
+    {
+      "method": "thread/rollback",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadRollbackParams"
+      }
+    },
+    {
+      "method": "thread/revert",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadRevertParams"
+      }
+    },
+    {
+      "method": "thread/list",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadListParams"
+      }
+    },
+    {
+      "method": "project/import",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ProjectImportParams"
+      }
+    },
+    {
+      "method": "threadSection/list",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSectionListParams"
+      }
+    },
+    {
+      "method": "threadSection/create",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSectionCreateParams"
+      }
+    },
+    {
+      "method": "threadSection/update",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSectionUpdateParams"
+      }
+    },
+    {
+      "method": "threadSection/delete",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSectionDeleteParams"
+      }
+    },
+    {
+      "method": "thread/search",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSearchParams"
+      }
+    },
+    {
+      "method": "thread/searchOccurrences",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadSearchOccurrencesParams"
+      }
+    },
+    {
+      "method": "thread/loaded/list",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadLoadedListParams"
+      }
+    },
+    {
+      "method": "thread/read",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadReadParams"
+      }
+    },
+    {
+      "method": "thread/turns/list",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadTurnsListParams"
+      }
+    },
+    {
+      "method": "thread/items/list",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadItemsListParams"
+      }
+    },
+    {
+      "method": "thread/inject_items",
+      "description": "Append raw Responses API items to the thread history without starting a user turn.",
+      "params": {
+        "$ref": "#/definitions/ThreadInjectItemsParams"
+      }
+    },
+    {
+      "method": "turn/start",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/TurnStartParams"
+      }
+    },
+    {
+      "method": "turn/settings/update",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/TurnSettingsUpdateParams"
+      }
+    },
+    {
+      "method": "turn/steer",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/TurnSteerParams"
+      }
+    },
+    {
+      "method": "turn/interrupt",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/TurnInterruptParams"
+      }
+    },
+    {
+      "method": "thread/realtime/start",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadRealtimeStartParams"
+      }
+    },
+    {
+      "method": "thread/realtime/appendAudio",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadRealtimeAppendAudioParams"
+      }
+    },
+    {
+      "method": "thread/realtime/appendText",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadRealtimeAppendTextParams"
+      }
+    },
+    {
+      "method": "thread/realtime/appendSpeech",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadRealtimeAppendSpeechParams"
+      }
+    },
+    {
+      "method": "thread/realtime/stop",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadRealtimeStopParams"
+      }
+    },
+    {
+      "method": "thread/timeline/list",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadTimelineListParams"
+      }
+    },
+    {
+      "method": "thread/realtime/listVoices",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ThreadRealtimeListVoicesParams"
+      }
+    },
+    {
+      "method": "config/mcpServer/reload",
+      "description": null,
+      "params": {
+        "type": "null"
+      }
+    },
+    {
+      "method": "externalAgentConfig/import",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ExternalAgentConfigImportParams"
+      }
+    },
+    {
+      "method": "externalAgentConfig/import/recordHistory",
+      "description": null,
+      "params": {
+        "$ref": "#/definitions/ExternalAgentConfigImportHistoryRecordParams"
+      }
+    },
+    {
+      "method": "externalAgentConfig/import/readHistories",
+      "description": null,
+      "params": {
+        "type": "null"
+      }
+    }
+  ],
+  "definitions": {
+    "ThreadResumeParams": {
+      "description": "There are three ways to resume a thread: 1. By thread_id: load the thread from disk by thread_id and resume it. 2. By history: instantiate the thread from memory and resume it. 3. By path: load the thread from disk by path and resume it.\n\nFor non-running threads, the precedence is: history > non-empty path > thread_id. If using history or a non-empty path for a non-running thread, the thread_id param will be ignored.\n\nIf thread_id identifies a running thread, app-server rejoins that thread and treats a non-empty path as a consistency check against the active rollout path. Empty string path values are treated as absent.\n\nPrefer using thread_id whenever possible.",
+      "properties": {
+        "approvalPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AskForApproval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Override where approval requests are routed for review on this thread and subsequent turns."
+        },
+        "baseInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "config": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "developerInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "excludeTurns": {
+          "description": "When true, return only thread metadata and live-resume state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after resuming. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
+          "type": "boolean"
+        },
+        "history": {
+          "description": "[UNSTABLE] FOR CODEX CLOUD - DO NOT USE. If specified, the thread will be resumed with the provided history instead of loaded from disk.",
+          "items": {
+            "$ref": "#/definitions/ResponseItem"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "initialTurnsPage": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadResumeInitialTurnsPageParams"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "When present, include a `thread/turns/list` page in the resume response so clients can bootstrap recent turns without a second request."
+        },
+        "model": {
+          "description": "Configuration overrides for the resumed thread, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelProvider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "default": null,
+          "description": "[UNSTABLE] Specify the rollout path to resume from. If specified for a non-running thread, the thread_id param will be ignored. If thread_id identifies a running thread, the path must match the active rollout path.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "permissions": {
+          "description": "Named profile id for the resumed thread. Cannot be combined with `sandbox`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "personality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Personality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtimeWorkspaceRoots": {
+          "description": "Replace the thread's runtime workspace roots. Paths must be absolute.",
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sandbox": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SandboxMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serviceTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadInjectItemsParams": {
+      "properties": {
+        "items": {
+          "description": "Raw Responses API items to append to the thread's model-visible history.",
+          "items": true,
+          "type": "array"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "items",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "TurnStartParams": {
+      "properties": {
+        "additionalContext": {
+          "additionalProperties": {
+            "$ref": "#/definitions/AdditionalContextEntry"
+          },
+          "description": "Optional client-provided context fragments keyed by an opaque source identifier.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "approvalPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AskForApproval"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Override the approval policy for this turn and subsequent turns."
+        },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Override where approval requests are routed for review on this turn and subsequent turns."
+        },
+        "clientUserMessageId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "collaborationMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CollaborationMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "EXPERIMENTAL - Set a pre-set collaboration mode. Takes precedence over model, reasoning_effort, and developer instructions if set.\n\nFor `collaboration_mode.settings.developer_instructions`, `null` means \"use the built-in instructions for the selected mode\"."
+        },
+        "cwd": {
+          "description": "Override the working directory for this turn and subsequent turns.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cyberAccessProgram": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CyberAccessProgram"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "EXPERIMENTAL - Request a workspace-authorized cyber program for this turn. Omission preserves automatic behavior. This does not grant access."
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Override the reasoning effort for this turn and subsequent turns."
+        },
+        "environments": {
+          "description": "Optional environments for this turn and subsequent turns.\n\nOmitted uses the thread sticky environments. Empty disables environment access for this turn. Non-empty selects the first environment as the current turn environment for this turn.",
+          "items": {
+            "$ref": "#/definitions/TurnEnvironmentParams"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "input": {
+          "items": {
+            "$ref": "#/definitions/UserInput"
+          },
+          "type": "array"
+        },
+        "model": {
+          "description": "Override the model for this turn and subsequent turns.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "multiAgentMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MultiAgentMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "@deprecated Ignored. Use `effort: \"ultra\"` for proactive multi-agent behavior."
+        },
+        "outputSchema": {
+          "description": "Optional JSON Schema used to constrain the final assistant message for this turn."
+        },
+        "permissions": {
+          "description": "Select a named permissions profile id for this turn and subsequent turns. Cannot be combined with `sandboxPolicy`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "personality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Personality"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Override the personality for this turn and subsequent turns."
+        },
+        "responsesapiClientMetadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Optional metadata to enrich Codex's ResponsesAPI turn metadata.\n\nEntries are flattened into the JSON string sent as `client_metadata[\"x-codex-turn-metadata\"]` on ResponsesAPI HTTP and websocket requests.\n\nThey are not sent as top-level ResponsesAPI `client_metadata` keys, and reserved keys such as `session_id`, `thread_id`, `turn_id`, and `window_id` cannot be overridden.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "runtimeWorkspaceRoots": {
+          "description": "Replace the thread's runtime workspace roots for this turn and subsequent turns. Paths must be absolute.",
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sandboxPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SandboxPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Override the sandbox policy for this turn and subsequent turns."
+        },
+        "serviceTier": {
+          "description": "Override the service tier for this turn and subsequent turns.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "serviceTierForTurn": {
+          "description": "Override the service tier only when this request starts a new turn. Use \"default\" for standard speed. Omitted or null inherits the thread's tier. Does not change the thread's tier or a turn being steered.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningSummary"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Override the reasoning summary for this turn and subsequent turns."
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "toolOutput": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TurnToolOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turnTrigger": {
+          "description": "Optional source classification for the caller that starts this turn. Ignored when this request steers an already-active turn.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "input",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadForkParams": {
+      "description": "There are two ways to fork a thread: 1. By thread_id: load the thread from disk by thread_id and fork it into a new thread. 2. By path: load the thread from disk by path and fork it into a new thread.\n\nIf using a non-empty path, the thread_id param will be ignored. Empty string path values are treated as absent.\n\nPrefer using thread_id whenever possible.",
+      "properties": {
+        "approvalPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AskForApproval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Override where approval requests are routed for review on this thread and subsequent turns."
+        },
+        "baseInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "beforeTurnId": {
+          "description": "Optional turn id to fork before, excluding that turn and all later turns. Cannot be combined with `last_turn_id`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "config": {
+          "additionalProperties": true,
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "cwd": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deferGoalContinuation": {
+          "description": "When true, carry the source thread's current goal into the fork without starting its initial automatic continuation. The next explicit turn owns the goal lifecycle, and normal automatic continuation resumes after it.",
+          "type": "boolean"
+        },
+        "developerInstructions": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "ephemeral": {
+          "type": "boolean"
+        },
+        "excludeTurns": {
+          "description": "When true, return only thread metadata and live fork state without populating `thread.turns`. This is useful when the client plans to call `thread/turns/list` immediately after forking. Full-history hydration is deprecated for paginated threads; use this with `thread/turns/list` and `thread/items/list` instead.",
+          "type": "boolean"
+        },
+        "lastTurnId": {
+          "description": "Optional last turn id to fork through, inclusive.\n\nWhen specified, turns after `last_turn_id` are omitted from the fork. The referenced turn cannot be in progress.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Configuration overrides for the forked thread, if any.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modelProvider": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "default": null,
+          "description": "[UNSTABLE] Specify the rollout path to fork from. If specified, the thread_id param will be ignored.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "permissions": {
+          "description": "Named profile id for the forked thread. Cannot be combined with `sandbox`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "runtimeWorkspaceRoots": {
+          "description": "Replace the thread's runtime workspace roots. Paths must be absolute.",
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "sandbox": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SandboxMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serviceTier": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "threadSource": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadSource"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional client-supplied analytics source classification for this forked thread."
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadRevertParams": {
+      "description": "Replace a paginated thread's durable history with the prefix before one turn.\n\nThis only changes persisted conversation history. It does not revert local file changes.",
+      "properties": {
+        "beforeTurnId": {
+          "description": "Turn excluded from the replacement history, together with every later turn.",
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "beforeTurnId",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadRollbackParams": {
+      "description": "DEPRECATED: `thread/rollback` will be removed soon.",
+      "properties": {
+        "numTurns": {
+          "description": "The number of turns to drop from the end of the thread. Must be >= 1.\n\nThis only modifies the thread's history and does not revert local file changes that have been made by the agent. Clients are responsible for reverting these changes.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": "integer"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "numTurns",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadUnsubscribeParams": {
+      "properties": {
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ExternalAgentConfigImportParams": {
+      "properties": {
+        "migrationItems": {
+          "items": {
+            "$ref": "#/definitions/ExternalAgentConfigMigrationItem"
+          },
+          "type": "array"
+        },
+        "migrationSource": {
+          "description": "Migration-source selector used to produce the migration items. Pass the same value to detection and import; missing or unrecognized values use the default source.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "providerId": {
+          "description": "Opaque provider identifier supplied by the caller for analytics attribution and import history display. This does not select the migration source.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "source": {
+          "description": "Optional identifier for the product that initiated the import.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "migrationItems"
+      ],
+      "type": "object"
+    },
+    "ExternalAgentConfigImportHistoryRecordParams": {
+      "properties": {
+        "itemTypeResults": {
+          "description": "Completed results grouped by imported item type.",
+          "items": {
+            "$ref": "#/definitions/ExternalAgentConfigImportHistoryRecordTypeResultParams"
+          },
+          "type": "array"
+        },
+        "providerId": {
+          "description": "Opaque provider identifier for the externally completed import.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "itemTypeResults",
+        "providerId"
+      ],
+      "type": "object"
+    },
+    "SessionMigration": {
+      "properties": {
+        "cwd": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        },
+        "title": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "cwd",
+        "path"
+      ],
+      "type": "object"
+    },
+    "ProjectImportParams": {
+      "properties": {
+        "idempotencyKey": {
+          "type": "string"
+        },
+        "metadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "name": {
+          "type": "string"
+        },
+        "roots": {
+          "items": {
+            "$ref": "#/definitions/ProjectRoot"
+          },
+          "type": "array"
+        },
+        "threads": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "idempotencyKey",
+        "name",
+        "roots"
+      ],
+      "type": "object"
+    },
+    "ThreadRealtimeStartParams": {
+      "description": "EXPERIMENTAL - start a thread-scoped realtime session.",
+      "properties": {
+        "clientManagedHandoffs": {
+          "description": "Leaves Codex response handoffs to the client's explicit append calls instead of forwarding them automatically. Defaults to false.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "codexResponseHandoffChannelPrefixes": {
+          "additionalProperties": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "description": "Overrides BEM channel prefixes by `analysis`, `commentary`, or `final`. Omitted channels retain their default uppercase bracketed prefixes.",
+          "type": [
+            "object",
+            "null"
+          ]
+        },
+        "codexResponseHandoffMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CodexResponseHandoffMode"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Selects how automatic Codex responses are routed in Frameless Bidi sessions. Omitted values default to `thinking`. Realtime V1 and V2 ignore this setting."
+        },
+        "codexResponseItemPrefix": {
+          "description": "Optional prefix added to automatic Codex response items when `codexResponsesAsItems` is true.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "codexResponsesAsItems": {
+          "description": "Sends automatic Codex responses as realtime conversation items instead of handoff appends.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "delegationAckFiller": {
+          "description": "Controls whether a realtime V3 delegation produces an acknowledgement filler. Omitted values preserve the Realtime API's default behavior.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "flushTranscriptTailOnSessionEnd": {
+          "description": "Routes any transcript tail remaining at session end through Codex. Defaults to false. TODO: Remove this rollout knob once transcript-tail flushing is always enabled.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "includeStartupContext": {
+          "description": "Set to false to start without Codex's startup context. Omitted or null includes it.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "initialItems": {
+          "description": "Adds complete role-bearing text items to the initial Frameless Bidi session history. This is only supported by realtime V3 and is sent during session startup. Requests are limited to 128 items and 8,192 estimated text tokens in total.",
+          "items": {
+            "$ref": "#/definitions/ThreadRealtimeInitialItem"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "model": {
+          "description": "Overrides the configured realtime model for this session only.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "outputModality": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/RealtimeOutputModality"
+            }
+          ],
+          "description": "Selects text or audio output for the realtime session. Transport and voice stay independent so clients can choose how they connect separately from what the model emits."
+        },
+        "prompt": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "realtimeEndInstructions": {
+          "description": "Developer instructions given to the backing Codex model when this realtime session ends.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "realtimeSessionId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "realtimeStartInstructions": {
+          "description": "Developer instructions given to the backing Codex model when this realtime session starts.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "transport": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadRealtimeStartTransport"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "version": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RealtimeConversationVersion"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Overrides the configured realtime protocol version for this session only."
+        },
+        "voice": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/RealtimeVoice"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "outputModality",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadRealtimeAppendSpeechParams": {
+      "description": "EXPERIMENTAL - append speakable text to thread realtime.",
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "text",
+        "threadId"
+      ],
+      "type": "object"
+    },
+    "ThreadListParams": {
+      "properties": {
+        "ancestorThreadId": {
+          "description": "Optional ancestor thread filter. Returns spawned descendants at any depth, excluding the ancestor itself. Mutually exclusive with `parentThreadId`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "archived": {
+          "description": "Optional archived filter; when set to true, only archived threads are returned. If false or null, only non-archived threads are returned.",
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "cursor": {
+          "description": "Opaque pagination cursor returned by a previous call.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "cwd": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadListCwdFilter"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional cwd filter or filters; when set, only threads whose session cwd exactly matches one of these paths are returned."
+        },
+        "limit": {
+          "description": "Optional page size; defaults to a reasonable server-side value.",
+          "format": "uint32",
+          "minimum": 0.0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "modelProviders": {
+          "description": "Optional provider filter; when set, only sessions recorded under these providers are returned. When present but empty, includes all providers.",
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "parentThreadId": {
+          "description": "Optional direct parent thread filter. Mutually exclusive with `ancestorThreadId`.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "projectId": {
+          "description": "Omit to include every project, set to null for unassigned threads, or provide a project ID to return only threads in that project.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "searchTerm": {
+          "description": "Optional substring filter for the extracted thread title.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sectionId": {
+          "description": "Omit to include every section, set to `null` for unsectioned threads, or provide a section ID to return only threads in that section.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "sortDirection": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SortDirection"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional sort direction; defaults to descending (newest first)."
+        },
+        "sortKey": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadSortKey"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Optional sort key; defaults to created_at."
+        },
+        "sourceKinds": {
+          "description": "Optional source filter; when set, only sessions from these source kinds are returned. When omitted or empty, defaults to interactive sources.",
+          "items": {
+            "$ref": "#/definitions/ThreadSourceKind"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "useStateDbOnly": {
+          "description": "If true, return from the state DB without scanning JSONL rollouts to repair thread metadata. Omitted or false preserves scan-and-repair behavior.",
+          "type": "boolean"
+        }
+      },
+      "type": "object"
+    },
+    "ThreadMetadataUpdateParams": {
+      "properties": {
+        "gitInfo": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadMetadataGitInfoUpdateParams"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Patch the stored Git metadata for this thread. Omit a field to leave it unchanged, set it to `null` to clear it, or provide a string to replace the stored value."
+        },
+        "projectId": {
+          "description": "Omit to leave the project unchanged, use an empty string to clear it, or provide an existing project ID to assign it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "threadId"
+      ],
+      "type": "object"
+    }
+  }
+}

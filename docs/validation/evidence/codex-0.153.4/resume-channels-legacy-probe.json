@@ -1,0 +1,427 @@
+{
+  "syntheticOnly": true,
+  "root": "C:\\Users\\19717\\AppData\\Local\\Temp\\dsh-resume-channels-SYNTHETIC-bCMh0Q",
+  "codexVersion": "0.153.4",
+  "historyMode": "legacy",
+  "externalModelServiceUsed": false,
+  "realCodexHomeAccessed": false,
+  "cases": {
+    "resumeHistoryLoaded": {
+      "error": "{\"code\":-32600,\"message\":\"cannot resume thread 01a075e6-7276-7ed1-8d0b-547a1c8dd664 with history while it is already running\"}"
+    },
+    "resumeHistoryUnloaded": {
+      "returnedId": "01a075e6-c6a9-7150-a082-9778e94d102f",
+      "sameId": false,
+      "historyMode": "legacy",
+      "transcript": {
+        "turns": 0,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": []
+          },
+          "items": []
+        }
+      },
+      "continuationModelInput": {
+        "user": true,
+        "assistant": true
+      },
+      "afterContinuation": {
+        "turns": 1,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e6-c933-7410-b871-1b4f916651e3",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "item-1",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_IMPORTED_CONTEXT_FOLLOWUP",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "item-2",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_2",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "full",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684454,
+                "completedAt": 1788684454,
+                "durationMs": 330
+              }
+            ]
+          },
+          "items": []
+        }
+      }
+    },
+    "originalResume": {
+      "sameId": true,
+      "beforeContinuation": {
+        "turns": 1,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e6-7407-7f70-9bfd-97a4ecd95fdb",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "item-1",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "item-2",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "full",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684432,
+                "completedAt": 1788684432,
+                "durationMs": 533
+              }
+            ]
+          },
+          "items": []
+        }
+      },
+      "afterContinuation": {
+        "turns": 2,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e6-7407-7f70-9bfd-97a4ecd95fdb",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "item-1",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "item-2",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "full",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684432,
+                "completedAt": 1788684432,
+                "durationMs": 533
+              },
+              {
+                "id": "01a075e6-cad6-76d0-a708-19b6e6fa75ed",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "item-3",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "item-4",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "full",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684454,
+                "completedAt": 1788684454,
+                "durationMs": 295
+              }
+            ]
+          },
+          "items": []
+        }
+      },
+      "notifications": [
+        "turn/started",
+        "item/started",
+        "item/completed",
+        "item/agentMessage/delta",
+        "turn/completed"
+      ]
+    },
+    "resumeOriginalPath": {
+      "sameId": true,
+      "transcript": {
+        "turns": 2,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e6-7407-7f70-9bfd-97a4ecd95fdb",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "item-1",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "item-2",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "full",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684432,
+                "completedAt": 1788684432,
+                "durationMs": 533
+              },
+              {
+                "id": "01a075e6-cad6-76d0-a708-19b6e6fa75ed",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "item-3",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "item-4",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "full",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684454,
+                "completedAt": 1788684454,
+                "durationMs": 295
+              }
+            ]
+          },
+          "items": []
+        }
+      }
+    },
+    "fork": {
+      "sameId": false,
+      "returnedId": "01a075e7-1b48-7dd0-a0f7-fa6d8089b350",
+      "transcript": {
+        "turns": 2,
+        "markers": {
+          "user": false,
+          "assistant": false
+        },
+        "data": {
+          "page": {
+            "data": [
+              {
+                "id": "01a075e6-7407-7f70-9bfd-97a4ecd95fdb",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "item-1",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "item-2",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "full",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684432,
+                "completedAt": 1788684432,
+                "durationMs": 533
+              },
+              {
+                "id": "01a075e6-cad6-76d0-a708-19b6e6fa75ed",
+                "items": [
+                  {
+                    "type": "userMessage",
+                    "id": "item-3",
+                    "clientId": null,
+                    "content": [
+                      {
+                        "type": "text",
+                        "text": "SYNTHETIC_ORIGINAL_ID_CONTINUATION",
+                        "text_elements": []
+                      }
+                    ]
+                  },
+                  {
+                    "type": "agentMessage",
+                    "id": "item-4",
+                    "text": "SYNTHETIC_MODEL_RESPONSE_3",
+                    "phase": null,
+                    "memoryCitation": null,
+                    "delivery": null,
+                    "questions": null
+                  }
+                ],
+                "itemsView": "full",
+                "status": "completed",
+                "error": null,
+                "startedAt": 1788684454,
+                "completedAt": 1788684454,
+                "durationMs": 295
+              }
+            ]
+          },
+          "items": []
+        }
+      }
+    }
+  },
+  "threadId": "01a075e6-7276-7ed1-8d0b-547a1c8dd664",
+  "rolloutPath": "C:\\Users\\19717\\AppData\\Local\\Temp\\dsh-resume-channels-SYNTHETIC-bCMh0Q\\codex-home\\sessions\\2026\\09\\06\\rollout-2026-09-06T16-47-12-01a075e6-7276-7ed1-8d0b-547a1c8dd664.jsonl",
+  "before": {
+    "turns": 1,
+    "markers": {
+      "user": false,
+      "assistant": false
+    },
+    "data": {
+      "page": {
+        "data": [
+          {
+            "id": "01a075e6-7407-7f70-9bfd-97a4ecd95fdb",
+            "items": [
+              {
+                "type": "userMessage",
+                "id": "item-1",
+                "clientId": null,
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "SYNTHETIC_OFFICIAL_BASE_USER",
+                    "text_elements": []
+                  }
+                ]
+              },
+              {
+                "type": "agentMessage",
+                "id": "item-2",
+                "text": "SYNTHETIC_MODEL_RESPONSE_1",
+                "phase": null,
+                "memoryCitation": null,
+                "delivery": null,
+                "questions": null
+              }
+            ],
+            "itemsView": "full",
+            "status": "completed",
+            "error": null,
+            "startedAt": 1788684432,
+            "completedAt": 1788684432,
+            "durationMs": 533
+          }
+        ]
+      },
+      "items": []
+    }
+  },
+  "completed": true
+}
