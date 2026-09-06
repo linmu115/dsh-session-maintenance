@@ -634,9 +634,20 @@ export class RetentionRepository {
               .filter((source) => source.rootId === root.id)
               .flatMap((source) => source.files.map((file) => file.relativePath)),
           ];
+          // Moving a nested resource leaves its producer's empty parent directories in place.
+          // Journal paths authorize traversing only those ancestors, never hiding their children.
+          const journalAncestors = new Set<string>();
+          for (const item of journalItems.filter((entry) => entry.rootId === root.id)) {
+            const components = item.originalPath.split("/");
+            for (let count = 1; count < components.length; count++)
+              journalAncestors.add(components.slice(0, count).join("/"));
+          }
           const inspectUnknown = async (path: string): Promise<void> => {
             if (ownedPaths.includes(path)) return;
-            if (ownedPaths.some((owned) => owned.startsWith(`${path}/`))) {
+            if (
+              journalAncestors.has(path) ||
+              ownedPaths.some((owned) => owned.startsWith(`${path}/`))
+            ) {
               await checkedRetentionPath(root, path);
               for (const child of await readdir(resolve(root.path, path)))
                 await inspectUnknown(`${path}/${child}`);

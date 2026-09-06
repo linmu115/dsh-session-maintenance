@@ -13,6 +13,7 @@ import {
 import { RetentionRepository, retentionRecord } from "./retention-repository.js";
 import {
   checkedRetentionPath,
+  identifyRetentionRoot,
   inventoryRetentionResource,
   inventoryRetentionTree,
   readRetentionJson,
@@ -262,6 +263,11 @@ export async function discoverRetentionResources(
       )
         continue;
       try {
+        const directory = await identifyRetentionRoot(
+          root.id,
+          await checkedRetentionPath(root, path),
+          root.purpose,
+        );
         let kind: RetentionResource["kind"], ownerId: string;
         if (root.purpose === "runs") {
           const descriptor = retentionRecord(
@@ -298,7 +304,21 @@ export async function discoverRetentionResources(
           kind = "backup";
           ownerId = manifest.transactionId;
         }
-        const id = `resource_${retentionDigest({ root: root.id, path, ownerId }).slice(7, 31)}`;
+        const currentDirectory = await identifyRetentionRoot(
+          root.id,
+          await checkedRetentionPath(root, path),
+          root.purpose,
+        );
+        if (currentDirectory.identity !== directory.identity)
+          throw new Error("Resource directory changed during discovery");
+        // A producer may rebuild the same path while an older generation is quarantined or purged.
+        // Stable physical identity separates those resources without invalidating ordinary updates.
+        const id = `resource_${retentionDigest({
+          root: root.id,
+          path,
+          ownerId,
+          identity: directory.identity,
+        }).slice(7, 31)}`;
         repository.registerResource({
           id,
           rootId: root.id,

@@ -17,6 +17,7 @@ import {
   assertStaticSqliteCompanions,
   checkedRetentionDestination,
   checkedRetentionPath,
+  identifyRetentionRoot,
   inventoryRetentionTree,
   isMissing,
   retentionDigest,
@@ -181,9 +182,50 @@ export class RetentionExecutor {
       );
     return inventory;
   }
+  private async hasRegisteredCacheReplacement(
+    root: RetentionRoot,
+    item: RetentionBatchItem,
+  ): Promise<boolean> {
+    if (item.moves || !["quarantined", "purging"].includes(item.state)) return false;
+    const resources = this.repository.resources();
+    const previous = resources.find((entry) => entry.id === item.resourceId);
+    const replacement = resources.find(
+      (entry) =>
+        entry.id !== item.resourceId &&
+        entry.rootId === item.rootId &&
+        entry.relativePath === item.originalPath &&
+        entry.state === "registered" &&
+        entry.kind === "cache" &&
+        entry.ownerId === previous?.ownerId,
+    );
+    if (previous?.kind !== "cache" || !replacement) return false;
+    const current = await identifyRetentionRoot(
+      replacement.id,
+      await checkedRetentionPath(root, item.originalPath),
+      root.purpose,
+    );
+    const expectedId = `resource_${retentionDigest({
+      root: root.id,
+      path: item.originalPath,
+      ownerId: replacement.ownerId,
+      identity: current.identity,
+    }).slice(7, 31)}`;
+    const isolated = await identifyRetentionRoot(
+      item.resourceId,
+      await checkedRetentionPath(root, item.quarantinePath),
+      root.purpose,
+    );
+    return (
+      replacement.id === expectedId &&
+      current.identity !== isolated.identity &&
+      item.files.find((file) => file.relativePath === "")?.identity === `${isolated.identity}:d`
+    );
+  }
+
   private async reconcile(
     batch: RetentionBatch,
     evidence: MaintenanceWriteEvidence,
+    allowRegisteredCacheReplacement = false,
   ): Promise<RetentionBatch> {
     for (const item of batch.items) {
       if (!["planned", "quarantined"].includes(item.state)) continue;
@@ -203,11 +245,19 @@ export class RetentionExecutor {
       const root = this.root(item, evidence),
         original = await this.exists(root, item.originalPath),
         quarantined = await this.exists(root, item.quarantinePath);
-      if (original && quarantined)
+      if (original && quarantined) {
+        if (
+          allowRegisteredCacheReplacement &&
+          (await this.hasRegisteredCacheReplacement(root, item))
+        ) {
+          await this.sameTree(root, item.quarantinePath, item);
+          continue;
+        }
         throw new SessionMaintenanceError(
           "PLAN_STALE",
           "Both original and quarantine locations exist; recovery will not overwrite either",
         );
+      }
       if (!original && !quarantined)
         throw new SessionMaintenanceError(
           "RECOVERY_REQUIRED",
@@ -551,7 +601,7 @@ export class RetentionExecutor {
           "CONFIRMATION_REQUIRED",
           "The quarantine recovery grace period has not elapsed",
         );
-      batch = await this.reconcile(batch, evidence);
+      batch = await this.reconcile(batch, evidence, true);
       for (const originalItem of batch.items) {
         let item = batch.items.find((entry) => entry.resourceId === originalItem.resourceId)!;
         if (item.state === "restored" || item.state === "purged") continue;
@@ -562,7 +612,10 @@ export class RetentionExecutor {
           );
         try {
           const root = this.root(item, evidence);
-          if (await this.exists(root, item.originalPath))
+          if (
+            (await this.exists(root, item.originalPath)) &&
+            !(await this.hasRegisteredCacheReplacement(root, item))
+          )
             throw new SessionMaintenanceError("PLAN_STALE", "Original resource path was reused");
           if (item.state !== "purging") {
             const inventory = await this.eligible(batch, item);
