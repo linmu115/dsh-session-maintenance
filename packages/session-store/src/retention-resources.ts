@@ -57,6 +57,7 @@ export async function captureRetentionResources(
   );
   for (const resource of ordered) {
     if (resource.state === "purged") continue;
+    let observedResource = resource;
     const root = roots.get(resource.rootId),
       reasons: string[] = [];
     let completedAt: string | null = null,
@@ -210,6 +211,15 @@ export async function captureRetentionResources(
           await readRetentionJson(root, `${resource.relativePath}/projection-cache-manifest.json`),
         );
         if (manifest.cacheKey !== resource.ownerId) throw new Error("Cache identity mismatch");
+        // A later successful refresh is newer evidence than initial discovery.
+        // Pure cache hits do not write a receipt, so this is known recency, not
+        // a complete access log. Unknown registrations remain protected below.
+        if (
+          resource.lastUsedAt !== null &&
+          Date.parse(manifest.updatedAt) > Date.parse(resource.lastUsedAt)
+        ) {
+          observedResource = { ...resource, lastUsedAt: manifest.updatedAt };
+        }
         if (cachesInUse.has(resource.id)) reasons.push("retained-run-sparse-base");
         for (const session of manifest.sessions)
           if (session.canonicalHeadVersionId)
@@ -255,7 +265,7 @@ export async function captureRetentionResources(
       valid = false;
     }
     result.push({
-      resource,
+      resource: observedResource,
       fingerprint,
       bytes: files.reduce((sum, file) => sum + file.bytes, 0),
       files,
