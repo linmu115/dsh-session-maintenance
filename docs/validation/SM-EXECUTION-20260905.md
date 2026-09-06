@@ -8,6 +8,11 @@ The current selection is `docs/superpowers/plans/2026-09-06-maintenance-selected
 based on the user's eight annotations and release baseline `0dbf921`.
 This ledger distinguishes source completion, package verification, and live use.
 
+Plugin hotfix activated on RC1: **Maintenance 0.2.19**, source `7ab31ac`; settings
+and sidebar global Dashboard navigation no longer depends on session mapping.
+Engine 0.1.16 and SCM 0.3.2 remain in use. See
+[the hotfix record](2026-09-06-maintenance-0.2.19-dashboard-hotfix.md).
+
 | Task | Status | Evidence / next step |
 | --- | --- | --- |
 | SM-00 | Deployed; user UI acceptance pending | Engine 0.1.16; actual RC1 plugin Dashboard launch, HTML, script and authentication verified |
