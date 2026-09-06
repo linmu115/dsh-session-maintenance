@@ -42,13 +42,12 @@ import {
   JsonProjectionDirectory,
   projectionRootFor,
   type CanonicalProjectionSource,
-  type IncrementalCanonicalProjectionSource,
 } from "./materialize.js";
 import {
-  PersistentProjectionCache,
   projectionCacheIdentity,
   projectionCacheRootFor,
 } from "./persistent-cache.js";
+import { createRunCacheManager, refreshRunCache, type RunCacheContext } from "./run-cache.js";
 import { ProjectionWriteAheadLog } from "./wal.js";
 import {
   readProjectionRecoveryDescriptor,
@@ -115,17 +114,11 @@ interface PreparedProjectionContext {
   readonly handle: PreparedProjectionRunHandle;
   readonly directory: JsonProjectionDirectory;
   readonly sessions: Map<string, ActiveProjectionSession>;
-  readonly persistentCache: PersistentCacheContext | null;
-}
-
-interface PersistentCacheContext {
-  readonly manager: PersistentProjectionCache;
-  readonly cacheRoot: string;
-  readonly configuration: JsonValue;
+  readonly persistentCache: RunCacheContext | null;
 }
 
 type LifecycleProjectionContext = ProjectionAppendContext & {
-  readonly persistentCache: PersistentCacheContext | null;
+  readonly persistentCache: RunCacheContext | null;
 };
 
 export class ProjectionLifecycleError extends Error {
@@ -150,15 +143,6 @@ function projectedNativeRevision(
     throw new TypeError(`Adapter returned an invalid native revision for ${canonical.session.id}`);
   }
   return revision;
-}
-
-function incrementalProjectionSource(
-  source: CanonicalProjectionSource,
-): source is IncrementalCanonicalProjectionSource {
-  const candidate = source as Partial<IncrementalCanonicalProjectionSource>;
-  return typeof candidate.currentRevision === "function"
-    && typeof candidate.listChanges === "function"
-    && typeof candidate.loadSessions === "function";
 }
 
 function recoveryAppendUsesStaleMetadata(
@@ -270,11 +254,12 @@ export class ProjectionLifecycle {
     let manifest: ProjectionManifest;
     let inspection: ProjectionInspection;
     let verification: AdapterVerificationResult;
-    let persistentCache: PersistentCacheContext | null = null;
+    let persistentCache: RunCacheContext | null = null;
     const sessions = new Map<string, ActiveProjectionSession>();
     const materializeSpan = await this.startSpan(preparing, "projection.materialize");
     try {
-      const cacheManager = this.persistentCacheManager();
+      const cacheManager = createRunCacheManager({ runtimeRoot: this.runtimeRoot, source: this.source,
+        adapter: this.adapter, statusLog: this.statusLog, clock: this.clock });
       if (cacheManager !== undefined) {
         const configuration: JsonValue = { branchId: preparing.branchId };
         const cached = await cacheManager.apply({ run: preparing, configuration });
@@ -638,7 +623,7 @@ export class ProjectionLifecycle {
       await this.lease.setState(handle.run.id, "draining");
       await this.drainPending(context);
       const result = await this.verifyCheckpointAndDetach(context);
-      await this.refreshPersistentCache(context);
+      await refreshRunCache(context.persistentCache, context.handle.run, this.statusLog);
       cleanupStarted = true;
       await removeProjectionRun(context.handle.projectionRoot);
       await this.lease.setState(handle.run.id, "closed");
@@ -699,7 +684,7 @@ export class ProjectionLifecycle {
         }
       }
       const result = await this.verifyCheckpointAndDetach(context);
-      await this.refreshPersistentCache(context);
+      await refreshRunCache(context.persistentCache, context.handle.run, this.statusLog);
       cleanupStarted = true;
       await removeProjectionRun(context.handle.projectionRoot);
       await this.lease.setState(runId, "recovered");
@@ -839,8 +824,9 @@ export class ProjectionLifecycle {
     const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
     if (descriptor.runId !== run.id) throw new TypeError("Projection recovery run ID mismatch");
     const configuration: JsonValue = { branchId: run.branchId };
-    const cacheManager = this.persistentCacheManager();
-    let persistentCache: PersistentCacheContext | null = null;
+    const cacheManager = createRunCacheManager({ runtimeRoot: this.runtimeRoot, source: this.source,
+      adapter: this.adapter, statusLog: this.statusLog, clock: this.clock });
+    let persistentCache: RunCacheContext | null = null;
     if (descriptor.baseProjectionRoot !== undefined) {
       if (cacheManager === undefined) {
         throw new TypeError("Persistent projection recovery requires an incremental source and cache-capable Adapter");
@@ -1114,54 +1100,6 @@ export class ProjectionLifecycle {
       });
     }
     return snapshots;
-  }
-
-  private persistentCacheManager(): PersistentProjectionCache | undefined {
-    if (!incrementalProjectionSource(this.source) || this.adapter.composeProjectionManifest === undefined) {
-      return undefined;
-    }
-    return new PersistentProjectionCache({
-      runtimeRoot: this.runtimeRoot,
-      source: this.source,
-      adapter: this.adapter,
-      statusLog: this.statusLog,
-      clock: this.clock,
-    });
-  }
-
-  private async refreshPersistentCache(context: LifecycleProjectionContext): Promise<void> {
-    if (context.persistentCache === null) return;
-    const run = context.handle.run;
-    const span = await this.statusLog.start({
-      runId: run.id,
-      leaseId: run.leaseId,
-      profileId: run.profileId,
-      adapterId: run.adapterId,
-      dshVersion: run.dshVersion,
-      stage: "projection.cache-retained",
-      logicalSessionId: null,
-      nativeSessionId: null,
-      operationId: null,
-      diagnosticDetailRef: "diag:projection-cache-refresh-started",
-    });
-    try {
-      const refreshed = await context.persistentCache.manager.apply({
-        run,
-        configuration: context.persistentCache.configuration,
-      });
-      if (resolve(refreshed.cacheRoot) !== resolve(context.persistentCache.cacheRoot)) {
-        throw new TypeError("Projection cache identity changed while the run was active");
-      }
-      await this.statusLog.succeed(span, {
-        diagnosticDetailRef: `diag:projection-cache-retained:${refreshed.receipt.throughRevision}:${refreshed.receipt.rewrittenSessions}:${refreshed.receipt.removedSessions}`,
-      });
-    } catch (error) {
-      await this.statusLog.fail(span, {
-        errorCode: "PROJECTION_CACHE_REFRESH_FAILED",
-        diagnosticDetailRef: "diag:projection-cache-refresh-failed",
-      });
-      throw error;
-    }
   }
 
   private startShutdownSpan(run: ProjectionRun): Promise<StatusSpanHandle> {
