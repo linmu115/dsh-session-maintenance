@@ -3,6 +3,7 @@ import {
   normalizedSessionSchema,
   type ApplyPlanRequest,
   type Checkpoint,
+  type CheckpointRestoreCapability,
   type CheckpointRestoreRequest,
   type ContentObjectStore,
   type CreateCheckpointRequest,
@@ -33,6 +34,7 @@ import {
   TransactionExecutor,
   TransactionRecovery,
 } from "@linmu/dsh-session-transaction-engine";
+import { checkpointRestoreCapability, loadCheckpointRestoreSource } from "./checkpoint-restore-source.js";
 
 type WriteRepository = SessionRepository & TransactionRepository;
 
@@ -165,32 +167,13 @@ export class WriteService {
   }
 
   async createCheckpointRestorePlan(request: CheckpointRestoreRequest): Promise<SyncPlan> {
-    const checkpoint = await this.repository.getCheckpoint(request.checkpointId);
-    if (checkpoint === undefined) {
-      throw new SessionMaintenanceError("OBJECT_CORRUPT", `Checkpoint is missing: ${request.checkpointId}`);
-    }
+    const { checkpoint, version, binding, source } = await loadCheckpointRestoreSource(
+      this.repository, this.objectStore, request.checkpointId,
+    );
     const target = this.instances.get(request.targetInstanceId);
     if (target === undefined || target.platform !== "dsh") {
       throw new SessionMaintenanceError("ADAPTER_INCOMPATIBLE", `Registered DSH target is missing: ${request.targetInstanceId}`);
     }
-    const refs = Object.entries(checkpoint.refs);
-    const sessionRefs = refs.filter(([name]) => name.startsWith("session:"));
-    const selected = sessionRefs.length === 1 ? sessionRefs[0] : refs.length === 1 ? refs[0] : undefined;
-    if (selected === undefined) {
-      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Checkpoint restore preview requires exactly one session ref");
-    }
-    const version = await this.repository.getVersion(selected[1]);
-    if (version === undefined) {
-      throw new SessionMaintenanceError("OBJECT_CORRUPT", `Checkpoint version is missing: ${selected[1]}`);
-    }
-    if (selected[0].startsWith("session:") && selected[0].slice("session:".length) !== version.logicalSessionId) {
-      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Checkpoint session ref does not match its version");
-    }
-    const binding = await this.repository.findBinding(version.source);
-    if (binding === undefined || binding.logicalSessionId !== version.logicalSessionId) {
-      throw new SessionMaintenanceError("IDENTITY_CONFLICT", "Checkpoint source binding is unavailable");
-    }
-    const source = await this.loadVersionBody(version.id);
     const head = await this.repository.getObservedHead(binding.id);
     const writeProbe = await this.probe(target);
     if (writeProbe.status !== "compatible") {
@@ -218,6 +201,10 @@ export class WriteService {
       },
       adapterContracts: [binding.adapterContract, writeProbe.contract],
     });
+  }
+
+  getCheckpointRestoreCapability(checkpointId: string): Promise<CheckpointRestoreCapability> {
+    return checkpointRestoreCapability(this.repository, this.objectStore, checkpointId);
   }
 
   probe(instance: RegisteredInstance): Promise<WriteProbe> {

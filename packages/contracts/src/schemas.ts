@@ -420,6 +420,9 @@ export const versionMetadataSnapshotSchema = z.discriminatedUnion("metadataAvail
   }),
 ]);
 
+export const canonicalDashboardEventSchema = canonicalEventV1Schema.safeExtend({
+  readableText: z.string().nullable().optional(),
+});
 export const canonicalDashboardSessionDetailSchema = z.strictObject({
   headMetadata: versionMetadataSnapshotSchema.nullable(),
   schemaVersion: z.literal(1),
@@ -430,7 +433,7 @@ export const canonicalDashboardSessionDetailSchema = z.strictObject({
   project: logicalProjectSchema.nullable(),
   projectRoots: z.array(projectRootSchema),
   nativeReferences: nativeSessionReferenceIndexV1Schema,
-  events: z.array(canonicalEventV1Schema),
+  events: z.array(canonicalDashboardEventSchema),
   parent: canonicalLineageRelationSchema.nullable(),
   children: z.array(canonicalLineageRelationSchema),
 });
@@ -824,6 +827,15 @@ export const matchCandidateSchema = z.strictObject({
   confidence: z.enum(["high", "low", "conflict"]),
   createdAt: timestampSchema,
   resolvedAt: timestampSchema.optional(),
+});
+
+export const checkpointRestoreCapabilitySchema = z.strictObject({
+  checkpointId: idSchema,
+  supported: z.boolean(),
+  reason: z.string().min(1),
+});
+export const checkpointRestoreCapabilityResponseSchema = z.strictObject({
+  capability: checkpointRestoreCapabilitySchema,
 });
 
 export const checkpointSchema = z.strictObject({

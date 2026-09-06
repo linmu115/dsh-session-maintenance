@@ -44,6 +44,8 @@ import type { JobStore } from "../jobs/job-store.js";
 import { allowedOrigin, authorized } from "./auth.js";
 import { HttpBodyError, readJsonBody } from "./body.js";
 import { routeRetentionRequest } from "./retention-routes.js";
+import { routeIntegrationRequest } from "./integration-routes.js";
+import { IntegrationError } from "../integrations/bindings.js";
 import { streamJobEvents, streamStatusEvents } from "./sse.js";
 import { hasUiSessionCookie, type UiSessionManager } from "./ui-session.js";
 import {
@@ -261,6 +263,7 @@ export async function routeRequest(
 
   try {
     if (await routeRetentionRequest(request, response, url, context.engine.retention)) return;
+    if (await routeIntegrationRequest(request, response, url, context.engine)) return;
     if (request.method === "GET" && url.pathname === "/v1/instances") {
       send(response, 200, { instances: await context.engine.listInstances() });
       return;
@@ -696,6 +699,11 @@ export async function routeRequest(
       ) });
       return;
     }
+    const checkpointRestoreCapability = url.pathname.match(/^\/v1\/checkpoints\/([^/]+)\/restore-capability$/u);
+    if (request.method === "GET" && checkpointRestoreCapability !== null) {
+      send(response, 200, { capability: await context.engine.getCheckpointRestoreCapability(pathId(checkpointRestoreCapability[1]!)) });
+      return;
+    }
     const checkpointRestore = url.pathname.match(/^\/v1\/checkpoints\/([^/]+)\/restore-plan$/u);
     if (request.method === "POST" && checkpointRestore !== null) {
       const body = checkpointRestoreBodySchema.parse(await readJsonBody(request));
@@ -728,6 +736,7 @@ export async function routeRequest(
       response.destroy(error instanceof Error ? error : undefined);
     } else if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
     else if (error instanceof ZodError) send(response, 400, errorBody("INVALID_REQUEST", "Request does not match the API schema"));
+    else if (error instanceof IntegrationError) send(response, error.status, errorBody(error.code, error.message));
     else if (error instanceof Error && error.message.startsWith("WRITER_QUEUE_FULL")) {
       response.setHeader("retry-after", "1");
       send(response, 503, errorBody("WRITER_QUEUE_FULL", "Write queue is full; retry after pending commits drain"));

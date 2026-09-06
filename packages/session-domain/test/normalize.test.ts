@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   canonicalJson,
   normalizeSession,
+  normalizedSessionHashes,
   sha256Canonical,
   type NormalizationInput,
 } from "../src/index.js";
@@ -57,6 +58,18 @@ describe("canonical JSON", () => {
 });
 
 describe("session normalization", () => {
+  it("preserves the existing normalized bytes and hashes when sharing hash calculation", () => {
+    const session = normalizeSession(base);
+    const expected = {
+      bodyHash: "54b9c1dffbb7bceb019bfadb3bf35be8f464e2cf57bb787537a07eb24d1445ad",
+      metadataHash: "20d173994bee52322336a790fb9ca3b259b137f70945e7e93676d2852c2b1ff6",
+    };
+    // Captured from the pre-extraction normalizer for this existing fixture.
+    expect(normalizedSessionHashes(session)).toEqual(expected);
+    expect(session).toMatchObject(expected);
+    expect(sha256Canonical(session as never)).toBe("37994773897c9a340f2a696e7f0f76a6b0100ecf0cee7d5b013e15efaf41e3a8");
+  });
+
   it("excludes observation-only fields and separates metadata identity", () => {
     const later = "2026-08-27T00:00:00.000Z";
     const first = normalizeSession({

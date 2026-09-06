@@ -7,6 +7,7 @@ import { CanonicalSessionEngine } from "../../../packages/canonical-session-engi
 import { sha256Canonical } from "../../../packages/session-domain/src/index.js";
 import { SessionMaintenanceError } from "../../../packages/contracts/src/index.js";
 import { ProjectionAppendError } from "../../../packages/projection-lifecycle/src/index.js";
+import { normalizeRc1Append } from "../../../packages/adapter-dsh-rc1/src/normalize-append.js";
 import { createEngineFixture } from "./helpers.js";
 
 const cleanups: Array<() => Promise<void>> = [];
@@ -66,6 +67,7 @@ describe("canonical dashboard API", () => {
     expect(parent.project?.name).toBe("Skill 管理");
     expect(parent.workspace?.name).toBe("研究");
     expect(parent.events.map((event) => event.content)).toEqual(["静态正文"]);
+    expect(parent.events.map((event) => event.readableText)).toEqual(["静态正文"]);
     expect(parent.nativeReferences).toEqual({ schemaVersion: 1, logicalSessionId: "logical-parent", references: [] });
     expect(parent.children[0]?.session.id).toBe("logical-child");
     expect(parent.headMetadata).toMatchObject({ metadataAvailability: "unknown", metadata: null });
@@ -73,6 +75,32 @@ describe("canonical dashboard API", () => {
     expect(child.parent?.session.id).toBe("logical-parent");
   });
 
+  it("adds adapter-readable text to native DSH query results without changing stored evidence", async () => {
+    const fixture = await createEngineFixture("synthetic-dashboard-readable-text");
+    cleanups.push(fixture.cleanupAll);
+    const database = fixture.engine.repository.database;
+    const canonical = new SqliteCanonicalRepository(database);
+    await canonical.createCanonicalSession({ schemaVersion: 1, id: "logical-native" as never,
+      authorityScope: "maintenance", originKind: "maintenance-native", headVersionId: null, title: "Native fixture",
+      tags: [], archivedAt: null, tombstonedAt: null, createdAt: at, updatedAt: at });
+    const payload = { turn: 1, step: 1, message: { id: "assistant-1", role: "assistant",
+      content: [{ type: "text", text: "hello from native DSH" }], source: { kind: "model", provider: "test", model: "test" } } };
+    const normalized = await normalizeRc1Append({ runId: "synthetic-run", operationId: "synthetic-operation",
+      nativeSessionId: "synthetic-native", nativeRevision: 1, observedAt: at,
+      payload: { logicalSessionId: "logical-native", canonicalHistoryMode: "native", events: [
+        { type: "assistant/message", seq: 0, time: Date.parse(at), data: payload, surfaceOp: "append" },
+      ] },
+    } as never);
+    await canonical.putCanonicalEvent(normalized.events[0]!);
+    const saved = database.prepare("SELECT event_json FROM canonical_events WHERE logical_session_id = ?").get("logical-native");
+    const server = await fixture.startServer();
+    const client = new MaintenanceClient({ origin: server.origin, token: server.token });
+    const detail = await client.getCanonicalSession("logical-native");
+    expect(detail.events[0]?.readableText).toBe("hello from native DSH");
+    const { readableText: _text, ...original } = detail.events[0]!;
+    expect(original).toEqual(normalized.events[0]);
+    expect(database.prepare("SELECT event_json FROM canonical_events WHERE logical_session_id = ?").get("logical-native")).toEqual(saved);
+  });
   it("versions metadata patches and rolls back the new head when a membership update fails", async () => {
     const fixture = await createEngineFixture("sm02-synthetic-metadata-api");
     cleanups.push(fixture.cleanupAll);

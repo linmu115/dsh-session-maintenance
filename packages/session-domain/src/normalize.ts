@@ -99,6 +99,20 @@ function normalizedEventForHash(event: NormalizedEvent): JsonValue {
   };
 }
 
+/** The persisted normalized-body and metadata identity, shared by producers and readers. */
+export function normalizedSessionHashes(
+  input: Pick<NormalizedSession, "schemaVersion" | "workspaceId" | "events" | "title" | "archived">,
+): Pick<NormalizedSession, "bodyHash" | "metadataHash"> {
+  return {
+    bodyHash: sha256Canonical({
+      schemaVersion: input.schemaVersion,
+      workspaceId: input.workspaceId,
+      events: input.events.map(normalizedEventForHash),
+    }),
+    metadataHash: sha256Canonical({ title: input.title, archived: input.archived }),
+  };
+}
+
 export function normalizeSession(input: NormalizationInput): NormalizedSession {
   assertMatchingSource(input.key, input.provenance);
 
@@ -149,12 +163,10 @@ export function normalizeSession(input: NormalizationInput): NormalizedSession {
     };
   });
 
-  const bodyHash = sha256Canonical({
+  const { bodyHash, metadataHash } = normalizedSessionHashes({
     schemaVersion: CONTRACT_SCHEMA_VERSION,
     workspaceId: input.workspaceId,
-    events: events.map(normalizedEventForHash),
-  });
-  const metadataHash = sha256Canonical({
+    events,
     title: input.title,
     archived: input.archived,
   });

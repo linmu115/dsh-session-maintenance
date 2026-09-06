@@ -216,6 +216,13 @@ export interface MatchCandidate {
   readonly resolvedAt?: string;
 }
 
+/** Source compatibility only; target writability still requires a restore preview. */
+export interface CheckpointRestoreCapability {
+  readonly checkpointId: string;
+  readonly supported: boolean;
+  readonly reason: string;
+}
+
 export interface Checkpoint {
   readonly id: string;
   readonly name: string;

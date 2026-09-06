@@ -3,6 +3,20 @@ import { describe, expect, it } from "vitest";
 import { DashboardClient, MaintenanceClient } from "../src/index.js";
 
 describe("MaintenanceClient", () => {
+  it.each([
+    [401, "UNAUTHORIZED", "请从 DSH 的会话维护设置重新打开完整看板"],
+    [403, "UI_SESSION_FORBIDDEN", "请从 DSH 的会话维护设置重新打开完整看板"],
+    [409, "PLAN_STALE", "PLAN_STALE: synthetic failure"],
+  ] as const)("explains Dashboard authentication expiry without masking other failures (%s, %s)", async (status, code, expected) => {
+    const client = await DashboardClient.connect({
+      origin: "http://127.0.0.1:43123",
+      fetchImpl: async (input) => String(input).endsWith("/v1/ui/session")
+        ? Response.json({ session: { csrfToken: "csrf-session-fixture", expiresAt: "2026-09-06T12:15:00.000Z" } })
+        : Response.json({ error: { code, message: "synthetic failure" } }, { status }),
+    });
+    await expect(client.overview()).rejects.toThrow(expected);
+  });
+
   it("validates responses and redacts its token from errors", async () => {
     const token = "secret-token-canary";
     const client = new MaintenanceClient({

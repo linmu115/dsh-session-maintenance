@@ -8,6 +8,7 @@ export * from "./errors.js";
 export * from "./engine-connection.js";
 export * from "./external-lifecycle.js";
 export * from "./http.js";
+export * from "./integrations.js";
 export * from "./jobs.js";
 export * from "./model.js";
 export * from "./operations.js";

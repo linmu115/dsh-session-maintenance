@@ -498,9 +498,11 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
 
   program.command("external-lifecycle")
     .description("Run one schema-v1 external lifecycle request from JSON stdin")
-    .action(async () => {
+    .option("--require-binding", "only enable explicitly verified instance/profile integrations")
+    .action(async (value: { requireBinding?: boolean }) => {
       const input = options.stdin === undefined ? await readStandardInput() : await options.stdin();
       const provider = new MaintenanceExternalLifecycleProvider(compositionOptions().stateRoot, {
+        requireBinding: value.requireBinding === true,
         ...(options.clock === undefined ? {} : { clock: options.clock }),
       });
       const response = await runExternalLifecycleStdio(input, provider);

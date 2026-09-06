@@ -134,3 +134,4 @@ export * from "./normalizer.js";
 export * from "./probe.js";
 export * from "./reader.js";
 export * from "./zstd-codec.js";
+export { inspectDshIntegrationOverrides, maintenanceIntegrationBundleReady } from "./integration-patches.js";

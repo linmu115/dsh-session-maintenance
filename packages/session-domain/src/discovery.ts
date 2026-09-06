@@ -154,7 +154,7 @@ export interface DiscoveryServiceOptions {
 }
 
 export class DiscoveryService {
-  private readonly instances: ReadonlyMap<string, RegisteredInstance>;
+  private readonly instances: readonly RegisteredInstance[];
   private readonly adapters: ReadonlyMap<RegisteredInstance["platform"], SessionReadAdapter>;
   private readonly repository: SessionRepository;
   private readonly objectStore: ContentObjectStore;
@@ -163,22 +163,33 @@ export class DiscoveryService {
   private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: DiscoveryServiceOptions) {
-    this.instances = new Map(options.instances.map((instance) => [instance.id, instance]));
+    this.instances = options.instances;
     this.adapters = new Map(options.adapters.map((adapter) => [adapter.platform, adapter]));
     this.repository = options.repository;
     this.objectStore = options.objectStore;
     this.concurrency = 4;
   }
 
-  async scanAll(instanceIds: readonly string[] = [...this.instances.keys()]): Promise<DiscoveryResult> {
+  async scanAll(instanceIds?: readonly string[]): Promise<DiscoveryResult> {
+    // Newly registered sources are visible to the next scan; this batch keeps its starting set.
+    const instances = new Map(this.instances.map(instance => [instance.id, instance]));
+    const selectedIds = instanceIds === undefined ? [...instances.keys()] : [...instanceIds];
     let result = EMPTY_RESULT;
-    for (const instanceId of instanceIds) result = addResult(result, await this.scanInstance(instanceId));
+    for (const instanceId of selectedIds) {
+      const instance = instances.get(instanceId);
+      if (instance === undefined) throw new TypeError(`Unknown instance: ${instanceId}`);
+      result = addResult(result, await this.scanRegisteredInstance(instance));
+    }
     return result;
   }
 
   async scanInstance(instanceId: string): Promise<DiscoveryResult> {
-    const instance = this.instances.get(instanceId);
+    const instance = this.instances.findLast(instance => instance.id === instanceId);
     if (instance === undefined) throw new TypeError(`Unknown instance: ${instanceId}`);
+    return this.scanRegisteredInstance(instance);
+  }
+
+  private async scanRegisteredInstance(instance: RegisteredInstance): Promise<DiscoveryResult> {
     const adapter = this.adapters.get(instance.platform);
     if (adapter === undefined) throw new TypeError(`No adapter for platform: ${instance.platform}`);
     const probe = await adapter.probe(instance);

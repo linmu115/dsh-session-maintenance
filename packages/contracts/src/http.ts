@@ -1,5 +1,6 @@
 import type {
   Checkpoint,
+  CheckpointRestoreCapability,
   EngineStatus,
   Page,
   SessionSummary,
@@ -77,6 +78,10 @@ export interface TransactionResponse {
 
 export interface CheckpointResponse {
   readonly checkpoint: Checkpoint;
+}
+
+export interface CheckpointRestoreCapabilityResponse {
+  readonly capability: CheckpointRestoreCapability;
 }
 
 export interface SessionDetailResponse {
@@ -205,6 +210,12 @@ export interface CanonicalLineageRelation {
   readonly session: CanonicalSessionRecord;
 }
 
+/** Query-only presentation alongside unchanged canonical content and evidence. */
+export interface CanonicalDashboardEvent extends CanonicalEventV1 {
+  /** Adapter-provided text; absent on older servers, null for non-text records. */
+  readonly readableText?: string | null;
+}
+
 export interface CanonicalDashboardSessionDetail {
   readonly headMetadata: import("./canonical.js").VersionMetadataSnapshot | null;
   readonly schemaVersion: 1;
@@ -215,7 +226,7 @@ export interface CanonicalDashboardSessionDetail {
   readonly project: LogicalProject | null;
   readonly projectRoots: readonly ProjectRoot[];
   readonly nativeReferences: NativeSessionReferenceIndexV1;
-  readonly events: readonly CanonicalEventV1[];
+  readonly events: readonly CanonicalDashboardEvent[];
   readonly parent: CanonicalLineageRelation | null;
   readonly children: readonly CanonicalLineageRelation[];
 }

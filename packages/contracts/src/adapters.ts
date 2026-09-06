@@ -1,5 +1,6 @@
 import type {
   AdapterProbe,
+  CheckpointRestoreCapability,
   ExpectedPlatformState,
   NormalizedSession,
   ObservationHint,
@@ -104,6 +105,7 @@ export interface PlatformWriteAdapter {
 }
 
 export interface ReadOnlyEngine {
+  getCheckpointRestoreCapability(checkpointId: string): Promise<CheckpointRestoreCapability>;
   listInstances(): Promise<readonly InstanceStatus[]>;
   listSessions(query: SessionQuery): Promise<Page<SessionSummary>>;
   listWorkspaces(): Promise<readonly WorkspaceSummary[]>;

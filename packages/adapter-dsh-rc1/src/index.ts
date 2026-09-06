@@ -32,6 +32,7 @@ export * from "./recovery-session.js";
 export * from "./runtime-tail-recovery.js";
 export * from "./native-types.js";
 export * from "./lineage.js";
+export { readRc1CanonicalEventText } from "./readable-text.js";
 
 export const adapter = defineDshSessionAdapter({
   manifest,

@@ -64,18 +64,22 @@ export async function createReadOnlyTestSystem() {
       platformVersion: "0.1.1-rc.2",
     },
   ];
+  const adapters = [
+    new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox }),
+    new DshReadAdapter({ fixtureGuard: assertFixtureSandbox }),
+  ];
   const discovery = new DiscoveryService({
     instances,
-    adapters: [
-      new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox }),
-      new DshReadAdapter({ fixtureGuard: assertFixtureSandbox }),
-    ],
+    adapters,
     repository,
     objectStore,
   });
 
   return {
     sandbox,
+    instances,
+    adapters,
+    objectStore,
     repository,
     discovery,
     platformRoots: [sandbox.codexHome, sandbox.dshHome] as const,

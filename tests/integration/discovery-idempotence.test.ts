@@ -1,6 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { DiscoveryService } from "../../packages/session-domain/src/index.js";
 
 import { createReadOnlyTestSystem, hashTree } from "./helpers/read-only-system.js";
 
@@ -11,6 +13,36 @@ afterEach(async () => {
 });
 
 describe("discovery idempotence", () => {
+  it("keeps an in-flight scan snapshot while later scans see newly registered sources", async () => {
+    const system = await createReadOnlyTestSystem();
+    cleanups.push(system.cleanup);
+    const before = await Promise.all(system.platformRoots.map(hashTree));
+    const instances = [...system.instances];
+    const discovery = new DiscoveryService({ instances, adapters: system.adapters, repository: system.repository, objectStore: system.objectStore });
+    let entered!: () => void;
+    const scanning = new Promise<void>(resolve => { entered = resolve; });
+    let release!: () => void;
+    const blocked = new Promise<void>(resolve => { release = resolve; });
+    const adapter = system.adapters[0]!;
+    const probe = adapter.probe.bind(adapter);
+    vi.spyOn(adapter, "probe").mockImplementationOnce(async instance => {
+      entered();
+      await blocked;
+      return probe(instance);
+    });
+    const firstScan = discovery.scanAll();
+    await scanning;
+    // Onboarding updates the shared array while an earlier batch is already in progress.
+    instances.splice(1, 1, { ...instances[0]!, id: "codex-new-source" });
+    release();
+    expect(await firstScan).toMatchObject({ createdLogicalSessions: 2, createdBindings: 2, platformWrites: 0 });
+    expect(await system.repository.findBinding({ platform: "dsh", instanceId: "dsh-fixture", sessionId: "dsh-session-1" })).toBeDefined();
+    await expect(discovery.scanInstance("dsh-fixture")).rejects.toThrow("Unknown instance");
+    expect(await discovery.scanAll()).toMatchObject({ createdLogicalSessions: 1, createdBindings: 1, platformWrites: 0 });
+    expect(await discovery.scanInstance("codex-new-source")).toMatchObject({ createdLogicalSessions: 0, createdBindings: 0, createdVersions: 0, platformWrites: 0 });
+    expect(await Promise.all(system.platformRoots.map(hashTree))).toEqual(before);
+  });
+
   it("creates one immutable baseline per platform and nothing on the second scan", async () => {
     const system = await createReadOnlyTestSystem();
     cleanups.push(system.cleanup);

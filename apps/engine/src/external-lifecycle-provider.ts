@@ -20,6 +20,7 @@ import type {
 import { engineConnectionDescriptorSchema } from "@linmu/dsh-session-contracts";
 import { stringify } from "yaml";
 import { z } from "zod";
+import { resolveRuntimeIntegration } from "./integrations/runtime-binding.js";
 
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9@/._:-]{0,255}$/u;
 const SAFE_HANDLE = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
@@ -138,6 +139,8 @@ const storedHandleSchema: z.ZodType<StoredLifecycleHandle> = z.strictObject({
 });
 
 export interface ExternalLifecycleProviderDependencies {
+  /** New onboarding always installs this scoped mode; legacy hand-configured hooks retain their old contract until adopted. */
+  readonly requireBinding?: boolean;
   readonly fetch?: typeof globalThis.fetch;
   readonly clock?: () => string;
   readonly randomId?: () => string;
@@ -203,11 +206,13 @@ export class MaintenanceExternalLifecycleProvider {
   private readonly connectionOverride: (() => Promise<EngineConnection>) | undefined;
   private readonly startEngine: (stateRoot: string) => Promise<void>;
   private readonly sleep: (milliseconds: number) => Promise<void>;
+  private readonly requireBinding: boolean;
 
   constructor(
     readonly stateRoot: string,
     dependencies: ExternalLifecycleProviderDependencies = {},
   ) {
+    this.requireBinding = dependencies.requireBinding ?? false;
     this.fetchImpl = dependencies.fetch ?? globalThis.fetch;
     this.clock = dependencies.clock ?? (() => new Date().toISOString());
     this.randomId = dependencies.randomId ?? (() => randomBytes(24).toString("base64url"));
@@ -239,7 +244,9 @@ export class MaintenanceExternalLifecycleProvider {
     if (!request.web || !SUPPORTED_RUNTIME_ADAPTERS.has(request.runtimeVersion)) {
       return { schemaVersion: 1, enabled: false, handle: null, launch: null };
     }
-    const pinnedAdapterId = SUPPORTED_RUNTIME_ADAPTERS.get(request.runtimeVersion) ?? null;
+    const integration = this.requireBinding ? await resolveRuntimeIntegration(this.stateRoot, request) : undefined;
+    if (this.requireBinding && integration === undefined) return { schemaVersion: 1, enabled: false, handle: null, launch: null };
+    const pinnedAdapterId = integration?.adapterId ?? SUPPORTED_RUNTIME_ADAPTERS.get(request.runtimeVersion) ?? null;
     const configuration = {
       branchId: "main",
       pinnedAdapterId,
@@ -261,7 +268,7 @@ export class MaintenanceExternalLifecycleProvider {
       maintenanceEndpoint: connection.origin,
       branchId: configuration.branchId as RuntimeBrokerPrepareRunRequest["branchId"],
       environment: {
-        packageVersions: {
+        packageVersions: integration?.packageVersions ?? {
           "@deepseek-ai/dsh-session": request.runtimeVersion,
           "@deepseek-ai/dsh-session-persistence": request.runtimeVersion,
         },

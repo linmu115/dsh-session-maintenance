@@ -31,6 +31,7 @@ import {
   type ResolutionContinuationRequest,
   type ApplyPlanRequest,
   type Checkpoint,
+  type CheckpointRestoreCapability,
   type CheckpointRestoreRequest,
   type CreateCheckpointRequest,
   type RestoreTransactionRequest,
@@ -114,6 +115,8 @@ import { SessionMaintenanceCommands } from "./session-maintenance-commands.js";
 import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
 import { ProjectionRuntimeBroker } from "./runtime-broker.js";
 import { SqliteRuntimeProjectResolver } from "./runtime-project-resolver.js";
+import type { InstanceIntegrationService } from "./integrations/service.js";
+import type { WorkspaceSyncPolicyService } from "./integrations/sync-policy.js";
 
 export interface EngineSettingsPort {
   get(): Promise<MaintenanceSettings>;
@@ -212,6 +215,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly sessionQueries: SessionMaintenanceQueries;
   readonly writes: MaintenanceWriteCoordinator | undefined;
   readonly retention: RetentionService | undefined;
+  readonly integrations: InstanceIntegrationService | undefined;
+  readonly workspaceSync: WorkspaceSyncPolicyService | undefined;
   readonly jobs: JobRunner;
   readonly jobStore: JobStore;
   private readonly codexImports: CodexImportService | undefined;
@@ -253,7 +258,11 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly writes?: MaintenanceWriteCoordinator;
     readonly retention?: RetentionService;
     readonly codexImports?: CodexImportService;
+    readonly integrations?: InstanceIntegrationService;
+    readonly workspaceSync?: WorkspaceSyncPolicyService;
   }) {
+    this.integrations = input.integrations;
+    this.workspaceSync = input.workspaceSync;
     this.writes = input.writes;
     this.retention = input.retention;
     this.codexImports = input.codexImports;
@@ -694,6 +703,13 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
 
   createCheckpointRestorePlan(request: CheckpointRestoreRequest): Promise<SyncPlan> {
     return this.writer().createCheckpointRestorePlan(request);
+  }
+
+  getCheckpointRestoreCapability(checkpointId: string): Promise<CheckpointRestoreCapability> {
+    if (this.writeService === undefined) {
+      return Promise.resolve({ checkpointId, supported: false, reason: "当前引擎未启用恢复预览所需的写入服务，不能生成恢复预览。" });
+    }
+    return this.writeService.getCheckpointRestoreCapability(checkpointId);
   }
 
   status(): Promise<EngineStatus> {

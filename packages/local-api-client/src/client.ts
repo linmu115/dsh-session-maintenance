@@ -13,6 +13,7 @@ import {
   retentionSourceRegistrationSchema,
   apiErrorResponseSchema,
   checkpointListResponseSchema,
+  checkpointRestoreCapabilityResponseSchema,
   checkpointResponseSchema,
   canonicalDashboardSessionResponseSchema,
   canonicalWorkspaceDirectoryResponseSchema,
@@ -42,6 +43,7 @@ import {
   versionGraphResponseSchema,
   type AdapterDiagnostic,
   type Checkpoint,
+  type CheckpointRestoreCapability,
   type CanonicalDashboardSessionDetail,
   type CanonicalWorkspaceDirectory,
   type CanonicalProjectDirectory,
@@ -87,6 +89,10 @@ import {
 } from "@linmu/dsh-session-contracts";
 
 import { decodeJobEventStream } from "./event-stream.js";
+import {
+  integrationDirectorySchema, workspaceSyncConfigurationSchema, integrationActionRequestSchema, workspaceSyncUpdateSchema,
+  type IntegrationDirectory, type IntegrationAction, type WorkspaceSyncConfiguration, type WorkspaceSyncUpdate,
+} from "@linmu/dsh-session-contracts";
 
 export interface MaintenanceClientOptions {
   readonly origin: string;
@@ -149,6 +155,23 @@ class ApiClient {
     // Web API function as `this.fetchImpl(...)` otherwise supplies ApiClient as
     // its receiver and Chromium rejects the request with "Illegal invocation".
     this.fetchImpl = (input, init) => implementation(input, init);
+  }
+
+  async listIntegrations(signal?: AbortSignal): Promise<IntegrationDirectory> {
+    return (await this.request("/v1/integrations", {}, z.strictObject({ directory: integrationDirectorySchema }), signal)).directory;
+  }
+
+  async integrationAction(targetId: string, action: IntegrationAction, signal?: AbortSignal): Promise<IntegrationDirectory> {
+    const input = integrationActionRequestSchema.parse({ targetId, action });
+    return (await this.request("/v1/integrations/actions", this.jsonPost(input), z.strictObject({ directory: integrationDirectorySchema }), signal)).directory;
+  }
+
+  async getWorkspaceSync(signal?: AbortSignal): Promise<WorkspaceSyncConfiguration> {
+    return (await this.request("/v1/workspace-sync", {}, z.strictObject({ configuration: workspaceSyncConfigurationSchema }), signal)).configuration;
+  }
+
+  async saveWorkspaceSync(input: WorkspaceSyncUpdate, signal?: AbortSignal): Promise<WorkspaceSyncConfiguration> {
+    return (await this.request("/v1/workspace-sync", this.jsonPatch(workspaceSyncUpdateSchema.parse(input)), z.strictObject({ configuration: workspaceSyncConfigurationSchema }), signal)).configuration;
   }
 
   async listSessions(query: SessionQuery = {}, signal?: AbortSignal): Promise<Page<SessionSummary>> {
@@ -456,6 +479,15 @@ class ApiClient {
     )).checkpoint as Checkpoint;
   }
 
+  async getCheckpointRestoreCapability(checkpointId: string, signal?: AbortSignal): Promise<CheckpointRestoreCapability> {
+    return (await this.request(
+      `/v1/checkpoints/${encodeURIComponent(checkpointId)}/restore-capability`,
+      {},
+      checkpointRestoreCapabilityResponseSchema,
+      signal,
+    )).capability;
+  }
+
   async createCheckpointRestorePlan(
     input: CheckpointRestoreRequest,
     signal?: AbortSignal,
@@ -626,6 +658,17 @@ export class MaintenanceClient extends ApiClient {
 
 export class DashboardClient extends ApiClient {
   readonly initialLogicalSessionId: string | undefined;
+
+  protected override async request<T>(path: string, init: RequestInit, schema: ZodType<T>, signal?: AbortSignal): Promise<T> {
+    try {
+      return await super.request(path, init, schema, signal);
+    } catch (error) {
+      if (error instanceof Error && /^(?:UNAUTHORIZED|UI_SESSION_FORBIDDEN):/u.test(error.message)) {
+        throw new Error("看板连接凭据已失效或不匹配。请从 DSH 的会话维护设置重新打开完整看板。", { cause: error });
+      }
+      throw error;
+    }
+  }
 
   private constructor(options: DashboardClientOptions & { readonly csrfToken: string; readonly initialLogicalSessionId?: string }) {
     super({

@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { readRc1CanonicalEventText } from "@linmu/dsh-session-adapter-rc1";
 
 import {
   canonicalEventV1Schema,
@@ -344,7 +345,11 @@ export class SessionMaintenanceQueries {
       project: getProject(database, projectMembership?.projectId ?? null),
       projectRoots: getProjectRoots(database, projectMembership?.projectId ?? null),
       nativeReferences,
-      events: events as never,
+      events: events.map((event) => ({ ...event,
+        readableText: event.source.platform === "dsh"
+          ? readRc1CanonicalEventText(event as never)
+          : typeof event.content === "string" ? event.content : null,
+      })) as never,
       parent,
       children,
       headMetadata: session.headVersionId === null ? null : readVersionMetadataSnapshot(database, session.headVersionId),
