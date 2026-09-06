@@ -10,38 +10,37 @@ This ledger distinguishes source completion, package verification, and live use.
 
 | Task | Status | Evidence / next step |
 | --- | --- | --- |
-| SM-00 | Deployed; user UI acceptance pending | Engine 0.1.15; real Dashboard HTML, script and authentication verified |
+| SM-00 | Deployed; user UI acceptance pending | Engine 0.1.16; actual RC1 plugin Dashboard launch, HTML, script and authentication verified |
 | SM-01 | Integrated | Reviewed commit `7a37006`; 38 local links checked |
 | SM-02 | Integrated | `4162ecb` from agent `d008942`; schema 17; 98 agent tests and 16 integration regression tests passed |
 | SM-03 | Integrated | `e7c372a`; command/query services and exact identity transaction boundary |
 | SM-04 | Integrated | `77736dd`; Store read ports and unified Adapter Registry |
-| SM-05 | Integrated for 0.1.16 candidate | `fb48fbf`; coordinated import jobs, online/offline owner, cancellation/retry and bounded queue |
-| SM-06 | Selected local extraction integrated | `4799d86`; run cache selection/refresh only; one runtime identity and state owner remains |
-| SM-07 | Consumer integrated; host already live | Maintenance `159d92e`; SCM `0a98ea9` / 0.3.2; 34 host tests passed again |
-| SM-08 | Integrated | `9cf5c64`, `f570185`; complete reference preview, unknown/external owner blockers and shared-body protection |
-| SM-09 | Integrated and packaged | `a692fe1`, `f570185`, `323786f`, `a39f7e7`, `f2b3c16`; directory/flat governance, journal recovery, independent regressions, rebuilt cache identity and verified refresh ordering |
+| SM-05 | Deployed | `fb48fbf`; coordinated jobs/owner/cancel/retry; `04988c6` shared connection contract; `0ff6081` completes startup recovery before readiness |
+| SM-06 | Selected local extraction deployed | `4799d86`; run cache selection/refresh only; one runtime identity and state owner remains |
+| SM-07 | Consumer and host deployed | Maintenance `159d92e` / 0.2.18; SCM `0a98ea9` / 0.3.2; 34 host tests passed |
+| SM-08 | Deployed; live read-only preview verified | `9cf5c64`, `f570185`; complete reference preview, unknown/external owner blockers and shared-body protection |
+| SM-09 | Deployed; no real reclamation executed | `a692fe1`, `f570185`, `323786f`, `a39f7e7`, `f2b3c16`; directory/flat governance, journal recovery, independent regressions, rebuilt cache identity and verified refresh ordering |
 | SM-10 | Outside this selected batch | Five-day history pruning remains disabled; all version bodies protected |
-| SM-11 | Integrated independently of SM-10 | `5f7c855`; exact-prefix incremental index and 1,000/5,000-event benchmark |
+| SM-11 | Deployed independently of SM-10 | `5f7c855`; exact-prefix incremental index and 1,000/5,000-event benchmark |
 | SM-12 | Outside this selected batch | Body chunking/compression/range-read migration not implemented |
-| SM-13 | Separate source series committed; candidate built | `7b9dc67` then `47b2d5d`; Windows GNU actual tests/Clippy/release/replay passed; deployed Launcher preserved |
-| SM-14 | Candidate verified; activation pending | Engine 0.1.16 / plugin 0.2.18; 172 files / 541 tests passed, build/typecheck passed, 29 archive entries checked, packaged Dashboard authentication passed, schema 17 -> 20 copied-database invariants preserved |
+| SM-13 | Separate series deployed | `7b9dc67` then `47b2d5d`; Windows GNU tests/Clippy/release/replay passed; real Launcher cold-started RC1 with the final Engine |
+| SM-14 | Activated; user UI acceptance pending | Engine 0.1.16 / plugin 0.2.18; final 174 files / 564 tests passed, build/typecheck passed, 29 archive entries checked, live Dashboard launch authenticated, schema 17 -> 20 migration invariants preserved |
 
-The earlier completed batch was committed and activated at the user's request;
-production remains Engine 0.1.15 / Maintenance 0.2.17 / SCM 0.3.2. The new selected
-batch resumes three agents: commands and Launcher use GPT-6 Astra high, storage
-uses xhigh, and root owns composition, UI, integration and delivery. Independent
-review regressions are retained in the final tree. All native/home fixtures are
-synthetic; no actual isolation or deletion has run. User UI acceptance remains
-manual. Primary Maintenance was verified clean at `0dbf921` during construction.
+At the user's deployment request, DSH 0.1.2-rc.1 / web now uses Engine 0.1.16,
+Maintenance 0.2.18, SCM 0.3.2, and Launcher source `47b2d5d`. The selected work
+used GPT-6 Astra agents with high/xhigh reasoning and root integration. All test
+fixtures are synthetic; deployment used the actual target with a separate
+database and a complete rollback snapshot. No real isolation or deletion ran.
+User UI acceptance remains manual.
 
-The original Launcher runtime-hook-seam worktree retains its five deployed
-dirty files unchanged; its new source series is isolated and replayable. No
-new candidate binary or package has replaced an installed component.
+The original Launcher runtime-hook-seam worktree retains its five local files;
+the installed replacement is from a separate committed and replayable series.
+Old binary, plugin, state, objects, runtime evidence and configuration are retained.
 
-Final package source is `f2b3c163477e0e2780c763eda25d8a8219592983`, clean at
-packaging. Later commits contain evidence documents only. The actual database
-was opened read-only for an online backup into a marked temporary fixture;
-migration and repeated opening affected only that copy. All six stable business
-table digests and 5,634 existing version metadata records remained identical.
-See [the final candidate record](2026-09-06-maintenance-0.1.16-candidate.md) for
-counts, package identities, validation logs and manual acceptance boundaries.
+Final active package source is `0ff6081c9b888da1919acbec98849c2f68470ae2`, clean
+at packaging. Its tracked tree exactly matches the final agent full-suite tree.
+The earlier `f2b3c16` candidate is retained as superseded evidence. Deployment
+preserved the old schema 17 database and migrated a separate file to schema 20;
+all seven stable business/history metadata digests remained identical.
+See [the activation record](2026-09-06-maintenance-0.1.16-activation.md) for
+active package identities, validation logs, rollback and manual acceptance.
