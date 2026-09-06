@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readFile, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { lstat, readFile, stat } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, parse as parsePath, resolve } from "node:path";
 import { z } from "zod";
+import { parseDocument } from "yaml";
 import type { DiscoveredIntegration } from "./launcher-discovery.js";
 import { IntegrationError, readJsonIfPresent, writeJsonAtomically } from "./bindings.js";
 import { windowsSystemTool } from "./windows-tools.js";
@@ -100,15 +101,58 @@ export async function desiredLauncherHook(target: DiscoveredIntegration, options
   if (!args.includes("--require-binding")) args.push("--require-binding");
   return { ...previous, args, timeoutMs: 300_000 };
 }
+async function profilePnpmStoreBase(profileRoot: string, fallback: string): Promise<string> {
+  const recordPath = join(profileRoot, "node_modules", ".modules.yaml");
+  const invalid = (reason: string) => new IntegrationError("INTEGRATION_STORE_RECORD_INVALID",
+    `实例现有 pnpm 缓存记录（node_modules/.modules.yaml）${reason}，未执行插件安装。请先检查实例原有的包管理配置后重试。`);
+  let info;
+  try { info = await lstat(recordPath); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return fallback;
+    throw invalid("无法读取");
+  }
+  // This is pnpm's generated local record, not a request to follow another
+  // metadata file or inspect the cache's contents. JSON is valid YAML 1.2 too.
+  const maxBytes = 4 * 1024 * 1024;
+  if (!info.isFile() || info.size > maxBytes) throw invalid("不是有效的常规文件或超过大小限制");
+  let bytes: Buffer;
+  try { bytes = await readFile(recordPath); }
+  catch { throw invalid("无法读取"); }
+  if (bytes.length > maxBytes) throw invalid("超过大小限制");
+  let recorded: unknown;
+  try {
+    const document = parseDocument(bytes.toString("utf8"), { uniqueKeys: true, prettyErrors: false });
+    if (document.errors.length > 0 || document.warnings.length > 0) throw new Error("invalid YAML");
+    recorded = document.toJS({ maxAliasCount: 0 });
+  } catch { throw invalid("格式损坏或包含不支持的内容"); }
+  const parsed = z.object({ storeDir: z.string().min(1) }).safeParse(recorded);
+  if (!parsed.success) throw invalid("缺少有效的 storeDir 路径");
+  const store = parsed.data.storeDir;
+  if (store !== store.trim() || /[\u0000-\u001f\u007f]/u.test(store) || !isAbsolute(store) ||
+      store.split(/[\\/]/u).some(segment => segment === "." || segment === "..") ||
+      (process.platform === "win32" && parsePath(store).root.length <= 1)) {
+    throw invalid("的 storeDir 必须是明确的本机绝对路径");
+  }
+  // .modules.yaml records the effective versioned directory, while the CLI's
+  // --store-dir takes its base and appends its own vN suffix. Never pass v11 as
+  // the base (which would select v11/v11), nor guess an unrecognized layout.
+  const effectiveStore = resolve(store);
+  if (!/^v[1-9]\d*$/u.test(basename(effectiveStore))) throw invalid("的 storeDir 版本目录格式无法识别");
+  const base = dirname(effectiveStore);
+  if (dirname(base) === base) throw invalid("的 storeDir 不能使用文件系统根目录作为缓存位置");
+  return base;
+}
+
 export async function installIntegrationPlugin(target: DiscoveredIntegration, options: IntegrationInstallOptions): Promise<void> {
   if (target.pluginReady) return;
-  if (target.cliPath === null || target.versionRoot === null || target.launcherDataRoot === null || target.target.profile === null) throw new IntegrationError("INTEGRATION_NOT_INSTALLABLE", "所选实例缺少安装信息。");
+  if (target.cliPath === null || target.versionRoot === null || target.launcherDataRoot === null || target.profileRoot === null || target.target.profile === null) throw new IntegrationError("INTEGRATION_NOT_INSTALLABLE", "所选实例缺少安装信息。");
   const artifact = options.artifact ?? await readPackagedArtifact(options.engineEntry);
   if (artifact === undefined) throw new IntegrationError("INTEGRATION_PACKAGE_MISSING", "当前安装缺少配套插件包，请使用包含接入组件的完整 Maintenance 发行包。", 503);
   const bytes = await readFile(artifact.path);
   if (createHash("sha256").update(bytes).digest("hex") !== artifact.sha256) throw new IntegrationError("INTEGRATION_PACKAGE_CHANGED", "配套插件包校验失败，未执行安装。", 503);
+  const storeBase = await profilePnpmStoreBase(target.profileRoot, join(target.launcherDataRoot, ".pnpm-store"));
   await (options.run ?? runOfficialCli)(options.nodePath ?? process.execPath, [target.cliPath, "plugin", "--profile", target.target.profile, "add", artifact.path,
-    "--store-dir", join(target.launcherDataRoot, ".pnpm-store"), "--loglevel=info"], {
+    "--store-dir", storeBase, "--loglevel=info"], {
     cwd: target.versionRoot,
     env: { ...process.env, DSH_HOME: target.homeRoot, CI: "true", PATH: `${join(target.launcherDataRoot, "tools")}${process.platform === "win32" ? ";" : ":"}${process.env.PATH ?? ""}` },
   });
