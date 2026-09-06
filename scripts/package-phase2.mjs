@@ -205,6 +205,12 @@ const buildInfo = {
 };
 await writeFile(join(engine, "BUILD-INFO.json"), `${stableJson(buildInfo)}\n`);
 const pluginBytes = await deterministicTarGz(plugin, "package");
+await writeFile(join(engine, "engine", "dsh-session-maintenance.tgz"), pluginBytes);
+await writeFile(join(engine, "engine", "integration-package.json"), `${stableJson({
+  schemaVersion: 1,
+  file: "dsh-session-maintenance.tgz",
+  sha256: sha256(pluginBytes).slice("sha256:".length),
+})}\n`);
 const engineBytes = await deterministicTarGz(engine, "dsh-session-maintenance");
 const pluginName = `dsh-session-maintenance-${version}.tgz`;
 const engineName = `dsh-session-maintenance-engine-${engineVersion}.tgz`;

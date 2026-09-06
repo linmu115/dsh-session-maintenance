@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.20 - 2026-09-06
+
+- Pair with Engine 0.1.17: five main Dashboard sections, a persistent workspace
+  directory and static Markdown reader, clearer recovery and storage flows.
+- Move instance onboarding to Dashboard settings. Verified Launcher-managed
+  profiles can install the bundled plugin, bind their exact instance/profile,
+  check upgrades, repair and disconnect through the official plugin CLI.
+- Keep workspace scope separate from connection setup. Saved scope includes
+  future sessions; native Codex writes remain unavailable pending native-history
+  and desktop acceptance. Remove ineffective legacy sync switches from settings.
+- Preserve the global Dashboard entry fix from 0.2.19. Settings saves only
+  maintenance preferences and does not overwrite historical IDs or sync flags.
+
 ## 0.2.19 - 2026-09-06
 
 - Open the full Dashboard from settings and the optional sidebar without
