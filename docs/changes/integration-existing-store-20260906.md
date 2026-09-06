@@ -11,6 +11,7 @@
 验证结果：
 
 - `pnpm exec vitest run apps/engine/test/integration-existing-store.test.ts apps/engine/test/integrations.test.ts --maxWorkers=1 --testTimeout=15000`：2 个文件、40 项全部通过（新增 store 专用测试 14 项，既有接入回归 26 项）。
+- 补跑尚未执行的 `pnpm exec vitest run apps/engine/test/integration-api.test.ts --maxWorkers=1 --testTimeout=15000`：12 项全部通过。三个指定测试文件合计 52 项通过，未重复运行已通过的测试。
 - `node node_modules/typescript/bin/tsc -p apps/engine/tsconfig.json --noEmit`：通过。
 - 针对本次三个文件的 `git diff --check`：通过。
 
