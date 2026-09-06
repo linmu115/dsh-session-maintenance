@@ -8,8 +8,8 @@ import { promisify } from "node:util";
 import { SessionMaintenanceError } from "@linmu/dsh-session-contracts";
 
 import type { SessionMaintenanceEngine } from "../engine.js";
-import { JobRunner } from "../jobs/job-runner.js";
-import { JobStore } from "../jobs/job-store.js";
+import type { JobRunner } from "../jobs/job-runner.js";
+import type { JobStore } from "../jobs/job-store.js";
 import { routeRequest } from "./routes.js";
 import { serveDashboardAsset } from "./dashboard.js";
 import { UiSessionManager } from "./ui-session.js";
@@ -54,11 +54,14 @@ export async function startMaintenanceServer(input: {
   const host = input.host ?? "127.0.0.1";
   if (host !== "127.0.0.1") throw new SessionMaintenanceError("LOOPBACK_ONLY", `Refusing non-loopback host: ${host}`);
   const token = randomBytes(32).toString("base64url");
-  const jobStore = new JobStore(input.engine.repository.database);
-  const jobs = new JobRunner(input.engine, jobStore);
+  const jobStore = input.engine.jobStore;
+  const jobs = input.engine.jobs;
   const uiSessions = new UiSessionManager();
   let origin = "";
+  const responses = new Set<import("node:http").ServerResponse>();
   const server: Server = createServer((request, response) => {
+    responses.add(response);
+    response.once("close", () => responses.delete(response));
     void (async () => {
       if (input.dashboardRoot !== undefined && await serveDashboardAsset(request, response, input.dashboardRoot)) return;
       await routeRequest(request, response, { engine: input.engine, jobs, jobStore, token, origin, uiSessions });
@@ -76,20 +79,29 @@ export async function startMaintenanceServer(input: {
   origin = `http://${host}:${address.port}`;
   const connectionPath = join(input.stateRoot, "connection.json");
   try {
-    await writeFile(connectionPath, `${JSON.stringify({ schemaVersion: 1, host, port: address.port, token })}\n`, { mode: 0o600 });
+    await writeFile(connectionPath, `${JSON.stringify({ schemaVersion: 1, host, port: address.port, token, pid: process.pid, ownerId: input.engine.writes?.captureEvidence().ownerId })}\n`, { mode: 0o600 });
     if (input.skipAcl !== true) await secureConnectionFile(connectionPath);
   } catch (error) {
     await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
     await rm(connectionPath, { force: true });
     throw error;
   }
-  jobs.start();
+  await input.engine.runWrite("job-recovery", () => jobs.start());
   return {
     origin,
     token,
     jobStore,
     jobs,
     uiSessions,
-    close: async () => new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error))),
+    close: async () => {
+      const closed = new Promise<void>((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error)));
+      // SSE subscriptions otherwise keep close() waiting indefinitely. Closing
+      // only event streams aborts their read loops while active requests drain.
+      for (const response of responses) if (String(response.getHeader("content-type")).startsWith("text/event-stream")) response.end();
+      await jobs.stopImports();
+      await closed;
+      await input.engine.writes?.drain();
+      await rm(connectionPath, { force: true });
+    },
   };
 }

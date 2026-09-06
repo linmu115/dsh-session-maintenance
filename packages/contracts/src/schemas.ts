@@ -968,6 +968,12 @@ export const syncPlanSchema = z.strictObject({
   preconditions: z.array(stateFingerprintSchema),
 });
 
+export const codexImportRequestSchema = z.strictObject({
+  operationId: idSchema,
+  instanceIds: z.array(idSchema).min(1).max(100).refine((ids) => new Set(ids).size === ids.length, "Duplicate instance identity"),
+  mode: z.enum(["content", "titles"]),
+});
+
 export const jobStatusSchema = z.enum(["queued", "running", "completed", "failed"]);
 
 export const jobRefSchema = z.strictObject({
@@ -999,6 +1005,27 @@ export const jobEventSchema = z.discriminatedUnion("type", [
     message: z.string(),
   }),
 ]);
+
+export const jobRequestSchema = z.discriminatedUnion("kind", [
+  codexImportRequestSchema.extend({ kind: z.literal("codex-import") }),
+  z.strictObject({ kind: z.literal("scan"), instanceIds: z.array(idSchema) }),
+  z.strictObject({ kind: z.literal("apply"), planId: idSchema }),
+  z.strictObject({ kind: z.literal("restore"), transactionId: idSchema }),
+  z.strictObject({ kind: z.literal("recover"), transactionId: idSchema }),
+]);
+
+export const jobSummarySchema = z.strictObject({
+  job: jobRefSchema,
+  request: jobRequestSchema,
+  latestEvent: jobEventSchema.optional(),
+  result: jsonValueSchema.optional(),
+  updatedAt: timestampSchema,
+});
+export const jobListResponseSchema = z.array(jobSummarySchema);
+export const codexImportJobQuerySchema = z.strictObject({
+  kind: z.literal("codex-import"),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+});
 
 export const sessionQuerySchema = z.strictObject({
   cursor: z.string().optional(),

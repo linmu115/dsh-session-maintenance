@@ -7,7 +7,14 @@ export interface JobRef {
   readonly status: JobStatus;
 }
 
+export interface CodexImportRequest {
+  readonly operationId: string;
+  readonly instanceIds: readonly string[];
+  readonly mode: "content" | "titles";
+}
+
 export type JobRequest =
+  | ({ readonly kind: "codex-import" } & CodexImportRequest)
   | { readonly kind: "scan"; readonly instanceIds: readonly string[] }
   | { readonly kind: "apply"; readonly planId: string }
   | { readonly kind: "restore"; readonly transactionId: string }
@@ -29,3 +36,11 @@ export type JobEvent =
     })
   | (JobEventBase & { readonly type: "completed"; readonly result: JsonValue })
   | (JobEventBase & { readonly type: "failed"; readonly code: string; readonly message: string });
+
+export interface JobSummary {
+  readonly job: JobRef;
+  readonly request: JobRequest;
+  readonly latestEvent?: JobEvent;
+  readonly result?: JsonValue;
+  readonly updatedAt: string;
+}

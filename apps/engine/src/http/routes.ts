@@ -4,6 +4,8 @@ import { z, ZodError } from "zod";
 
 import {
   SessionMaintenanceError,
+  codexImportRequestSchema,
+  codexImportJobQuerySchema,
   dashboardLaunchRequestSchema,
   continuationPreviewRequestSchema,
   resolutionContinuationRequestSchema,
@@ -435,7 +437,7 @@ export async function routeRequest(
     }
     const canonicalWorkspace = url.pathname.match(/^\/v1\/canonical\/workspaces\/([^/]+)$/u);
     if (request.method === "DELETE" && canonicalWorkspace !== null) {
-      const deleted = context.engine.sessionCommands.deleteWorkspace(pathId(canonicalWorkspace[1]!));
+      const deleted = await context.engine.runWrite("session-maintenance", () => context.engine.sessionCommands.deleteWorkspace(pathId(canonicalWorkspace[1]!)));
       if (!deleted) send(response, 404, errorBody("CANONICAL_WORKSPACE_NOT_FOUND", "Canonical workspace not found"));
       else send(response, 200, { deleted: true });
       return;
@@ -471,7 +473,7 @@ export async function routeRequest(
     const canonicalRestore = url.pathname.match(/^\/v1\/canonical\/sessions\/([^/]+)\/restore$/u);
     if (request.method === "POST" && canonicalRestore !== null) {
       emptyRequestSchema.parse(await readJsonBody(request));
-      const restored = context.engine.sessionCommands.restoreSession(pathId(canonicalRestore[1]!));
+      const restored = await context.engine.runWrite("session-maintenance", () => context.engine.sessionCommands.restoreSession(pathId(canonicalRestore[1]!)));
       if (restored === undefined) send(response, 404, errorBody("CANONICAL_SESSION_NOT_DELETED", "Canonical session is not deleted"));
       else send(response, 200, { restoration: restored });
       return;
@@ -565,9 +567,33 @@ export async function routeRequest(
       send(response, 200, { continuation: stored });
       return;
     }
+    if (request.method === "GET" && url.pathname === "/v1/jobs") {
+      const entries = [...url.searchParams.entries()];
+      if (new Set(entries.map(([key]) => key)).size !== entries.length) {
+        send(response, 400, errorBody("INVALID_REQUEST", "Duplicate query parameter")); return;
+      }
+      const query = codexImportJobQuerySchema.parse(Object.fromEntries(entries));
+      send(response, 200, context.jobStore.listCodexImports(query.limit));
+      return;
+    }
+    if (request.method === "POST" && url.pathname === "/v1/jobs/codex-import") {
+      const body = codexImportRequestSchema.parse(await readJsonBody(request));
+      send(response, 202, { job: await context.engine.runWrite("job-enqueue", () => context.jobs.enqueueCodexImport(body)) });
+      return;
+    }
+    const importControl = url.pathname.match(/^\/v1\/jobs\/([^/]+)\/(cancel|resume)$/u);
+    if (request.method === "POST" && importControl !== null) {
+      emptyRequestSchema.parse(await readJsonBody(request));
+      const id = pathId(importControl[1]!);
+      const job = importControl[2] === "cancel"
+        ? await context.jobs.cancelCodexImport(id)
+        : await context.engine.runWrite("job-control", () => context.jobs.resumeCodexImport(id));
+      send(response, 202, { job });
+      return;
+    }
     if (request.method === "POST" && url.pathname === "/v1/jobs/scan") {
       const body = scanRequestSchema.parse(await readJsonBody(request));
-      send(response, 202, { job: context.jobs.enqueueScan(body.instanceIds) });
+      send(response, 202, { job: await context.engine.runWrite("job-enqueue", () => context.jobs.enqueueScan(body.instanceIds)) });
       return;
     }
     const jobEvents = url.pathname.match(/^\/v1\/jobs\/([^/]+)\/events$/u);
@@ -602,7 +628,7 @@ export async function routeRequest(
     const planApply = url.pathname.match(/^\/v1\/plans\/([^/]+)\/apply$/u);
     if (request.method === "POST" && planApply !== null) {
       emptyRequestSchema.parse(await readJsonBody(request));
-      send(response, 202, { job: context.jobs.enqueueApply(pathId(planApply[1]!)) });
+      send(response, 202, { job: await context.engine.runWrite("job-enqueue", () => context.jobs.enqueueApply(pathId(planApply[1]!))) });
       return;
     }
     const plan = url.pathname.match(/^\/v1\/plans\/([^/]+)$/u);
@@ -630,10 +656,10 @@ export async function routeRequest(
     const transactionRestore = url.pathname.match(/^\/v1\/transactions\/([^/]+)\/restore$/u);
     if (request.method === "POST" && transactionRestore !== null) {
       const body = restoreOperationRequestSchema.parse(await readJsonBody(request));
-      send(response, 202, { job: context.jobs.enqueueRestore({
+      send(response, 202, { job: await context.engine.runWrite("job-enqueue", () => context.jobs.enqueueRestore({
         transactionId: pathId(transactionRestore[1]!),
         confirmationToken: body.confirmationToken,
-      }) });
+      })) });
       return;
     }
     const recoveryConfirmation = url.pathname.match(/^\/v1\/transactions\/([^/]+)\/recovery-confirmation$/u);
@@ -645,10 +671,10 @@ export async function routeRequest(
     const transactionRecover = url.pathname.match(/^\/v1\/transactions\/([^/]+)\/recover$/u);
     if (request.method === "POST" && transactionRecover !== null) {
       const body = restoreOperationRequestSchema.parse(await readJsonBody(request));
-      send(response, 202, { job: context.jobs.enqueueRecover({
+      send(response, 202, { job: await context.engine.runWrite("job-enqueue", () => context.jobs.enqueueRecover({
         transactionId: pathId(transactionRecover[1]!),
         confirmationToken: body.confirmationToken,
-      }) });
+      })) });
       return;
     }
     const transaction = url.pathname.match(/^\/v1\/transactions\/([^/]+)$/u);
@@ -700,6 +726,10 @@ export async function routeRequest(
       response.destroy(error instanceof Error ? error : undefined);
     } else if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
     else if (error instanceof ZodError) send(response, 400, errorBody("INVALID_REQUEST", "Request does not match the API schema"));
+    else if (error instanceof Error && error.message.startsWith("WRITER_QUEUE_FULL")) {
+      response.setHeader("retry-after", "1");
+      send(response, 503, errorBody("WRITER_QUEUE_FULL", "Write queue is full; retry after pending commits drain"));
+    }
     else if (error instanceof ProjectionRuntimeStreamError) send(response, 422, errorBody(error.code, error.message));
     else if (domainError !== undefined) {
       const status = domainError.code === "CAPABILITY_NOT_AVAILABLE"

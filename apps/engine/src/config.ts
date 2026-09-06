@@ -11,6 +11,7 @@ import type {
 } from "@linmu/dsh-session-contracts";
 import { maintenanceSettingsSchema, maintenanceSettingsPatchSchema } from "@linmu/dsh-session-contracts";
 import { parse, stringify } from "yaml";
+import { offlineMaintenanceOperation } from "@linmu/dsh-session-store";
 
 export interface EngineConfig {
   readonly schemaVersion: 1;
@@ -141,7 +142,7 @@ async function atomicWrite(path: string, content: string): Promise<void> {
   await rename(temporary, path);
 }
 
-export async function initializeStateRoot(stateRoot: string): Promise<EngineConfig> {
+async function initializeStateRootWithinOwnership(stateRoot: string): Promise<EngineConfig> {
   await mkdir(stateRoot, { recursive: true });
   const path = configPathFor(stateRoot);
   try {
@@ -162,7 +163,7 @@ export function activeDatabasePath(stateRoot: string, config: EngineConfig): str
   return join(stateRoot, config.databaseFile);
 }
 
-export async function activateDatabaseFile(stateRoot: string, databaseFile: string): Promise<EngineConfig> {
+async function activateDatabaseFileWithinOwnership(stateRoot: string, databaseFile: string): Promise<EngineConfig> {
   if (!/^metadata(?:\.[a-z0-9-]+)?\.sqlite$/u.test(databaseFile)) {
     throw new TypeError("Invalid Maintenance database file pointer");
   }
@@ -191,7 +192,7 @@ export function registeredCodexTargets(config: EngineConfig): readonly CodexCont
   });
 }
 
-export async function addCodexTarget(
+async function addCodexTargetWithinOwnership(
   stateRoot: string,
   input: {
     readonly id: string;
@@ -244,7 +245,7 @@ export async function addCodexTarget(
   };
 }
 
-export async function addInstance(
+async function addInstanceWithinOwnership(
   stateRoot: string,
   input: RegisteredInstance,
   probe: (instance: RegisteredInstance) => Promise<void>,
@@ -263,7 +264,7 @@ export async function addInstance(
   return resolved;
 }
 
-export async function updateSettings(
+async function updateSettingsWithinOwnership(
   stateRoot: string,
   input: MaintenanceSettingsPatch,
 ): Promise<MaintenanceSettings> {
@@ -281,3 +282,16 @@ export async function updateSettings(
   await atomicWrite(configPathFor(stateRoot), stringify({ ...config, settings: next }));
   return next;
 }
+
+function coordinatedConfigMutation<A extends readonly unknown[], R>(operation: (stateRoot: string, ...args: A) => Promise<R>) {
+  const coordinated = offlineMaintenanceOperation(
+    (input: { stateRoot: string; args: A }) => operation(input.stateRoot, ...input.args), "config-registration",
+  );
+  return (stateRoot: string, ...args: A): Promise<R> => coordinated({ stateRoot, args });
+}
+
+export const initializeStateRoot = coordinatedConfigMutation(initializeStateRootWithinOwnership);
+export const activateDatabaseFile = coordinatedConfigMutation(activateDatabaseFileWithinOwnership);
+export const addCodexTarget = coordinatedConfigMutation(addCodexTargetWithinOwnership);
+export const addInstance = coordinatedConfigMutation(addInstanceWithinOwnership);
+export const updateSettings = coordinatedConfigMutation(updateSettingsWithinOwnership);

@@ -1,3 +1,4 @@
+import { offlineMaintenanceOperation } from "@linmu/dsh-session-store";
 import { createHash, randomUUID } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { open, readFile, rename } from "node:fs/promises";
@@ -291,7 +292,7 @@ async function buildStablePlan(input: ConversationTopologyRepairInput): Promise<
   }
 }
 
-export async function previewConversationTopologyRepair(
+async function previewConversationTopologyRepairWithinOwnership(
   input: ConversationTopologyRepairInput,
 ): Promise<ConversationTopologyRepairPreviewV1> {
   await status(input.onStatus, "repair.preview", "started", "validating immutable source and empty candidate target");
@@ -525,7 +526,7 @@ async function writeManifest(path: string, manifest: ConversationTopologyRepairM
   await rename(temporary, path);
 }
 
-export async function stageConversationTopologyRepair(
+async function stageConversationTopologyRepairWithinOwnership(
   input: StageConversationTopologyRepairInput,
 ): Promise<ConversationTopologyRepairManifestV1> {
   const sourcePath = resolveSourcePath(input.stateRoot, input.sourceDatabasePath);
@@ -697,7 +698,7 @@ export async function stageConversationTopologyRepair(
   }
 }
 
-export async function activateConversationTopologyRepairCandidate(input: {
+async function activateConversationTopologyRepairCandidateWithinOwnership(input: {
   readonly stateRoot: string;
   readonly sourceDatabasePath: string;
   readonly candidateFile: string;
@@ -736,3 +737,10 @@ export async function activateConversationTopologyRepairCandidate(input: {
   await input.activateDatabaseFile(input.candidateFile);
   return { activeDatabaseFile: input.candidateFile, restartRequired: true };
 }
+
+export const stageConversationTopologyRepair = offlineMaintenanceOperation(stageConversationTopologyRepairWithinOwnership, "candidate-maintenance");
+
+// Preview freezes a plan sidecar; hold ownership for that physical creation too.
+export const previewConversationTopologyRepair = offlineMaintenanceOperation(previewConversationTopologyRepairWithinOwnership, "candidate-preview");
+
+export const activateConversationTopologyRepairCandidate = offlineMaintenanceOperation(activateConversationTopologyRepairCandidateWithinOwnership, "candidate-maintenance");

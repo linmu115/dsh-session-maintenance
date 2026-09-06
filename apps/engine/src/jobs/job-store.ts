@@ -1,13 +1,17 @@
 import { EventEmitter } from "node:events";
 import type { DatabaseSync } from "node:sqlite";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
+  codexImportRequestSchema,
+  SessionMaintenanceError,
   jobEventSchema,
   jobRefSchema,
+  type CodexImportRequest,
   type JobEvent,
   type JobRef,
   type JobRequest,
+  type JobSummary,
   type JsonValue,
 } from "@linmu/dsh-session-contracts";
 import { canonicalJson } from "@linmu/dsh-session-domain";
@@ -54,8 +58,29 @@ export class JobStore {
     return this.create({ kind: "recover", transactionId });
   }
 
-  private create(request: JobRequest): JobRef {
-    const id = `job_${randomUUID().replaceAll("-", "")}`;
+  createCodexImport(request: CodexImportRequest): JobRef {
+    request = codexImportRequestSchema.parse(request);
+    const id = `job_import_${createHash("sha256").update(request.operationId).digest("hex")}`;
+    const input: JobRequest = { kind: "codex-import", ...request };
+    const existing = this.get(id);
+    if (existing !== undefined) {
+      if (canonicalJson(existing.request as unknown as JsonValue) !== canonicalJson(input as unknown as JsonValue)) throw new SessionMaintenanceError("IDENTITY_CONFLICT", "IMPORT_OPERATION_CONFLICT: operation ID already has different input");
+      return existing.ref;
+    }
+    return this.create(input, id);
+  }
+
+  requestCancellation(id: string): void {
+    this.database.prepare("UPDATE jobs SET result_json = ? WHERE id = ? AND status IN ('queued','running')")
+      .run(JSON.stringify({ cancelRequested: true }), id);
+  }
+
+  cancellationRequested(id: string): boolean {
+    const result = this.get(id)?.result;
+    return typeof result === "object" && result !== null && !Array.isArray(result) && (result as Readonly<Record<string, JsonValue>>).cancelRequested === true;
+  }
+
+  private create(request: JobRequest, id = `job_${randomUUID().replaceAll("-", "")}`): JobRef {
     const now = this.clock();
     this.database.exec("BEGIN IMMEDIATE");
     try {
@@ -91,6 +116,21 @@ export class JobStore {
       "SELECT id, status, request_json, result_json FROM jobs WHERE status IN ('queued', 'running') ORDER BY created_at, id",
     ).all() as unknown as JobRow[];
     return rows.map((row) => this.get(row.id)!);
+  }
+
+  listCodexImports(limit: number): readonly JobSummary[] {
+    const rows = this.database.prepare(
+      `SELECT id, updated_at FROM jobs WHERE json_extract(request_json, '$.kind') = 'codex-import'
+       ORDER BY updated_at DESC, id DESC LIMIT ?`,
+    ).all(limit) as unknown as Array<{ id: string; updated_at: string }>;
+    return rows.map((row) => {
+      const stored = this.get(row.id)!;
+      const event = this.database.prepare("SELECT event_json FROM job_events WHERE job_id = ? ORDER BY sequence DESC LIMIT 1").get(row.id) as EventRow | undefined;
+      return { job: stored.ref, request: stored.request, updatedAt: row.updated_at,
+        ...(stored.result === undefined ? {} : { result: stored.result }),
+        ...(event === undefined ? {} : { latestEvent: jobEventSchema.parse(JSON.parse(event.event_json)) as JobEvent }),
+      };
+    });
   }
 
   markRunning(id: string): void {
@@ -136,7 +176,7 @@ export class JobStore {
       }
       if (this.get(id) === undefined) return;
       await new Promise<void>((resolve) => {
-        const done = () => { clearTimeout(timeout); signal?.removeEventListener("abort", done); resolve(); };
+        const done = () => { clearTimeout(timeout); this.events.off(id, done); signal?.removeEventListener("abort", done); resolve(); };
         const timeout = setTimeout(done, 30_000);
         this.events.once(id, done);
         signal?.addEventListener("abort", done, { once: true });
@@ -166,7 +206,15 @@ export class JobStore {
 
   private append(id: string, event: JobEventInput): void {
     const value = { ...event, jobId: id, sequence: this.nextSequence(id), at: this.clock() } as JobEvent;
-    this.insertEvent(value);
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.insertEvent(value);
+      this.database.prepare("UPDATE jobs SET updated_at = ? WHERE id = ?").run(value.at, id);
+      this.database.exec("COMMIT");
+    } catch (error) {
+      try { this.database.exec("ROLLBACK"); } catch { /* preserve event failure */ }
+      throw error;
+    }
     this.events.emit(id);
   }
 

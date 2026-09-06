@@ -1,3 +1,7 @@
+import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { MaintenanceWriteCoordinator } from "@linmu/dsh-session-store";
 import { resolve } from "node:path";
 
 import { Command, CommanderError, Option } from "commander";
@@ -252,7 +256,45 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     try { output(stdout, { status: await engine.status() }); } finally { engine.close(); }
   });
 
+  const writer = program.command("writer-owner");
+  writer.command("inspect").action(() => output(stdout, MaintenanceWriteCoordinator.inspect(compositionOptions().stateRoot)));
+  writer.command("recover-dead").requiredOption("--owner-id <id>").action((value: { ownerId: string }) => {
+    MaintenanceWriteCoordinator.recoverDeadOwner(compositionOptions().stateRoot, value.ownerId);
+    output(stdout, { recovered: value.ownerId });
+  });
+
   const canonical = program.command("canonical");
+  canonical.command("import")
+    .requiredOption("--instance <id>", "registered Codex instance; repeatable", collect, [])
+    .option("--operation-id <id>", "retry identity", randomUUID())
+    .addOption(new Option("--mode <mode>").choices(["content", "titles"]).default("content"))
+    .option("--offline", "require exclusive local ownership; never falls back from online")
+    .action(async (value: { instance: readonly string[]; operationId: string; mode: "content" | "titles"; offline?: boolean }) => {
+      const request = { instanceIds: value.instance, operationId: value.operationId, mode: value.mode };
+      if (value.offline) {
+        const engine = await createReadOnlyComposition({ ...compositionOptions(), ownerMode: "offline" });
+        try {
+          const job = await engine.runWrite("job-enqueue", () => engine.jobs.enqueueCodexImport(request));
+          output(stdout, { job, result: await engine.jobs.waitForImport(job.id) });
+        } finally { await engine.jobs.stopImports(); await engine.writes?.drain(); engine.close(); }
+        return;
+      }
+      const descriptor = JSON.parse(await readFile(join(compositionOptions().stateRoot, "connection.json"), "utf8")) as { host: string; port: number; token: string };
+      if (descriptor.host !== "127.0.0.1" || !Number.isSafeInteger(descriptor.port) || descriptor.port < 1 || descriptor.port > 65535 || typeof descriptor.token !== "string") throw new Error("Invalid Engine connection descriptor");
+      const origin = `http://127.0.0.1:${descriptor.port}`;
+      const headers = { authorization: `Bearer ${descriptor.token}`, "content-type": "application/json" };
+      const accepted = await fetch(`${origin}/v1/jobs/codex-import`, { method: "POST", headers, body: JSON.stringify(request) });
+      if (!accepted.ok) throw new Error(`Engine import request failed: ${accepted.status}`);
+      const submitted = await accepted.json() as { job: { id: string } };
+      for (;;) {
+        const response = await fetch(`${origin}/v1/jobs/${encodeURIComponent(submitted.job.id)}`, { headers });
+        if (!response.ok) throw new Error(`Engine import status failed: ${response.status}`);
+        const status = await response.json() as { job: { status: string }; result?: JsonValue };
+        if (status.job.status === "completed") { output(stdout, status); break; }
+        if (status.job.status === "failed") throw new Error(`Import failed: ${JSON.stringify(status.result)}`);
+        await new Promise((resolveWait) => setTimeout(resolveWait, 200));
+      }
+    });
   canonical.command("repair-rc1-preview")
     .requiredOption("--candidate-file <name>")
     .option("--codex-instance <id>")

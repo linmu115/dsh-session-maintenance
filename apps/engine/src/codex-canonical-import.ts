@@ -92,10 +92,13 @@ export interface CodexCanonicalImportOptions {
   readonly projectPort: CodexCanonicalProjectPort;
   readonly evidencePort?: AdapterEvidencePort;
   readonly fixtureGuard?: (root: string) => void;
+  readonly writes?: import("@linmu/dsh-session-contracts").MaintenanceWriteScope;
 }
 
 export interface CanonicalImportPlanSessionV1 {
   readonly logicalSessionId: LogicalSessionId;
+  /** Head captured before source I/O; online commits reject an intervening writer. */
+  readonly expectedHeadVersionId?: string | null;
   readonly sourceSessionId: string;
   readonly normalized: CodexNormalizedSession;
   readonly assignment: CodexCanonicalProjectAssignment;
@@ -265,6 +268,8 @@ export async function visitCodexCanonicalImportPlan(input: {
   readonly projectOverrides?: CodexProjectOverrides;
   readonly fixtureGuard?: (root: string) => void;
   readonly onStatus?: (event: CodexCanonicalImportStatusEvent) => void | Promise<void>;
+  readonly signal?: AbortSignal;
+  readonly readHead?: (id: LogicalSessionId) => Promise<string | null>;
   readonly visitSession: (session: CanonicalImportPlanSessionV1) => void | Promise<void>;
 }): Promise<CanonicalImportPlanSummaryV1> {
   if (input.instance.platform !== "codex") {
@@ -280,7 +285,7 @@ export async function visitCodexCanonicalImportPlan(input: {
   }
   const projectCatalog = readCodexProjectCatalog(input.instance);
   const summaries: Awaited<ReturnType<CodexReadAdapter["list"]>> extends AsyncIterable<infer T> ? T[] : never[] = [];
-  for await (const summary of adapter.list(input.instance)) summaries.push(summary);
+  for await (const summary of adapter.list(input.instance)) { input.signal?.throwIfAborted(); summaries.push(summary); }
   const sessions: CanonicalImportPlanSessionDescriptorV1[] = [];
   const projectAssignments: Record<CodexProjectResolution["kind"], number> = {
     "thread-project-id": 0,
@@ -292,7 +297,9 @@ export async function visitCodexCanonicalImportPlan(input: {
   let retried = 0;
 
   for (const summary of summaries) {
+    input.signal?.throwIfAborted();
     const logicalSessionId = logicalSessionIdFor(summary.key) as LogicalSessionId;
+    const expectedHeadVersionId = await input.readHead?.(logicalSessionId);
     const observation = await adapter.observe(input.instance, summary.key, summary.hint);
     if (observation.kind === "unstable") {
       retried += 1;
@@ -334,6 +341,7 @@ export async function visitCodexCanonicalImportPlan(input: {
     projectAssignments[project.kind] += 1;
     const item: CanonicalImportPlanSessionV1 = {
       logicalSessionId,
+      ...(expectedHeadVersionId === undefined ? {} : { expectedHeadVersionId }),
       sourceSessionId: summary.key.sessionId,
       normalized,
       sourceCursor: canonicalJson(observation.fingerprint as unknown as JsonValue),
@@ -532,18 +540,30 @@ export class CodexCanonicalImportService {
   }
 
   apply(input: {
+    readonly signal?: AbortSignal;
     readonly plan: CanonicalImportPlanV1;
     readonly onStatus?: (event: CodexCanonicalImportStatusEvent) => void | Promise<void>;
   }): Promise<CodexCanonicalImportResult> {
-    return applyCodexCanonicalImportPlan({
+    const apply = async () => {
+      for (const item of input.plan.sessions) {
+        if (item.logicalSessionId !== logicalSessionIdFor(item.authorityBinding.key)) throw new Error("IMPORT_IDENTITY_CHANGED");
+        if (item.expectedHeadVersionId !== undefined) {
+          const current = await this.options.canonicalEngine.store.getSession(item.logicalSessionId);
+          if ((current?.headVersionId ?? null) !== item.expectedHeadVersionId) throw new Error("IMPORT_HEAD_CHANGED: resume to observe the source again");
+        }
+      }
+      return applyCodexCanonicalImportPlan({
       ...input,
       canonicalEngine: this.options.canonicalEngine,
       projectPort: this.options.projectPort,
       ...(this.options.evidencePort === undefined ? {} : { evidencePort: this.options.evidencePort }),
-    });
+      });
+    };
+    return this.options.writes === undefined ? apply() : this.options.writes.run("codex-session-commit", apply, input.signal);
   }
 
   async sync(input: {
+    readonly signal?: AbortSignal;
     readonly instance: RegisteredInstance;
     readonly projectOverrides?: CodexProjectOverrides;
     readonly onStatus?: (event: CodexCanonicalImportStatusEvent) => void | Promise<void>;
@@ -551,8 +571,10 @@ export class CodexCanonicalImportService {
     const counts = { created: 0, advanced: 0, noop: 0 };
     const summary = await visitCodexCanonicalImportPlan({
       ...input,
+      readHead: async (id) => (await this.options.canonicalEngine.store.getSession(id))?.headVersionId ?? null,
       ...(this.options.fixtureGuard === undefined ? {} : { fixtureGuard: this.options.fixtureGuard }),
       visitSession: async (item) => {
+        input.signal?.throwIfAborted();
         const projectAssignments: Record<CodexProjectResolution["kind"], number> = {
           "thread-project-id": 0,
           "explicit-override": 0,
@@ -562,6 +584,7 @@ export class CodexCanonicalImportService {
         };
         projectAssignments[item.assignment.project.kind] = 1;
         const applied = await this.apply({
+          ...(input.signal === undefined ? {} : { signal: input.signal }),
           plan: {
             schemaVersion: 1,
             instanceId: input.instance.id,

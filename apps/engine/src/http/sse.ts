@@ -18,10 +18,12 @@ export async function streamJobEvents(
   });
   const controller = new AbortController();
   response.once("close", () => controller.abort());
+  response.once("finish", () => controller.abort());
   for await (const event of store.subscribe(jobId, after, controller.signal)) {
+    if (controller.signal.aborted || response.writableEnded || response.destroyed) break;
     response.write(`id: ${event.sequence}\nevent: ${event.type}\ndata: ${JSON.stringify(event satisfies JobEvent)}\n\n`);
   }
-  response.end();
+  if (!response.writableEnded) response.end();
 }
 
 export async function streamStatusEvents(
@@ -37,7 +39,9 @@ export async function streamStatusEvents(
   response.flushHeaders();
   const controller = new AbortController();
   response.once("close", () => controller.abort());
+  response.once("finish", () => controller.abort());
   for await (const event of log.subscribe(query, controller.signal)) {
+    if (controller.signal.aborted || response.writableEnded || response.destroyed) break;
     response.write(`id: ${event.id}\nevent: status\ndata: ${JSON.stringify(event satisfies StatusEventV1)}\n\n`);
   }
   if (!response.writableEnded) response.end();

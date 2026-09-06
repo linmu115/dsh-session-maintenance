@@ -1,14 +1,15 @@
 import { existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import { listInternalCodexThreadIds } from "../packages/adapter-codex-read/dist/index.js";
 import { reconcileInternalCodexSessions } from "../apps/engine/dist/internal-codex-reconcile.js";
-import { openMaintenanceDatabase } from "../packages/session-store/dist/index.js";
+import { MaintenanceWriteCoordinator, openMaintenanceDatabase } from "../packages/session-store/dist/index.js";
 
 const args = new Map();
 for (let index = 2; index < process.argv.length; index += 1) {
   const key = process.argv[index];
-  if (key === "--apply") args.set(key, true);
+  if (key === "--apply" || key === "--offline") args.set(key, true);
   else args.set(key, process.argv[++index]);
 }
 const codexHome = resolve(String(args.get("--codex-home") ?? ""));
@@ -29,14 +30,20 @@ if (expected !== undefined && internalIds.length !== expected) {
 }
 const at = new Date().toISOString();
 const retentionUntil = new Date(Date.parse(at) + 365 * 24 * 60 * 60 * 1000).toISOString();
-const database = openMaintenanceDatabase(databasePath);
-try {
+const apply = args.get("--apply") === true;
+if (apply && args.get("--offline") !== true) throw new Error("Reconciliation writes require --offline and verified exclusive ownership");
+const writes = apply ? MaintenanceWriteCoordinator.acquire(dirname(databasePath), "offline") : undefined;
+const execute = () => {
+  // Preview never invokes the migrating opener, including while an Engine owns the database.
+  const database = apply ? openMaintenanceDatabase(databasePath) : new DatabaseSync(databasePath, { readOnly: true });
+  try {
   const result = reconcileInternalCodexSessions(database, internalIds, {
-    apply: args.get("--apply") === true,
+    apply,
     at,
     retentionUntil,
   });
   console.log(JSON.stringify({ mode: args.get("--apply") === true ? "apply" : "preview", ...result }, null, 2));
-} finally {
-  database.close();
-}
+  } finally { database.close(); }
+};
+try { if (writes) await writes.run("internal-reconciliation", execute); else execute(); }
+finally { if (writes) { await writes.drain(); writes.close(); } }

@@ -1,6 +1,8 @@
 import {
   SessionMaintenanceError,
   normalizedSessionSchema,
+  type CodexImportRequest,
+  type JsonValue,
   type DiffRequest,
   type DiscoveryResult,
   type EngineStatus,
@@ -92,6 +94,9 @@ import {
 import type { ProjectionRunRepository, RunId } from "@linmu/dsh-session-contracts";
 import { DiscoveryService, PlanningService, VersionGraph, classifyHeads } from "@linmu/dsh-session-domain";
 import {
+  MaintenanceWriteCoordinator,
+  coordinateAsyncMethods,
+  coordinateSyncMethods,
   activateCanonicalMigration,
   previewCanonicalMigration,
   SqliteSessionAliasRepository,
@@ -100,6 +105,9 @@ import {
 } from "@linmu/dsh-session-store";
 import type { StableLogicalReference, StableLogicalReferenceResolution } from "@linmu/dsh-session-contracts";
 
+import { JobRunner } from "./jobs/job-runner.js";
+import { JobStore } from "./jobs/job-store.js";
+import type { CodexImportService } from "./codex-import-service.js";
 import type { WriteService } from "./write-service.js";
 import { SessionMaintenanceCommands } from "./session-maintenance-commands.js";
 import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
@@ -201,6 +209,10 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly runtimeBroker: ProjectionRuntimeBroker;
   readonly sessionCommands: SessionMaintenanceCommands;
   readonly sessionQueries: SessionMaintenanceQueries;
+  readonly writes: MaintenanceWriteCoordinator | undefined;
+  readonly jobs: JobRunner;
+  readonly jobStore: JobStore;
+  private readonly codexImports: CodexImportService | undefined;
   private readonly beforeProjectionPrepare: () => Promise<void>;
   private readonly discovery: DiscoveryService;
   private lastScanAt: string | undefined;
@@ -236,7 +248,14 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly projectionLifecycleFactory: ProjectionLifecycleFactory;
     readonly resolveProjectionAdapter?: (adapterId: AdapterId) => DshSessionAdapterV1 | undefined;
     readonly beforeProjectionPrepare?: () => Promise<void>;
+    readonly writes?: MaintenanceWriteCoordinator;
+    readonly codexImports?: CodexImportService;
   }) {
+    this.writes = input.writes;
+    this.codexImports = input.codexImports;
+    this.jobStore = new JobStore(input.repository.database);
+    if (input.writes !== undefined) coordinateSyncMethods(this.jobStore, ["createScan", "createApply", "createRestore", "createRecover", "createCodexImport", "requestCancellation", "markRunning", "markRequeued", "progress", "complete", "fail"], input.writes, "job-state");
+    this.jobs = new JobRunner(this, this.jobStore);
     this.instances = input.instances;
     this.adapters = input.adapters;
     this.repository = input.repository;
@@ -281,10 +300,30 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
         ...(request.pinnedAdapterId === null ? {} : { pinnedAdapterId: request.pinnedAdapterId }),
       })).adapterId,
     });
+    if (this.writes !== undefined) {
+      coordinateAsyncMethods(this.runtimeBroker, ["prepareRun", "attachRun", "append", "registerSession", "flush", "drainRun", "closeRun", "recoverRun"], this.writes, "runtime-lifecycle");
+      coordinateSyncMethods(this.sessionCommands, ["restoreSession", "deleteWorkspace"], this.writes, "session-maintenance");
+      coordinateAsyncMethods(this.sessionCommands, ["updateSession", "deleteSession", "deleteProjectedSession"], this.writes, "session-maintenance");
+      coordinateAsyncMethods(this, ["activateCanonicalMigration", "patchSettings", "issueRestoreConfirmation", "issueRecoveryConfirmation", "createPlan", "applyPlan", "restoreTransaction", "recoverTransaction", "createCheckpoint", "createCheckpointRestorePlan", "previewContinuation", "createContinuation", "previewResolutionContinuation", "createResolutionContinuation", "recoverContinuation", "resolveStableReference"], this.writes, "engine-maintenance");
+    }
+  }
+
+  runWrite<T>(scope: string, operation: () => T | Promise<T>): Promise<T> {
+    return this.writes === undefined ? Promise.resolve().then(operation) : this.writes.run(scope, operation);
+  }
+
+  importCodex(request: CodexImportRequest, signal?: AbortSignal, progress?: (current: number, message: string) => void | Promise<void>): Promise<JsonValue> {
+    if (this.codexImports === undefined) throw new Error("IMPORT_NOT_AVAILABLE");
+    return this.codexImports.run(request, signal, progress);
   }
 
   async prepareProjectionRuntimeRun(input: RuntimeBrokerPrepareRunRequest): Promise<RuntimeBrokerPreparedRun> {
     await this.beforeProjectionPrepare();
+    const instanceIds = this.instances.filter((instance) => instance.platform === "codex").map((instance) => instance.id);
+    if (this.codexImports !== undefined && instanceIds.length > 0) {
+      const job = await this.runWrite("job-enqueue", () => this.jobs.enqueueCodexImport({ operationId: `titles-${crypto.randomUUID()}`, instanceIds, mode: "titles" }));
+      await this.jobs.waitForImport(job.id);
+    }
     return this.runtimeBroker.prepareRun(input);
   }
 
@@ -686,9 +725,11 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   }
 
   close(): void {
+    this.writes?.assertIdle();
     void this.continuations.close();
     const close = this.repository as SessionRepository & { readonly close?: () => void };
     close.close?.();
+    this.writes?.close();
   }
 
   private async resolvePair(request: DiffRequest) {

@@ -1,3 +1,4 @@
+import { assertMaintenanceDatabaseOwnership } from "./write-coordinator.js";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -27,6 +28,7 @@ interface VersionRow {
 }
 
 export function openMaintenanceDatabase(path: string): DatabaseSync {
+  assertMaintenanceDatabaseOwnership(path);
   const absolutePath = resolve(path);
   mkdirSync(dirname(absolutePath), { recursive: true });
   const database = new DatabaseSync(absolutePath);

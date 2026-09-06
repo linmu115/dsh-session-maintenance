@@ -28,7 +28,7 @@ import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
 import { ProjectionLifecycle } from "@linmu/dsh-session-projection-lifecycle";
-import { SqliteCanonicalProjectionSource, SqliteAdapterEvidenceStore, SqliteAdapterRegistryRepository, SqliteCanonicalSessionEngineStore, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
+import { MaintenanceWriteCoordinator, coordinateAsyncMethods, SqliteCanonicalRepository, SqliteCanonicalProjectionSource, SqliteAdapterEvidenceStore, SqliteAdapterRegistryRepository, SqliteCanonicalSessionEngineStore, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
 import {
@@ -47,7 +47,8 @@ import {
   type DshGatewayTarget,
 } from "./dsh-gateway-connection.js";
 import { WriteService } from "./write-service.js";
-import { CodexCatalogTitleSyncService } from "./codex-catalog-title-sync.js";
+import { CodexImportService } from "./codex-import-service.js";
+import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
 
 const resolveModule = createRequire(import.meta.url).resolve;
 
@@ -59,6 +60,7 @@ function adapterWorkerEntryPoint(packageName: string, bundledFilename: string): 
 
 export interface CompositionOptions {
   readonly stateRoot: string;
+  readonly ownerMode?: "engine" | "offline";
   readonly clock?: () => string;
   readonly fixturePolicy?: (root: string) => void;
   readonly continuationAdapter?: CodexContinuationPort;
@@ -128,6 +130,9 @@ async function createComposition(
   options: CompositionOptions,
   dshGatewayTargets: readonly DshGatewayTarget[],
 ): Promise<SessionMaintenanceEngine> {
+  const writes = MaintenanceWriteCoordinator.acquire(options.stateRoot, options.ownerMode ?? "engine");
+  let closeRepository: (() => void) | undefined;
+  try {
   await initializeStateRoot(options.stateRoot);
   await mkdir(join(options.stateRoot, "objects"), { recursive: true });
   const config = await loadConfig(options.stateRoot);
@@ -137,6 +142,8 @@ async function createComposition(
     openMaintenanceDatabase(metadataPath),
     objectStore,
   );
+  closeRepository = () => repository.close();
+  coordinateAsyncMethods(repository, ["createLogicalSession", "upsertNativeMirror", "removeNativeMirror", "setLogicalSessionSyncMode", "setCanonicalVersion", "putVersion", "advanceVerifiedRefs", "recordObservation", "bindPlatformSession", "recordWorkspaceMembership", "upsertMatchCandidate", "recordObservedVersion", "savePlan", "createTransaction", "nextTransactionSequence", "recordTransactionStep", "markTransactionManualReview", "saveBackupManifest", "saveCheckpoint", "saveConfirmation", "consumeConfirmation", "createContinuationJob", "transitionContinuationJob"], writes, "store-mutation");
   const instances = registeredInstances(config);
   const readAdapters = adapters(options.fixturePolicy);
   const continuations = new ContinuationService({
@@ -150,11 +157,13 @@ async function createComposition(
     new SqliteStatusEventAdapter(new SqliteStatusEventRepository(repository.database)),
     options.clock === undefined ? {} : { clock: options.clock },
   );
+  coordinateAsyncMethods(statusLog, ["start", "succeed", "fail"], writes, "runtime-status");
   const evidenceStore = new SqliteAdapterEvidenceStore(
     repository.database,
     objectStore,
     options.clock === undefined ? {} : { clock: options.clock },
   );
+  coordinateAsyncMethods(evidenceStore, ["putEvidence"], writes, "adapter-evidence");
   const adapterRegistry = new AdapterRegistry({
     host: new AdapterHost(new NodeAdapterWorkerFactory()),
     repository: new SqliteAdapterRegistryRepository(repository.database),
@@ -192,15 +201,17 @@ async function createComposition(
       enabled: true,
     }, adapter);
   }
-  const projectionRunRepository = new SqliteProjectionRunRepository(repository.database);
+  coordinateAsyncMethods(adapterRegistry, ["register", "select"], writes, "adapter-registration");
+  const projectionRunRepository = coordinateAsyncMethods(new SqliteProjectionRunRepository(repository.database), ["createProjectionRun", "setProjectionRunState", "setProjectionRunCheckpoint", "upsertProjectionSession", "saveOperationReceipt"], writes, "projection-state");
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
-  const canonicalEngine = new CanonicalSessionEngine(
-    new SqliteCanonicalSessionEngineStore(repository.database, objectStore),
-  );
-  const codexCatalogTitleSync = new CodexCatalogTitleSyncService({
-    instances,
-    adapters: readAdapters,
-    canonicalEngine,
+  const canonicalEngine = coordinateAsyncMethods(new CanonicalSessionEngine(
+    new SqliteCanonicalSessionEngineStore(repository.database, objectStore, writes),
+  ), ["observeCodex", "retitleCodexMirror", "appendDsh", "importDshNative", "tombstone", "restore"], writes, "canonical-commit");
+  const codexImports = new CodexImportService({
+    instances, adapters: readAdapters, canonicalEngine, writes,
+    projectPort: new SqliteCodexProjectPort(new SqliteCanonicalRepository(repository.database)),
+    evidencePort: evidenceStore,
+    ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   const sessionAliases = new SqliteSessionAliasRepository(repository.database);
@@ -250,12 +261,13 @@ async function createComposition(
     objectStore,
     continuations,
     canonicalEngine,
-    beforeProjectionPrepare: async () => { await codexCatalogTitleSync.sync(); },
+    writes,
+    codexImports,
     resolveProjectionAdapter: (adapterId) => adapterRegistry.resolveRuntimeAdapter(adapterId),
     projectionLifecycleFactory: ({ adapterId, bridge }) => {
       const adapter = adapterRegistry.resolveRuntimeAdapter(adapterId);
       if (adapter === undefined) throw new TypeError(`Unsupported built-in projection adapter: ${adapterId}`);
-      return new ProjectionLifecycle({
+      return coordinateAsyncMethods(new ProjectionLifecycle({
         runRepository: projectionRunRepository,
         statusLog,
         source: canonicalProjectionSource,
@@ -266,7 +278,7 @@ async function createComposition(
         checkpointRepository: repository,
         runtimeRoot: join(options.stateRoot, "projection-runtime"),
         ...(options.clock === undefined ? {} : { clock: options.clock }),
-      });
+      }), ["prepareRun", "attachRun", "openRun", "discardPreparedRun", "append", "registerNativeSession", "hideSession", "closeRun", "recover"], writes, "projection-lifecycle");
     },
     migrationSourcePath: metadataPath,
     migrationCandidatePath: join(options.stateRoot, "metadata.canonical-candidate.sqlite"),
@@ -287,6 +299,7 @@ async function createComposition(
     ...(writeService === undefined ? {} : { writeService }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
+  } catch (error) { closeRepository?.(); writes.close(); throw error; }
 }
 
 export function createReadOnlyComposition(options: CompositionOptions): Promise<SessionMaintenanceEngine> {

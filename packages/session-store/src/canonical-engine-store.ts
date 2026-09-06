@@ -1,3 +1,4 @@
+import { coordinateAsyncMethods } from "./write-coordinator.js";
 import type { DatabaseSync } from "node:sqlite";
 
 import type {
@@ -16,6 +17,7 @@ import {
   type CanonicalSessionRecord,
   type ContentObjectStore,
   type JsonValue,
+  type MaintenanceWriteScope,
   type LogicalSessionId,
   type LogicalWorkspaceId,
   type OperationId,
@@ -49,11 +51,12 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
   readonly canonical: SqliteCanonicalRepository;
   readonly workspaces: SqliteLogicalWorkspaceRepository;
 
-  constructor(database: DatabaseSync, objectStore: ContentObjectStore) {
+  constructor(database: DatabaseSync, objectStore: ContentObjectStore, writes?: MaintenanceWriteScope) {
     this.database = database;
     this.objectStore = objectStore;
     this.canonical = new SqliteCanonicalRepository(database);
     this.workspaces = new SqliteLogicalWorkspaceRepository(database);
+    if (writes !== undefined) coordinateAsyncMethods(this, ["commit", "recordCodexObservation", "retitleCodexMirrorMetadata"], writes, "canonical-store");
   }
 
   async getSession(id: LogicalSessionId): Promise<CanonicalSessionSnapshot | undefined> {

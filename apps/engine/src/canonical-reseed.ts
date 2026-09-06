@@ -1,3 +1,4 @@
+import { offlineMaintenanceOperation } from "@linmu/dsh-session-store";
 import { createHash } from "node:crypto";
 import { createReadStream } from "node:fs";
 import { lstat, readFile, readdir, realpath, writeFile } from "node:fs/promises";
@@ -253,7 +254,7 @@ function verify(database: DatabaseSync, expectedSessions: number): CanonicalRese
  * Builds a new canonical database beside the active database. It never mutates
  * the active pointer; activation remains an explicit, separately restartable step.
  */
-export async function reseedCanonicalCandidate(input: CanonicalReseedInput): Promise<CanonicalReseedManifest> {
+async function reseedCanonicalCandidateWithinOwnership(input: CanonicalReseedInput): Promise<CanonicalReseedManifest> {
   if (input.retainedDshSessionIds.length === 0) throw new TypeError("At least one retained DSH session is required");
   if (new Set(input.retainedDshSessionIds).size !== input.retainedDshSessionIds.length) {
     throw new TypeError("Retained DSH session IDs must be unique");
@@ -404,3 +405,5 @@ export async function reseedCanonicalCandidate(input: CanonicalReseedInput): Pro
     throw error;
   }
 }
+
+export const reseedCanonicalCandidate = offlineMaintenanceOperation(reseedCanonicalCandidateWithinOwnership, "candidate-maintenance");

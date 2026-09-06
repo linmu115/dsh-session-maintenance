@@ -1,6 +1,7 @@
 import { z, type ZodType } from "zod";
 
 import {
+  type CodexImportRequest,
   apiErrorResponseSchema,
   checkpointListResponseSchema,
   checkpointResponseSchema,
@@ -16,6 +17,7 @@ import {
   issuedConfirmationSchema,
   jobAcceptedResponseSchema,
   jobRefSchema,
+  jobListResponseSchema,
   overviewResponseSchema,
   pageSchema,
   planResponseSchema,
@@ -50,6 +52,7 @@ import {
   type CreateContinuationRequest,
   type JobEvent,
   type JobRef,
+  type JobSummary,
   type IssuedConfirmation,
   type DashboardOverview,
   type DashboardLaunchInfo,
@@ -476,6 +479,22 @@ class ApiClient {
       settingsResponseSchema,
       signal,
     )).settings as MaintenanceSettings;
+  }
+
+  async listCodexImports(signal?: AbortSignal): Promise<readonly JobSummary[]> {
+    return await this.request("/v1/jobs?kind=codex-import&limit=20", {}, jobListResponseSchema, signal) as readonly JobSummary[];
+  }
+
+  async importCodex(input: CodexImportRequest, signal?: AbortSignal): Promise<JobRef> {
+    return (await this.request("/v1/jobs/codex-import", this.jsonPost(input), jobAcceptedResponseSchema, signal)).job;
+  }
+
+  async cancelCodexImport(id: string, signal?: AbortSignal): Promise<JobRef> {
+    return (await this.request(`/v1/jobs/${encodeURIComponent(id)}/cancel`, this.jsonPost({}), jobAcceptedResponseSchema, signal)).job;
+  }
+
+  async resumeCodexImport(id: string, signal?: AbortSignal): Promise<JobRef> {
+    return (await this.request(`/v1/jobs/${encodeURIComponent(id)}/resume`, this.jsonPost({}), jobAcceptedResponseSchema, signal)).job;
   }
 
   async scan(instanceIds: readonly string[], signal?: AbortSignal): Promise<JobRef> {
