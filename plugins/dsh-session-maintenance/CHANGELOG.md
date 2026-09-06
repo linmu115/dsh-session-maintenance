@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.2.18 - 2026-09-06
+
+- Register Maintenance actions with Session Context Menu API 1 (SCM 0.3.2),
+  including host reload, cancellation and exact selected-session checks.
+- Pair with Engine 0.1.16: imports have durable progress, cancellation, retry
+  and one coordinated online/offline write boundary. The Dashboard presents
+  import tasks independently of projection diagnostics.
+- Add reference-safe storage previews and explicit governance for verified
+  completed runs, rebuildable caches, backups and static candidate databases.
+  Isolation is reversible; final release requires a fresh reference check and
+  at least 48 hours of grace. Unknown, active and uncoordinated resources stay
+  protected. No cleanup timer or history/body deletion is enabled.
+- Update only appended canonical index rows when the complete existing prefix
+  matches. Changed, reordered or shortened events rebuild inside the same
+  transaction. Run cache responsibilities are extracted without changing the
+  runtime identity or state owner.
+- Schema 20 adds retention registration and recovery journals to schema 17.
+  Preserve a consistent database backup for rollback; old Engine binaries
+  cannot reopen the migrated database. Five-day history pruning and body
+  chunking are outside this release.
+
 ## 0.2.17 - 2026-09-05
 
 - Release with Engine 0.1.15, which discovers the packaged Dashboard without a

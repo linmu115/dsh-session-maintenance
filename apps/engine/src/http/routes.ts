@@ -43,6 +43,7 @@ import type { JobRunner } from "../jobs/job-runner.js";
 import type { JobStore } from "../jobs/job-store.js";
 import { allowedOrigin, authorized } from "./auth.js";
 import { HttpBodyError, readJsonBody } from "./body.js";
+import { routeRetentionRequest } from "./retention-routes.js";
 import { streamJobEvents, streamStatusEvents } from "./sse.js";
 import { hasUiSessionCookie, type UiSessionManager } from "./ui-session.js";
 import {
@@ -259,6 +260,7 @@ export async function routeRequest(
   }
 
   try {
+    if (await routeRetentionRequest(request, response, url, context.engine.retention)) return;
     if (request.method === "GET" && url.pathname === "/v1/instances") {
       send(response, 200, { instances: await context.engine.listInstances() });
       return;

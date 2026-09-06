@@ -2,6 +2,15 @@ import { z, type ZodType } from "zod";
 
 import {
   type CodexImportRequest,
+  type RetentionPreviewPlan,
+  type RetentionBatch,
+  type RetentionRegistry,
+  type RetentionRoot,
+  type RetentionSource,
+  type RetentionResource,
+  type RetentionDiscoveryResult,
+  retentionRootRegistrationSchema,
+  retentionSourceRegistrationSchema,
   apiErrorResponseSchema,
   checkpointListResponseSchema,
   checkpointResponseSchema,
@@ -483,6 +492,50 @@ class ApiClient {
 
   async listCodexImports(signal?: AbortSignal): Promise<readonly JobSummary[]> {
     return await this.request("/v1/jobs?kind=codex-import&limit=20", {}, jobListResponseSchema, signal) as readonly JobSummary[];
+  }
+
+  async previewRetention(signal?: AbortSignal): Promise<RetentionPreviewPlan> {
+    return (await this.request("/v1/retention/preview", this.jsonPost({}), z.custom<{ plan: RetentionPreviewPlan }>(), signal)).plan;
+  }
+
+  async getRetentionRegistry(signal?: AbortSignal): Promise<RetentionRegistry> {
+    return (await this.request("/v1/retention/registry", {}, z.custom<{ registry: RetentionRegistry }>(), signal)).registry;
+  }
+
+  async discoverRetention(signal?: AbortSignal): Promise<RetentionDiscoveryResult> {
+    return (await this.request("/v1/retention/discover", this.jsonPost({}), z.custom<{ discovery: RetentionDiscoveryResult }>(), signal)).discovery;
+  }
+
+  async listRetentionBatches(signal?: AbortSignal): Promise<readonly RetentionBatch[]> {
+    return (await this.request("/v1/retention/batches", {}, z.custom<{ batches: readonly RetentionBatch[] }>(), signal)).batches;
+  }
+
+  async executeRetention(planId: string, signal?: AbortSignal): Promise<RetentionBatch> {
+    return (await this.request("/v1/retention/execute", this.jsonPost({ planId }), z.custom<{ batch: RetentionBatch }>(), signal)).batch;
+  }
+
+  async restoreRetention(batchId: string, signal?: AbortSignal): Promise<RetentionBatch> {
+    return (await this.request("/v1/retention/restore", this.jsonPost({ batchId }), z.custom<{ batch: RetentionBatch }>(), signal)).batch;
+  }
+
+  async purgeRetention(batchId: string, signal?: AbortSignal): Promise<RetentionBatch> {
+    return (await this.request("/v1/retention/purge", this.jsonPost({ batchId }), z.custom<{ batch: RetentionBatch }>(), signal)).batch;
+  }
+
+  async verifyRetention(resourceId: string, signal?: AbortSignal): Promise<RetentionResource> {
+    return (await this.request("/v1/retention/verify", this.jsonPost({ resourceId }), z.custom<{ resource: RetentionResource }>(), signal)).resource;
+  }
+
+  async registerRetentionRoot(input: z.input<typeof retentionRootRegistrationSchema>, signal?: AbortSignal): Promise<RetentionRoot> {
+    return (await this.request("/v1/retention/roots", this.jsonPost(input), z.custom<{ root: RetentionRoot }>(), signal)).root;
+  }
+
+  async registerRetentionSource(input: z.input<typeof retentionSourceRegistrationSchema>, signal?: AbortSignal): Promise<RetentionSource> {
+    return (await this.request("/v1/retention/sources", this.jsonPost(input), z.custom<{ source: RetentionSource }>(), signal)).source;
+  }
+
+  async registerFlatRetentionCandidate(sourceId: string, signal?: AbortSignal): Promise<RetentionResource> {
+    return (await this.request("/v1/retention/flat-candidates", this.jsonPost({ sourceId }), z.custom<{ resource: RetentionResource }>(), signal)).resource;
   }
 
   async importCodex(input: CodexImportRequest, signal?: AbortSignal): Promise<JobRef> {

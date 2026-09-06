@@ -8,6 +8,7 @@ import { CanonicalEventView } from "./canonical-event-view.js";
 import { LineageView } from "./lineage-view.js";
 import { CanonicalSessionOperations, type OperationsApi } from "./operations-pages.js";
 import type { DashboardSummaryApi } from "./summary-loader.js";
+import { versionMetadataLabel } from "./maintenance-status.js";
 
 export interface WorkbenchApi extends DashboardSummaryApi, Pick<OperationsApi, "listCanonicalWorkspaces" | "updateCanonicalSession" | "deleteCanonicalSession"> {
   getCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail>;
@@ -58,18 +59,21 @@ export function SessionWorkbench(props: {
   if (state.kind === "loading") return <Surface><LoadingState label="正在从 Maintenance 稳定存储读取会话…" /></Surface>;
   if (state.kind === "error") return <Surface><EmptyState kind="warning" title="稳定会话不可用" description={state.message} /></Surface>;
   const detail = state.value;
+  const metadataState = versionMetadataLabel(detail.headMetadata);
   return <div className="canonical-workbench" data-testid="canonical-session-workbench">
     <Surface>
       <header className="canonical-session-heading">
         <div><h2>{detail.session.title || "未命名会话"}</h2><code>{detail.session.id}</code></div>
         <div><Badge>{canonicalOriginLabel(detail.session.originKind)}</Badge><Badge>{detail.session.authorityScope === "codex" ? "Codex 权威" : "Maintenance 权威"}</Badge><Badge>项目：{detail.project?.name ?? "待指定"}</Badge><Badge>工作区：{detail.workspace?.name ?? "未归类"}</Badge></div>
       </header>
+      {metadataState.warning ? <p role="status"><Badge tone="warning">{metadataState.label}</Badge> {metadataState.detail}</p> : null}
       <LocalTabs value={tab} onChange={setTab} tabs={[{ id: "content", label: "静态会话" }, { id: "lineage", label: "来源与派生" }, { id: "metadata", label: "元数据" }, { id: "manage", label: "管理" }]} />
       {tab === "content" ? <section className="canonical-transcript" aria-label="Canonical 静态会话内容">
         {detail.events.length === 0 ? <EmptyState title="没有稳定事件" description="该会话尚未导入 CanonicalEventV1。" /> : detail.events.map((event) => <CanonicalEventView key={event.id} event={event} />)}
       </section> : null}
       {tab === "lineage" ? <LineageView parent={detail.parent} children={detail.children} onOpenSession={props.onOpenSession} /> : null}
       {tab === "metadata" ? <dl className="canonical-metadata">
+        <div><dt>版本元数据</dt><dd><Badge tone={metadataState.warning ? "warning" : "neutral"}>{metadataState.label}</Badge> {metadataState.detail}</dd></div>
         <div><dt>来源类型</dt><dd>{canonicalOriginLabel(detail.session.originKind)}</dd></div>
         <div><dt>权威范围</dt><dd>{detail.session.authorityScope}</dd></div>
         <div><dt>Head 版本</dt><dd><code>{detail.session.headVersionId ?? "尚无"}</code></dd></div>

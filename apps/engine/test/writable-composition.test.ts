@@ -37,10 +37,6 @@ describe("writable Engine composition", () => {
       platformVersion: "0.1.1-rc.2",
     });
     const secret = "g".repeat(43);
-    await writeFile(
-      `${fixture.stateRoot}\\connection.json`,
-      JSON.stringify({ schemaVersion: 1, host: "127.0.0.1", port: 41111, token: secret }),
-    );
     const gateway = new DshHostGateway({
       extensions: new Map([["dsh-fixture", new LockedRc2CoreExtension(createDshCoreFixtureHost())]]),
       tokens: new DshGatewayTokenService({ secret: Buffer.from(secret) }),
@@ -60,6 +56,12 @@ describe("writable Engine composition", () => {
       dshGatewayTargets: [{ instanceId: "dsh-fixture", origin: `http://127.0.0.1:${address.port}` }],
     });
     try {
+      // A server publishes its descriptor only after composition acquires the
+      // writer owner; an unowned legacy descriptor must continue to block it.
+      await engine.runWrite("fixture-connection", () => writeFile(
+        `${fixture.stateRoot}\\connection.json`,
+        JSON.stringify({ schemaVersion: 1, host: "127.0.0.1", port: 41111, token: secret }),
+      ));
       const diagnostics = await engine.listAdapterDiagnostics();
       expect(diagnostics).toEqual([
         expect.objectContaining({

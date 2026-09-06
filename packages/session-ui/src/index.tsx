@@ -83,7 +83,7 @@ export function LocalTabs(props: {
   </div>;
 }
 
-export function Metric(props: { readonly label: string; readonly value: number; readonly tone?: Tone }) {
+export function Metric(props: { readonly label: string; readonly value: number | string; readonly tone?: Tone }) {
   return <article className="dsm-metric" data-tone={props.tone ?? "neutral"}>
     <strong>{props.value.toLocaleString()}</strong>
     <span>{props.label}</span>

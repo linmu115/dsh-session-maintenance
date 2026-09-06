@@ -108,6 +108,7 @@ import type { StableLogicalReference, StableLogicalReferenceResolution } from "@
 import { JobRunner } from "./jobs/job-runner.js";
 import { JobStore } from "./jobs/job-store.js";
 import type { CodexImportService } from "./codex-import-service.js";
+import type { RetentionService } from "./retention-service.js";
 import type { WriteService } from "./write-service.js";
 import { SessionMaintenanceCommands } from "./session-maintenance-commands.js";
 import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
@@ -210,6 +211,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly sessionCommands: SessionMaintenanceCommands;
   readonly sessionQueries: SessionMaintenanceQueries;
   readonly writes: MaintenanceWriteCoordinator | undefined;
+  readonly retention: RetentionService | undefined;
   readonly jobs: JobRunner;
   readonly jobStore: JobStore;
   private readonly codexImports: CodexImportService | undefined;
@@ -249,9 +251,11 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly resolveProjectionAdapter?: (adapterId: AdapterId) => DshSessionAdapterV1 | undefined;
     readonly beforeProjectionPrepare?: () => Promise<void>;
     readonly writes?: MaintenanceWriteCoordinator;
+    readonly retention?: RetentionService;
     readonly codexImports?: CodexImportService;
   }) {
     this.writes = input.writes;
+    this.retention = input.retention;
     this.codexImports = input.codexImports;
     this.jobStore = new JobStore(input.repository.database);
     if (input.writes !== undefined) coordinateSyncMethods(this.jobStore, ["createScan", "createApply", "createRestore", "createRecover", "createCodexImport", "requestCancellation", "markRunning", "markRequeued", "progress", "complete", "fail"], input.writes, "job-state");

@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { MAINTENANCE_SCHEMA_VERSION } from "@linmu/dsh-session-store";
 
 import { createEngineFixture } from "./helpers.js";
 
@@ -24,7 +25,7 @@ describe("canonical migration preview API", () => {
       };
     };
     expect(body.preview).toMatchObject({
-      sourceSchemaVersion: 17,
+      sourceSchemaVersion: MAINTENANCE_SCHEMA_VERSION,
       candidate: { exists: false, created: false },
       rollback: { sourcePreserved: true },
     });

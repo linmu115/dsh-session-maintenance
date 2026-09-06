@@ -48,6 +48,7 @@ import {
 } from "./dsh-gateway-connection.js";
 import { WriteService } from "./write-service.js";
 import { CodexImportService } from "./codex-import-service.js";
+import { createRetentionComposition } from "./retention-composition.js";
 import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
 
 const resolveModule = createRequire(import.meta.url).resolve;
@@ -254,6 +255,10 @@ async function createComposition(
       readers: new Map(readAdapters.map((adapter) => [adapter.platform, adapter])),
     });
   }
+  const retention = await createRetentionComposition({
+    database: repository.database, databasePath: metadataPath, stateRoot: options.stateRoot, writes,
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+  });
   return new SessionMaintenanceEngine({
     instances,
     adapters: readAdapters,
@@ -263,6 +268,7 @@ async function createComposition(
     canonicalEngine,
     writes,
     codexImports,
+    retention,
     resolveProjectionAdapter: (adapterId) => adapterRegistry.resolveRuntimeAdapter(adapterId),
     projectionLifecycleFactory: ({ adapterId, bridge }) => {
       const adapter = adapterRegistry.resolveRuntimeAdapter(adapterId);
