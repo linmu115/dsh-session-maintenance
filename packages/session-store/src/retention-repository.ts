@@ -1,254 +1,914 @@
 import { DatabaseSync } from "node:sqlite";
 import { readdir } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
-import type { RetentionBlocker, RetentionInventory, RetentionReference, RetentionResource, RetentionRoot, RetentionSource, RetentionVersion } from "@linmu/dsh-session-contracts";
-import { checkedRetentionPath, identifyRetentionRoot, inventoryRetentionTree, isMissing, retentionDigest, retentionRelative } from "./retention-paths.js";
+import { basename, isAbsolute, relative, resolve } from "node:path";
+import type {
+  RetentionBatchItem,
+  RetentionBlocker,
+  RetentionInventory,
+  RetentionReference,
+  RetentionResource,
+  RetentionRoot,
+  RetentionSource,
+  RetentionVersion,
+} from "@linmu/dsh-session-contracts";
+import {
+  checkedRetentionPath,
+  identifyRetentionRoot,
+  inventoryRetentionTree,
+  isMissing,
+  retentionDigest,
+  retentionRelative,
+} from "./retention-paths.js";
 import { captureRetentionResources } from "./retention-resources.js";
 import { ZstdContentObjectStore } from "./object-store.js";
+import { openRetentionSnapshot } from "./retention-sqlite.js";
 
 type Row = Record<string, unknown>;
 export type RetentionRows = Readonly<Record<string, readonly Row[]>>;
-const REFERENCE_TABLES = ["session_versions", "version_metadata_snapshots", "version_parents", "logical_sessions", "workspace_memberships", "platform_bindings", "platform_refs", "native_mirrors", "checkpoints", "session_derivations", "session_tombstones", "projection_runs", "projection_sessions", "run_operations", "run_status_events", "continuation_jobs", "adapter_evidence", "sync_plans", "jobs", "transactions", "transaction_steps", "backup_manifests", "checkpoint_transactions"] as const;
-export const retentionString = (value: unknown): string | null => typeof value === "string" && value.length > 0 ? value : null;
+const REFERENCE_TABLES = [
+  "session_versions",
+  "version_metadata_snapshots",
+  "version_parents",
+  "logical_sessions",
+  "workspace_memberships",
+  "platform_bindings",
+  "platform_refs",
+  "native_mirrors",
+  "checkpoints",
+  "session_derivations",
+  "session_tombstones",
+  "projection_runs",
+  "projection_sessions",
+  "run_operations",
+  "run_status_events",
+  "continuation_jobs",
+  "adapter_evidence",
+  "sync_plans",
+  "jobs",
+  "transactions",
+  "transaction_steps",
+  "backup_manifests",
+  "checkpoint_transactions",
+] as const;
+export const retentionString = (value: unknown): string | null =>
+  typeof value === "string" && value.length > 0 ? value : null;
 export function retentionRecord(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Expected a retention evidence object");
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Expected a retention evidence object");
   return value as Record<string, unknown>;
 }
-export function retentionJson(value: unknown): unknown { if (typeof value !== "string") throw new Error("Expected JSON evidence"); return JSON.parse(value) as unknown; }
-function digestSorted<T>(values: readonly T[]): T[] { return values.map((value)=>({value,key:retentionDigest(value)})).sort((a,b)=>a.key.localeCompare(b.key)).map((entry)=>entry.value); }
+export function retentionJson(value: unknown): unknown {
+  if (typeof value !== "string") throw new Error("Expected JSON evidence");
+  return JSON.parse(value) as unknown;
+}
+function digestSorted<T>(values: readonly T[]): T[] {
+  return values
+    .map((value) => ({ value, key: retentionDigest(value) }))
+    .sort((a, b) => a.key.localeCompare(b.key))
+    .map((entry) => entry.value);
+}
 
 /** Registry writes are explicit. Engine calls them inside its MaintenanceWriteScope. */
 export class RetentionRepository {
-  constructor(readonly database: DatabaseSync, readonly activeDatabasePath: string) {}
+  constructor(
+    readonly database: DatabaseSync,
+    readonly activeDatabasePath: string,
+  ) {}
 
-  roots(): readonly RetentionRoot[] { return this.readRegistry<RetentionRoot>("retention_roots", "root_json"); }
-  sources(): readonly RetentionSource[] { return this.readRegistry<RetentionSource>("retention_sources", "source_json"); }
-  resources(): readonly RetentionResource[] { return this.readRegistry<RetentionResource>("retention_resources", "resource_json"); }
-  private readRegistry<T>(table: string, column: string): readonly T[] {
-    return this.database.prepare(`SELECT ${column} AS value FROM ${table} ORDER BY id`).all().map((row) => JSON.parse(String(row.value)) as T);
+  roots(): readonly RetentionRoot[] {
+    return this.readRegistry<RetentionRoot>("retention_roots", "root_json");
   }
-  async registerRoot(id: string, path: string, purpose: RetentionRoot["purpose"]): Promise<RetentionRoot> {
+  sources(): readonly RetentionSource[] {
+    return this.readRegistry<RetentionSource>("retention_sources", "source_json");
+  }
+  resources(): readonly RetentionResource[] {
+    return this.readRegistry<RetentionResource>("retention_resources", "resource_json");
+  }
+  private readRegistry<T>(table: string, column: string): readonly T[] {
+    return this.database
+      .prepare(`SELECT ${column} AS value FROM ${table} ORDER BY id`)
+      .all()
+      .map((row) => JSON.parse(String(row.value)) as T);
+  }
+  async registerRoot(
+    id: string,
+    path: string,
+    purpose: RetentionRoot["purpose"],
+  ): Promise<RetentionRoot> {
     const root = await identifyRetentionRoot(id, path, purpose);
     const old = this.roots().find((entry) => entry.id === id);
-    if (old && retentionDigest(old) !== retentionDigest(root)) throw new Error("A registered root cannot be silently rebound");
-    this.database.prepare("INSERT INTO retention_roots(id, root_json) VALUES (?, ?) ON CONFLICT(id) DO NOTHING").run(id, JSON.stringify(root));
+    if (old && retentionDigest(old) !== retentionDigest(root))
+      throw new Error("A registered root cannot be silently rebound");
+    if (purpose === "objects" || purpose === "state")
+      for (const resource of this.resources().filter((entry) => entry.state !== "purged")) {
+        const owner = this.roots().find((entry) => entry.id === resource.rootId);
+        if (!owner) continue;
+        const rel = relative(
+          resolve(owner.path, resource.relativePath),
+          resolve(root.path, "objects"),
+        );
+        const inverse = relative(
+          resolve(root.path, "objects"),
+          resolve(owner.path, resource.relativePath),
+        );
+        if (
+          !rel ||
+          (!rel.startsWith("..") && !isAbsolute(rel)) ||
+          (!inverse.startsWith("..") && !isAbsolute(inverse))
+        )
+          throw new Error("Object namespaces and governed resources cannot contain one another");
+      }
+    this.database
+      .prepare(
+        "INSERT INTO retention_roots(id, root_json) VALUES (?, ?) ON CONFLICT(id) DO NOTHING",
+      )
+      .run(id, JSON.stringify(root));
     return root;
   }
   registerSource(source: RetentionSource): void {
     retentionRelative(source.relativePath);
     if (!source.id.trim()) throw new TypeError("Source ID is required");
     const old = this.sources().find((entry) => entry.id === source.id);
-    if (old && retentionDigest(old) !== retentionDigest(source)) throw new Error("Source registration is immutable; retirement requires governance");
-    this.database.prepare("INSERT INTO retention_sources(id, root_id, object_root_id, source_json) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING")
+    if (old && retentionDigest(old) !== retentionDigest(source))
+      throw new Error("Source registration is immutable; retirement requires governance");
+    for (const resource of this.resources().filter((entry) => entry.state !== "purged"))
+      this.assertResourceBoundary(resource, [...this.sources(), source]);
+    this.database
+      .prepare(
+        "INSERT INTO retention_sources(id, root_id, object_root_id, source_json) VALUES (?, ?, ?, ?) ON CONFLICT(id) DO NOTHING",
+      )
       .run(source.id, source.rootId, source.objectRootId, JSON.stringify(source));
   }
   /** Called inside the Engine write scope after opening a selected candidate database. */
-  async bindActiveSource(rootId:string, relativePath:string, objectRootId:string):Promise<RetentionSource> {
-    const root=this.roots().find((entry)=>entry.id === rootId);
-    if (!root || resolve(await checkedRetentionPath(root,relativePath)) !== resolve(this.activeDatabasePath)) throw new Error("Active source binding must identify the open database");
-    const existing=this.sources(), matching=existing.find((entry)=>entry.rootId === rootId && entry.relativePath === relativePath);
-    const active:RetentionSource={id:matching?.id ?? `active_${retentionDigest({rootId,relativePath}).slice(7,31)}`,rootId,relativePath,objectRootId,kind:"active-database",retained:true};
+  async bindActiveSource(
+    rootId: string,
+    relativePath: string,
+    objectRootId: string,
+  ): Promise<RetentionSource> {
+    const root = this.roots().find((entry) => entry.id === rootId);
+    if (
+      !root ||
+      resolve(await checkedRetentionPath(root, relativePath)) !== resolve(this.activeDatabasePath)
+    )
+      throw new Error("Active source binding must identify the open database");
+    const existing = this.sources(),
+      matching = existing.find(
+        (entry) => entry.rootId === rootId && entry.relativePath === relativePath,
+      );
+    const active: RetentionSource = {
+      id: matching?.id ?? `active_${retentionDigest({ rootId, relativePath }).slice(7, 31)}`,
+      rootId,
+      relativePath,
+      objectRootId,
+      kind: "active-database",
+      retained: true,
+    };
+    for (const resource of this.resources().filter((entry) => entry.state !== "purged"))
+      this.assertResourceBoundary(resource, [...existing, active]);
     this.database.exec("SAVEPOINT retention_bind_active");
     try {
-      for (const source of existing) if (source.kind === "active-database" && source.id !== active.id) this.database.prepare("UPDATE retention_sources SET source_json=? WHERE id=?").run(JSON.stringify({...source,kind:"backup-database",retained:true}),source.id);
-      this.database.prepare("INSERT INTO retention_sources(id,root_id,object_root_id,source_json) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET root_id=excluded.root_id,object_root_id=excluded.object_root_id,source_json=excluded.source_json").run(active.id,rootId,objectRootId,JSON.stringify(active));
-      this.database.exec("RELEASE retention_bind_active");return active;
-    } catch(error) {this.database.exec("ROLLBACK TO retention_bind_active; RELEASE retention_bind_active");throw error;}
+      for (const source of existing)
+        if (source.kind === "active-database" && source.id !== active.id)
+          this.database
+            .prepare("UPDATE retention_sources SET source_json=? WHERE id=?")
+            .run(JSON.stringify({ ...source, kind: "backup-database", retained: true }), source.id);
+      this.database
+        .prepare(
+          "INSERT INTO retention_sources(id,root_id,object_root_id,source_json) VALUES (?,?,?,?) ON CONFLICT(id) DO UPDATE SET root_id=excluded.root_id,object_root_id=excluded.object_root_id,source_json=excluded.source_json",
+        )
+        .run(active.id, rootId, objectRootId, JSON.stringify(active));
+      this.database.exec("RELEASE retention_bind_active");
+      return active;
+    } catch (error) {
+      this.database.exec("ROLLBACK TO retention_bind_active; RELEASE retention_bind_active");
+      throw error;
+    }
   }
   registerResource(resource: RetentionResource): void {
     retentionRelative(resource.relativePath);
-    if (!resource.id.trim() || resource.state !== "registered") throw new TypeError("New resource must be registered");
+    if (!resource.id.trim() || resource.state !== "registered")
+      throw new TypeError("New resource must be registered");
     const previous = this.resources().find((entry) => entry.id === resource.id);
-    if (previous && (previous.rootId !== resource.rootId || previous.relativePath !== resource.relativePath || previous.ownerId !== resource.ownerId || previous.kind !== resource.kind || previous.state !== "registered")) throw new Error("Resource identity cannot be rebound");
+    if (
+      previous &&
+      (previous.rootId !== resource.rootId ||
+        previous.relativePath !== resource.relativePath ||
+        previous.ownerId !== resource.ownerId ||
+        previous.kind !== resource.kind ||
+        previous.state !== "registered")
+    )
+      throw new Error("Resource identity cannot be rebound");
     const root = this.roots().find((entry) => entry.id === resource.rootId);
-    if (!root || root.purpose === "objects" || root.purpose === "state") throw new Error("Governed resources need a dedicated run/cache/backup/database root");
-    const absolute = resolve(root.path, resource.relativePath);
-    const activeRelative=relative(absolute,resolve(this.activeDatabasePath));
-    if (!activeRelative || (!activeRelative.startsWith("..") && !isAbsolute(activeRelative))) throw new Error("The active database cannot be governed as a resource");
-    for (const source of this.sources()) {
-      const objectRoot=this.roots().find((entry)=>entry.id === source.objectRootId);
-      if (!objectRoot) continue;
-      const namespace=resolve(objectRoot.path,"objects"), inward=relative(absolute,namespace),outward=relative(namespace,absolute);
-      if (!inward || (!inward.startsWith("..") && !isAbsolute(inward)) || (!outward.startsWith("..") && !isAbsolute(outward))) throw new Error("Content object namespaces cannot be directory governance resources");
+    if (
+      !root ||
+      root.purpose === "objects" ||
+      (root.purpose === "state" && (resource.kind !== "candidate" || !resource.sqliteBundle))
+    )
+      throw new Error("Governed resources need a dedicated root or an explicit SQLite bundle");
+    if (resource.sqliteBundle) {
+      for (const member of resource.sqliteBundle) retentionRelative(member);
+      if (
+        resource.kind !== "candidate" ||
+        resource.sqliteBundle.length !== 2 ||
+        resource.sqliteBundle[0] !== resource.relativePath ||
+        resource.sqliteBundle[1] !== `${resource.relativePath}.manifest.json`
+      )
+        throw new Error("SQLite bundle must explicitly identify a database and its manifest");
     }
-    for (const other of this.resources().filter((entry) => entry.id !== resource.id && entry.state !== "purged")) {
+    const absolute = resolve(root.path, resource.relativePath);
+    this.assertResourceBoundary(resource);
+    for (const other of this.resources().filter(
+      (entry) => entry.id !== resource.id && entry.state !== "purged",
+    )) {
       const otherRoot = this.roots().find((entry) => entry.id === other.rootId);
       if (!otherRoot) continue;
       const otherPath = resolve(otherRoot.path, other.relativePath);
-      if (absolute === otherPath || absolute.startsWith(`${otherPath}/`) || otherPath.startsWith(`${absolute}/`) || !relative(absolute, otherPath).startsWith("..") || !relative(otherPath, absolute).startsWith("..")) throw new Error("Governed resources cannot overlap");
+      if (
+        absolute === otherPath ||
+        absolute.startsWith(`${otherPath}/`) ||
+        otherPath.startsWith(`${absolute}/`) ||
+        !relative(absolute, otherPath).startsWith("..") ||
+        !relative(otherPath, absolute).startsWith("..")
+      )
+        throw new Error("Governed resources cannot overlap");
     }
-    this.database.prepare("INSERT INTO retention_resources(id, root_id, resource_json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET resource_json=excluded.resource_json")
+    this.database
+      .prepare(
+        "INSERT INTO retention_resources(id, root_id, resource_json) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET resource_json=excluded.resource_json",
+      )
       .run(resource.id, resource.rootId, JSON.stringify(resource));
+  }
+  assertResourceBoundary(
+    resource: RetentionResource,
+    sources: readonly RetentionSource[] = this.sources(),
+  ): void {
+    const root = this.roots().find((entry) => entry.id === resource.rootId);
+    if (!root) throw new Error("Unknown resource root");
+    const absolute = resolve(root.path, resource.relativePath);
+    const activeRelative = relative(absolute, resolve(this.activeDatabasePath));
+    if (!activeRelative || (!activeRelative.startsWith("..") && !isAbsolute(activeRelative)))
+      throw new Error("The active database cannot be governed as a resource");
+    const allRoots = this.roots(),
+      objectRootIds = new Set([
+        ...allRoots
+          .filter((entry) => entry.purpose === "objects" || entry.purpose === "state")
+          .map((entry) => entry.id),
+        ...sources.map((entry) => entry.objectRootId),
+      ]);
+    for (const rootId of objectRootIds) {
+      const objectRoot = allRoots.find((entry) => entry.id === rootId);
+      if (!objectRoot) continue;
+      const namespace = resolve(objectRoot.path, "objects"),
+        inward = relative(absolute, namespace),
+        outward = relative(namespace, absolute);
+      if (
+        !inward ||
+        (!inward.startsWith("..") && !isAbsolute(inward)) ||
+        (!outward.startsWith("..") && !isAbsolute(outward))
+      )
+        throw new Error("Content object namespaces cannot be directory governance resources");
+    }
   }
 
   async capture(asOf: string): Promise<RetentionInventory> {
-    if (!Number.isFinite(Date.parse(asOf)) || new Date(asOf).toISOString() !== asOf) throw new TypeError("Retention asOf must be an ISO UTC instant");
-    const roots = this.roots(), sources = this.sources(), registered = this.resources();
-    const blockers: RetentionBlocker[] = [], references: RetentionReference[] = [], versions: RetentionVersion[] = [];
+    if (!Number.isFinite(Date.parse(asOf)) || new Date(asOf).toISOString() !== asOf)
+      throw new TypeError("Retention asOf must be an ISO UTC instant");
+    const roots = this.roots(),
+      sources = this.sources(),
+      registered = this.resources();
+    const blockers: RetentionBlocker[] = [],
+      references: RetentionReference[] = [],
+      versions: RetentionVersion[] = [];
     const sourceRevisions: Record<string, string> = {};
-    const addBlock = (code: RetentionBlocker["code"], source: string, detail: string): void => { blockers.push({ code, source, detail }); };
+    const sourceFiles: NonNullable<RetentionInventory["sourceFiles"]>[number][] = [];
+    const addBlock = (code: RetentionBlocker["code"], source: string, detail: string): void => {
+      blockers.push({ code, source, detail });
+    };
+    const journalItems: RetentionBatchItem[] = [];
+    if (
+      this.database.prepare("SELECT name FROM sqlite_master WHERE name='retention_batches'").get()
+    )
+      for (const row of this.database.prepare("SELECT batch_json FROM retention_batches").all())
+        try {
+          const batch = retentionRecord(retentionJson(row.batch_json));
+          if (batch.schemaVersion !== 1 || !Array.isArray(batch.items))
+            throw new Error("Unknown governance journal");
+          for (const item of batch.items) {
+            const value = retentionRecord(item);
+            if (
+              typeof value.rootId !== "string" ||
+              typeof value.state !== "string" ||
+              !Array.isArray(value.files) ||
+              (value.moves !== undefined && !Array.isArray(value.moves))
+            )
+              throw new Error("Unknown governance journal item");
+            journalItems.push(item as RetentionBatchItem);
+          }
+        } catch {
+          addBlock(
+            "unknown-format",
+            "governance-journal",
+            "Governance recovery evidence is not readable",
+          );
+        }
     const validRoots = new Map<string, RetentionRoot>();
-    for (const root of roots) try { await checkedRetentionPath(root); validRoots.set(root.id, root); } catch { addBlock("unsafe-path", root.id, "Registered root is unreadable, linked or replaced"); }
-    if (!sources.some((source) => source.kind === "active-database" && source.retained)) addBlock("unregistered", "active-database", "The active database and its object store must be registered");
+    for (const resource of registered.filter((entry) => entry.state !== "purged"))
+      try {
+        this.assertResourceBoundary(resource);
+      } catch {
+        addBlock(
+          "unsafe-path",
+          resource.id,
+          "Resource overlaps the active database or an object namespace",
+        );
+      }
+    for (const root of roots)
+      try {
+        await checkedRetentionPath(root);
+        validRoots.set(root.id, root);
+      } catch {
+        addBlock("unsafe-path", root.id, "Registered root is unreadable, linked or replaced");
+      }
+    const activeRoot = roots.find(
+      (root) =>
+        root.purpose === "state" &&
+        sources.some((source) => source.kind === "active-database" && source.rootId === root.id),
+    );
+    if (activeRoot)
+      for (const source of sources.filter((entry) => entry.retained)) {
+        const root = validRoots.get(source.rootId);
+        if (!root) continue;
+        const rel = relative(activeRoot.realPath, root.realPath);
+        if (rel.startsWith("..") || isAbsolute(rel))
+          addBlock(
+            "coordination-unproven",
+            source.id,
+            "Retained source is outside this state owner's exclusive writer boundary",
+          );
+      }
+    if (!sources.some((source) => source.kind === "active-database" && source.retained))
+      addBlock(
+        "unregistered",
+        "active-database",
+        "The active database and its object store must be registered",
+      );
     let activeRows: RetentionRows = {};
     for (const source of sources.filter((entry) => entry.retained)) {
       let database: DatabaseSync | undefined;
       let external = false;
+      let dispose: (() => Promise<void>) | undefined;
       try {
-        const root = validRoots.get(source.rootId), objectRoot = validRoots.get(source.objectRootId);
-        if (!root || !objectRoot || !["state", "objects"].includes(objectRoot.purpose)) throw new Error("Source has no verified object store");
-        const path = await checkedRetentionPath(root, source.relativePath);
-        if (source.kind === "unknown") { addBlock("unknown-format", source.id, "Unknown recovery database format"); continue; }
+        const root = validRoots.get(source.rootId),
+          objectRoot = validRoots.get(source.objectRootId);
+        if (!root || !objectRoot || !["state", "objects"].includes(objectRoot.purpose))
+          throw new Error("Source has no verified object store");
+        const journal = journalItems.find(
+          (item) =>
+            item.rootId === source.rootId &&
+            !["purged", "restored"].includes(item.state) &&
+            item.moves?.some(
+              (move) =>
+                source.relativePath === move.originalPath ||
+                source.relativePath === move.quarantinePath,
+            ),
+        );
+        const actualMember = async (
+          originalPath: string,
+          quarantinePath: string,
+        ): Promise<string> => {
+          const at = async (member: string) => {
+            try {
+              return (await inventoryRetentionTree(root, member))[0];
+            } catch (error) {
+              if (isMissing(error)) return undefined;
+              throw error;
+            }
+          };
+          const original = await at(originalPath),
+            quarantined = await at(quarantinePath);
+          if (Boolean(original) === Boolean(quarantined))
+            throw new Error("Ambiguous SQLite recovery member locations");
+          const file = original ?? quarantined,
+            expected = journal!.files.find(
+              (entry) => entry.relativePath === basename(originalPath),
+            );
+          if (
+            !file ||
+            !expected ||
+            file.identity !== expected.identity ||
+            file.bytes !== expected.bytes ||
+            file.mtimeMs !== expected.mtimeMs
+          )
+            throw new Error("SQLite recovery member identity mismatch");
+          return original ? originalPath : quarantinePath;
+        };
+        const mainMove = journal?.moves?.find(
+          (move) =>
+            source.relativePath === move.originalPath ||
+            source.relativePath === move.quarantinePath,
+        );
+        const sourcePath = mainMove
+          ? await actualMember(mainMove.originalPath, mainMove.quarantinePath)
+          : source.relativePath;
+        const path = await checkedRetentionPath(root, sourcePath);
+        const files: NonNullable<RetentionInventory["sourceFiles"]>[number]["files"][number][] = [];
+        for (const suffix of ["", ".manifest.json", "-wal", "-shm", "-journal"])
+          try {
+            const manifestMove =
+              suffix === ".manifest.json"
+                ? journal?.moves?.find(
+                    (move) => move.originalPath === `${mainMove?.originalPath}.manifest.json`,
+                  )
+                : undefined;
+            const member = manifestMove
+                ? await actualMember(manifestMove.originalPath, manifestMove.quarantinePath)
+                : sourcePath + suffix,
+              tree = await inventoryRetentionTree(root, member),
+              file = tree[0];
+            if (!file || tree.length !== 1 || !file.identity.endsWith(":f"))
+              throw new Error("Database source companion is not a regular file");
+            files.push({ ...file, relativePath: member });
+          } catch (error) {
+            if (!isMissing(error)) {
+              if (suffix === "") throw error;
+              addBlock(
+                "unreadable",
+                source.id,
+                "Recovery database companion identity could not be verified",
+              );
+            }
+          }
+        sourceFiles.push({ sourceId: source.id, rootId: root.id, files });
+        if (source.kind === "unknown") {
+          addBlock("unknown-format", source.id, "Unknown recovery database format");
+          continue;
+        }
         if (source.kind === "active-database") {
-          if (resolve(path) !== resolve(this.activeDatabasePath)) throw new Error("Active source does not identify the open database");
+          if (resolve(path) !== resolve(this.activeDatabasePath))
+            throw new Error("Active source does not identify the open database");
           database = this.database;
-        } else { database = new DatabaseSync(path, { readOnly: true }); external = true; }
-        const schema = Number(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()?.version);
-        if (![16, 17, 19, 20].includes(schema)) { addBlock("unknown-format", source.id, `Unsupported reference schema ${schema}`); continue; }
-        if (database.prepare("PRAGMA quick_check").all().some((row) => Object.values(row)[0] !== "ok") || database.prepare("PRAGMA foreign_key_check").all().length) throw new Error("Database integrity check failed");
+        } else {
+          const snapshot = await openRetentionSnapshot(path);
+          database = snapshot.database;
+          dispose = snapshot.dispose;
+          external = true;
+        }
+        const schema = Number(
+          database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()?.version,
+        );
+        if (![16, 17, 19, 20].includes(schema)) {
+          addBlock("unknown-format", source.id, `Unsupported reference schema ${schema}`);
+          continue;
+        }
+        if (
+          database
+            .prepare("PRAGMA quick_check")
+            .all()
+            .some((row) => Object.values(row)[0] !== "ok") ||
+          database.prepare("PRAGMA foreign_key_check").all().length
+        )
+          throw new Error("Database integrity check failed");
         const rows: Record<string, readonly Row[]> = {};
         // Reading all reference-bearing tables also detects changes that the catalog revision does not cover.
         database.exec("SAVEPOINT retention_read");
-        try { for (const table of REFERENCE_TABLES) rows[table] = schema === 16 && table === "version_metadata_snapshots" ? [] : digestSorted(database.prepare(`SELECT * FROM ${table}`).all() as Row[]); }
-        finally { database.exec("RELEASE retention_read"); }
+        try {
+          for (const table of REFERENCE_TABLES)
+            rows[table] =
+              schema === 16 && table === "version_metadata_snapshots"
+                ? []
+                : digestSorted(database.prepare(`SELECT * FROM ${table}`).all() as Row[]);
+        } finally {
+          database.exec("RELEASE retention_read");
+        }
         sourceRevisions[source.id] = retentionDigest({ schema, rows });
         if (!external) activeRows = rows;
         this.collectDatabaseReferences(source, rows, versions, references, addBlock);
-      } catch { addBlock("unreadable", source.id, "Retained database reference coverage could not be verified"); }
-      finally { if (external) database?.close(); }
+      } catch {
+        addBlock(
+          "unreadable",
+          source.id,
+          "Retained database reference coverage could not be verified",
+        );
+      } finally {
+        await dispose?.();
+      }
     }
     // Detect recovery databases omitted from the registry. Never interpret an unknown candidate as zero references.
-    const knownPaths = new Set(sources.map((source) => { const root = validRoots.get(source.rootId); return root ? resolve(root.path, source.relativePath) : ""; }));
-    for (const root of validRoots.values()) if (["state", "databases", "backups"].includes(root.purpose)) {
-      try {
-        const files = await inventoryRetentionTree(root);
-        for (const file of files) if (/\.(sqlite|sqlite3|db)$/iu.test(file.relativePath) && !knownPaths.has(resolve(root.path, file.relativePath))) {
-          // Native transaction snapshots are governed by a verified backup manifest, not Maintenance SQL.
-          const candidatePath = resolve(root.path, file.relativePath);
-          const insideKnownBackup = registered.some((entry) => {
-            const ownerRoot = validRoots.get(entry.rootId);
-            if (!ownerRoot || entry.state === "purged" || entry.kind === "candidate") return false;
-            const rel = relative(resolve(ownerRoot.path, entry.relativePath), candidatePath);
-            return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel) && (entry.kind !== "backup" || entry.verifiedFingerprint !== null);
-          });
-          if (!insideKnownBackup) addBlock("unregistered", `${root.id}:${file.relativePath}`, "Unregistered database or recovery candidate");
+    const knownPaths = new Set(
+      sources.map((source) => {
+        const root = validRoots.get(source.rootId);
+        return root ? resolve(root.path, source.relativePath) : "";
+      }),
+    );
+    for (const item of journalItems)
+      if (!["purged", "restored"].includes(item.state))
+        for (const move of item.moves ?? []) {
+          const root = validRoots.get(item.rootId);
+          if (root) {
+            knownPaths.add(resolve(root.path, move.originalPath));
+            knownPaths.add(resolve(root.path, move.quarantinePath));
+          }
         }
-      } catch { addBlock("unsafe-path", root.id, "Discovery could not establish complete coverage under this root"); }
-    }
+    for (const root of validRoots.values())
+      if (["state", "databases", "backups"].includes(root.purpose)) {
+        try {
+          const files = await inventoryRetentionTree(root);
+          for (const file of files)
+            if (
+              /\.(sqlite|sqlite3|db)$/iu.test(file.relativePath) &&
+              !knownPaths.has(resolve(root.path, file.relativePath))
+            ) {
+              // Native transaction snapshots are governed by a verified backup manifest, not Maintenance SQL.
+              const candidatePath = resolve(root.path, file.relativePath);
+              const insideKnownBackup = registered.some((entry) => {
+                const ownerRoot = validRoots.get(entry.rootId);
+                if (!ownerRoot || entry.state === "purged" || entry.kind === "candidate")
+                  return false;
+                const rel = relative(resolve(ownerRoot.path, entry.relativePath), candidatePath);
+                return (
+                  rel !== "" &&
+                  !rel.startsWith("..") &&
+                  !isAbsolute(rel) &&
+                  (entry.kind !== "backup" || entry.verifiedFingerprint !== null)
+                );
+              });
+              if (!insideKnownBackup)
+                addBlock(
+                  "unregistered",
+                  `${root.id}:${file.relativePath}`,
+                  "Unregistered database or recovery candidate",
+                );
+            }
+        } catch {
+          addBlock(
+            "unsafe-path",
+            root.id,
+            "Discovery could not establish complete coverage under this root",
+          );
+        }
+      }
     const objects: RetentionInventory["objects"][number][] = [];
     const physicalStores = new Set<string>();
-    for (const rootId of [...new Set(sources.filter((s) => s.retained).map((s) => s.objectRootId))].sort()) {
-      const root = validRoots.get(rootId); if (!root) continue;
-      if (physicalStores.has(root.realPath)) { addBlock("inconsistent-evidence", rootId, "One physical object store must have one registry ID"); continue; }
+    for (const rootId of [
+      ...new Set(sources.filter((s) => s.retained).map((s) => s.objectRootId)),
+    ].sort()) {
+      const root = validRoots.get(rootId);
+      if (!root) continue;
+      if (physicalStores.has(root.realPath)) {
+        addBlock(
+          "inconsistent-evidence",
+          rootId,
+          "One physical object store must have one registry ID",
+        );
+        continue;
+      }
       physicalStores.add(root.realPath);
       try {
         let files;
-        try { files = await inventoryRetentionTree(root, "objects/sha256"); } catch (error) { if (isMissing(error)) files = []; else throw error; }
-        const byId = new Map<string, typeof files[number]>();
+        try {
+          files = await inventoryRetentionTree(root, "objects/sha256");
+        } catch (error) {
+          if (isMissing(error)) files = [];
+          else throw error;
+        }
+        const byId = new Map<string, (typeof files)[number]>();
         for (const file of files) {
           const match = /^([0-9a-f]{2})\/([0-9a-f]{62})\.zst$/u.exec(file.relativePath);
           if (match) byId.set(`sha256:${match[1]}${match[2]}`, file);
-          else if (file.bytes > 0) addBlock("unknown-format", `${root.id}:${file.relativePath}`, "Unrecognized object-store entry");
+          else if (file.bytes > 0)
+            addBlock(
+              "unknown-format",
+              `${root.id}:${file.relativePath}`,
+              "Unrecognized object-store entry",
+            );
         }
         // Reuse the existing collector's classification in dry-run mode, after a checked path inventory.
-        const reachable = references.filter((ref) => ref.objectRootId === root.id && ref.targetKind === "content-object").map((ref) => ref.targetId);
-        const gc = await new ZstdContentObjectStore(root.path).collect({ reachableObjectIds: reachable, dryRun: true });
+        const reachable = references
+          .filter((ref) => ref.objectRootId === root.id && ref.targetKind === "content-object")
+          .map((ref) => ref.targetId);
+        const gc = await new ZstdContentObjectStore(root.path).collect({
+          reachableObjectIds: reachable,
+          dryRun: true,
+        });
         for (const item of gc.items) {
-          const file = byId.get(item.objectId); if (!file || file.bytes !== item.bytes) throw new Error("Object inventory changed during preview");
-          objects.push({ ...file, relativePath: `objects/sha256/${file.relativePath}`, rootId: root.id, objectId: item.objectId });
+          const file = byId.get(item.objectId);
+          if (!file || file.bytes !== item.bytes)
+            throw new Error("Object inventory changed during preview");
+          objects.push({
+            ...file,
+            relativePath: `objects/sha256/${file.relativePath}`,
+            rootId: root.id,
+            objectId: item.objectId,
+          });
         }
         if (gc.items.length !== byId.size) throw new Error("Object inventory changed");
-        for (const id of new Set(reachable)) if (!byId.has(id)) addBlock("missing-reference", `${root.id}:${id}`, "A retained body, handoff or evidence object is missing");
-      } catch { addBlock("unsafe-path", root.id, "Object inventory could not be read consistently"); }
+        for (const id of new Set(reachable))
+          if (!byId.has(id))
+            addBlock(
+              "missing-reference",
+              `${root.id}:${id}`,
+              "A retained body, handoff or evidence object is missing",
+            );
+      } catch {
+        addBlock("unsafe-path", root.id, "Object inventory could not be read consistently");
+      }
     }
-    const resources = await captureRetentionResources(validRoots, registered, sources, activeRows, references, blockers);
-    for (const root of validRoots.values()) if (["runs", "caches", "backups", "databases"].includes(root.purpose)) {
-      try {
-        for (const name of await readdir(root.path)) {
-          if (name === ".retention-quarantine") {
-            const hasJournal = this.database.prepare("SELECT name FROM sqlite_master WHERE name='retention_batches'").get();
-            const known = hasJournal ? this.database.prepare("SELECT batch_json FROM retention_batches").all().flatMap((row)=>{
-              const batch = JSON.parse(String(row.batch_json)) as {items: {rootId:string;quarantinePath:string}[]};
-              return batch.items.filter((item)=>item.rootId === root.id).map((item)=>item.quarantinePath);
-            }) : [];
-            for (const file of await inventoryRetentionTree(root,name)) {
-              const location=file.relativePath ? `${name}/${file.relativePath}` : name;
-              if (!known.some((path)=>location === path || location.startsWith(`${path}/`) || path.startsWith(`${location}/`))) addBlock("unregistered",`${root.id}:${location}`,"Unregistered quarantine evidence");
+    const resources = await captureRetentionResources(
+      validRoots,
+      registered,
+      sources,
+      activeRows,
+      references,
+      blockers,
+    );
+    for (const root of validRoots.values())
+      if (["runs", "caches", "backups", "databases"].includes(root.purpose)) {
+        try {
+          const ownedPaths = [
+            ...registered
+              .filter((resource) => resource.rootId === root.id && resource.state !== "purged")
+              .flatMap((resource) =>
+                resource.sqliteBundle ? [...resource.sqliteBundle] : [resource.relativePath],
+              ),
+            ...sourceFiles
+              .filter((source) => source.rootId === root.id)
+              .flatMap((source) => source.files.map((file) => file.relativePath)),
+          ];
+          const inspectUnknown = async (path: string): Promise<void> => {
+            if (ownedPaths.includes(path)) return;
+            if (ownedPaths.some((owned) => owned.startsWith(`${path}/`))) {
+              await checkedRetentionPath(root, path);
+              for (const child of await readdir(resolve(root.path, path)))
+                await inspectUnknown(`${path}/${child}`);
+            } else
+              addBlock(
+                "unregistered",
+                `${root.id}:${path}`,
+                "Undocumented resource remains protected until registered",
+              );
+          };
+          for (const name of await readdir(root.path)) {
+            if (name === ".retention-quarantine") {
+              const known = journalItems
+                .filter((item) => item.rootId === root.id)
+                .map((item) => item.quarantinePath);
+              for (const file of await inventoryRetentionTree(root, name)) {
+                const location = file.relativePath ? `${name}/${file.relativePath}` : name;
+                if (
+                  !known.some(
+                    (path) =>
+                      location === path ||
+                      location.startsWith(`${path}/`) ||
+                      path.startsWith(`${location}/`),
+                  )
+                )
+                  addBlock(
+                    "unregistered",
+                    `${root.id}:${location}`,
+                    "Unregistered quarantine evidence",
+                  );
+              }
+              continue;
             }
-            continue;
+            await inspectUnknown(name);
           }
-          if (!registered.some((resource) => resource.rootId === root.id && resource.relativePath.split("/")[0] === name && resource.state !== "purged") && !sources.some((source) => source.rootId === root.id && source.relativePath.split("/")[0] === name)) addBlock("unregistered", `${root.id}:${name}`, "Undocumented resource remains protected until registered");
+        } catch {
+          addBlock("unreadable", root.id, "Resource discovery failed");
         }
-      } catch { addBlock("unreadable", root.id, "Resource discovery failed"); }
-    }
+      }
     const sortedReferences = digestSorted(references);
     versions.sort((a, b) => `${a.source}:${a.id}`.localeCompare(`${b.source}:${b.id}`));
     objects.sort((a, b) => `${a.rootId}:${a.objectId}`.localeCompare(`${b.rootId}:${b.objectId}`));
     const sortedBlockers = digestSorted(blockers);
-    return { schemaVersion: 1, asOf, roots, sources, sourceRevisions, versions, references:sortedReferences, objects, resources, blockers:sortedBlockers,
-      registryFingerprint: retentionDigest({ roots, sources, resources: registered }), referenceFingerprint: retentionDigest({ sourceRevisions, versions, references:sortedReferences }), objectFingerprint: retentionDigest(objects), resourceFingerprint: retentionDigest(resources) };
+    return {
+      schemaVersion: 1,
+      asOf,
+      roots,
+      sources,
+      sourceRevisions,
+      sourceFiles,
+      versions,
+      references: sortedReferences,
+      objects,
+      resources,
+      blockers: sortedBlockers,
+      registryFingerprint: retentionDigest({ roots, sources, resources: registered }),
+      referenceFingerprint: retentionDigest({
+        sourceRevisions,
+        sourceFiles,
+        versions,
+        references: sortedReferences,
+      }),
+      objectFingerprint: retentionDigest(objects),
+      resourceFingerprint: retentionDigest(resources),
+    };
   }
 
-  private collectDatabaseReferences(source: RetentionSource, rows: RetentionRows, versions: RetentionVersion[], refs: RetentionReference[], block: (code: RetentionBlocker["code"], source: string, detail: string) => void): void {
+  private collectDatabaseReferences(
+    source: RetentionSource,
+    rows: RetentionRows,
+    versions: RetentionVersion[],
+    refs: RetentionReference[],
+    block: (code: RetentionBlocker["code"], source: string, detail: string) => void,
+  ): void {
     const all = (table: string): readonly Row[] => rows[table] ?? [];
     const ids = new Set(all("session_versions").map((row) => String(row.id)));
-    const snapshots = new Map(all("version_metadata_snapshots").map((row)=>[String(row.version_id),row]));
-    const sessions = new Map(all("logical_sessions").map((row)=>[String(row.id),row]));
-    const runIds = new Set(all("projection_runs").map((row)=>row.id));
+    const snapshots = new Map(
+      all("version_metadata_snapshots").map((row) => [String(row.version_id), row]),
+    );
+    const sessions = new Map(all("logical_sessions").map((row) => [String(row.id), row]));
+    const runIds = new Set(all("projection_runs").map((row) => row.id));
     const parents = new Map<string, Row[]>();
-    for (const row of all("version_parents")) { const key=String(row.version_id); const list=parents.get(key) ?? []; list.push(row); parents.set(key,list); }
-    const ref = (owner: string, targetKind: RetentionReference["targetKind"], target: unknown, reason: string): void => {
-      const targetId = retentionString(target); if (!targetId) return;
-      refs.push({ source: source.id, owner, targetKind, targetId, objectRootId: targetKind === "content-object" ? source.objectRootId : null, reason });
-      if (targetKind.startsWith("version-") && !ids.has(targetId)) block("missing-reference", `${source.id}:${owner}`, `Missing referenced version ${targetId}`);
+    for (const row of all("version_parents")) {
+      const key = String(row.version_id);
+      const list = parents.get(key) ?? [];
+      list.push(row);
+      parents.set(key, list);
+    }
+    const ref = (
+      owner: string,
+      targetKind: RetentionReference["targetKind"],
+      target: unknown,
+      reason: string,
+    ): void => {
+      const targetId = retentionString(target);
+      if (!targetId) return;
+      refs.push({
+        source: source.id,
+        owner,
+        targetKind,
+        targetId,
+        objectRootId: targetKind === "content-object" ? source.objectRootId : null,
+        reason,
+      });
+      if (targetKind.startsWith("version-") && !ids.has(targetId))
+        block(
+          "missing-reference",
+          `${source.id}:${owner}`,
+          `Missing referenced version ${targetId}`,
+        );
     };
     for (const row of all("session_versions")) {
-      const id = String(row.id), snapshot = snapshots.get(id);
-      versions.push({ source: source.id, id, objectId: String(row.body_object), objectRootId: source.objectRootId, parents: (parents.get(id) ?? []).sort((a,b)=>Number(a.ordinal)-Number(b.ordinal)).map((entry)=>String(entry.parent_id)), firstPersistedAt: retentionString(snapshot?.first_persisted_at) });
+      const id = String(row.id),
+        snapshot = snapshots.get(id);
+      versions.push({
+        source: source.id,
+        id,
+        objectId: String(row.body_object),
+        objectRootId: source.objectRootId,
+        parents: (parents.get(id) ?? [])
+          .sort((a, b) => Number(a.ordinal) - Number(b.ordinal))
+          .map((entry) => String(entry.parent_id)),
+        firstPersistedAt: retentionString(snapshot?.first_persisted_at),
+      });
       ref(id, "version-body", id, "all-version-bodies-retained; history-pruning-disabled");
-      ref(id, "content-object", row.body_object, source.kind === "active-database" ? "retained-version-body" : "retained-external-database-body");
-      if (!snapshot?.first_persisted_at) ref(id, "version-body", id, "local-first-persisted-time-unknown");
+      ref(
+        id,
+        "content-object",
+        row.body_object,
+        source.kind === "active-database"
+          ? "retained-version-body"
+          : "retained-external-database-body",
+      );
+      if (!snapshot?.first_persisted_at)
+        ref(id, "version-body", id, "local-first-persisted-time-unknown");
     }
-    for (const row of all("version_parents")) ref(String(row.version_id), "version-metadata", row.parent_id, "version-graph-parent");
+    for (const row of all("version_parents"))
+      ref(String(row.version_id), "version-metadata", row.parent_id, "version-graph-parent");
     for (const row of all("logical_sessions")) {
       ref(String(row.id), "version-body", row.head_version_id, "current-session-head");
       ref(String(row.id), "version-body", row.canonical_version_id, "canonical-session-head");
-      if (row.head_version_id && row.canonical_version_id && row.head_version_id !== row.canonical_version_id) block("inconsistent-evidence", `${source.id}:${row.id}`, "Current head pointers disagree");
+      if (
+        row.head_version_id &&
+        row.canonical_version_id &&
+        row.head_version_id !== row.canonical_version_id
+      )
+        block("inconsistent-evidence", `${source.id}:${row.id}`, "Current head pointers disagree");
     }
-    for (const row of all("workspace_memberships").filter((entry)=>entry.pinned === 1)) ref(String(row.logical_session_id), "version-body", sessions.get(String(row.logical_session_id))?.head_version_id, "pinned-session-current-head");
+    for (const row of all("workspace_memberships").filter((entry) => entry.pinned === 1))
+      ref(
+        String(row.logical_session_id),
+        "version-body",
+        sessions.get(String(row.logical_session_id))?.head_version_id,
+        "pinned-session-current-head",
+      );
     for (const [table, columns, reason] of [
-      ["platform_bindings", ["last_common_version_id"], "platform-common-base"], ["platform_refs", ["version_id"], "platform-reference"],
-      ["native_mirrors", ["common_version_id", "codex_version_id", "dsh_version_id"], "legacy-persisted-reference"],
-      ["session_derivations", ["base_version_id"], "derivation-base"], ["projection_sessions", ["base_version_id"], "run-materialization-base"],
+      ["platform_bindings", ["last_common_version_id"], "platform-common-base"],
+      ["platform_refs", ["version_id"], "platform-reference"],
+      [
+        "native_mirrors",
+        ["common_version_id", "codex_version_id", "dsh_version_id"],
+        "legacy-persisted-reference",
+      ],
+      ["session_derivations", ["base_version_id"], "derivation-base"],
+      ["projection_sessions", ["base_version_id"], "run-materialization-base"],
       ["run_operations", ["canonical_version_id"], "operation-receipt"],
-    ] as const) for (const row of all(table)) for (const column of columns) ref(String(row.id ?? row.run_id ?? row.logical_session_id ?? row.child_session_id ?? row.operation_id), "version-body", row[column], reason);
-    for (const row of all("checkpoints")) try {
-      const entries = retentionRecord(retentionJson(row.refs_json));
-      for (const [key, value] of Object.entries(entries)) {
-        if (ids.has(String(value))) ref(String(row.id), "version-body", value, "checkpoint");
-        else if (row.created_by === "projection-lifecycle" && key === "run" && runIds.has(value)) ref(String(row.id), "run", value, "projection-close-checkpoint-metadata");
-        else if (!(row.created_by === "projection-lifecycle" && key === "catalog" && typeof value === "string" && /^sha256:[0-9a-f]{64}$/u.test(value))) block("unknown-format", `${source.id}:checkpoint:${row.id}`, `Unclassified checkpoint reference ${key}`);
+    ] as const)
+      for (const row of all(table))
+        for (const column of columns)
+          ref(
+            String(
+              row.id ??
+                row.run_id ??
+                row.logical_session_id ??
+                row.child_session_id ??
+                row.operation_id,
+            ),
+            "version-body",
+            row[column],
+            reason,
+          );
+    for (const row of all("checkpoints"))
+      try {
+        const entries = retentionRecord(retentionJson(row.refs_json));
+        for (const [key, value] of Object.entries(entries)) {
+          if (ids.has(String(value))) ref(String(row.id), "version-body", value, "checkpoint");
+          else if (row.created_by === "projection-lifecycle" && key === "run" && runIds.has(value))
+            ref(String(row.id), "run", value, "projection-close-checkpoint-metadata");
+          else if (
+            !(
+              row.created_by === "projection-lifecycle" &&
+              key === "catalog" &&
+              typeof value === "string" &&
+              /^sha256:[0-9a-f]{64}$/u.test(value)
+            )
+          )
+            block(
+              "unknown-format",
+              `${source.id}:checkpoint:${row.id}`,
+              `Unclassified checkpoint reference ${key}`,
+            );
+        }
+        const backups = retentionJson(row.backup_transaction_ids_json);
+        if (!Array.isArray(backups)) throw new Error("Invalid checkpoint backups");
+        for (const backup of backups) ref(String(row.id), "backup", backup, "checkpoint-backup");
+      } catch {
+        block(
+          "unknown-format",
+          `${source.id}:checkpoint:${row.id}`,
+          "Checkpoint references cannot be read",
+        );
       }
-      const backups = retentionJson(row.backup_transaction_ids_json); if (!Array.isArray(backups)) throw new Error("Invalid checkpoint backups");
-      for (const backup of backups) ref(String(row.id), "backup", backup, "checkpoint-backup");
-    } catch { block("unknown-format", `${source.id}:checkpoint:${row.id}`, "Checkpoint references cannot be read"); }
-    for (const row of all("session_tombstones")) ref(String(row.logical_session_id), "version-body", sessions.get(String(row.logical_session_id))?.head_version_id, "tombstone-restore-head");
-    for (const row of all("continuation_jobs")) try {
-      ref(String(row.id), "content-object", row.handoff_object_id, "continuation-handoff");
-      const sources = retentionJson(row.source_version_ids_json); if (!Array.isArray(sources)) throw new Error("Invalid continuation sources");
-      for (const version of sources) ref(String(row.id), "version-body", version, "continuation-archive-source");
-    } catch { block("unknown-format", `${source.id}:continuation:${row.id}`, "Continuation archive references cannot be read"); }
-    for (const row of all("adapter_evidence")) ref(String(row.evidence_ref), "content-object", row.object_id, "adapter-evidence-preserved");
-    for (const row of all("transactions")) if (!["completed", "restored"].includes(String(row.status))) ref(String(row.id), "backup", row.id, "transaction-recovery-required");
-    for (const row of all("checkpoint_transactions")) ref(String(row.checkpoint_id), "backup", row.transaction_id, "checkpoint-backup");
+    for (const row of all("session_tombstones"))
+      ref(
+        String(row.logical_session_id),
+        "version-body",
+        sessions.get(String(row.logical_session_id))?.head_version_id,
+        "tombstone-restore-head",
+      );
+    for (const row of all("continuation_jobs"))
+      try {
+        ref(String(row.id), "content-object", row.handoff_object_id, "continuation-handoff");
+        const sources = retentionJson(row.source_version_ids_json);
+        if (!Array.isArray(sources)) throw new Error("Invalid continuation sources");
+        for (const version of sources)
+          ref(String(row.id), "version-body", version, "continuation-archive-source");
+      } catch {
+        block(
+          "unknown-format",
+          `${source.id}:continuation:${row.id}`,
+          "Continuation archive references cannot be read",
+        );
+      }
+    for (const row of all("adapter_evidence"))
+      ref(String(row.evidence_ref), "content-object", row.object_id, "adapter-evidence-preserved");
+    for (const row of all("transactions"))
+      if (!["completed", "restored"].includes(String(row.status)))
+        ref(String(row.id), "backup", row.id, "transaction-recovery-required");
+    for (const row of all("checkpoint_transactions"))
+      ref(String(row.checkpoint_id), "backup", row.transaction_id, "checkpoint-backup");
     // Retained plans and work queues have no expiry contract. Capture all typed version fields, fail closed on malformed JSON.
     const visit = (value: unknown, owner: string): void => {
-      if (Array.isArray(value)) { for (const item of value) visit(item, owner); return; }
-      if (value && typeof value === "object") for (const [key, child] of Object.entries(value)) {
-        if (/^(?:versionId|baseVersionId|sourceVersionId|targetVersionId|commonVersionId|canonicalVersionId)$/u.test(key)) ref(owner, "version-body", child, "retained-plan-or-recovery-work");
-        else visit(child, owner);
+      if (Array.isArray(value)) {
+        for (const item of value) visit(item, owner);
+        return;
       }
+      if (value && typeof value === "object")
+        for (const [key, child] of Object.entries(value)) {
+          if (
+            /^(?:versionId|baseVersionId|sourceVersionId|targetVersionId|commonVersionId|canonicalVersionId)$/u.test(
+              key,
+            )
+          )
+            ref(owner, "version-body", child, "retained-plan-or-recovery-work");
+          else visit(child, owner);
+        }
     };
-    for (const [table, column] of [["sync_plans","plan_json"],["jobs","request_json"],["transaction_steps","data_json"],["continuation_jobs","request_json"]] as const) for (const row of all(table)) try { visit(retentionJson(row[column]), `${table}:${row.id ?? row.transaction_id}`); } catch { block("unknown-format", `${source.id}:${table}`, "Retained recovery work is not readable"); }
+    for (const [table, column] of [
+      ["sync_plans", "plan_json"],
+      ["jobs", "request_json"],
+      ["transaction_steps", "data_json"],
+      ["continuation_jobs", "request_json"],
+    ] as const)
+      for (const row of all(table))
+        try {
+          visit(retentionJson(row[column]), `${table}:${row.id ?? row.transaction_id}`);
+        } catch {
+          block(
+            "unknown-format",
+            `${source.id}:${table}`,
+            "Retained recovery work is not readable",
+          );
+        }
   }
 }

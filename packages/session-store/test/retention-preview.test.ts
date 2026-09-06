@@ -25,7 +25,7 @@ describe("SM-08 reference-safe read-only planning",()=>{
     ]));
     const items = plan.items.filter((item)=>item.kind === "content-object");
     expect(items).toHaveLength(1); expect(items[0]?.disposition).toBe("protected");
-    expect(plan.protectedBytes).toBe(items[0]?.bytes); expect(plan.candidateBytes).toBe(0);
+    expect(plan.protectedBytes).toBeGreaterThan(items[0]!.bytes); expect(plan.items.filter((item)=>item.kind === "database")).toHaveLength(1); expect(plan.candidateBytes).toBe(0);
     expect(before.versions.every((version)=>version.firstPersistedAt !== "1900-01-01T00:00:00.000Z")).toBe(true);
     expect(planRetention(await f.repository.capture(NOW))).toEqual(plan);
   });

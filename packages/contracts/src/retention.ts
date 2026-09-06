@@ -31,10 +31,19 @@ export interface RetentionResource {
   readonly verifiedFingerprint: string | null;
   readonly lastUsedAt: string | null;
   readonly state: "registered" | "quarantined" | "purged";
+  /** Static, explicitly verified SQLite file set. First member is the database, followed by its manifest. */
+  readonly sqliteBundle?: readonly string[];
 }
 
 export interface RetentionBlocker {
-  readonly code: "unregistered" | "unreadable" | "unknown-format" | "unsafe-path" | "missing-reference" | "inconsistent-evidence" | "coordination-unproven";
+  readonly code:
+    | "unregistered"
+    | "unreadable"
+    | "unknown-format"
+    | "unsafe-path"
+    | "missing-reference"
+    | "inconsistent-evidence"
+    | "coordination-unproven";
   readonly source: string;
   readonly detail: string;
 }
@@ -42,7 +51,13 @@ export interface RetentionBlocker {
 export interface RetentionReference {
   readonly source: string;
   readonly owner: string;
-  readonly targetKind: "version-metadata" | "version-body" | "content-object" | "run" | "cache" | "backup";
+  readonly targetKind:
+    | "version-metadata"
+    | "version-body"
+    | "content-object"
+    | "run"
+    | "cache"
+    | "backup";
   readonly targetId: string;
   readonly objectRootId: string | null;
   readonly reason: string;
@@ -90,6 +105,11 @@ export interface RetentionInventory {
   readonly references: readonly RetentionReference[];
   readonly objects: readonly RetentionObject[];
   readonly resources: readonly RetentionResourceInventory[];
+  readonly sourceFiles?: readonly {
+    readonly sourceId: string;
+    readonly rootId: string;
+    readonly files: readonly RetentionFile[];
+  }[];
   readonly blockers: readonly RetentionBlocker[];
   readonly registryFingerprint: string;
   readonly referenceFingerprint: string;
@@ -110,7 +130,7 @@ export interface RetentionPolicy {
 
 export interface RetentionPlanItem {
   readonly id: string;
-  readonly kind: "content-object" | RetentionResourceKind;
+  readonly kind: "content-object" | "database" | RetentionResourceKind;
   readonly rootId: string;
   readonly relativePath: string;
   readonly bytes: number;
@@ -150,11 +170,18 @@ export interface RetentionBatchItem {
   readonly state: "planned" | "quarantined" | "restored" | "purging" | "purged";
   readonly error: string | null;
   readonly purgeGuard: {
-    readonly sourceRevisions: Readonly<Record<string,string>>;
+    readonly sourceRevisions: Readonly<Record<string, string>>;
     readonly excludedSourceIds: readonly string[];
     readonly registryFingerprint: string;
     readonly otherResourceFingerprint: string;
   } | null;
+  readonly moves?: readonly {
+    readonly originalPath: string;
+    readonly quarantinePath: string;
+    readonly state: "planned" | "quarantined" | "restored";
+  }[];
+  readonly quarantineGuard?: NonNullable<RetentionBatchItem["purgeGuard"]>;
+  readonly quarantineDirectoryIdentity?: string;
 }
 
 export interface RetentionBatch {
