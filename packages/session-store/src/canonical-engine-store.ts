@@ -130,12 +130,13 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
 
   async recordCodexObservation(input: CodexObservationRecord): Promise<void> {
     if (input.authorityBinding === null) return;
-    this.database.exec("BEGIN IMMEDIATE");
+    const nested = this.database.isTransaction;
+    this.database.exec(nested ? "SAVEPOINT codex_observation" : "BEGIN IMMEDIATE");
     try {
       this.putCodexAuthorityBinding(input);
-      this.database.exec("COMMIT");
+      this.database.exec(nested ? "RELEASE codex_observation" : "COMMIT");
     } catch (error) {
-      try { this.database.exec("ROLLBACK"); } catch { /* preserve write failure */ }
+      try { this.database.exec(nested ? "ROLLBACK TO codex_observation; RELEASE codex_observation" : "ROLLBACK"); } catch { /* preserve write failure */ }
       throw error;
     }
   }
@@ -167,7 +168,8 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     const bodyObject = input.version === null
       ? null
       : await this.objectStore.put(Buffer.from(canonicalJson(input.version.body), "utf8"));
-    this.database.exec("BEGIN IMMEDIATE");
+    const nested = this.database.isTransaction;
+    this.database.exec(nested ? "SAVEPOINT canonical_commit" : "BEGIN IMMEDIATE");
     try {
       if (input.version === null) {
         const current = this.database.prepare(
@@ -188,10 +190,10 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
       if (input.derivation !== null) this.putDerivation(input.derivation);
       if (input.tombstone !== null) await this.canonical.saveTombstone(input.tombstone);
       if (input.projectionReceipt !== null) this.putProjectionReceipt(input.projectionReceipt);
-      this.database.exec("COMMIT");
+      this.database.exec(nested ? "RELEASE canonical_commit" : "COMMIT");
       return input.receipt;
     } catch (error) {
-      try { this.database.exec("ROLLBACK"); } catch { /* preserve commit failure */ }
+      try { this.database.exec(nested ? "ROLLBACK TO canonical_commit; RELEASE canonical_commit" : "ROLLBACK"); } catch { /* preserve commit failure */ }
       throw error;
     }
   }

@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  MAINTENANCE_SCHEMA_VERSION,
   MIGRATION_001,
   MIGRATION_002,
   MIGRATION_003,
@@ -67,7 +68,7 @@ describe("migration 011 MCSF other events", () => {
 
     const database = openMaintenanceDatabase(path);
     databases.push(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 20 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: MAINTENANCE_SCHEMA_VERSION });
     expect(database.prepare("SELECT id, kind FROM canonical_events ORDER BY sequence").all()).toEqual([
       { id: "legacy-opaque", kind: "opaque-unknown" },
     ]);

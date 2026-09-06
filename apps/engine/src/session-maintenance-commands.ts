@@ -206,6 +206,12 @@ export class SessionMaintenanceCommands {
       const workspaceId = tombstone?.previous_workspace_id ?? current?.workspaceId ?? null;
       if (tombstone !== undefined) database.prepare("UPDATE session_tombstones SET restored_at = ? WHERE logical_session_id = ?").run(at, logicalSessionId);
       database.prepare("UPDATE logical_sessions SET tombstoned_at = NULL, updated_at = ? WHERE id = ?").run(at, logicalSessionId);
+      // Mapping cleanup may retire an empty project. Restore this session's
+      // exact project membership so it is visible in the canonical directory.
+      database.prepare(`UPDATE logical_projects SET deleted_at = NULL, updated_at = ?
+        WHERE deleted_at IS NOT NULL AND id = (
+          SELECT project_id FROM project_memberships WHERE logical_session_id = ?
+        )`).run(at, logicalSessionId);
       database.prepare(
         `INSERT INTO workspace_memberships (logical_session_id, workspace_id, display_order, pinned, archived, revision)
          VALUES (?, ?, 0, 0, ?, ?)

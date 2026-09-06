@@ -49,6 +49,9 @@ import {
 } from "./dsh-gateway-connection.js";
 import { WriteService } from "./write-service.js";
 import { CodexImportService } from "./codex-import-service.js";
+import { CodexProjectMappingService } from "./codex-project-mapping.js";
+import { CodexProjectObserver } from "./codex-project-observer.js";
+import type { CodexCanonicalImportOptions } from "./codex-canonical-import.js";
 import { createRetentionComposition } from "./retention-composition.js";
 import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
 import { InstanceIntegrationService } from "./integrations/service.js";
@@ -224,11 +227,22 @@ async function createComposition(
   const canonicalEngine = coordinateAsyncMethods(new CanonicalSessionEngine(
     new SqliteCanonicalSessionEngineStore(repository.database, objectStore, writes),
   ), ["observeCodex", "retitleCodexMirror", "appendDsh", "importDshNative", "tombstone", "restore"], writes, "canonical-commit");
-  const codexImports = new CodexImportService({
+  const codexProjectMapping = new CodexProjectMappingService({ database: repository.database, writes, instances,
+    ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+  });
+  const createCodexImports = (projectScope: CodexCanonicalImportOptions["projectScope"]) => new CodexImportService({
     instances, adapters: readAdapters, canonicalEngine, writes,
+    ...(projectScope === undefined ? {} : { projectScope }),
     projectPort: new SqliteCodexProjectPort(new SqliteCanonicalRepository(repository.database)),
     evidencePort: evidenceStore,
     ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
+    ...(options.clock === undefined ? {} : { clock: options.clock }),
+  });
+  const projectScope: NonNullable<CodexCanonicalImportOptions["projectScope"]> = instance => codexProjectMapping.readScope(instance);
+  const codexImports = createCodexImports(projectScope);
+  const codexProjectObserver = new CodexProjectObserver({ instances, projectScope, importService: codexImports,
+    onStatus: status => { codexProjectMapping.setObserverStatus(status); },
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   const sessionAliases = new SqliteSessionAliasRepository(repository.database);
@@ -276,6 +290,16 @@ async function createComposition(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   return new SessionMaintenanceEngine({
+    codexProjectMapping,
+    codexProjectObserver,
+    beforeProjectionPrepare: async () => {
+      await codexProjectMapping.activateForStartup(async policy => {
+        const importer = createCodexImports(instance => codexProjectMapping.readScope(instance, policy));
+        const instanceIds = instances.filter(instance => instance.platform === "codex").map(instance => instance.id);
+        if (instanceIds.length > 0) await importer.run({ operationId: `mapping-startup-${crypto.randomUUID()}`, instanceIds, mode: "content" });
+      });
+      codexImports.clearChangeCache();
+    },
     integrations: new InstanceIntegrationService({
       stateRoot: options.stateRoot, writes,
       discover: async () => {

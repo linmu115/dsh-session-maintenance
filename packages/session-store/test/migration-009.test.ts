@@ -13,7 +13,7 @@ import { MIGRATION_005 } from "../src/migrations/005-native-mirrors.js";
 import { MIGRATION_006 } from "../src/migrations/006-workspace-directory.js";
 import { MIGRATION_007 } from "../src/migrations/007-canonical-session-source.js";
 import { MIGRATION_008 } from "../src/migrations/008-projection-runtime.js";
-import { MIGRATION_001 } from "../src/schema.js";
+import { MAINTENANCE_SCHEMA_VERSION, MIGRATION_001 } from "../src/schema.js";
 
 const roots: string[] = [];
 const databases: DatabaseSync[] = [];
@@ -58,7 +58,7 @@ describe("migration 009 logical projects", () => {
     const database = openMaintenanceDatabase(path);
     databases.push(database);
 
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 20 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: MAINTENANCE_SCHEMA_VERSION });
     expect(database.prepare(
       `SELECT name FROM sqlite_master WHERE type = 'table'
        AND name IN ('logical_projects', 'project_roots', 'project_memberships') ORDER BY name`,

@@ -6,6 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  MAINTENANCE_SCHEMA_VERSION,
   MIGRATION_001,
   MIGRATION_002,
   SqliteSessionRepository,
@@ -47,11 +48,9 @@ describe("SqliteSessionRepository", () => {
     let upgraded = openMaintenanceDatabase(dbPath);
     expect(
       upgraded.prepare("SELECT version FROM schema_migrations ORDER BY version").all(),
-    ).toEqual([
-      { version: 1 }, { version: 2 }, { version: 3 }, { version: 4 },
-      { version: 5 }, { version: 6 }, { version: 7 }, { version: 8 },
-      { version: 9 }, { version: 10 }, { version: 11 }, { version: 12 }, { version: 13 }, { version: 14 }, { version: 15 }, { version: 16 }, { version: 17 }, { version: 19 }, { version: 20 },
-    ]);
+    ).toEqual(Array.from({ length: MAINTENANCE_SCHEMA_VERSION }, (_, index) => ({ version: index + 1 }))
+      // The migration chain has no registered version 18.
+      .filter(({ version }) => version !== 18));
     expect(
       upgraded.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'transactions'").get(),
     ).toEqual({ name: "transactions" });

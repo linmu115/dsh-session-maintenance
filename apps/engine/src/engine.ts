@@ -109,6 +109,8 @@ import type { StableLogicalReference, StableLogicalReferenceResolution } from "@
 import { JobRunner } from "./jobs/job-runner.js";
 import { JobStore } from "./jobs/job-store.js";
 import type { CodexImportService } from "./codex-import-service.js";
+import type { CodexProjectMappingService } from "./codex-project-mapping.js";
+import type { CodexProjectObserver } from "./codex-project-observer.js";
 import type { RetentionService } from "./retention-service.js";
 import type { WriteService } from "./write-service.js";
 import { SessionMaintenanceCommands } from "./session-maintenance-commands.js";
@@ -217,6 +219,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly retention: RetentionService | undefined;
   readonly integrations: InstanceIntegrationService | undefined;
   readonly workspaceSync: WorkspaceSyncPolicyService | undefined;
+  readonly codexProjectMapping: CodexProjectMappingService | undefined;
+  readonly codexProjectObserver: CodexProjectObserver | undefined;
   readonly jobs: JobRunner;
   readonly jobStore: JobStore;
   private readonly codexImports: CodexImportService | undefined;
@@ -260,9 +264,13 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly codexImports?: CodexImportService;
     readonly integrations?: InstanceIntegrationService;
     readonly workspaceSync?: WorkspaceSyncPolicyService;
+    readonly codexProjectMapping?: CodexProjectMappingService;
+    readonly codexProjectObserver?: CodexProjectObserver;
   }) {
     this.integrations = input.integrations;
     this.workspaceSync = input.workspaceSync;
+    this.codexProjectMapping = input.codexProjectMapping;
+    this.codexProjectObserver = input.codexProjectObserver;
     this.writes = input.writes;
     this.retention = input.retention;
     this.codexImports = input.codexImports;
@@ -331,6 +339,14 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   }
 
   async prepareProjectionRuntimeRun(input: RuntimeBrokerPrepareRunRequest): Promise<RuntimeBrokerPreparedRun> {
+    if (this.codexProjectMapping?.readPolicy().configured) {
+      // The activation and materialization share one write scope, so a second
+      // startup cannot slip between pruning and acquiring the runtime lease.
+      return this.runWrite("project-mapping-startup", async () => {
+        await this.beforeProjectionPrepare();
+        return this.runtimeBroker.prepareRun(input);
+      });
+    }
     await this.beforeProjectionPrepare();
     const instanceIds = this.instances.filter((instance) => instance.platform === "codex").map((instance) => instance.id);
     if (this.codexImports !== undefined && instanceIds.length > 0) {
@@ -624,6 +640,17 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   }
 
   async scan(request: ScanRequest): Promise<DiscoveryResult> {
+    if (this.codexProjectMapping?.readPolicy().activeConfigured) {
+      const ids = this.instances.filter(instance => instance.platform === "codex" && (request.instanceIds === undefined || request.instanceIds.includes(instance.id))).map(instance => instance.id);
+      const database = this.repository.database;
+      const count = (table: string) => Number((database.prepare(`SELECT count(*) AS n FROM ${table}`).get() as { n: number }).n);
+      const before = [count("logical_sessions"), count("platform_bindings"), count("session_versions")];
+      if (ids.length > 0) await this.importCodex({ operationId: `scoped-scan-${crypto.randomUUID()}`, instanceIds: ids, mode: "content" });
+      const otherIds = this.instances.filter(instance => instance.platform !== "codex" && (request.instanceIds === undefined || request.instanceIds.includes(instance.id))).map(instance => instance.id);
+      const other = otherIds.length === 0 ? { createdLogicalSessions: 0, createdBindings: 0, createdVersions: 0, createdCandidates: 0, skippedSessions: 0, platformWrites: 0 as const } : await this.discovery.scanAll(otherIds);
+      this.lastScanAt = this.clock();
+      return { ...other, createdLogicalSessions: count("logical_sessions") - before[0]!, createdBindings: count("platform_bindings") - before[1]!, createdVersions: count("session_versions") - before[2]! };
+    }
     const result = await this.discovery.scanAll(request.instanceIds);
     this.lastScanAt = this.clock();
     return result;

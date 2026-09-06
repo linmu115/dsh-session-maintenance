@@ -10,7 +10,7 @@ describe("SqliteRuntimeProjectResolver", () => {
     database.exec(`
       PRAGMA foreign_keys = ON;
       CREATE TABLE logical_sessions (id TEXT PRIMARY KEY);
-      CREATE TABLE logical_projects (id TEXT PRIMARY KEY);
+      CREATE TABLE logical_projects (id TEXT PRIMARY KEY, deleted_at TEXT);
       CREATE TABLE project_roots (
         project_id TEXT NOT NULL REFERENCES logical_projects(id),
         normalized_root_path TEXT NOT NULL
@@ -30,7 +30,7 @@ describe("SqliteRuntimeProjectResolver", () => {
       );
       INSERT INTO logical_sessions VALUES ('logical-live');
       INSERT INTO logical_sessions VALUES ('logical-derived');
-      INSERT INTO logical_projects VALUES ('project-deepseek');
+      INSERT INTO logical_projects VALUES ('project-deepseek', NULL);
       INSERT INTO project_roots VALUES ('project-deepseek', 'd:\\ai\\deepseek');
       INSERT INTO workspace_memberships VALUES ('logical-live', 'workspace-independent');
       INSERT INTO session_derivations VALUES ('logical-derived', 'logical-live');
@@ -52,6 +52,8 @@ describe("SqliteRuntimeProjectResolver", () => {
     const database = new DatabaseSync(":memory:");
     database.exec(`
       CREATE TABLE project_roots (project_id TEXT NOT NULL, normalized_root_path TEXT NOT NULL);
+      CREATE TABLE logical_projects (id TEXT PRIMARY KEY, deleted_at TEXT);
+      INSERT INTO logical_projects VALUES ('project-a',NULL),('project-b',NULL);
       INSERT INTO project_roots VALUES ('project-a', 'd:\\shared'), ('project-b', 'd:\\shared');
     `);
     const resolver = new SqliteRuntimeProjectResolver(database);

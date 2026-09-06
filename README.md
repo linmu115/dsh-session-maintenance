@@ -2,7 +2,9 @@
 
 一个以 Canonical 会话、不可变版本图和可恢复运行投影管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。保留版本比较、Checkpoint、逻辑删除与恢复、稳定引用，以及明确发起的 Codex 延续任务。
 
-当前源码发行组合为 Engine **0.1.18**、Maintenance 插件 **0.2.20**，配套 Launcher **0.2.3** 与 Session Context Menu（SCM）**0.3.2**，本批部署目标为 DSH **0.1.2-rc.1 / web**。原 `4b49927` 的身份与空会话修复以及后续已提交重构保留在提交祖先中。
+当前源码发行组合为 Engine **0.1.19**、Maintenance 插件 **0.2.20**，配套 Launcher **0.2.3** 与 Session Context Menu（SCM）**0.3.2**，本批部署目标为 DSH **0.1.2-rc.1 / web**。原 `4b49927` 的身份与空会话修复以及后续已提交重构保留在提交祖先中。
+
+0.1.19 增加 [Codex 项目映射](docs/changes/2026-09-06-codex-project-mapping-engine.md)：在看板“同步”页勾选 Codex 项目会话文件夹，点击“保存为最新映射名单”，下次实例启动时切换范围。名单包含未来新增本地会话；空名单表示不映射任何项目。当前名单中的变化持续导入，范围外 Maintenance 会话在启动时移入可恢复删除状态，Codex 来源保持只读。项目归属依据显式项目 ID，与工作目录、原生回写工作区名单分别管理。
 
 本批包含静态会话阅读看板、实例接入管理、工作区同步名单及恢复/存储界面整理，验证边界见[看板候选记录](docs/validation/2026-09-06-dashboard-integrations.md)。0.1.18 补齐真实部署发现的[配置型 bundle 误判](docs/changes/integration-bundle-entry-20260906.md)和[既有依赖缓存兼容](docs/changes/integration-existing-store-20260906.md)。实际安装状态以带源码提交和产物摘要的部署记录为准，用户启动与界面验收单独记录。Codex 原生回写和五天正文版本自动删除仍未启用。早期[0.1.15 发布记录](docs/validation/2026-09-06-maintenance-0.1.15-live-release.md)与[审查存档](docs/validation/2026-09-05-maintenance-architecture-review.md)保留当时的事实快照。
 

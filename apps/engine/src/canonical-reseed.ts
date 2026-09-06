@@ -37,6 +37,7 @@ import {
 
 import { CodexCanonicalImportService, type CodexCanonicalImportResult } from "./codex-canonical-import.js";
 import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
+import { assertOfflineCodexPolicyEqual, copyOfflineCodexPolicy, offlineCodexProjectScope, readActiveOfflineCodexPolicy } from "./codex-project-mapping-offline.js";
 
 const SESSION_ARTIFACT = "session.jsonl.zstd";
 
@@ -262,6 +263,14 @@ async function reseedCanonicalCandidateWithinOwnership(input: CanonicalReseedInp
   if (input.codexInstance.platform !== "codex") throw new TypeError("Canonical reseed requires a Codex instance");
   const now = input.now ?? (() => new Date().toISOString());
   const createdAt = now();
+  const active = await readActiveOfflineCodexPolicy(input.stateRoot);
+  const policy = active?.policy ?? null;
+  const readPolicy = async () => {
+    const current = await readActiveOfflineCodexPolicy(input.stateRoot);
+    if (current?.path !== active?.path) throw new Error("OFFLINE_CODEX_ACTIVE_DATABASE_CHANGED");
+    assertOfflineCodexPolicyEqual(policy, current?.policy ?? null);
+    return policy;
+  };
   const path = candidatePath(input.stateRoot, input.candidateFile);
   try {
     await lstat(path);
@@ -280,6 +289,7 @@ async function reseedCanonicalCandidateWithinOwnership(input: CanonicalReseedInp
   const engine = new CanonicalSessionEngine(store);
   const repository = new SqliteCanonicalRepository(database);
   try {
+    copyOfflineCodexPolicy(database, policy, createdAt);
     await input.onStatus?.({ stage: "reseed.candidate.open", state: "succeeded", detail: path });
     const projectId = `project-maintenance-${sha256Canonical({
       name: input.maintenanceProjectName,
@@ -363,6 +373,7 @@ async function reseedCanonicalCandidateWithinOwnership(input: CanonicalReseedInp
 
     await input.onStatus?.({ stage: "reseed.codex.import", state: "started", detail: input.codexInstance.root });
     const codex = await new CodexCanonicalImportService({
+      projectScope: offlineCodexProjectScope(readPolicy, input.fixtureGuard),
       canonicalEngine: engine,
       projectPort: new SqliteCodexProjectPort(repository),
       evidencePort: evidenceStore,
@@ -383,6 +394,7 @@ async function reseedCanonicalCandidateWithinOwnership(input: CanonicalReseedInp
 
     await input.onStatus?.({ stage: "reseed.verify", state: "started", detail: path });
     const counts = verify(database, dshImported + codex.scanned);
+    await readPolicy();
     database.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     await input.onStatus?.({ stage: "reseed.verify", state: "succeeded", detail: `${counts.logicalSessions} sessions` });
     database.close();

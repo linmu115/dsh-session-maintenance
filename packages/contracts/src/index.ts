@@ -3,6 +3,7 @@ export const CONTRACT_SCHEMA_VERSION = 1 as const;
 export * from "./adapter-sdk.js";
 export * from "./adapters.js";
 export * from "./canonical.js";
+export * from "./codex-project-mapping.js";
 export * from "./continuations.js";
 export * from "./errors.js";
 export * from "./engine-connection.js";

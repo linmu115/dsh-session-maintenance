@@ -46,6 +46,7 @@ import {
 
 import {
   applyCodexCanonicalImportPlan,
+  assertCodexImportScope,
   visitCodexCanonicalImportPlan,
   type CanonicalImportPlanSummaryV1,
   type CodexCanonicalImportResult,
@@ -53,6 +54,7 @@ import {
 import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
 import { loadRepairPlan, RepairPlanWriter, visitRepairPlan } from "./conversation-repair-plan.js";
 import { assertDerivedParentForkBoundary } from "./conversation-derived-boundary.js";
+import { assertOfflineCodexPolicyEqual, assertOfflineSourcePolicy, offlineCodexProjectScope, readOfflineCodexPolicy } from "./codex-project-mapping-offline.js";
 
 export type ConversationTopologyRepairStage =
   | "repair.preview"
@@ -191,6 +193,7 @@ function sourceState(database: DatabaseSync): {
     "SELECT COALESCE(MAX(revision), 0) AS revision FROM canonical_change_log",
   ).get() as { readonly revision: number };
   const snapshot = {
+    ...(readOfflineCodexPolicy(database) === null ? {} : { codexProjectMappingPolicy: readOfflineCodexPolicy(database) }),
     schemaVersion: database.prepare(
       "SELECT COALESCE(MAX(version), 0) AS version FROM schema_migrations",
     ).get(),
@@ -256,6 +259,7 @@ async function buildStablePlan(input: ConversationTopologyRepairInput): Promise<
   const source = resolveSourcePath(input.stateRoot, input.sourceDatabasePath);
   const database = openReadOnlyDatabase(source);
   try {
+    await assertOfflineSourcePolicy(input.stateRoot, database);
     assertNoActiveProjectionRun(database);
     const before = sourceState(database);
     await status(input.onStatus, "repair.codex-plan", "started", `reading ${input.codexInstance.id} without write capability`);
@@ -263,6 +267,10 @@ async function buildStablePlan(input: ConversationTopologyRepairInput): Promise<
       const writer = await RepairPlanWriter.create(resolveCandidatePath(input.stateRoot, input.candidateFile));
       const plan = await visitCodexCanonicalImportPlan({
         instance: input.codexInstance,
+        projectScope: offlineCodexProjectScope(async () => {
+          await assertOfflineSourcePolicy(input.stateRoot, database);
+          return readOfflineCodexPolicy(database);
+        }, input.fixtureGuard),
         ...(input.fixtureGuard === undefined ? {} : { fixtureGuard: input.fixtureGuard }),
         visitSession: (item) => writer.capture(item),
       });
@@ -547,6 +555,12 @@ async function stageConversationTopologyRepairWithinOwnership(
 
   const source = openReadOnlyDatabase(sourcePath);
   try {
+    await assertOfflineSourcePolicy(input.stateRoot, source);
+    await assertCodexImportScope({
+      instance: input.codexInstance,
+      projectScope: offlineCodexProjectScope(() => readOfflineCodexPolicy(source), input.fixtureGuard),
+      ...(planned.plan.projectScope === undefined ? {} : { expectedScope: planned.plan.projectScope }),
+    });
     assertNoActiveProjectionRun(source);
     if (sourceState(source).digest !== input.expectedSourceDigest) {
       throw new Error("Maintenance source changed immediately before candidate backup");
@@ -564,6 +578,15 @@ async function stageConversationTopologyRepairWithinOwnership(
   const candidate = openMaintenanceDatabase(candidatePath);
   let failedStage: ConversationTopologyRepairStage = "repair.checkpoint";
   try {
+    const candidatePolicy = readOfflineCodexPolicy(candidate);
+    const projectScope = offlineCodexProjectScope(async () => {
+      await assertOfflineSourcePolicy(input.stateRoot, candidate);
+      const source = openReadOnlyDatabase(sourcePath);
+      try { assertOfflineCodexPolicyEqual(candidatePolicy, readOfflineCodexPolicy(source)); }
+      finally { source.close(); }
+      assertOfflineCodexPolicyEqual(candidatePolicy, readOfflineCodexPolicy(candidate));
+      return candidatePolicy;
+    }, input.fixtureGuard);
     assertNoActiveProjectionRun(candidate);
     const repository = new SqliteSessionRepository(candidate, objectStore);
     const checkpointId = `checkpoint-m06-${randomUUID()}` as CheckpointId;
@@ -600,8 +623,8 @@ async function stageConversationTopologyRepairWithinOwnership(
     await visitRepairPlan(frozen, async (item) => {
       const applied = await applyCodexCanonicalImportPlan({
         plan: {
-          schemaVersion: 1,
-          instanceId: planned.plan.instanceId,
+          ...planned.plan,
+          sourceInstance: input.codexInstance,
           scanned: 1,
           retried: 0,
           sessions: [item],
@@ -610,6 +633,7 @@ async function stageConversationTopologyRepairWithinOwnership(
         canonicalEngine: engine,
         projectPort,
         evidencePort: evidence,
+        projectScope,
       });
       codexImportCounts.created += applied.created;
       codexImportCounts.advanced += applied.advanced;
@@ -661,6 +685,8 @@ async function stageConversationTopologyRepairWithinOwnership(
       at,
     });
     verifyDatabase(candidate);
+    await assertCodexImportScope({ instance: input.codexInstance, projectScope,
+      ...(planned.plan.projectScope === undefined ? {} : { expectedScope: planned.plan.projectScope }) });
     await status(input.onStatus, "repair.rc1-verify", "succeeded", `verified=${verifiedRc1Sessions}`);
     candidate.exec("PRAGMA wal_checkpoint(TRUNCATE)");
     candidate.close();
@@ -718,6 +744,7 @@ async function activateConversationTopologyRepairCandidateWithinOwnership(input:
   }
   const source = openReadOnlyDatabase(sourcePath);
   try {
+    await assertOfflineSourcePolicy(input.stateRoot, source);
     assertNoActiveProjectionRun(source);
     if (sourceState(source).digest !== input.expectedSourceDigest) {
       throw new Error("Maintenance source changed after the repair candidate was staged");
@@ -730,6 +757,10 @@ async function activateConversationTopologyRepairCandidateWithinOwnership(input:
   }
   const candidate = openReadOnlyDatabase(candidatePath);
   try {
+    const source = openReadOnlyDatabase(sourcePath);
+    try { assertOfflineCodexPolicyEqual(readOfflineCodexPolicy(source), readOfflineCodexPolicy(candidate)); }
+    finally { source.close(); }
+    await assertOfflineSourcePolicy(input.stateRoot, candidate);
     verifyDatabase(candidate);
   } finally {
     candidate.close();

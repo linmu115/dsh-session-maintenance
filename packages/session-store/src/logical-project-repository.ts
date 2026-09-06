@@ -103,7 +103,8 @@ export class SqliteLogicalProjectRepository {
       projectRootSchema.parse(root);
       if (root.projectId !== projectId) throw new Error("Project root belongs to a different project");
     }
-    this.database.exec("BEGIN IMMEDIATE");
+    const nested = this.database.isTransaction;
+    this.database.exec(nested ? "SAVEPOINT project_roots_replace" : "BEGIN IMMEDIATE");
     try {
       this.database.prepare("DELETE FROM project_roots WHERE project_id = ?").run(projectId);
       const insert = this.database.prepare(
@@ -111,9 +112,9 @@ export class SqliteLogicalProjectRepository {
          VALUES (?, ?, ?, ?)`,
       );
       for (const root of roots) insert.run(projectId, root.path, root.normalizedPath, root.ordinal);
-      this.database.exec("COMMIT");
+      this.database.exec(nested ? "RELEASE project_roots_replace" : "COMMIT");
     } catch (error) {
-      try { this.database.exec("ROLLBACK"); } catch { /* preserve original error */ }
+      try { this.database.exec(nested ? "ROLLBACK TO project_roots_replace; RELEASE project_roots_replace" : "ROLLBACK"); } catch { /* preserve original error */ }
       throw error;
     }
   }

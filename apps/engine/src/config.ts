@@ -1,6 +1,7 @@
 import { open } from "node:fs/promises";
-import { mkdir, readFile, realpath, rename } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, stat } from "node:fs/promises";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 
 import type {
   CodexContinuationTarget,
@@ -12,6 +13,7 @@ import type {
 import { maintenanceSettingsSchema, maintenanceSettingsPatchSchema } from "@linmu/dsh-session-contracts";
 import { parse, stringify } from "yaml";
 import { offlineMaintenanceOperation } from "@linmu/dsh-session-store";
+import { assertOfflineCodexPolicyEqual, readOfflineCodexPolicy } from "./codex-project-policy-storage.js";
 
 export interface EngineConfig {
   readonly schemaVersion: 1;
@@ -163,11 +165,39 @@ export function activeDatabasePath(stateRoot: string, config: EngineConfig): str
   return join(stateRoot, config.databaseFile);
 }
 
+function databaseCodexPolicy(path: string) {
+  const database = new DatabaseSync(path, { readOnly: true });
+  try { return readOfflineCodexPolicy(database); }
+  finally { database.close(); }
+}
+
+async function assertDatabaseActivationPreservesCodexPolicy(stateRoot: string, config: EngineConfig, databaseFile: string): Promise<void> {
+  const currentPath = activeDatabasePath(stateRoot, config);
+  try { await stat(currentPath); }
+  catch (error) {
+    // Initial, unconfigured installations historically allow selecting their first database.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  let currentPolicy;
+  try { currentPolicy = databaseCodexPolicy(currentPath); }
+  catch (cause) {
+    throw new Error("DATABASE_ACTIVATION_CODEX_POLICY_UNREADABLE: cannot verify the active Codex project policy", { cause });
+  }
+  if (currentPolicy?.configured !== true) return;
+  try {
+    assertOfflineCodexPolicyEqual(currentPolicy, databaseCodexPolicy(join(stateRoot, databaseFile)));
+  } catch (cause) {
+    throw new Error("DATABASE_ACTIVATION_CODEX_POLICY_REJECTED: candidate must preserve the complete saved and active Codex project policy", { cause });
+  }
+}
+
 async function activateDatabaseFileWithinOwnership(stateRoot: string, databaseFile: string): Promise<EngineConfig> {
   if (!/^metadata(?:\.[a-z0-9-]+)?\.sqlite$/u.test(databaseFile)) {
     throw new TypeError("Invalid Maintenance database file pointer");
   }
   const config = await initializeStateRoot(stateRoot);
+  await assertDatabaseActivationPreservesCodexPolicy(stateRoot, config, databaseFile);
   const next = { ...config, databaseFile };
   await atomicWrite(configPathFor(stateRoot), stringify(next));
   return next;

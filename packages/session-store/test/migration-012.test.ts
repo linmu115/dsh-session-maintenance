@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { CanonicalSessionRecord, LogicalProjectId, LogicalSessionId, LogicalWorkspaceId } from "@linmu/dsh-session-contracts";
 
 import {
+  MAINTENANCE_SCHEMA_VERSION,
   MIGRATION_001,
   MIGRATION_002,
   MIGRATION_003,
@@ -81,7 +82,7 @@ describe("migration 012 canonical change journal", () => {
     const database = openMaintenanceDatabase(path);
     databases.push(database);
     const repository = new SqliteCanonicalRepository(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 20 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: MAINTENANCE_SCHEMA_VERSION });
     expect(await repository.listChanges({ afterRevision: 0, limit: 100 })).toMatchObject({
       throughRevision: 1,
       currentRevision: 1,

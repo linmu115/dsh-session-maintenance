@@ -14,7 +14,7 @@ import { MIGRATION_006 } from "../src/migrations/006-workspace-directory.js";
 import { MIGRATION_007 } from "../src/migrations/007-canonical-session-source.js";
 import { MIGRATION_008 } from "../src/migrations/008-projection-runtime.js";
 import { MIGRATION_009 } from "../src/migrations/009-logical-projects.js";
-import { MIGRATION_001 } from "../src/schema.js";
+import { MAINTENANCE_SCHEMA_VERSION, MIGRATION_001 } from "../src/schema.js";
 
 const roots: string[] = [];
 const databases: DatabaseSync[] = [];
@@ -68,7 +68,7 @@ describe("migration 010 runtime status stages", () => {
 
     const database = openMaintenanceDatabase(path);
     databases.push(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 20 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: MAINTENANCE_SCHEMA_VERSION });
     expect(database.prepare("SELECT id, stage FROM run_status_events ORDER BY sequence").all()).toEqual([
       { id: "status-v9", stage: "run.lease" },
     ]);

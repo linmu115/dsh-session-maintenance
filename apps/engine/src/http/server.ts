@@ -90,7 +90,9 @@ export async function startMaintenanceServer(input: {
     await writeFile(temporaryConnectionPath, `${JSON.stringify(descriptor)}\n`, { mode: 0o600, flag: "wx" });
     if (input.skipAcl !== true) await secureConnectionFile(temporaryConnectionPath);
     await rename(temporaryConnectionPath, connectionPath);
+    input.engine.codexProjectObserver?.start();
   } catch (error) {
+    await input.engine.codexProjectObserver?.stop();
     await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
     await jobs.stopImports();
     await input.engine.writes?.drain();
@@ -108,6 +110,7 @@ export async function startMaintenanceServer(input: {
       // SSE subscriptions otherwise keep close() waiting indefinitely. Closing
       // only event streams aborts their read loops while active requests drain.
       for (const response of responses) if (String(response.getHeader("content-type")).startsWith("text/event-stream")) response.end();
+      await input.engine.codexProjectObserver?.stop();
       await jobs.stopImports();
       await closed;
       await input.engine.writes?.drain();

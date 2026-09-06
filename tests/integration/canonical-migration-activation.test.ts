@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { activateDatabaseFile, initializeStateRoot, loadConfig } from "../../apps/engine/src/config.js";
 import {
+  MAINTENANCE_SCHEMA_VERSION,
   activateCanonicalMigration,
   previewCanonicalMigration,
   ZstdContentObjectStore,
@@ -124,7 +125,7 @@ describe("canonical migration activation", () => {
     });
 
     expect(activation).toMatchObject({
-      schemaVersion: 20,
+      schemaVersion: MAINTENANCE_SCHEMA_VERSION,
       sourcePreserved: true,
       pointerSwitchRequired: true,
       counts: { logicalSessions: 2, canonicalEvents: 2, logicalWorkspaces: 1, workspaceMemberships: 2 },

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { AdapterId } from "@linmu/dsh-session-contracts";
 
 import {
+  MAINTENANCE_SCHEMA_VERSION,
   SqliteAdapterEvidenceStore,
   SqliteSessionRepository,
   ZstdContentObjectStore,
@@ -49,7 +50,7 @@ describe("Adapter evidence store", () => {
       expect(await new SqliteSessionRepository(database, objectStore).listReachableObjectIds())
         .toContain(first.objectId);
       expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get())
-        .toEqual({ version: 20 });
+        .toEqual({ version: MAINTENANCE_SCHEMA_VERSION });
     } finally {
       database.close();
     }
