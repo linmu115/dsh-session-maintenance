@@ -43,18 +43,21 @@ export interface ClientContext {
 }
 
 export interface MaintenanceActions {
-  invoke(input: ProxyRequest): Promise<ProxyResult>;
+  invoke(input: ProxyRequest, options?: { readonly signal?: AbortSignal }): Promise<ProxyResult>;
 }
 
 export function createMaintenanceActions(fetchImpl: typeof fetch = fetch): MaintenanceActions {
   return {
-    async invoke(input) {
+    async invoke(input, options) {
+      options?.signal?.throwIfAborted();
       const response = await fetchImpl("/dsh-session-maintenance/api", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify(input),
+        ...(options?.signal === undefined ? {} : { signal: options.signal }),
       });
       const value = await response.json() as ProxyResult | { readonly ok: false; readonly error?: string };
+      options?.signal?.throwIfAborted();
       if (!response.ok || value.ok !== true) throw new Error("error" in value ? value.error ?? "维护操作失败" : "维护操作失败");
       return value;
     },

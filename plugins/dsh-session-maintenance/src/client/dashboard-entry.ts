@@ -1,11 +1,13 @@
 import type { ClientContext, MaintenanceActions } from "./context.js";
 
-export async function openDashboard(actions: MaintenanceActions, instanceId?: string, sessionId?: string): Promise<string> {
+export async function openDashboard(actions: MaintenanceActions, instanceId?: string, sessionId?: string, signal?: AbortSignal): Promise<string> {
+  signal?.throwIfAborted();
   const result = await actions.invoke({
     operation: "dashboard",
     ...(instanceId === undefined ? {} : { instanceId }),
     ...(sessionId === undefined ? {} : { sessionId }),
-  });
+  }, signal === undefined ? undefined : { signal });
+  signal?.throwIfAborted();
   if (result.url === undefined) throw new Error("维护引擎没有返回 Dashboard 启动链接");
   window.open(result.url, "_blank", "noopener,noreferrer");
   return result.message;

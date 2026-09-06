@@ -27,6 +27,13 @@ export function apply(ctx: ClientContext): void {
           console.warn("[dsh-session-maintenance] 无法打开看板", error);
         });
       }),
+      // SCM owns row discovery and exact selection. Its API does not depend on
+      // Maintenance's optional legacy row decoration selectors.
+      installContextMenu({
+        actions,
+        snapshot: () => injected.sessions.list.getSnapshot(),
+        onFeedback: (message) => { console.info(`[dsh-session-maintenance] ${message}`); },
+      }),
     ];
     const contract = verifyUiContract(injected);
     if (!contract.compatible) {
@@ -34,11 +41,6 @@ export function apply(ctx: ClientContext): void {
     } else {
       cleanup.push(
         decorateSessionRows(injected),
-        installContextMenu({
-          actions,
-          snapshot: () => injected.sessions.list.getSnapshot(),
-          onFeedback: (message) => { console.info(`[dsh-session-maintenance] ${message}`); },
-        }),
       );
     }
     injected.effect(() => () => {
