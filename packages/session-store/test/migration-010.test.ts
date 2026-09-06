@@ -68,7 +68,7 @@ describe("migration 010 runtime status stages", () => {
 
     const database = openMaintenanceDatabase(path);
     databases.push(database);
-    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 17 });
+    expect(database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({ version: 19 });
     expect(database.prepare("SELECT id, stage FROM run_status_events ORDER BY sequence").all()).toEqual([
       { id: "status-v9", stage: "run.lease" },
     ]);

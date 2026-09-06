@@ -32,3 +32,7 @@ export * from "./object-store.js";
 export * from "./repository.js";
 export * from "./schema.js";
 export * from "./canonical-projection-source.js";
+export * from "./migrations/019-retention-registry.js";
+export * from "./retention-paths.js";
+export * from "./retention-repository.js";
+export * from "./retention-policy.js";

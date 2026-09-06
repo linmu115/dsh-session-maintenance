@@ -124,7 +124,7 @@ describe("canonical migration activation", () => {
     });
 
     expect(activation).toMatchObject({
-      schemaVersion: 17,
+      schemaVersion: 19,
       sourcePreserved: true,
       pointerSwitchRequired: true,
       counts: { logicalSessions: 2, canonicalEvents: 2, logicalWorkspaces: 1, workspaceMemberships: 2 },

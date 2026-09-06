@@ -20,6 +20,7 @@ import { MIGRATION_015 } from "./migrations/015-projection-delta-stage.js";
 import { MIGRATION_016 } from "./migrations/016-projection-cache-retained-stage.js";
 import { MIGRATION_017 } from "./migrations/017-version-metadata-snapshots.js";
 import { reconstructCurrentVersionMetadata } from "./version-metadata.js";
+import { MIGRATION_019 } from "./migrations/019-retention-registry.js";
 
 interface VersionRow {
   readonly version: number | null;
@@ -370,5 +371,17 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
     }
   }
 
+  if (currentVersion < 19) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_019);
+      database.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(19, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) {
+      try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
+      database.close();
+      throw error;
+    }
+  }
   return database;
 }
