@@ -162,6 +162,41 @@ describe("instance onboarding", () => {
     expect((await f.discover()).targets[0]!.target.status).toBe("unsupported");
   });
 
+  it("accepts manifest-only composition bundles while still requiring runtime module entries", async () => {
+    const f = await fixture();
+    const name = "dsh-obsidian-session-reference-suite";
+    const root = join(f.profileRoot, "node_modules", name);
+    await json(join(root, "package.json"), {
+      name, version: "0.3.2", type: "module",
+      exports: { "./cordis.patch.yml": "./cordis.patch.yml", "./package.json": "./package.json" },
+      dsh: { bundle: { patch: "./cordis.patch.yml" } },
+    });
+    await writeFile(join(root, "cordis.patch.yml"), "- insert:\n    - id: reference-suite\n      name: 'cordis:group'\n      group: true\n      config: []\n");
+    await json(join(f.profileRoot, "package.json"), { dsh: { profile: { bundles: ["@deepseek-ai/dsh-web-app", "dsh-session-maintenance", name] } } });
+    const found = (await f.discover()).targets[0]!;
+    expect(found.target).toMatchObject({ status: "available", issues: [] });
+    expect((await f.service.action(found.target.id, "connect")).targets[0]!.status).toBe("connected");
+    await unlink(join(f.profileRoot, "node_modules", "@deepseek-ai", "dsh-session", "index.js"));
+    expect((await f.discover()).targets[0]!.target.issues).toContain("dsh-session 未安装或与实例版本不一致。");
+  });
+
+  it.each(["- insert: [", "not: a-patch-list", "missing", "outside-package"])("rejects a manifest-only bundle with an invalid patch: %s", async invalid => {
+    const f = await fixture();
+    const name = "synthetic-composition-bundle";
+    const root = join(f.profileRoot, "node_modules", name);
+    await json(join(root, "package.json"), {
+      name, version: "1.0.0", exports: { "./package.json": "./package.json" },
+      dsh: { bundle: { patch: invalid === "outside-package" ? "../outside.patch.yml" : "./cordis.patch.yml" } },
+    });
+    if (invalid === "outside-package") await writeFile(join(root, "..", "outside.patch.yml"), "[]");
+    else if (invalid !== "missing") await writeFile(join(root, "cordis.patch.yml"), invalid);
+    await json(join(f.profileRoot, "package.json"), { dsh: { profile: { bundles: ["@deepseek-ai/dsh-web-app", "dsh-session-maintenance", name] } } });
+    const found = (await f.discover()).targets[0]!;
+    expect(found.target.status).toBe("unsupported");
+    expect(found.target.issues).toContain("此配置包含无法加载的插件组件，请在 Launcher 中修复后重新检查。");
+    await expect(f.service.action(found.target.id, "connect")).rejects.toMatchObject({ code: "INTEGRATION_UNSUPPORTED" });
+  });
+
   it("finds built-in Web bundles from the CLI before any profile has been launched", async () => {
     const f = await fixture();
     const previous = join(f.profileRoot, "node_modules", "@deepseek-ai", "dsh-web-app");

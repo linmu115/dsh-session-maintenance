@@ -59,7 +59,7 @@ function compatiblePlugin(version: string | null): boolean {
 function withinRoots(path: string, roots: readonly string[]): boolean {
   return roots.some(root => { const part = relative(root, path); return part !== ".." && !part.startsWith(`..${sep}`) && !isAbsolute(part); });
 }
-async function resolvePackage(anchor: string, name: string, roots: readonly string[]): Promise<{ path: string; version: string } | null> {
+async function resolvePackageManifest(anchor: string, name: string, roots: readonly string[]): Promise<{ path: string; version: string } | null> {
   try {
     const require = createRequire(await realpath(anchor));
     let manifest: string | undefined;
@@ -74,15 +74,25 @@ async function resolvePackage(anchor: string, name: string, roots: readonly stri
     const path = await realpath(manifest);
     if (!withinRoots(path, roots)) return null;
     const value = JSON.parse(await readFile(path, "utf8")) as { name?: unknown; version?: unknown };
-    const entry = await realpath(require.resolve(name));
-    if (value.name !== name || typeof value.version !== "string" || !withinRoots(entry, roots) || !(await stat(entry)).isFile()) return null;
+    if (value.name !== name || typeof value.version !== "string") return null;
     return { path, version: value.version };
+  } catch { return null; }
+}
+
+async function resolvePackage(anchor: string, name: string, roots: readonly string[]) {
+  const manifest = await resolvePackageManifest(anchor, name, roots);
+  if (manifest === null) return null;
+  try {
+    const require = createRequire(await realpath(anchor));
+    const entry = await realpath(require.resolve(name));
+    return withinRoots(entry, roots) && (await stat(entry)).isFile() ? manifest : null;
   } catch { return null; }
 }
 
 async function resolveBundle(cliManifest: string, profileManifest: string, name: string, roots: readonly string[]) {
   // The verified official loader selects installAnchor first, then the profile.
-  const selected = await resolvePackage(cliManifest, name, roots) ?? await resolvePackage(profileManifest, name, roots);
+  // A bundle is a manifest and patch layer; pure composition bundles need no JS entry.
+  const selected = await resolvePackageManifest(cliManifest, name, roots) ?? await resolvePackageManifest(profileManifest, name, roots);
   if (selected === null) return null;
   try {
     const manifest = z.object({ dsh: z.object({ bundle: z.object({ patch: z.string().min(1) }) }) }).parse(await readJsonIfPresent(selected.path));
@@ -172,11 +182,12 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
           if (installed !== version.version) issues.push(`${name} 未安装或与实例版本不一致。`);
         }
         const plugin = await resolveBundle(join(cliRoot, "package.json"), join(profileRoot, "package.json"), "dsh-session-maintenance", packageRoots);
+        const pluginRuntime = await resolvePackage(join(cliRoot, "package.json"), "dsh-session-maintenance", packageRoots) ?? await resolvePackage(join(profileRoot, "package.json"), "dsh-session-maintenance", packageRoots);
         const pluginVersion = plugin?.version ?? null;
         const bundles = (profile as { dsh?: { profile?: { bundles?: unknown } } }).dsh?.profile?.bundles;
         const webApp = await resolveBundle(join(cliRoot, "package.json"), join(profileRoot, "package.json"), "@deepseek-ai/dsh-web-app", packageRoots);
         if (!Array.isArray(bundles) || !bundles.includes("@deepseek-ai/dsh-web-app") || webApp?.version !== version.version) issues.push("此配置没有启用匹配版本的 Web 应用，Launcher 不会按 Web 实例启动。");
-        const pluginReady = compatiblePlugin(pluginVersion) && plugin !== null && maintenanceIntegrationBundleReady(plugin.patches) && Array.isArray(bundles) && bundles.includes("dsh-session-maintenance");
+        const pluginReady = compatiblePlugin(pluginVersion) && plugin !== null && pluginRuntime?.path === plugin.path && maintenanceIntegrationBundleReady(plugin.patches) && Array.isArray(bundles) && bundles.includes("dsh-session-maintenance");
         const extraBundles = [];
         if (Array.isArray(bundles)) for (const name of bundles) {
           if (name === "dsh-session-maintenance" || name === "@deepseek-ai/dsh-web-app") continue;
