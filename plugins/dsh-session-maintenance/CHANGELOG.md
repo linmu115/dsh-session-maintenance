@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.19 - 2026-09-06
+
+- Open the full Dashboard from settings and the optional sidebar without
+  resolving the currently selected native session. New, unmapped or stale
+  selections no longer block the global Dashboard entry.
+- Keep session context-menu navigation bound to its exact selected session;
+  an unavailable mapping still produces an error for that targeted action.
+- Add a regression exercising the actual settings button and restricted proxy
+  together, including the active-projection SESSION_NOT_MAPPED response.
+
 ## 0.2.18 - 2026-09-06
 
 - Register Maintenance actions with Session Context Menu API 1 (SCM 0.3.2),

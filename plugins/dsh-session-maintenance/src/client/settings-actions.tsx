@@ -192,7 +192,7 @@ export function SessionMaintenanceSettingsSection(props: SettingsSectionProps) {
             return { message: result.message, ...(reference === undefined ? {} : { reference }) };
           }); }}>同步当前会话</button>
           <button type="button" disabled={busy} onClick={() => { void run(async () => ({
-            message: await openDashboard(props.actions, props.instanceId, props.currentSessionId()),
+            message: await openDashboard(props.actions, props.instanceId),
           })); }}>打开完整看板</button>
           <button type="button" disabled={busy} onClick={() => { void hydrate(); }}>重新读取参数</button>
         </div>

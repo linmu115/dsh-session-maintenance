@@ -22,8 +22,7 @@ export function apply(ctx: ClientContext): void {
         currentSessionId: () => injected.sessions.list.getSnapshot().current,
       }),
       registerOptionalSidebar(injected, () => {
-        const sessionId = injected.sessions.list.getSnapshot().current;
-        void openDashboard(actions, undefined, sessionId).catch((error) => {
+        void openDashboard(actions).catch((error) => {
           console.warn("[dsh-session-maintenance] 无法打开看板", error);
         });
       }),
