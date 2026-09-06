@@ -82,8 +82,9 @@ export function StorageGovernancePage({ api }: { readonly api: StorageGovernance
   };
   const resources = plan?.items.filter((item) => item.kind !== "content-object") ?? [];
   return <>
-    <div className="dsm-page-heading"><div><h2>存储治理</h2><p>先检查保护原因，再隔离可回收副本。所有现有会话版本正文继续保留。</p></div></div>
+    <div className="dsm-page-heading"><div><h2>存储空间</h2><p>查看已登记副本的占用、保护原因与可回收空间。所有现有会话版本正文继续保留。</p></div></div>
     <Surface title="回收预览">
+      <div className="storage-panel-body">
       <div className="dsm-action-row">
         <Button disabled={busy} onClick={() => void act(async (signal) => { const result = await api.discoverRetention(signal); if (result.unknownPaths.length > 0) throw new Error(`已登记 ${result.registeredResourceIds.length} 项；另有 ${result.unknownPaths.length} 处来源未知，请在登记清单中核对位置。`); }, "已识别有明确来源的运行、缓存和备份。")}>识别已有副本</Button>
         <Button disabled={busy} onClick={() => void act(async () => undefined, "预览已更新。")}>重新预览</Button>
@@ -92,12 +93,12 @@ export function StorageGovernancePage({ api }: { readonly api: StorageGovernance
       {notice === undefined ? null : <p role="status">{notice}</p>}
       {plan === undefined ? error === undefined ? <LoadingState label="正在核对引用与副本…" /> : null : <>
         <div className="dsm-metrics">
-          <Metric label="受保护占用" value={storageBytes(plan.protectedBytes)} />
-          <Metric label="可隔离的副本" value={storageBytes(plan.executableBytes)} />
+          <Metric label="已登记占用" value={storageBytes(plan.items.reduce((sum, item) => sum + item.bytes, 0))} /><Metric label="受保护占用" value={storageBytes(plan.protectedBytes)} />
+          <Metric label="可回收副本（先隔离）" value={storageBytes(plan.executableBytes)} />
           <Metric label="孤儿对象预览（仅统计）" value={storageBytes(plan.items.filter((item) => item.kind === "content-object" && item.disposition === "candidate").reduce((sum, item) => sum + item.bytes, 0))} />
           <Metric label="缓存仍超出目标" value={storageBytes(plan.cacheBytesAboveTarget)} />
         </div>
-        <p>完成运行保留 {plan.policy.finishedRunHours} 小时，完成恢复的证据保留 {plan.policy.recoveredRunHours} 小时；保留最近 {plan.policy.automaticBackupsToKeep} 份有效自动备份。缓存目标 {storageBytes(plan.policy.cacheTargetBytes)}。</p>
+        <p>受保护空间仍被会话、恢复点或未完成操作使用，不能回收。可回收量是当前预览允许隔离的副本；隔离不等于立即释放磁盘空间。统计仅覆盖已登记内容。</p><p>完成运行保留 {plan.policy.finishedRunHours} 小时，完成恢复的证据保留 {plan.policy.recoveredRunHours} 小时；保留最近 {plan.policy.automaticBackupsToKeep} 份有效自动备份。缓存目标 {storageBytes(plan.policy.cacheTargetBytes)}。</p>
         {plan.blockers.length === 0 ? null : <div role="status"><strong>以下证据尚未齐全，当前计划不能执行：</strong><ul>{plan.blockers.map((blocker, index) => <li key={index}><code>{blocker.source}</code>：{blocker.detail}</li>)}</ul></div>}
         {resources.length === 0 ? <EmptyState title="尚无已登记的运行副本或缓存" description="使用“识别已有副本”读取已有来源；未知目录会继续保留。" /> : <table><thead><tr><th>副本</th><th>占用</th><th>状态与原因</th><th>操作</th></tr></thead><tbody>{resources.map((item) => <tr key={item.id}>
           <td>{storageItemLabel(item)}<details><summary>位置与标识</summary><code>{item.rootId}/{item.relativePath}</code><p>{item.id}</p></details></td>
@@ -111,6 +112,7 @@ export function StorageGovernancePage({ api }: { readonly api: StorageGovernance
         </div> : null}
         <p>隔离后的 {plan.policy.quarantineHours} 小时内可以恢复。最终释放需再次核对引用，宽限期到达后仍需手动执行。</p>
       </>}
+      </div>
     </Surface>
     {registry === undefined ? null : <RetentionRegistryPanel api={api} registry={registry} busy={busy} act={act} />}
     <Surface title="隔离与恢复记录">

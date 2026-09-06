@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
 
-import type { CanonicalEventV1, CanonicalWorkspaceDirectory } from "@linmu/dsh-session-contracts";
+import type { CanonicalDashboardEvent, CanonicalEventV1, CanonicalWorkspaceDirectory } from "@linmu/dsh-session-contracts";
 
 import { CanonicalEventView, canonicalEventPresentation } from "../src/canonical-event-view.js";
 import { canonicalOriginLabel } from "../src/canonical-labels.js";
@@ -46,11 +46,11 @@ describe("canonical dashboard workspace model", () => {
       heldOut: true,
       text: "此事件类型未被当前适配器解释，原始数据已留置且不会执行。",
     });
-    const message = { ...unknown, id: "event-message", kind: "assistant-message", role: "assistant" } as CanonicalEventV1;
+    const message = { ...unknown, id: "event-message", kind: "assistant-message", role: "assistant", readableText: unknown.content } as CanonicalDashboardEvent;
     expect(canonicalEventPresentation(message)).toEqual({ heldOut: false, text: "<img src=x onerror=alert(1)>" });
     const html = renderToStaticMarkup(createElement(CanonicalEventView, { event: message }));
-    expect(html).not.toContain("onerror");
-    expect(html).not.toContain("<img src=x");
+    expect(html).toContain("&lt;img"); // Raw inspection is escaped text, never executable markup.
+    expect(html).not.toContain("<img");
 
     const other = {
       ...unknown,
@@ -69,6 +69,31 @@ describe("canonical dashboard workspace model", () => {
     expect(canonicalEventPresentation(other)).toEqual({ heldOut: true, text: "仅作为维护记录展示。" });
   });
 
+  it("folds supporting records", () => {
+    for (const kind of ["reasoning", "tool-call", "tool-result", "system-metadata"] as const) {
+      const event = { id: kind, kind, role: "assistant", sequence: 1, source: { platform: "dsh", instanceId: "synthetic" }, content: "supporting record", rawPayload: null } as CanonicalEventV1;
+      const html = renderToStaticMarkup(createElement(CanonicalEventView, { event }));
+      expect(html).toContain('<details class="event-supporting">');
+      expect(html).not.toContain(" open=");
+    }
+  });
+
+  it("renders only query-provided readable text without inspecting opaque message evidence", () => {
+    const event: CanonicalDashboardEvent = { schemaVersion: 1, id: "readable-assistant", logicalSessionId: "logical-synthetic" as never,
+      kind: "assistant-message", role: "assistant", sequence: 1, contentDigest: "sha256:synthetic", extensions: {},
+      source: { platform: "dsh", instanceId: "synthetic", sessionId: "native-synthetic", eventId: null, cursor: null }, content: { opaque: { text: "source evidence" } },
+      readableText: "hello", rawPayload: null,
+    };
+    const html = renderToStaticMarkup(createElement(CanonicalEventView, { event }));
+    expect(html).toMatch(/<div class="safe-markdown"[^>]*><p>hello<\/p><\/div>/u);
+    expect(html).not.toContain('<p>source evidence</p>');
+    const unavailable = renderToStaticMarkup(createElement(CanonicalEventView, { event: { ...event, readableText: null } }));
+    expect(unavailable).toContain("这条消息没有可显示的文字");
+    expect(unavailable).not.toContain('class="safe-markdown"');
+    const { readableText: _text, ...legacyEvent } = event;
+    const legacy = renderToStaticMarkup(createElement(CanonicalEventView, { event: legacyEvent }));
+    expect(legacy).toContain("当前引擎未提供可读正文");
+  });
   it("groups sessions by project while preserving workspace as separate detail", () => {
     const directory = {
       schemaVersion: 1,

@@ -215,7 +215,7 @@ export function SettingsPage(props: { readonly api: OperationsApi }) {
   const [error, setError] = useState<string>();
   useEffect(() => {
     const controller = new AbortController();
-    void props.api.getSettings(controller.signal).then((next) => { setValue(next); setDraft(next); }, (reason: unknown) => setError(reason instanceof Error ? reason.message : "设置不可用"));
+    void props.api.getSettings(controller.signal).then((next) => { if (!controller.signal.aborted) { setValue(next); setDraft(next); } }, (reason: unknown) => { if (!controller.signal.aborted) setError(reason instanceof Error ? reason.message : "设置不可用"); });
     return () => controller.abort();
   }, [props.api]);
   if (error !== undefined && draft === undefined) return <Surface><EmptyState kind="warning" title="设置不可用" description={error} /></Surface>;
@@ -223,18 +223,14 @@ export function SettingsPage(props: { readonly api: OperationsApi }) {
   const set = <K extends keyof MaintenanceSettings>(key: K, next: MaintenanceSettings[K]) => setDraft({ ...draft, [key]: next });
   const save = async () => {
     setError(undefined); setMessage(undefined);
-    try { const next = await props.api.patchSettings(draft); setValue(next); setDraft(next); setMessage("设置已保存"); }
+    try { const next = await props.api.patchSettings({ scanScope: draft.scanScope, backupRetention: draft.backupRetention, allowBatchSafeApply: draft.allowBatchSafeApply }); setValue(next); setDraft(next); setMessage("设置已保存"); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "设置保存失败"); }
   };
-  return <><div className="dsm-page-heading"><div><h2>设置</h2><p>这里只登记平台和工作区 ID；路径发现与格式知识仍封装在 Engine。</p></div></div><Surface title="同步策略" action={<Button tone="primary" disabled={JSON.stringify(value) === JSON.stringify(draft)} onClick={() => void save()}>保存设置</Button>}><div className="settings-form">
-    <label className="field"><span>Codex 实例 ID</span><input value={draft.codexInstanceId ?? ""} onChange={(event) => set("codexInstanceId", event.target.value || null)} /></label>
-    <label className="field"><span>DSH 实例 ID</span><input value={draft.dshInstanceId ?? ""} onChange={(event) => set("dshInstanceId", event.target.value || null)} /></label>
-    <label className="field"><span>工作区映射 ID</span><input value={draft.workspaceMappingId ?? ""} onChange={(event) => set("workspaceMappingId", event.target.value || null)} /></label>
+  return <><Surface title="维护偏好" action={<Button tone="primary" disabled={JSON.stringify(value) === JSON.stringify(draft)} onClick={() => void save()}>保存设置</Button>}><div className="settings-form">
     <label className="field"><span>扫描范围</span><select value={draft.scanScope} onChange={(event) => set("scanScope", event.target.value as MaintenanceSettings["scanScope"])}><option value="current">当前登记</option><option value="registered">全部登记实例</option></select></label>
     <label className="field"><span>备份保留事务数</span><input type="number" min={1} max={10_000} value={draft.backupRetention} onChange={(event) => set("backupRetention", Number(event.target.value))} /></label>
-    <label className="toggle-field"><input type="checkbox" checked={draft.syncSingleSidedTitle} onChange={(event) => set("syncSingleSidedTitle", event.target.checked)} /><span>同步单边标题变化</span></label>
-    <label className="toggle-field"><input type="checkbox" checked={draft.syncArchive} onChange={(event) => set("syncArchive", event.target.checked)} /><span>双向同步归档状态</span></label>
     <label className="toggle-field"><input type="checkbox" checked={draft.allowBatchSafeApply} onChange={(event) => set("allowBatchSafeApply", event.target.checked)} /><span>允许批量应用安全计划</span></label>
-    {message === undefined ? null : <p className="job-feedback">{message}</p>}{error === undefined ? null : <p className="inline-error">{error}</p>}
+    <details><summary>历史配置标识（只读）</summary><p>接入请使用上方“接入管理”；同步范围请在“同步”页设置。历史同步开关不代表原生回写已启用。</p><dl><dt>Codex 实例</dt><dd>{draft.codexInstanceId ?? "未登记"}</dd><dt>DSH 实例</dt><dd>{draft.dshInstanceId ?? "未登记"}</dd><dt>工作区映射</dt><dd>{draft.workspaceMappingId ?? "未登记"}</dd></dl></details>
+    {message === undefined ? null : <p role="status" className="job-feedback">{message}</p>}{error === undefined ? null : <p className="inline-error">{error}</p>}
   </div></Surface></>;
 }

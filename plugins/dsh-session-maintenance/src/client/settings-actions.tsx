@@ -4,7 +4,7 @@ import type { ClientSlots, MaintenanceActions } from "./context.js";
 import { openDashboard } from "./dashboard-entry.js";
 
 export const PANEL_FIELDS = [
-  "codexInstanceId", "dshInstanceId", "workspaceMappingId", "syncSingleSidedTitle", "scanScope", "backupRetention", "allowBatchSafeApply",
+  "codexInstanceId", "dshInstanceId", "workspaceMappingId", "scanScope", "backupRetention", "allowBatchSafeApply",
 ] as const;
 
 export const SETTINGS_SECTION_REGISTRATION = {
@@ -20,7 +20,6 @@ interface MaintenanceSettingsDraft {
   readonly codexInstanceId: string;
   readonly dshInstanceId: string;
   readonly workspaceMappingId: string;
-  readonly syncSingleSidedTitle: boolean;
   readonly scanScope: "current" | "registered";
   readonly backupRetention: number;
   readonly allowBatchSafeApply: boolean;
@@ -36,7 +35,6 @@ const DEFAULT_SETTINGS: MaintenanceSettingsDraft = {
   codexInstanceId: "",
   dshInstanceId: "",
   workspaceMappingId: "",
-  syncSingleSidedTitle: true,
   scanScope: "current",
   backupRetention: 20,
   allowBatchSafeApply: false,
@@ -55,16 +53,10 @@ function settingsDraft(value: unknown): MaintenanceSettingsDraft {
     codexInstanceId: stringValue(settings.codexInstanceId),
     dshInstanceId: stringValue(settings.dshInstanceId),
     workspaceMappingId: stringValue(settings.workspaceMappingId),
-    syncSingleSidedTitle: settings.syncSingleSidedTitle !== false,
     scanScope: settings.scanScope === "registered" ? "registered" : "current",
     backupRetention: Math.min(10_000, Math.max(1, backupRetention)),
     allowBatchSafeApply: settings.allowBatchSafeApply === true,
   };
-}
-
-function nullable(value: string): string | null {
-  const trimmed = value.trim();
-  return trimmed.length === 0 ? null : trimmed;
 }
 
 function messageOf(value: ActionFeedback): string {
@@ -118,22 +110,24 @@ export function SessionMaintenanceSettingsSection(props: SettingsSectionProps) {
 
   return (
     <section className="dsm-settings-section" aria-label="会话维护设置">
-      <p className="dsm-settings-intro">管理 Codex 与 DSH 会话映射、同步策略和本地会话维护引擎。</p>
+      <p className="dsm-settings-intro">在完整看板的“设置 → 接入管理”选择实例并完成接入；在“同步”选择工作区范围。名单自动包含以后的新会话，是否能够回写以看板中的能力检查为准。</p>
 
       <div className="dsm-settings-group">
-        <h3>实例与同步</h3>
+        <h3>维护偏好</h3>
+        <details><summary>历史登记信息（只读）</summary>
         <label className="dsm-settings-field">
           <span><strong>Codex 实例 ID</strong><small>留空时使用引擎当前登记。</small></span>
-          <input value={draft.codexInstanceId} onChange={(event) => { patch("codexInstanceId", event.currentTarget.value); }} />
+          <input value={draft.codexInstanceId} readOnly />
         </label>
         <label className="dsm-settings-field">
-          <span><strong>DSH 实例 ID</strong><small>选择本次操作对应的官方 DSH profile。</small></span>
-          <input value={draft.dshInstanceId} onChange={(event) => { patch("dshInstanceId", event.currentTarget.value); }} />
+          <span><strong>DSH 实例 ID</strong><small>首次接入和实例选择请在完整看板操作。</small></span>
+          <input value={draft.dshInstanceId} readOnly />
         </label>
         <label className="dsm-settings-field">
           <span><strong>工作区映射 ID</strong><small>可选的稳定工作区对应关系。</small></span>
-          <input value={draft.workspaceMappingId} onChange={(event) => { patch("workspaceMappingId", event.currentTarget.value); }} />
+          <input value={draft.workspaceMappingId} readOnly />
         </label>
+        </details>
         <label className="dsm-settings-field">
           <span><strong>扫描范围</strong><small>当前登记或全部已登记实例。</small></span>
           <select value={draft.scanScope} onChange={(event) => { patch("scanScope", event.currentTarget.value === "registered" ? "registered" : "current"); }}>
@@ -149,10 +143,6 @@ export function SessionMaintenanceSettingsSection(props: SettingsSectionProps) {
           }} />
         </label>
         <label className="dsm-settings-toggle">
-          <input type="checkbox" checked={draft.syncSingleSidedTitle} onChange={(event) => { patch("syncSingleSidedTitle", event.currentTarget.checked); }} />
-          <span><strong>同步单边标题变化</strong><small>仅一侧改名时，将标题同步到另一侧。</small></span>
-        </label>
-        <label className="dsm-settings-toggle">
           <input type="checkbox" checked={draft.allowBatchSafeApply} onChange={(event) => { patch("allowBatchSafeApply", event.currentTarget.checked); }} />
           <span><strong>允许批量应用安全计划</strong><small>只应用引擎判定为无需人工确认的计划。</small></span>
         </label>
@@ -165,10 +155,6 @@ export function SessionMaintenanceSettingsSection(props: SettingsSectionProps) {
             const result = await props.actions.invoke({
               operation: "settings:patch",
               settings: {
-                codexInstanceId: nullable(draft.codexInstanceId),
-                dshInstanceId: nullable(draft.dshInstanceId),
-                workspaceMappingId: nullable(draft.workspaceMappingId),
-                syncSingleSidedTitle: draft.syncSingleSidedTitle,
                 scanScope: draft.scanScope,
                 backupRetention: Math.min(10_000, Math.max(1, Math.trunc(draft.backupRetention))),
                 allowBatchSafeApply: draft.allowBatchSafeApply,

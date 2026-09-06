@@ -1,16 +1,16 @@
 import { useEffect, useState } from "react";
 
 import type { CanonicalDashboardSessionDetail, SyncPlan } from "@linmu/dsh-session-contracts";
-import { Badge, EmptyState, LoadingState, LocalTabs, Surface } from "@linmu/dsh-session-ui";
+import { Badge, Button, EmptyState, LoadingState, Surface } from "@linmu/dsh-session-ui";
 
 import { canonicalOriginLabel } from "./canonical-labels.js";
 import { CanonicalEventView } from "./canonical-event-view.js";
 import { LineageView } from "./lineage-view.js";
-import { CanonicalSessionOperations, type OperationsApi } from "./operations-pages.js";
-import type { DashboardSummaryApi } from "./summary-loader.js";
+import type { OperationsApi } from "./operations-pages.js";
+
 import { versionMetadataLabel } from "./maintenance-status.js";
 
-export interface WorkbenchApi extends DashboardSummaryApi, Pick<OperationsApi, "listCanonicalWorkspaces" | "updateCanonicalSession" | "deleteCanonicalSession"> {
+export interface WorkbenchApi extends Pick<OperationsApi, "listCanonicalWorkspaces"> {
   getCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail>;
 }
 
@@ -40,40 +40,39 @@ export function SessionWorkbench(props: {
   readonly api: WorkbenchApi;
   readonly logicalSessionId: string;
   readonly onOpenSession: (id: string) => void;
-  readonly onDeleted: () => void;
+  readonly refreshKey?: number;
 }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
-  const [tab, setTab] = useState("content");
+  const [retry, setRetry] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
     setState({ kind: "loading" });
     void loadWorkbenchInitial(props.api, props.logicalSessionId, controller.signal).then(
-      ({ canonical }) => setState({ kind: "ready", value: canonical }),
+      ({ canonical }) => { if (!controller.signal.aborted) setState({ kind: "ready", value: canonical }); },
       (error: unknown) => {
-        if (!controller.signal.aborted) setState({ kind: "error", message: error instanceof Error ? error.message : "稳定会话不可用" });
+        if (!controller.signal.aborted) setState({ kind: "error", message: error instanceof Error ? error.message : "会话暂时不可用" });
       },
     );
     return () => controller.abort();
-  }, [props.api, props.logicalSessionId]);
+  }, [props.api, props.logicalSessionId, props.refreshKey, retry]);
 
-  if (state.kind === "loading") return <Surface><LoadingState label="正在从 Maintenance 稳定存储读取会话…" /></Surface>;
-  if (state.kind === "error") return <Surface><EmptyState kind="warning" title="稳定会话不可用" description={state.message} /></Surface>;
+  if (state.kind === "loading") return <Surface><LoadingState label="正在读取已保存的会话…" /></Surface>;
+  if (state.kind === "error") return <Surface><EmptyState kind="warning" title="会话暂时不可用" description={state.message} action={<Button onClick={() => setRetry((value) => value + 1)}>重新加载会话</Button>} /></Surface>;
   const detail = state.value;
   const metadataState = versionMetadataLabel(detail.headMetadata);
   return <div className="canonical-workbench" data-testid="canonical-session-workbench">
     <Surface>
       <header className="canonical-session-heading">
-        <div><h2>{detail.session.title || "未命名会话"}</h2><code>{detail.session.id}</code></div>
-        <div><Badge>{canonicalOriginLabel(detail.session.originKind)}</Badge><Badge>{detail.session.authorityScope === "codex" ? "Codex 权威" : "Maintenance 权威"}</Badge><Badge>项目：{detail.project?.name ?? "待指定"}</Badge><Badge>工作区：{detail.workspace?.name ?? "未归类"}</Badge></div>
+        <div><h2>{detail.session.title || "未命名会话"}</h2><p className="muted">已保存的会话 · {new Date(detail.session.updatedAt).toLocaleString()}</p></div>
+        <div><Badge>{canonicalOriginLabel(detail.session.originKind)}</Badge><Badge>项目：{detail.project?.name ?? "待指定"}</Badge><Badge>工作区：{detail.workspace?.name ?? "未归类"}</Badge></div>
       </header>
       {metadataState.warning ? <p role="status"><Badge tone="warning">{metadataState.label}</Badge> {metadataState.detail}</p> : null}
-      <LocalTabs value={tab} onChange={setTab} tabs={[{ id: "content", label: "静态会话" }, { id: "lineage", label: "来源与派生" }, { id: "metadata", label: "元数据" }, { id: "manage", label: "管理" }]} />
-      {tab === "content" ? <section className="canonical-transcript" aria-label="Canonical 静态会话内容">
-        {detail.events.length === 0 ? <EmptyState title="没有稳定事件" description="该会话尚未导入 CanonicalEventV1。" /> : detail.events.map((event) => <CanonicalEventView key={event.id} event={event} />)}
-      </section> : null}
-      {tab === "lineage" ? <LineageView parent={detail.parent} children={detail.children} onOpenSession={props.onOpenSession} /> : null}
-      {tab === "metadata" ? <dl className="canonical-metadata">
-        <div><dt>版本元数据</dt><dd><Badge tone={metadataState.warning ? "warning" : "neutral"}>{metadataState.label}</Badge> {metadataState.detail}</dd></div>
+      <section className="canonical-transcript" aria-label="静态会话内容">
+        {detail.events.length === 0 ? <EmptyState title="还没有会话内容" description="该会话尚未保存可阅读的消息。" /> : detail.events.map((event) => <CanonicalEventView key={event.id} event={event} />)}
+      </section>
+      <details className="reader-details"><summary>来源与派生会话</summary><LineageView parent={detail.parent} children={detail.children} onOpenSession={props.onOpenSession} /></details>
+      <details className="reader-details"><summary>版本、来源与标识</summary><dl className="canonical-metadata">
+        <div><dt>会话标识</dt><dd><code>{detail.session.id}</code></dd></div><div><dt>版本元数据</dt><dd><Badge tone={metadataState.warning ? "warning" : "neutral"}>{metadataState.label}</Badge> {metadataState.detail}</dd></div>
         <div><dt>来源类型</dt><dd>{canonicalOriginLabel(detail.session.originKind)}</dd></div>
         <div><dt>权威范围</dt><dd>{detail.session.authorityScope}</dd></div>
         <div><dt>Head 版本</dt><dd><code>{detail.session.headVersionId ?? "尚无"}</code></dd></div>
@@ -87,13 +86,7 @@ export function SessionWorkbench(props: {
         </li>)}</ul>}</dd></div>
         <div><dt>标签</dt><dd>{detail.session.tags.length === 0 ? "无" : detail.session.tags.join("、")}</dd></div>
         <div><dt>更新时间</dt><dd><time dateTime={detail.session.updatedAt}>{new Date(detail.session.updatedAt).toLocaleString()}</time></dd></div>
-      </dl> : null}
-      {tab === "manage" ? <CanonicalSessionOperations
-        api={props.api}
-        detail={detail}
-        onUpdated={(value) => setState({ kind: "ready", value })}
-        onDeleted={() => props.onDeleted()}
-      /> : null}
+      </dl></details>
     </Surface>
   </div>;
 }
