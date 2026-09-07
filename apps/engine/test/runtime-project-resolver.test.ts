@@ -3,6 +3,14 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
 
 import { SqliteRuntimeProjectResolver } from "../src/runtime-project-resolver.js";
+import { MIGRATION_009 } from "../../../packages/session-store/src/migrations/009-logical-projects.js";
+
+function localProjectDatabase() {
+  const database = new DatabaseSync(":memory:");
+  database.exec("PRAGMA foreign_keys=ON; CREATE TABLE logical_sessions (id TEXT PRIMARY KEY)");
+  database.exec(MIGRATION_009);
+  return database;
+}
 
 describe("SqliteRuntimeProjectResolver", () => {
   it("maps exact normalized cwd to project membership without touching workspace membership", async () => {
@@ -60,5 +68,37 @@ describe("SqliteRuntimeProjectResolver", () => {
     await expect(resolver.resolveProject("D:/shared")).rejects.toThrow("multiple canonical projects");
     await expect(resolver.resolveProject("D:/unknown")).resolves.toBeNull();
     database.close();
+  });
+
+  it("reuses one persisted Maintenance project across concurrent path spelling variants", async () => {
+    const database = localProjectDatabase();
+    try {
+      const resolver = new SqliteRuntimeProjectResolver(database);
+      const ids = await Promise.all([resolver.ensureLocalProject("D:\\fixture\\new-project"), resolver.ensureLocalProject("d:/fixture/new-project/")]);
+      expect(ids[0]).toBe(ids[1]);
+      expect(await new SqliteRuntimeProjectResolver(database).ensureLocalProject("D:/fixture/new-project")).toBe(ids[0]);
+      expect(database.prepare("SELECT name,source_platform,source_project_id,deleted_at FROM logical_projects").all()).toEqual([
+        { name: "new-project", source_platform: "maintenance", source_project_id: null, deleted_at: null },
+      ]);
+      expect(database.prepare("SELECT normalized_root_path FROM project_roots").all()).toEqual([{ normalized_root_path: "d:\\fixture\\new-project" }]);
+    } finally { database.close(); }
+  });
+
+  it.each(["", "  ", "relative", "D:drive-relative", "\\root-relative"])("rejects a workspace without a fully qualified path: %j", async (cwd) => {
+    const database = localProjectDatabase();
+    try {
+      await expect(new SqliteRuntimeProjectResolver(database).ensureLocalProject(cwd)).rejects.toThrow("absolute cwd");
+      expect(database.prepare("SELECT count(*) n FROM logical_projects").get()).toEqual({ n: 0 });
+    } finally { database.close(); }
+  });
+
+  it("rolls back new project metadata if its root cannot be registered", async () => {
+    const database = localProjectDatabase();
+    try {
+      database.exec("CREATE TRIGGER reject_fixture_root BEFORE INSERT ON project_roots BEGIN SELECT RAISE(ABORT,'fixture root failure'); END");
+      await expect(new SqliteRuntimeProjectResolver(database).ensureLocalProject("D:/fixture/failing-project")).rejects.toThrow("fixture root failure");
+      expect(database.prepare("SELECT count(*) n FROM logical_projects").get()).toEqual({ n: 0 });
+      expect(database.isTransaction).toBe(false);
+    } finally { database.close(); }
   });
 });

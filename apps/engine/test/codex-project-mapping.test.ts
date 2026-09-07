@@ -33,6 +33,67 @@ async function fixture() {
 }
 
 describe("Codex project mapping policy and recoverable scope activation", () => {
+  it("preserves active Maintenance projects and DSH descendants across repeated empty Codex selection without reviving old removals", async () => {
+    const f = await fixture();
+    try {
+      const sourceBefore = await hashTree(f.codexHome);
+      await f.service.save({ revision: 0, projectKeys: [] });
+      const prior = await f.service.activateForStartup(async () => {});
+      const checkpointId = prior!.checkpointId!;
+      f.database.exec("INSERT INTO logical_projects VALUES ('local-project','Local','maintenance',NULL,'local',NULL,'2026-01-01','2026-01-01')");
+      const addLocal = (id: string) => {
+        f.addNative(id);
+        f.database.prepare("INSERT INTO project_memberships VALUES (?, 'local-project', 0)").run(id);
+      };
+      const derive = (id: string, parent: string) => {
+        addLocal(id);
+        f.database.prepare("UPDATE logical_sessions SET origin_kind='codex-derived' WHERE id=?").run(id);
+        f.database.prepare(`INSERT INTO session_versions (id,logical_session_id,body_object,body_hash,metadata_hash,manifest_json,created_at)
+          SELECT ?,?,body_object,body_hash,metadata_hash,manifest_json,created_at FROM session_versions
+          WHERE id=(SELECT head_version_id FROM logical_sessions WHERE id=?)`).run(`base-${parent}`, parent, f.sourceId);
+        f.database.prepare("UPDATE logical_sessions SET head_version_id=? WHERE id=?").run(`base-${parent}`, parent);
+        f.database.prepare("INSERT INTO session_derivations VALUES (?,?,?,'dsh-continuation','r',?,'2026-01-01')").run(id, parent, `base-${parent}`, `op-${id}`);
+      };
+      const removePreviously = (id: string, operationId: string, marker = true) => {
+        f.database.prepare("UPDATE logical_sessions SET tombstoned_at='2026-02-01' WHERE id=?").run(id);
+        f.database.prepare("INSERT INTO session_tombstones VALUES (?,?,?,NULL,'2026-02-01','9999-12-31',NULL)").run(id, operationId, checkpointId);
+        if (marker) f.database.prepare("INSERT INTO codex_project_mapping_removals VALUES (?,?,1,NULL)").run(id, operationId);
+      };
+      addLocal("local-active"); derive("local-child", "local-active"); derive("local-grandchild", "local-child");
+      addLocal("local-old-deleted"); removePreviously("local-old-deleted", "mapping-old-local");
+      addLocal("local-manually-deleted"); removePreviously("local-manually-deleted", "manual-local", false);
+      derive("local-deleted-child", "local-grandchild"); removePreviously("local-deleted-child", "mapping-old-child");
+      derive("local-behind-deleted-parent", "local-deleted-child");
+      // Corrupt historical grouping must never turn a Codex mirror into a local session.
+      f.database.prepare("INSERT INTO project_memberships (logical_session_id,project_id,revision) VALUES (?,'local-project',0) ON CONFLICT(logical_session_id) DO UPDATE SET project_id=excluded.project_id").run(f.sourceId);
+      const headsBefore = f.database.prepare("SELECT id,head_version_id FROM logical_sessions ORDER BY id").all();
+      for (let pass = 0; pass < 2; pass += 1) {
+        await f.service.activateForStartup(async () => {});
+        for (const id of ["local-active", "local-child", "local-grandchild"]) expect(f.state(id).tombstoned_at).toBeNull();
+        for (const id of [f.sourceId, "local-old-deleted", "local-manually-deleted", "local-deleted-child", "local-behind-deleted-parent"]) expect(f.state(id).tombstoned_at).not.toBeNull();
+      }
+      expect(f.database.prepare("SELECT deleted_at FROM logical_projects WHERE id='local-project'").get()).toEqual({ deleted_at: null });
+      expect(f.database.prepare("SELECT id,head_version_id FROM logical_sessions ORDER BY id").all()).toEqual(headsBefore);
+      expect(f.database.prepare("SELECT operation_id FROM codex_project_mapping_removals WHERE logical_session_id='local-old-deleted'").get()).toEqual({ operation_id: "mapping-old-local" });
+      expect(f.service.readPolicy().activeProjectKeys).toEqual([]);
+      expect(await hashTree(f.codexHome)).toBe(sourceBefore);
+    } finally { await f.cleanupAll(); }
+  });
+
+  it("does not treat local project membership alone as authority to preserve mirrors or mismatched native records", async () => {
+    const f = await fixture();
+    try {
+      f.database.exec("INSERT INTO logical_projects VALUES ('local','Local','maintenance',NULL,'local',NULL,'2026-01-01','2026-01-01'),('codex-outside','Outside','codex','outside','outside',NULL,'2026-01-01','2026-01-01')");
+      for (const id of ["local-valid", "wrong-authority", "wrong-origin", "codex-project-native", "no-project"]) f.addNative(id);
+      for (const id of ["local-valid", "wrong-authority", "wrong-origin"]) f.database.prepare("INSERT INTO project_memberships VALUES (?,'local',0)").run(id);
+      f.database.exec("UPDATE logical_sessions SET authority_scope='codex' WHERE id='wrong-authority'; UPDATE logical_sessions SET origin_kind='codex-mirror' WHERE id='wrong-origin'; INSERT INTO project_memberships VALUES ('codex-project-native','codex-outside',0)");
+      await f.service.save({ revision: 0, projectKeys: [] });
+      await f.service.activateForStartup(async () => {});
+      expect(f.state("local-valid").tombstoned_at).toBeNull();
+      for (const id of ["wrong-authority", "wrong-origin", "codex-project-native", "no-project", f.sourceId]) expect(f.state(id).tombstoned_at).not.toBeNull();
+    } finally { await f.cleanupAll(); }
+  });
+
   it("rolls back an imported prefix and its bindings/versions when startup fails after real canonical commits", async () => {
     const f = await fixture();
     try {
@@ -107,6 +168,11 @@ describe("Codex project mapping policy and recoverable scope activation", () => 
       expect(await hashTree(f.codexHome)).toBe(beforeSource);
       expect((await f.service.readScope(f.instance))?.projectIds).toEqual(["folder-a"]);
       expect((await f.service.get()).pendingActivation).toBe(false);
+      await f.service.save({ revision: 1, projectKeys: [] });
+      expect((await f.service.activateForStartup(async () => {}))?.removed).toBe(3);
+      await f.service.save({ revision: 2, projectKeys: [f.key] });
+      expect((await f.service.activateForStartup(async () => {}))?.restored).toBe(3);
+      for (const id of [f.sourceId, "child", "grandchild"]) expect(f.state(id).tombstoned_at).toBeNull();
     } finally { await f.cleanupAll(); }
   });
 

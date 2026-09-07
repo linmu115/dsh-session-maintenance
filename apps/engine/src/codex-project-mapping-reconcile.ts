@@ -15,8 +15,8 @@ export function assertMappingRunsStopped(database: DatabaseSync): void {
   if (row.n !== 0) throw new IntegrationError("MAPPING_RUNTIME_ACTIVE", "当前实例尚未完成会话回收，映射名单将在实例停止并恢复完成后生效。");
 }
 
-/** Computes the keep set from explicit source identities, including DSH progress. */
-export function mappingKeepSet(database: DatabaseSync, selection: MappingRetentionSelection): Set<string> {
+/** Only the explicit Codex selection grants automatic restoration eligibility. */
+function selectedMappingKeepSet(database: DatabaseSync, selection: MappingRetentionSelection): Set<string> {
   const keep = new Set<string>();
   const bindings = database.prepare("SELECT logical_session_id, instance_id, session_id FROM platform_bindings WHERE platform='codex'").all() as unknown as Array<{ logical_session_id: string; instance_id: string; session_id: string }>;
   for (const row of bindings) if (selection.sourceKeys.has(codexSourceKey(row.instance_id, row.session_id))) keep.add(row.logical_session_id);
@@ -33,6 +33,37 @@ export function mappingKeepSet(database: DatabaseSync, selection: MappingRetenti
   return keep;
 }
 
+/** Local DSH protection preserves existing progress; it never revives deleted records. */
+function withActiveLocalDsh(database: DatabaseSync, selected: ReadonlySet<string>): Set<string> {
+  const local = new Set((database.prepare(`SELECT s.id FROM logical_sessions s
+    JOIN project_memberships m ON m.logical_session_id=s.id
+    JOIN logical_projects p ON p.id=m.project_id
+    WHERE p.source_platform='maintenance' AND s.authority_scope='maintenance'
+      AND s.origin_kind='maintenance-native' AND s.tombstoned_at IS NULL
+      AND NOT EXISTS(SELECT 1 FROM session_tombstones t WHERE t.logical_session_id=s.id AND t.restored_at IS NULL)`)
+    .all() as unknown as Array<{ id: string }>).map(row => row.id));
+  const descendants = database.prepare(`SELECT d.child_session_id,d.parent_session_id FROM session_derivations d
+    JOIN logical_sessions s ON s.id=d.child_session_id
+    JOIN session_versions v ON v.id=d.base_version_id AND v.logical_session_id=d.parent_session_id
+    WHERE d.derivation_kind='dsh-continuation' AND s.authority_scope='maintenance'
+      AND s.origin_kind='codex-derived' AND s.tombstoned_at IS NULL
+      AND NOT EXISTS(SELECT 1 FROM session_tombstones t WHERE t.logical_session_id=s.id AND t.restored_at IS NULL)`)
+    .all() as unknown as Array<{ child_session_id: string; parent_session_id: string }>;
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const row of descendants) if (local.has(row.parent_session_id) && !local.has(row.child_session_id)) {
+      local.add(row.child_session_id); changed = true;
+    }
+  }
+  return new Set([...selected, ...local]);
+}
+
+/** Explicit Codex identities plus still-active progress owned by local DSH projects. */
+export function mappingKeepSet(database: DatabaseSync, selection: MappingRetentionSelection): Set<string> {
+  return withActiveLocalDsh(database, selectedMappingKeepSet(database, selection));
+}
+
 /** Caller owns the write queue AND transaction, shared with policy activation. */
 export function reconcileCodexProjectMapping(database: DatabaseSync, input: {
   readonly selection: MappingRetentionSelection; readonly revision: number; readonly at: string;
@@ -41,7 +72,8 @@ export function reconcileCodexProjectMapping(database: DatabaseSync, input: {
   for (const [oldId, newId] of input.selection.projectAliases ?? []) {
     database.prepare("UPDATE project_memberships SET project_id=?,revision=revision+1 WHERE project_id=?").run(newId, oldId);
   }
-  const keep = mappingKeepSet(database, input.selection);
+  const restorable = selectedMappingKeepSet(database, input.selection);
+  const keep = withActiveLocalDsh(database, restorable);
   const rows = database.prepare("SELECT id, head_version_id, canonical_version_id, tombstoned_at FROM logical_sessions").all() as unknown as Array<{ id: string; head_version_id: string | null; canonical_version_id: string | null; tombstoned_at: string | null }>;
   const remove = rows.filter(row => row.tombstoned_at === null && !keep.has(row.id));
   const checkpointId = remove.length === 0 ? null : `checkpoint-project-mapping-${randomUUID()}`;
@@ -70,7 +102,7 @@ export function reconcileCodexProjectMapping(database: DatabaseSync, input: {
     JOIN logical_sessions s ON s.id=m.logical_session_id
     WHERE s.tombstoned_at IS NOT NULL AND t.restored_at IS NULL`).all() as unknown as Array<{ logical_session_id: string; workspace_json: string | null }>;
   for (const row of marked) {
-    if (!keep.has(row.logical_session_id)) continue;
+    if (!restorable.has(row.logical_session_id)) continue;
     database.prepare("UPDATE logical_sessions SET tombstoned_at=NULL,updated_at=? WHERE id=?").run(input.at, row.logical_session_id);
     database.prepare("UPDATE session_tombstones SET restored_at=? WHERE logical_session_id=?").run(input.at, row.logical_session_id);
     if (row.workspace_json !== null) {

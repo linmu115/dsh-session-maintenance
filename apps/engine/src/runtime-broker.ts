@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   RUNTIME_MANAGED_PROJECT_DIRECTORY,
@@ -69,6 +69,7 @@ export type RuntimeBrokerAdapterSelector = (
 
 export interface RuntimeProjectResolver {
   resolveProject(cwd: string): Promise<LogicalProjectId | null>;
+  ensureLocalProject?(cwd: string): Promise<LogicalProjectId>;
   resolveInheritedProject?(logicalSessionId: LogicalSessionId): Promise<LogicalProjectId | null>;
   assignProject(logicalSessionId: LogicalSessionId, projectId: LogicalProjectId): Promise<void>;
 }
@@ -267,9 +268,19 @@ export class ProjectionRuntimeBroker {
     assertRuntime(run, input.clientId);
     if (run.closing || run.active === null) throw new Error(`Runtime Broker run cannot register sessions: ${input.runId}`);
     const header = runtimeHeader(input.header);
-    const projectId = await this.projectResolver.resolveProject(header.cwd)
+    let projectId = await this.projectResolver.resolveProject(header.cwd)
       ?? (await this.managedProjectMap(run)).get(resolve(header.cwd))
       ?? null;
+    if (projectId === null && this.projectResolver.ensureLocalProject !== undefined) {
+      // A run's generated paths cannot become durable user projects. Unknown
+      // real workspaces, however, are valid Maintenance-owned DSH projects.
+      const temporaryRoots = [run.prepared.projectionRoot, run.lifecycle.runtimeRoot].filter((root): root is string => typeof root === "string");
+      const runtimeOwned = temporaryRoots.some((root) => {
+        const path = relative(resolve(root), resolve(header.cwd));
+        return path === "" || (!isAbsolute(path) && path !== ".." && !path.startsWith(`..${sep}`));
+      });
+      if (!runtimeOwned) projectId = await this.projectResolver.ensureLocalProject(header.cwd);
+    }
     if (projectId === null) {
       throw new Error(`Live-created DSH session cwd has no canonical project root: ${header.cwd}`);
     }
