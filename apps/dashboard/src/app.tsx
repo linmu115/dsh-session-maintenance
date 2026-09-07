@@ -11,6 +11,7 @@ import type { StorageGovernanceApi } from "./storage-governance.js";
 import type { IntegrationApi } from "./integration-page.js";
 import type { WorkspaceSyncApi } from "./sync-page.js";
 import { SessionReader } from "./session-reader.js";
+import { DashboardAppearanceControl } from "./appearance.js";
 
 const PlansPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).PlansPage }));
 const CheckpointsPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).CheckpointsPage }));
@@ -41,13 +42,13 @@ export function DashboardApp(props: { readonly api: DashboardApi; readonly initi
   const [restoredRevision, setRestoredRevision] = useState(0);
   const [selectedSessionId, setSelectedSessionId] = useState<string | undefined>(props.initialLogicalSessionId);
   const openSession = (id: string) => { setSelectedSessionId(id); setView("sessions"); };
-  return <DashboardShell title="会话维护" subtitle="在本地，安心整理与阅读" nav={<>
+  return <DashboardShell title="会话维护" view={view} nav={<>
     <NavButton active={view === "sessions"} icon={ListTree} onClick={() => setView("sessions")}>会话</NavButton>
     <NavButton active={view === "sync"} icon={RefreshCw} onClick={() => setView("sync")}>同步</NavButton>
     <NavButton active={view === "checkpoints"} icon={BookmarkCheck} onClick={() => setView("checkpoints")}>恢复点</NavButton>
     <NavButton active={view === "storage"} icon={HardDrive} onClick={() => setView("storage")}>存储空间</NavButton>
     <NavButton active={view === "settings"} icon={Settings2} onClick={() => setView("settings")}>设置</NavButton>
-  </>} actions={<Button onClick={() => setRequest((value) => value + 1)}><RefreshCw size={14} /> 刷新</Button>}>
+  </>} actions={<><DashboardAppearanceControl /><div className="dashboard-refresh"><Button ariaLabel="刷新" onClick={() => setRequest((value) => value + 1)}><RefreshCw size={14} aria-hidden="true" /><span>刷新</span></Button></div></>}>
     <div hidden={view !== "sessions"}>
       <SessionReader api={props.api} refreshKey={request + restoredRevision} selectedSessionId={selectedSessionId} onOpenSession={openSession} />
     </div>
@@ -61,7 +62,7 @@ export function DashboardApp(props: { readonly api: DashboardApi; readonly initi
 }
 
 export function DashboardOffline() {
-  return <DashboardShell title="会话维护" subtitle="在本地，安心整理与阅读" nav={null}>
+  return <DashboardShell title="会话维护" view="offline" nav={null} actions={<DashboardAppearanceControl />}>
     <Surface><EmptyState kind="offline" title="请重新打开看板" description="本次启动凭据不可用。请从 Maintenance 启动入口重新打开，连接本机保存的会话。" /></Surface>
   </DashboardShell>;
 }

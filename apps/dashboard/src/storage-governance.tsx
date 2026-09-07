@@ -100,13 +100,13 @@ export function StorageGovernancePage({ api }: { readonly api: StorageGovernance
         </div>
         <p>受保护空间仍被会话、恢复点或未完成操作使用，不能回收。可回收量是当前预览允许隔离的副本；隔离不等于立即释放磁盘空间。统计仅覆盖已登记内容。</p><p>完成运行保留 {plan.policy.finishedRunHours} 小时，完成恢复的证据保留 {plan.policy.recoveredRunHours} 小时；保留最近 {plan.policy.automaticBackupsToKeep} 份有效自动备份。缓存目标 {storageBytes(plan.policy.cacheTargetBytes)}。</p>
         {plan.blockers.length === 0 ? null : <div role="status"><strong>以下证据尚未齐全，当前计划不能执行：</strong><ul>{plan.blockers.map((blocker, index) => <li key={index}><code>{blocker.source}</code>：{blocker.detail}</li>)}</ul></div>}
-        {resources.length === 0 ? <EmptyState title="尚无已登记的运行副本或缓存" description="使用“识别已有副本”读取已有来源；未知目录会继续保留。" /> : <table><thead><tr><th>副本</th><th>占用</th><th>状态与原因</th><th>操作</th></tr></thead><tbody>{resources.map((item) => <tr key={item.id}>
+        {resources.length === 0 ? <EmptyState title="尚无已登记的运行副本或缓存" description="使用“识别已有副本”读取已有来源；未知目录会继续保留。" /> : <div className="storage-table-scroll" role="region" aria-label="副本占用与保护状态" tabIndex={0}><table><thead><tr><th>副本</th><th>占用</th><th>状态与原因</th><th>操作</th></tr></thead><tbody>{resources.map((item) => <tr key={item.id}>
           <td>{storageItemLabel(item)}<details><summary>位置与标识</summary><code>{item.rootId}/{item.relativePath}</code><p>{item.id}</p></details></td>
           <td>{storageBytes(item.bytes)}</td>
           <td><Badge tone={item.disposition === "candidate" ? "info" : "neutral"}>{item.disposition === "candidate" ? "可隔离" : item.disposition === "blocked" ? "等待核查" : "保留"}</Badge> {item.reasons.map(reasonLabel).join("；")}</td>
           <td>{["backup", "candidate"].includes(item.kind) ? <Button disabled={busy} onClick={() => void act((signal) => api.verifyRetention(item.id, signal), "已核对该副本的完整性。")}>验证副本</Button> : null}</td>
-        </tr>)}</tbody></table>}
-        {plan.executableBytes > 0 && plan.blockers.length === 0 ? <div>
+        </tr>)}</tbody></table></div>}
+        {plan.executableBytes > 0 && plan.blockers.length === 0 ? <div className="storage-approval-row">
           <label><input type="checkbox" checked={approvedPlan === plan.id} onChange={(event) => setApprovedPlan(event.target.checked ? plan.id : undefined)} /> 已核对本次预览的可隔离副本（{storageBytes(plan.executableBytes)}）</label>
           <Button disabled={busy || approvedPlan !== plan.id} onClick={() => void act((signal) => api.executeRetention(plan.id, signal), "副本已进入隔离区，可在宽限期内恢复。")}>隔离本次候选副本</Button>
         </div> : null}
@@ -121,7 +121,7 @@ export function StorageGovernancePage({ api }: { readonly api: StorageGovernance
         const releasing = batch.items.some((item) => item.state === "purging");
         const pending = batch.items.some((item) => item.state === "planned");
         const releasable = (restorable || releasing) && Date.parse(batch.purgeAfter) <= Date.now();
-        return <article key={batch.id}>
+        return <article className="storage-batch" key={batch.id}>
           <p>{new Date(batch.createdAt).toLocaleString()} · {batch.items.length} 项副本 · 最早可释放于 {new Date(batch.purgeAfter).toLocaleString()}</p>
           <p>{batch.items.filter((item) => item.state === "restored").length} 项已恢复，{batch.items.filter((item) => item.state === "purged").length} 项已释放。</p>
           {batch.items.filter((item) => item.error !== null).map((item) => <p role="alert" key={item.resourceId}>{item.resourceId}：{item.error}</p>)}

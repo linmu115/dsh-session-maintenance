@@ -5,8 +5,10 @@ import { DashboardClient } from "@linmu/dsh-session-maintenance-client";
 import "@linmu/dsh-session-ui/styles.css";
 
 import { DashboardApp, DashboardOffline } from "./app.js";
+import { applyDashboardAppearance, readDashboardAppearance } from "./appearance.js";
 import "./dashboard.css";
 
+applyDashboardAppearance(readDashboardAppearance());
 const element = document.getElementById("root");
 if (element === null) throw new TypeError("Dashboard root is missing");
 const root = createRoot(element);

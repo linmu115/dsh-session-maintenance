@@ -18,11 +18,12 @@ export function RetentionRegistryPanel({ api, registry, busy, act }: {
   const [objectRoot, setObjectRoot] = useState("engine-state");
   const [sourceKind, setSourceKind] = useState<"backup-database" | "candidate-database">("backup-database");
   return <Surface title="保护范围与副本登记">
+    <div className="storage-panel-body storage-registry">
     <p>外部备份可能仍引用当前正文库。登记数据库及其正文位置后，预览会将这些引用一起保护。外部目录只用于核对引用。</p>
     <details><summary>查看已登记的位置（{registry.roots.length}）</summary>
       <ul>{registry.roots.map((root) => <li key={root.id}><code>{root.id}</code>：{root.path}</li>)}</ul>
     </details>
-    <table><thead><tr><th>数据库</th><th>保护状态</th><th>操作</th></tr></thead><tbody>{registry.sources.map((source) => {
+    <div className="storage-table-scroll" role="region" aria-label="已登记数据库的保护状态" tabIndex={0}><table><thead><tr><th>数据库</th><th>保护状态</th><th>操作</th></tr></thead><tbody>{registry.sources.map((source) => {
       const governed = registry.resources.some((resource) => resource.ownerId === source.id && resource.state !== "purged");
       const root = registry.roots.find((entry) => entry.id === source.rootId);
       return <tr key={source.id}>
@@ -30,7 +31,7 @@ export function RetentionRegistryPanel({ api, registry, busy, act }: {
         <td>{source.kind === "active-database" ? "当前使用" : !source.retained ? "已完成释放" : governed ? "已纳入副本治理" : "保护引用"}</td>
         <td>{source.retained && ["backup-database", "candidate-database"].includes(source.kind) && !governed ? <Button disabled={busy} onClick={() => void act((signal) => api.registerFlatRetentionCandidate(source.id, signal), "已验证数据库及清单，并纳入候选预览；文件仍在原处。")}>验证并纳入治理</Button> : null}</td>
       </tr>;
-    })}</tbody></table>
+    })}</tbody></table></div>
     <details><summary>补充登记现有备份或候选库</summary>
       <p>先登记数据库所在目录；如果正文保存在另一处，也登记那个包含 objects 子目录的位置。只填写已确认的来源。</p>
       <form onSubmit={(event) => { event.preventDefault(); void act((signal) => api.registerRetentionRoot({ id: rootId.trim(), path: path.trim(), purpose }, signal), "位置已登记。请继续登记数据库与正文的对应关系。"); }}>
@@ -48,5 +49,6 @@ export function RetentionRegistryPanel({ api, registry, busy, act }: {
         <Button disabled={busy || !sourceId.trim() || !sourcePath.trim()} type="submit">登记并保护引用</Button>
       </form>
     </details>
+    </div>
   </Surface>;
 }

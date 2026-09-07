@@ -7,18 +7,20 @@ export type Tone = "neutral" | "success" | "info" | "warning" | "danger";
 
 export function DashboardShell(props: {
   readonly title: string;
-  readonly subtitle: string;
+  readonly subtitle?: string;
+  readonly view?: string;
   readonly nav: ReactNode;
   readonly actions?: ReactNode;
   readonly children: ReactNode;
 }) {
-  return <div className="dsm-app-shell">
+  return <div className="dsm-app-shell" data-view={props.view}>
     <header className="dsm-topbar">
       <div className="dsm-brand">
-        <span className="dsm-brand-mark" aria-hidden="true">SM</span>
+        <span className="dsm-brand-mark" aria-hidden="true">DSH</span>
+        <span className="dsm-brand-separator" aria-hidden="true">/</span>
         <div>
           <h1>{props.title}</h1>
-          <p>{props.subtitle}</p>
+          {props.subtitle === undefined ? null : <p>{props.subtitle}</p>}
         </div>
       </div>
       {props.actions === undefined ? null : <div className="dsm-topbar-actions">{props.actions}</div>}
@@ -35,8 +37,8 @@ export function NavButton(props: {
   readonly onClick: () => void;
 }) {
   const Icon = props.icon;
-  return <button className="dsm-nav-button" data-active={props.active} type="button" onClick={props.onClick}>
-    <Icon size={16} />
+  return <button className="dsm-nav-button" data-active={props.active} aria-current={props.active ? "page" : undefined} type="button" onClick={props.onClick}>
+    <Icon size={16} aria-hidden="true" />
     <span>{props.children}</span>
   </button>;
 }
@@ -45,6 +47,7 @@ export function Button(props: {
   readonly children: ReactNode;
   readonly onClick?: () => void;
   readonly disabled?: boolean;
+  readonly ariaLabel?: string;
   readonly tone?: "primary" | "secondary" | "danger";
   readonly type?: "button" | "submit";
 }) {
@@ -53,6 +56,7 @@ export function Button(props: {
     data-tone={props.tone ?? "secondary"}
     type={props.type ?? "button"}
     disabled={props.disabled}
+    aria-label={props.ariaLabel}
     onClick={props.onClick}
   >{props.children}</button>;
 }

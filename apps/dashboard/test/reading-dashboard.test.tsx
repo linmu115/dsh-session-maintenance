@@ -55,6 +55,19 @@ const sync: WorkspaceSyncConfiguration = {
 };
 
 describe("reading-first dashboard behavior", () => {
+  it("opens the compact workspace drawer and closes it after choosing a readable session", async () => {
+    await render(<DashboardApp api={{ listCanonicalWorkspaces: async () => directory, getCanonicalSession: async (id: string) => detail(id) } as unknown as DashboardApi} />);
+    const toggle = container.querySelector<HTMLButtonElement>(".workspace-panel-toggle");
+    expect(toggle).not.toBeNull();
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    await click(toggle!);
+    expect(toggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(document.getElementById(toggle!.getAttribute("aria-controls")!)).not.toBeNull();
+    await click(container.querySelector('[data-testid="canonical-session-one"]')!);
+    expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[aria-label="会话阅读"] h2')?.textContent).toBe("one");
+  });
+
   it("defaults to workspaces, preserves selection and search, and never requests overview for reading", async () => {
     const listCanonicalWorkspaces = vi.fn(async () => directory);
     const getCanonicalSession = vi.fn(async (id: string) => detail(id, id === "one" ? "第一条" : "第二条"));

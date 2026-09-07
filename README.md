@@ -2,7 +2,9 @@
 
 一个以 Canonical 会话、不可变版本图和可恢复运行投影管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。保留版本比较、Checkpoint、逻辑删除与恢复、稳定引用，以及明确发起的 Codex 延续任务。
 
-当前源码发行组合为 Engine **0.1.23**、Maintenance 插件 **0.2.21**，配套 Launcher **0.2.3** 与 Session Context Menu（SCM）**0.3.2**，本批部署目标为 DSH **0.1.2-rc.1 / web**。原 `4b49927` 的身份与空会话修复以及后续已提交重构保留在提交祖先中。
+当前源码发行组合为 Engine **0.1.24**（Dashboard **0.1.1**）、Maintenance 插件 **0.2.21**，配套 Launcher **0.2.3** 与 Session Context Menu（SCM）**0.3.2**，本批部署目标为 DSH **0.1.2-rc.1 / web**。原 `4b49927` 的身份与空会话修复以及后续已提交重构保留在提交祖先中。
+
+0.1.24 随包交付 [B「清晰工作台」主题](docs/changes/2026-09-08-workbench-theme-b.md)：默认浅色、窄功能导航、工作区与静态会话分栏，并统一同步、恢复点、存储及设置的样式。右上角可选择深色或跟随系统，选择仅保存于当前浏览器。窄屏支持展开工作区和横向查看存储表格。本次不修改 Engine 数据逻辑、项目映射范围或 DSH 插件。
 
 0.1.21 修复 [DSH 新工作区无法发送首条消息](docs/changes/2026-09-07-new-dsh-workspace-registration.md)：普通新工作区会登记为 Maintenance 本地项目，首条消息与后续内容正常保存，并独立于 Codex 项目映射名单保留。
 

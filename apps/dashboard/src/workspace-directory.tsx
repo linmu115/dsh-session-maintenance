@@ -49,13 +49,15 @@ function SessionList(props: { readonly sessions: readonly CanonicalDashboardSess
       onClick={() => props.onOpen(session.id)}
       aria-label={`打开会话 ${session.title}，来源 ${canonicalOriginLabel(session.originKind)}`}
     >
-      <span><strong>{session.title || "未命名会话"}</strong></span>
-      <span className="canonical-session-badges">
-        {membership?.pinned === true ? <Badge tone="info">置顶</Badge> : null}
-        {membership?.archived === true || session.archivedAt !== null ? <Badge>已归档</Badge> : null}
-        <Badge>{canonicalOriginLabel(session.originKind)}</Badge>
+      <span><strong title={session.title || "未命名会话"}>{session.title || "未命名会话"}</strong></span>
+      <span className="canonical-session-meta">
+        <span className="canonical-session-badges">
+          {membership?.pinned === true ? <Badge tone="info">置顶</Badge> : null}
+          {membership?.archived === true || session.archivedAt !== null ? <Badge>已归档</Badge> : null}
+          <span className="canonical-session-origin">{canonicalOriginLabel(session.originKind)}</span>
+        </span>
+        <time dateTime={session.updatedAt} title={new Date(session.updatedAt).toLocaleString()}>{new Date(session.updatedAt).toLocaleDateString()}</time>
       </span>
-      <time dateTime={session.updatedAt}>{new Date(session.updatedAt).toLocaleString()}</time>
     </button>)}
   </div>;
 }
@@ -72,7 +74,7 @@ function WorkspaceBranch(props: {
     <button className="workspace-folder-row" type="button" onClick={() => props.onToggle(props.node.workspace.id)}>
       <ChevronRight className="workspace-chevron" size={16} data-expanded={open} />
       {open ? <FolderOpen size={18} /> : <Folder size={18} />}
-      <span className="workspace-folder-title"><strong>{props.node.workspace.name}</strong><small>{props.node.sessions.length} 个直属会话</small></span>
+      <span className="workspace-folder-title"><strong title={props.node.workspace.name}>{props.node.workspace.name}</strong><small>{props.node.sessions.length} 个直属会话</small></span>
     </button>
     {open ? <div className="workspace-folder-content" role="group">
       <SessionList sessions={props.node.sessions} onOpen={props.onOpenSession} selectedSessionId={props.selectedSessionId} />
