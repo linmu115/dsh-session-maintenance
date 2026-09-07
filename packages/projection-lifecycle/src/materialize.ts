@@ -307,7 +307,8 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
     }
   }
 
-  async listNativeSessionIds(): Promise<readonly NativeSessionId[]> {
+  /** Session entries owned by this directory, excluding its shared cache. */
+  async listLocalNativeSessionIds(): Promise<readonly NativeSessionId[]> {
     if (this.sessionIds.size === 0) {
       try {
         const ids = JSON.parse(await readFile(join(this.root, "session-index.json"), "utf8")) as unknown;
@@ -319,9 +320,14 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       }
     }
+    return [...this.sessionIds].sort();
+  }
+
+  async listNativeSessionIds(): Promise<readonly NativeSessionId[]> {
+    const localIds = await this.listLocalNativeSessionIds();
     const base = await this.baseDirectory();
     return [...new Set([
-      ...this.sessionIds,
+      ...localIds,
       ...(base === undefined ? [] : await base.listNativeSessionIds()),
     ])].sort();
   }

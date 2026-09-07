@@ -44,6 +44,17 @@ describe("repair of an RC1 session rejected before canonical registration", () =
       await appendFile(join(f.codexHome, "rollouts/thread-fixture.jsonl"), JSON.stringify({ timestamp: "2026-09-07T00:01:00.000Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Codex advanced while DSH was open" }] } }) + "\n");
       await f.engine.importCodex({ operationId: "fixture-codex-live-advance", instanceIds: [f.engine.instances[0]!.id], mode: "content" });
       await expect(f.engine.closeProjectionRuntimeRun({ schemaVersion: 1, clientId: request.client.id, runId: run.runId, reason: "recovery" })).rejects.toThrow("No committed mapping exists");
+      // A later run can refresh the shared cache while this failed run is retained.
+      const oldDirectory = new JsonProjectionDirectory(dirname(run.persistenceRoot));
+      const baseRoot = await oldDirectory.baseProjectionRoot();
+      expect(baseRoot).not.toBeNull();
+      const otherNativeId = "session-from-a-later-run";
+      const other = await f.engine.runWrite("fixture-later-run", () => f.engine.canonicalEngine.importDshNative({ operationId: "fixture-later-run-import" as never,
+        logicalSessionId: "logical-from-a-later-run" as never, nativeSessionId: otherNativeId as never,
+        title: "Later run", tags: [], archivedAt: null, workspaceId: null, events: [], importedAt: new Date(createdAt).toISOString() }));
+      await new JsonProjectionDirectory(baseRoot!).writeSession(otherNativeId as never, { schemaVersion: 1, logicalSessionId: "logical-from-a-later-run", baseVersionId: other.versionId,
+        workspaceId: null, projectId: null, updatedAt: new Date(createdAt).toISOString(), title: "Later run", tags: [], inheritedEventCount: 0,
+        header: { ...header, id: otherNativeId, cwd: "D:/synthetic/later-workspace" }, events: [] });
       const sourceHash = await hashTree(f.codexHome);
       await f.stop();
       stopped = true;

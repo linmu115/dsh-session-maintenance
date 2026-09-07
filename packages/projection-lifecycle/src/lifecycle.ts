@@ -920,7 +920,9 @@ export class ProjectionLifecycle {
       maintenanceEndpoint: descriptor.maintenanceEndpoint,
     });
     const persistedNativeIds = new Set(mappings.map((mapping) => mapping.nativeSessionId));
-    for (const nativeSessionId of await directory.listNativeSessionIds()) {
+    // Only this run's overlay can contain its interrupted registrations.
+    // A shared cache may already include committed sessions from later runs.
+    for (const nativeSessionId of await directory.listLocalNativeSessionIds()) {
       if (persistedNativeIds.has(nativeSessionId)) continue;
       if (this.adapter.recoverUnmappedProjectionSession === undefined) {
         throw new TypeError(`Recovery projection contains an unmapped native session: ${nativeSessionId}`);
