@@ -16,6 +16,7 @@ import {
   type LogicalSessionId,
   type LogicalWorkspace,
   type ProjectionRun,
+  type SessionVersionId,
 } from "@linmu/dsh-session-contracts";
 
 interface SessionRow {
@@ -58,6 +59,11 @@ export class SqliteCanonicalProjectionSource implements IncrementalCanonicalProj
 
   async load(run: ProjectionRun): Promise<CanonicalProjectionInput> {
     return this.loadSelection(run);
+  }
+
+  async loadVersionEvents(logicalSessionId: LogicalSessionId, versionId: SessionVersionId): Promise<readonly CanonicalEventV1[]> {
+    if (this.objectStore === undefined) throw new Error("Immutable version bodies are required for projection recovery");
+    return this.loadHeadEvents(logicalSessionId, versionId);
   }
 
   async loadSessions(

@@ -869,7 +869,18 @@ export class ProjectionLifecycle {
       if (item !== undefined) {
         const payload = await directory.readSession(mapping.nativeSessionId);
         if (mapping.lastCommittedOperationId === null && this.adapter.projectedNativeRevision !== undefined) {
-          const canonicalRevision = projectedNativeRevision(this.adapter, item, payload);
+          let canonical = item;
+          if (item.session.authorityScope === "codex" && item.session.originKind === "codex-mirror"
+            && typeof item.session.headVersionId === "string" && item.session.headVersionId !== mapping.baseVersionId) {
+            if (mapping.baseVersionId === null || this.source.loadVersionEvents === undefined) {
+              throw new TypeError(`Recovery cannot verify the pinned base version for ${mapping.nativeSessionId}`);
+            }
+            // A live Codex observer may have advanced the head after startup.
+            // Verify this run against its immutable base; never roll back the head.
+            canonical = { ...item, session: { ...item.session, headVersionId: mapping.baseVersionId },
+              events: await this.source.loadVersionEvents(mapping.logicalSessionId, mapping.baseVersionId) };
+          }
+          const canonicalRevision = projectedNativeRevision(this.adapter, canonical, payload);
           if (canonicalRevision < mapping.nativeRevision) {
             throw new TypeError(`Canonical native revision regressed for ${mapping.nativeSessionId}`);
           }

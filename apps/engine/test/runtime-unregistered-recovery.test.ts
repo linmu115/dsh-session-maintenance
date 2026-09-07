@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { constants, zstdCompressSync } from "node:zlib";
 import { createHash } from "node:crypto";
@@ -16,7 +16,9 @@ describe("repair of an RC1 session rejected before canonical registration", () =
     let stopped = false;
     try {
       const request = { schemaVersion: 1 as const, client: { kind: "launcher" as const, id: "fixture-repair-launcher" }, runtimeClientId: "fixture-repair-runtime", instanceId: "fixture-rc1", profileId: "web", dshVersion: "0.1.2-rc.1", maintenanceEndpoint: "http://127.0.0.1:41781", branchId: "main" as never, pinnedAdapterId: "dsh-rc1" as never, projectSelection: { kind: "all" as const }, environment: { packageVersions: { "@deepseek-ai/dsh-session": "0.1.2-rc.1", "@deepseek-ai/dsh-session-persistence": "0.1.2-rc.1" }, runtimeCapabilities: ["sessionPersistence", "session/event", "session/flush"] } };
+      await f.engine.importCodex({ operationId: "fixture-codex-before-projection", instanceIds: [f.engine.instances[0]!.id], mode: "content" });
       const run = await f.engine.prepareProjectionRuntimeRun(request);
+      expect(await f.engine.projectionRunRepository.listProjectionSessions(run.runId)).toHaveLength(1);
       const cwd = "D:/synthetic/new-workspace";
       const nativeId = "session-failed-registration";
       const createdAt = Date.parse("2026-09-07T00:00:00.000Z");
@@ -38,6 +40,9 @@ describe("repair of an RC1 session rejected before canonical registration", () =
         zstdCompressSync(Buffer.from(rows.map(row => JSON.stringify(row)).join("\n") + "\n"), { params: { [constants.ZSTD_c_checksumFlag]: 1 } }),
       ]));
       await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: new Date(createdAt).toISOString() });
+      // Codex may advance while DSH still holds its startup projection.
+      await appendFile(join(f.codexHome, "rollouts/thread-fixture.jsonl"), JSON.stringify({ timestamp: "2026-09-07T00:01:00.000Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Codex advanced while DSH was open" }] } }) + "\n");
+      await f.engine.importCodex({ operationId: "fixture-codex-live-advance", instanceIds: [f.engine.instances[0]!.id], mode: "content" });
       await expect(f.engine.closeProjectionRuntimeRun({ schemaVersion: 1, clientId: request.client.id, runId: run.runId, reason: "recovery" })).rejects.toThrow("No committed mapping exists");
       const sourceHash = await hashTree(f.codexHome);
       await f.stop();

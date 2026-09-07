@@ -57,6 +57,22 @@ async function observe(engine: CanonicalSessionEngine, id: string) {
 }
 
 describe("Store canonical projection source", () => {
+  it("reads the pinned immutable body after head advancement and refuses foreign or unavailable bodies", async () => {
+    const { database, engine, source } = await fixture();
+    const id = "source-pinned-version" as LogicalSessionId;
+    const original = await observe(engine, id);
+    const later = { ...event(id), id: "later-event", sequence: 1, content: { text: "later Codex answer" }, source: { ...event(id).source, eventId: "1", cursor: "1" } };
+    const advanced = await engine.observeCodex({ logicalSessionId: id, title: id, tags: [], archivedAt: null, workspaceId: null,
+      events: [event(id), later], sourceCursor: "later", observedAt: "2026-09-07T00:00:00.000Z" });
+    expect(advanced.versionId).not.toBe(original.versionId);
+    expect(await source.loadVersionEvents!(id, original.versionId)).toEqual([event(id)]);
+    expect((await source.load(run)).sessions[0]?.events).toEqual([event(id), later]);
+    const foreign = await observe(engine, "source-foreign-version");
+    await expect(source.loadVersionEvents!(id, foreign.versionId)).rejects.toThrow("Canonical projection head is missing");
+    await expect(source.loadVersionEvents!(id, "missing-version" as never)).rejects.toThrow("Canonical projection head is missing");
+    await expect(new SqliteCanonicalProjectionSource(database).loadVersionEvents(id, original.versionId)).rejects.toThrow("Immutable version bodies are required");
+  });
+
   it("reads immutable head bodies while the optional index-only source retains its fallback", async () => {
     const { database, engine, source } = await fixture();
     const id = "source-head" as LogicalSessionId;
