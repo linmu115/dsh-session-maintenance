@@ -6,7 +6,7 @@ Engine 0.1.21，Maintenance 插件保持 0.2.21；无数据库结构和外部协
 
 Launcher 成功创建运行后，Runtime Broker 的 registerSession 只接受已有 canonical project root 或当前投影目录。普通新工作区不在这些记录中，首次发送在真源登记步骤抛出 `Live-created DSH session cwd has no canonical project root`。该检查将项目归属查询错误地当成创建新 DSH 会话的必要条件。项目映射清理后可用根记录仅剩选中项目，使问题暴露得更明显。
 
-真实只读核验确认：报错路径没有对应项目根；rc1 运行与 Engine 健康状态正常；该新会话持久化文件只有 SessionHeader，没有已保存的消息事件。该问题由 Engine 的登记限制触发。
+真实只读核验确认：报错路径没有对应项目根；rc1 运行与 Engine 健康状态正常。首次诊断用单次 Zstandard 解压只读到会话头，这一判断不完整；使用 Adapter 的逐帧解析后确认另有 7 条持久化记录，包括权限准备、包含原始输入的 inbox 记录以及失败轮次的开始/结束，没有完成的助手回答。该问题由 Engine 的登记限制触发。
 
 ## 修复边界
 
@@ -25,4 +25,4 @@ Launcher 成功创建运行后，Runtime Broker 的 registerSession 只接受已
 
 ## 运行更新
 
-更新前保留活跃数据库一致快照与当前运行副本；通过正式生命周期关闭 rc1 后切换 Engine。插件包内容保持一致，无需改动其他插件或五项 Codex 名单。报错的首条发送尚未保存成消息事件，更新后需要重新发送。
+更新前保留活跃数据库一致快照与当前运行副本；通过正式生命周期关闭 rc1 后切换 Engine。旧运行因该新会话缺少登记而进入 recovery-required，需补齐这一条会话的登记意图，再用现有未完成登记恢复流程回放。全部原始 inbox 记录须保存在 Adapter evidence 中；不将 inbox 操作伪造为已完成对话消息，也不删除原始压缩文件来绕过回收。插件包内容保持一致，无需改动其他插件或五项 Codex 名单。保留原始输入后，用户可继续发送。
