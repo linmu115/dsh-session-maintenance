@@ -145,6 +145,7 @@ export class CodexReadAdapter implements SessionReadAdapter {
 export * from "./catalog.js";
 export * from "./normalizer.js";
 export * from "./parser.js";
+export * from "./readable-text.js";
 export * from "./probe.js";
 export * from "./projects.js";
 export * from "./project-directory.js";

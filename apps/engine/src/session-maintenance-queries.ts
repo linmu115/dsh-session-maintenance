@@ -1,5 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { readRc1CanonicalEventText } from "@linmu/dsh-session-adapter-rc1";
+import { readCodexCanonicalEventText } from "@linmu/dsh-adapter-codex-read";
 
 import {
   canonicalEventV1Schema,
@@ -348,6 +349,7 @@ export class SessionMaintenanceQueries {
       events: events.map((event) => ({ ...event,
         readableText: event.source.platform === "dsh"
           ? readRc1CanonicalEventText(event as never)
+          : event.source.platform === "codex" ? readCodexCanonicalEventText(event)
           : typeof event.content === "string" ? event.content : null,
       })) as never,
       parent,

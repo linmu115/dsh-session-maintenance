@@ -105,7 +105,7 @@ describe("canonical dashboard workspace model", () => {
     expect(html).toMatch(/<div class="safe-markdown"[^>]*><p>hello<\/p><\/div>/u);
     expect(html).not.toContain('<p>source evidence</p>');
     const unavailable = renderToStaticMarkup(createElement(CanonicalEventView, { event: { ...event, readableText: null } }));
-    expect(unavailable).toContain("这条消息没有可显示的文字");
+    expect(unavailable).toContain("暂未解析出可读正文");
     expect(unavailable).not.toContain('class="safe-markdown"');
     const { readableText: _text, ...legacyEvent } = event;
     const legacy = renderToStaticMarkup(createElement(CanonicalEventView, { event: legacyEvent }));
