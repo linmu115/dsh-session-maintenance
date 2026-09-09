@@ -56,6 +56,20 @@ function rc1PrepareRequest() {
 }
 
 describe("Maintenance external lifecycle provider", () => {
+  it("reports a failed Engine child immediately instead of waiting for the readiness deadline", async () => {
+    const stateRoot = await mkdtemp(join(tmpdir(), "SYNTHETIC-engine-start-failed-"));
+    cleanups.push(() => rm(stateRoot, { recursive: true, force: true }));
+    const dispose = vi.fn();
+    const sleep = vi.fn(async () => {});
+    const provider = new MaintenanceExternalLifecycleProvider(stateRoot, {
+      startEngine: async () => ({ failure: async () => "WRITER_OWNER_UNKNOWN", dispose }),
+      sleep,
+    });
+    await expect(provider.handle(prepareRequest())).rejects.toThrow("WRITER_OWNER_UNKNOWN");
+    expect(sleep.mock.calls.length).toBeLessThanOrEqual(1);
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
   it.each(["owned", "legacy"] as const)("reuses a running Engine through its %s connection file for repeated lifecycle phases", async (format) => {
     const fixture = await createEngineFixture(`external-connection-${format}`);
     cleanups.push(fixture.cleanupAll);

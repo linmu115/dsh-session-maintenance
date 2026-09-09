@@ -39,6 +39,8 @@ import {
 import { startMaintenanceServer } from "./http/server.js";
 import { resolveEngineDashboardRoot } from "./dashboard-root.js";
 import { MaintenanceExternalLifecycleProvider, runExternalLifecycleStdio } from "./external-lifecycle-provider.js";
+import { recoverDeadEngineOwner } from "./engine-startup.js";
+import { lifecycleErrorCode, recordEngineLifecycle } from "./engine-lifecycle-log.js";
 
 export interface CliOptions {
   readonly fixturePolicy?: (root: string) => void;
@@ -510,33 +512,78 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
     });
 
   program.command("serve")
+    .option("--recover-dead-owner", "recover a proven-dead Engine owner before startup (Launcher)")
     .option("--host <host>", "loopback host", "127.0.0.1")
     .option("--port <port>", "TCP port", "0")
     .option("--dsh-gateway <instance=origin>", "trusted rc.2 DSH Core endpoint; repeatable", collect, [])
     .option("--dashboard-root <path>", "trusted built Dashboard directory")
     .option("--json")
-    .action(async (value: { host: string; port: string; dshGateway: readonly string[]; dashboardRoot?: string }) => {
-      const port = Number.parseInt(value.port, 10);
-      if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) throw new TypeError(`Invalid port: ${value.port}`);
-      const targets = gatewayTargets(value.dshGateway);
-      const dashboardRoot = await resolveEngineDashboardRoot(value.dashboardRoot);
-      const engine = targets.length === 0
-        ? await createReadOnlyComposition(compositionOptions())
-        : await createDshWritableComposition({ ...compositionOptions(), dshGatewayTargets: targets });
-      const server = await startMaintenanceServer({
-        engine,
-        stateRoot: compositionOptions().stateRoot,
-        host: value.host,
-        port,
-        ...(dashboardRoot === undefined ? {} : { dashboardRoot }),
-      });
-      output(stdout, { origin: server.origin, connectionFile: "connection.json" });
-      await new Promise<void>((resolveSignal) => {
-        process.once("SIGINT", resolveSignal);
-        process.once("SIGTERM", resolveSignal);
-      });
-      await server.close();
-      engine.close();
+    .action(async (value: { host: string; port: string; dshGateway: readonly string[]; dashboardRoot?: string; recoverDeadOwner?: boolean }) => {
+      const stateRoot = compositionOptions().stateRoot;
+      options.fixturePolicy?.(stateRoot);
+      const audit = (stage: string, code?: string) => recordEngineLifecycle(stateRoot, stage, code);
+      audit("startup.begin");
+      let ready = false;
+      let engine: Awaited<ReturnType<typeof createReadOnlyComposition>> | undefined;
+      let server: Awaited<ReturnType<typeof startMaintenanceServer>> | undefined;
+      let signalReceived = false;
+      let resolveStop!: () => void;
+      const stopped = new Promise<void>(resolve => { resolveStop = resolve; });
+      const requestStop = () => {
+        if (signalReceived) return;
+        signalReceived = true;
+        audit("shutdown.requested");
+        resolveStop();
+      };
+      // Install before async initialization; a stop during database opening
+      // must not miss the cleanup path. Remove both listeners in all outcomes.
+      process.once("SIGINT", requestStop);
+      process.once("SIGTERM", requestStop);
+      const recordCrash = (error: Error) => audit("process.uncaught-exception", lifecycleErrorCode(error));
+      // Observe fatal exceptions without suppressing Node's normal termination.
+      process.on("uncaughtExceptionMonitor", recordCrash);
+      try {
+        if (value.recoverDeadOwner) recoverDeadEngineOwner(stateRoot);
+        const port = Number.parseInt(value.port, 10);
+        if (!Number.isSafeInteger(port) || port < 0 || port > 65_535) throw new TypeError(`Invalid port: ${value.port}`);
+        const targets = gatewayTargets(value.dshGateway);
+        const dashboardRoot = await resolveEngineDashboardRoot(value.dashboardRoot);
+        engine = targets.length === 0
+          ? await createReadOnlyComposition(compositionOptions())
+          : await createDshWritableComposition({ ...compositionOptions(), dshGatewayTargets: targets });
+        server = await startMaintenanceServer({
+          engine,
+          stateRoot: compositionOptions().stateRoot,
+          host: value.host,
+          port,
+          ...(dashboardRoot === undefined ? {} : { dashboardRoot }),
+        });
+        ready = true;
+        audit("startup.ready");
+        output(stdout, { origin: server.origin, connectionFile: "connection.json" });
+        await stopped;
+        audit("shutdown.drain-started");
+        await server.close();
+        audit("shutdown.drained");
+        engine.close();
+        audit("owner.released");
+        audit("shutdown.completed");
+      } catch (error) {
+        audit(ready ? "shutdown.failed" : "startup.failed", lifecycleErrorCode(error));
+        // startMaintenanceServer drains its own partial initialization. If
+        // initialization failed before it returned, release the acquired owner.
+        if (!ready && engine !== undefined && server === undefined) {
+          await engine.jobs.stopImports();
+          await engine.writes?.drain();
+          engine.close();
+          audit("owner.released");
+        }
+        throw error;
+      } finally {
+        process.removeListener("SIGINT", requestStop);
+        process.removeListener("SIGTERM", requestStop);
+        process.removeListener("uncaughtExceptionMonitor", recordCrash);
+      }
     });
 
   const unsupported = (kind: string) => async () => {

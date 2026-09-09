@@ -1,4 +1,4 @@
-import { spawn } from "node:child_process";
+import { startManagedEngine, type EngineStartupMonitor } from "./engine-startup.js";
 import { randomBytes } from "node:crypto";
 import { open, mkdir, readFile, rename } from "node:fs/promises";
 import { dirname, isAbsolute, join } from "node:path";
@@ -145,7 +145,7 @@ export interface ExternalLifecycleProviderDependencies {
   readonly clock?: () => string;
   readonly randomId?: () => string;
   readonly connection?: () => Promise<EngineConnection>;
-  readonly startEngine?: (stateRoot: string) => Promise<void>;
+  readonly startEngine?: (stateRoot: string) => Promise<EngineStartupMonitor | void>;
   readonly sleep?: (milliseconds: number) => Promise<void>;
 }
 
@@ -188,23 +188,12 @@ async function atomicWrite(path: string, value: unknown): Promise<void> {
   await rename(temporary, path);
 }
 
-async function defaultStartEngine(stateRoot: string): Promise<void> {
-  const entry = process.argv[1];
-  if (entry === undefined) throw new ProviderError("ENGINE_START_UNAVAILABLE", "Cannot locate the Maintenance CLI entry point", true);
-  const child = spawn(process.execPath, [entry, "--state-root", stateRoot, "serve"], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-  });
-  child.unref();
-}
-
 export class MaintenanceExternalLifecycleProvider {
   private readonly fetchImpl: typeof globalThis.fetch;
   private readonly clock: () => string;
   private readonly randomId: () => string;
   private readonly connectionOverride: (() => Promise<EngineConnection>) | undefined;
-  private readonly startEngine: (stateRoot: string) => Promise<void>;
+  private readonly startEngine: (stateRoot: string) => Promise<EngineStartupMonitor | void>;
   private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly requireBinding: boolean;
 
@@ -217,7 +206,7 @@ export class MaintenanceExternalLifecycleProvider {
     this.clock = dependencies.clock ?? (() => new Date().toISOString());
     this.randomId = dependencies.randomId ?? (() => randomBytes(24).toString("base64url"));
     this.connectionOverride = dependencies.connection;
-    this.startEngine = dependencies.startEngine ?? defaultStartEngine;
+    this.startEngine = dependencies.startEngine ?? startManagedEngine;
     this.sleep = dependencies.sleep ?? (async (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   }
 
@@ -521,14 +510,20 @@ export class MaintenanceExternalLifecycleProvider {
     if (this.connectionOverride !== undefined) return this.connectionOverride();
     const existing = await this.tryConnection();
     if (existing !== null) return existing;
-    await this.startEngine(this.stateRoot);
-    const deadline = Date.now() + ENGINE_START_TIMEOUT_MS;
-    while (Date.now() < deadline) {
-      await this.sleep(100);
-      const connection = await this.tryConnection();
-      if (connection !== null) return connection;
+    const startup = await this.startEngine(this.stateRoot);
+    try {
+      const deadline = Date.now() + ENGINE_START_TIMEOUT_MS;
+      while (Date.now() < deadline) {
+        const failure = await startup?.failure();
+        if (failure !== undefined) throw new ProviderError(failure, `Maintenance Engine startup failed: ${failure}. See logs/engine-lifecycle.`, true);
+        await this.sleep(100);
+        const connection = await this.tryConnection();
+        if (connection !== null) return connection;
+      }
+      throw new ProviderError("ENGINE_START_TIMEOUT", "Session Maintenance Engine did not become ready", true);
+    } finally {
+      startup?.dispose();
     }
-    throw new ProviderError("ENGINE_START_TIMEOUT", "Session Maintenance Engine did not become ready", true);
   }
 
   private async tryConnection(): Promise<EngineConnection | null> {
