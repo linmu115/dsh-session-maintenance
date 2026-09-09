@@ -43,4 +43,15 @@ Engine 的 owner 接管与 DSH run 恢复是两个步骤。前者不证明后者
 
 ## 交付范围
 
-本次提交源代码、回归测试和本文档。未替换 Launcher 指向的已安装 Engine，未恢复真实运行锁或启动用户实例。部署需要构建包含本提交的 Engine；仅推送 Git 不会改变当前安装版本。
+源码修复提交 bc01b93 仅交付源代码、回归测试和本文档，当时未替换安装版本。用户随后明确要求替换，部署结果如下。
+
+## 0.1.26 部署验收（2026-09-09）
+
+- 发行包来自干净提交 17c101d，安装于 `D:/AI/DSH-Plugin-Releases/maintenance/engine-0.1.26-plugin-0.2.21-launcher-0.2.3`，Launcher 生命周期配置已指向新入口。
+- 143 个安装文件中，除 Engine 主程序和 BUILD-INFO 外的 141 个文件与 0.1.25 逐字节一致，包括 Dashboard、DSH Adapter worker 及插件。
+- 16:50:12（Asia/Shanghai）以 `serve --recover-dead-owner --port 24215` 启动 PID 47240。实际日志记录旧 owner 恢复成功，startup.begin 至 startup.ready 为 215 ms；这不代表包含 DSH 启动及投影的总耗时。
+- 旧运行创建于已核实的两次 Windows 重启之前，当前没有匹配的运行进程。通过 external-lifecycle afterExit（未知退出码、未获正常关闭确认）执行既有恢复，旧运行变为 recovered，建立 checkpoint_dcaffb8690d192912ecc55f8；没有手动清空运行表。
+- 只读核对：部署前 7,422 个版本逐行保留，原有 35 个存活会话仍在；恢复正常 Codex 观察后另导入 2 个镜像会话。项目映射策略摘要不变。验收时无占用中的投影运行。
+- 健康检查、Dashboard 文件响应和原先正文故障样例的会话 HTTP 读取通过；Dashboard 响应与安装文件一致。
+- 回退配置、启动前数据库快照、生命周期日志和部署回执保存在发行目录。回退程序不应覆盖已有新数据的数据库。
+- 本轮没有启动 DSH 实例；用户下一次通过 Launcher 启动 0.1.2-rc.1 / web 验收。
