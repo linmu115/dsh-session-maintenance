@@ -48,6 +48,7 @@ import {
   projectionCacheRootFor,
 } from "./persistent-cache.js";
 import { createRunCacheManager, refreshRunCache, type RunCacheContext } from "./run-cache.js";
+import { sourceWithEvidence } from "./source-evidence.js";
 import { ProjectionWriteAheadLog } from "./wal.js";
 import {
   readProjectionRecoveryDescriptor,
@@ -205,7 +206,7 @@ export class ProjectionLifecycle {
   }) {
     this.runRepository = input.runRepository;
     this.statusLog = input.statusLog;
-    this.source = input.source;
+    this.source = sourceWithEvidence(input.source, input.adapter, input.evidencePort);
     this.adapter = input.adapter;
     this.bridge = input.bridge;
     this.canonicalEngine = input.canonicalEngine;

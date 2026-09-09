@@ -36,19 +36,15 @@ describe("Maintenance other event card", () => {
     expect(maintenanceOtherEventData({ ...event, type: "tool/result" })).toBeUndefined();
   });
 
-  it("publishes a visible tool-card node without changing the event surface", () => {
+  it("keeps unknown events out of the chat timeline without changing stored diagnostics", () => {
     const match = maintenanceOtherConversationDefinition.match(event);
     expect(match).toEqual({ id: "maintenance-other:7", role: "start" });
     const state = maintenanceOtherConversationDefinition.start(
       { key: "key", id: "node" },
       { event, location: { kind: "session" } },
     );
-    expect(maintenanceOtherConversationDefinition.buildViewNode({ key: "key", id: "node", state })).toMatchObject({
-      kind: "dsh-session-maintenance-other",
-      anchorSeq: 7,
-      visibility: "visible",
-      data: { label: "未映射记录" },
-    });
+    expect(maintenanceOtherConversationDefinition.buildViewNode({ key: "key", id: "node", state })).toBeNull();
+
   });
 
   it("decodes a grouped record and keeps its details closed by default", () => {
@@ -86,10 +82,7 @@ describe("Maintenance other event card", () => {
     expect(data).toMatchObject({ count: 2, label: "未映射记录（2 条）" });
     expect(data?.items.map((item) => item.sourceKind)).toEqual(["codex/a", "codex/b"]);
 
-    const view = MaintenanceOtherNodeView({ node: { data } }) as unknown as {
-      readonly props: { readonly children: { readonly type: string; readonly props: { readonly open?: boolean } } };
-    };
-    expect(view.props.children.type).toBe("details");
-    expect(view.props.children.props.open).toBeUndefined();
+    expect(MaintenanceOtherNodeView({ node: { data } })).toBeNull();
+
   });
 });

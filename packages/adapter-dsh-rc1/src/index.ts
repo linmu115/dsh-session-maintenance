@@ -8,6 +8,7 @@ import {
   materializeRc1,
 } from "./materialize.js";
 import { normalizeRc1Append } from "./normalize-append.js";
+import { restoreRc1Metadata } from "./native-metadata.js";
 import { probeRc1 } from "./probe.js";
 import { resolveRc1Reference } from "./references.js";
 import {
@@ -36,6 +37,7 @@ export { readRc1CanonicalEventText } from "./readable-text.js";
 
 export const adapter = defineDshSessionAdapter({
   manifest,
+  restoreNativeEvents: restoreRc1Metadata,
   probe: async (environment) => probeRc1(environment),
   materialize: materializeRc1,
   composeProjectionManifest: composeRc1ProjectionManifest,

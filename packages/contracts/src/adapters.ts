@@ -138,6 +138,11 @@ export interface ProjectionReader {
 
 export interface DshSessionAdapterV1 {
   readonly manifest: AdapterManifestV1;
+  /** Optional read-only recovery of known native metadata from exact adapter-owned evidence. */
+  restoreNativeEvents?(
+    events: readonly import("./canonical.js").CanonicalEventV1[],
+    evidence: Pick<AdapterEvidencePort, "readEvidence">,
+  ): Promise<readonly import("./canonical.js").CanonicalEventV1[]>;
   probe(environment: DshEnvironmentDescriptor): Promise<AdapterProbeResult>;
   materialize(
     input: CanonicalProjectionInput,

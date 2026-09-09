@@ -152,69 +152,13 @@ export const maintenanceOtherConversationDefinition: MaintenanceOtherConversatio
     return context.state;
   },
   publication: () => "immediate",
-  buildViewNode(context) {
-    const state = context.state;
-    if (state === undefined) return null;
-    return Object.freeze({
-      key: context.key,
-      kind: "dsh-session-maintenance-other",
-      id: context.id,
-      target: "chat",
-      anchorSeq: state.seq,
-      location: SESSION_LOCATION,
-      visibility: "visible",
-      data: {
-        label: state.label,
-        summary: state.summary,
-        sourceKind: state.sourceKind,
-        reason: state.reason,
-        evidenceRef: state.evidenceRef,
-        count: state.count,
-        items: state.items,
-      },
-    });
-  },
+  // Unknown diagnostics remain stored, but never occupy the chat timeline.
+  buildViewNode: () => null,
+
 };
 
-function nodeData(node: unknown): MaintenanceOtherCardData | undefined {
-  const data = record(record(node)?.data);
-  if (
-    typeof data?.label !== "string"
-    || typeof data.summary !== "string"
-    || typeof data.sourceKind !== "string"
-    || typeof data.reason !== "string"
-    || !(data.evidenceRef === null || typeof data.evidenceRef === "string")
-    || !Number.isSafeInteger(data.count)
-    || !Array.isArray(data.items)
-  ) return undefined;
-  const items = data.items.map(cardItem);
-  if (items.some((item) => item === undefined) || items.length !== data.count) return undefined;
-  return {
-    label: data.label,
-    summary: data.summary,
-    sourceKind: data.sourceKind,
-    reason: data.reason,
-    evidenceRef: data.evidenceRef,
-    count: data.count as number,
-    items: items as MaintenanceOtherCardItem[],
-  };
-}
-
-export function MaintenanceOtherNodeView(props: { readonly node: unknown }) {
-  const data = nodeData(props.node);
-  if (data === undefined) return null;
-  return <div className="dsm-other-row">
-    <details className="dsm-other-card">
-      <summary><span className="dsm-other-badge">维护记录</span>{data.label}</summary>
-      <p>{data.summary}</p>
-      {data.count === 1
-        ? <small>{data.sourceKind}</small>
-        : <ul>{data.items.map((item, index) => <li key={`${item.sourceKind}:${index}`}>
-            <span>{item.label}</span><small>{item.sourceKind}</small>
-          </li>)}</ul>}
-    </details>
-  </div>;
-}
+/** Compatibility export for already-mounted renderers during a client reload. */
+export function MaintenanceOtherNodeView(_props: { readonly node: unknown }) { return null; }
 
 export interface MaintenanceOtherClientContext {
   readonly uiConversation: { readonly events: { register(definition: unknown): () => void } };

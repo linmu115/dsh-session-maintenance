@@ -4,7 +4,6 @@ import { installContextMenu } from "./context-menu.js";
 import { openDashboard, registerOptionalSidebar } from "./dashboard-entry.js";
 import { decorateSessionRows } from "./session-locator.js";
 import { registerSettingsSection } from "./settings-actions.js";
-import { registerMaintenanceOtherCards } from "./other-event-card.js";
 import { installStyles } from "./styles.js";
 import { verifyUiContract } from "./ui-contract.js";
 
@@ -13,10 +12,8 @@ export const inject = ["sessions", "slots"] as const;
 export function apply(ctx: ClientContext): void {
   ctx.inject(inject, (injected) => {
     const actions = createMaintenanceActions();
-    const otherCards = injected.inject(["uiConversation"], (cardContext) => registerMaintenanceOtherCards(cardContext));
     const cleanup = [
       installStyles(),
-      () => { void otherCards.dispose(); },
       registerSettingsSection(injected.slots, {
         actions,
         currentSessionId: () => injected.sessions.list.getSnapshot().current,

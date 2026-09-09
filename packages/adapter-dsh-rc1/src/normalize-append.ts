@@ -12,6 +12,7 @@ import { CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION } from "@linmu/dsh-session-ad
 
 import { digest } from "./materialize.js";
 import { manifest } from "./manifest.js";
+import { NATIVE_METADATA_TYPES } from "./native-metadata.js";
 
 interface NativeEvent {
   readonly type: string;
@@ -31,6 +32,7 @@ const NATIVE_CONTROL_TYPES = new Set([
 ]);
 
 const PORTABLE_EVIDENCE_ONLY_TYPES = new Set([
+  ...NATIVE_METADATA_TYPES,
   "turn/start",
   "turn/end",
   "step/start",
@@ -49,7 +51,7 @@ function eventIdentity(type: string): {
   readonly kind: CanonicalEventV1["kind"];
   readonly role: CanonicalEventV1["role"];
 } {
-  if (NATIVE_CONTROL_TYPES.has(type)) return { kind: "system-metadata", role: "system" };
+  if (NATIVE_CONTROL_TYPES.has(type) || NATIVE_METADATA_TYPES.has(type) || type === "maintenance/other") return { kind: "system-metadata", role: "system" };
   if (type === "user/message") return { kind: "user-message", role: "user" };
   if (type === "assistant/message" || type === "assistant/chunk") return { kind: type === "assistant/message" ? "assistant-message" : "reasoning", role: "assistant" };
   if (type === "tool/call") return { kind: "tool-call", role: "assistant" };
