@@ -13,12 +13,14 @@ async function manifest(path: string) {
 }
 
 describe("retention schema 21 compatibility boundary", () => {
-  it("reads schema 21 body references and verifies a static recovery point without changing it", async () => {
+  it.each([21,22])("reads schema %s body references and verifies a static recovery point without changing it", async (schema) => {
     const f = await retentionFixture();
     try {
       const body = await f.addVersion("head", "retained schema 21 body");
-      expect(f.database.prepare("SELECT MAX(version) version FROM schema_migrations").get()?.version).toBe(21);
-      const path = await f.external("schema21"), before = await manifest(path);
+      expect(f.database.prepare("SELECT MAX(version) version FROM schema_migrations").get()?.version).toBe(22);
+      const path = await f.external("schema21");
+      if(schema===21){const db=new DatabaseSync(path);try{db.exec("DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections; DELETE FROM schema_migrations WHERE version=22");}finally{db.close();}}
+      const before = await manifest(path);
       const inventory = await f.repository.capture(NOW);
       expect(inventory.blockers).toEqual([]);
       expect(inventory.references).toEqual(expect.arrayContaining([
@@ -32,7 +34,7 @@ describe("retention schema 21 compatibility boundary", () => {
     } finally { await f.close(); }
   });
 
-  it.each([15, 18, 22, 999])("continues to reject unsupported schema %s for references and static candidates", async (schema) => {
+  it.each([15, 18, 23, 999])("continues to reject unsupported schema %s for references and static candidates", async (schema) => {
     const f = await retentionFixture();
     try {
       await f.addVersion("head");

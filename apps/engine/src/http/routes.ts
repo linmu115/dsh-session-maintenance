@@ -1,3 +1,5 @@
+import { ExtensionDataError } from "@linmu/dsh-session-contracts";
+import { routeExtensionRequest } from "./extension-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
 import { z, ZodError } from "zod";
@@ -265,6 +267,7 @@ export async function routeRequest(
   try {
     if (await routeRetentionRequest(request, response, url, context.engine.retention)) return;
     if (await routeIntegrationRequest(request, response, url, context.engine)) return;
+    if (await routeExtensionRequest(request, response, url, context.engine)) return;
     if (request.method === "GET" && url.pathname === "/v1/instances") {
       send(response, 200, { instances: await context.engine.listInstances() });
       return;
@@ -737,7 +740,7 @@ export async function routeRequest(
       response.destroy(error instanceof Error ? error : undefined);
     } else if (error instanceof HttpBodyError) send(response, error.status, errorBody("INVALID_REQUEST", error.message));
     else if (error instanceof ZodError) send(response, 400, errorBody("INVALID_REQUEST", "Request does not match the API schema"));
-    else if (error instanceof IntegrationError) send(response, error.status, errorBody(error.code, error.message));
+    else if (error instanceof IntegrationError || error instanceof ExtensionDataError) send(response, error.status, errorBody(error.code, error.message));
     else if (error instanceof Error && error.message.startsWith("WRITER_QUEUE_FULL")) {
       response.setHeader("retry-after", "1");
       send(response, 503, errorBody("WRITER_QUEUE_FULL", "Write queue is full; retry after pending commits drain"));

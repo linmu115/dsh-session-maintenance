@@ -125,7 +125,7 @@ export async function verifyRetentionResource(
         database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()?.version,
       );
       if (
-        ![16, 17, 19, 20, 21].includes(schema) ||
+        ![16, 17, 19, 20, 21, 22].includes(schema) ||
         database
           .prepare("PRAGMA quick_check")
           .all()

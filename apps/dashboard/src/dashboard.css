@@ -383,3 +383,9 @@
 @media (prefers-reduced-motion: reduce) {
   .workspace-chevron { transition: none; }
 }
+.extension-panels { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.extension-editor { margin-top: 20px; border-top: 1px solid var(--border, #ddd); padding-top: 16px; }
+.extension-json { width: 100%; min-height: 240px; font-family: monospace; }
+.extension-graph { margin: 16px 0; max-width: 900px; }
+.extension-graph svg { width: 100%; max-height: 520px; }
+.extension-editor pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }

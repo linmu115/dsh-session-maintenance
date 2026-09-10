@@ -1,3 +1,5 @@
+import type { Context } from "@deepseek-ai/cordis";
+import { MaintenanceExtensionBridge, registerMaintenanceExtensionData } from "./extension-data.js";
 import s from "@deepseek-ai/schemastery";
 import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
 import type { JsonValue } from "@linmu/dsh-session-contracts";
@@ -19,7 +21,7 @@ import { installLazyProjectionPersistence, type LazyHydrationStage, type LazyRea
 export const name = "dsh-session-maintenance";
 export type Config = PluginConfig;
 
-export const Config = s.object({
+export const Config: s = s.object({
   connectionId: s.string().default("primary"),
   dshInstanceId: s.string().default("dsh-web"),
   profileId: s.string().default("web"),
@@ -27,6 +29,7 @@ export const Config = s.object({
   maintenanceEndpoint: s.string().default("auto"),
   adapterSelection: s.string().default("auto"),
   pinnedAdapterId: s.string().default(""),
+  extensionPlugins: s.array(s.object({ namespace:s.string(),pluginVersion:s.string(),writerId:s.string() })),
 });
 
 export const inject = ["webServer", "appExit", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery"] as const;
@@ -78,6 +81,17 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       ...(launchProfile.nativeMode ? { nativeMode: launchProfile.nativeMode } : {}),
     });
     await runtime.attach();
+    if (config.extensionPlugins !== undefined) {
+      const extensions = new MaintenanceExtensionBridge(connection,{instanceId:config.dshInstanceId,profileId:config.profileId},config.extensionPlugins);
+      try {
+        await extensions.connect();
+        await registerMaintenanceExtensionData(ctx as unknown as Context,extensions);
+      } catch {
+        // Optional extension initialization must never skip native event/drain hooks.
+        const message = "[dsh-session-maintenance] 扩展数据暂未接通；保留本地未提交编辑，重新连接后再保存。";
+        if (ctx.logger) ctx.logger.warn(message); else console.warn(message);
+      }
+    }
     const lazyStatus = (stage: LazyHydrationStage, sessionId?: string, error?: unknown) => {
       const suffix = sessionId === undefined ? "" : ` session=${sessionId}`;
       const message = `[dsh-session-maintenance] ${stage}${suffix}`;

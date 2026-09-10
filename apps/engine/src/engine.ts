@@ -1,3 +1,4 @@
+import type { ExtensionDataService } from "./extensions/service.js";
 import {
   SessionMaintenanceError,
   normalizedSessionSchema,
@@ -217,6 +218,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly sessionQueries: SessionMaintenanceQueries;
   readonly writes: MaintenanceWriteCoordinator | undefined;
   readonly retention: RetentionService | undefined;
+  readonly extensions: ExtensionDataService | undefined;
   readonly integrations: InstanceIntegrationService | undefined;
   readonly workspaceSync: WorkspaceSyncPolicyService | undefined;
   readonly codexProjectMapping: CodexProjectMappingService | undefined;
@@ -261,6 +263,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly beforeProjectionPrepare?: () => Promise<void>;
     readonly writes?: MaintenanceWriteCoordinator;
     readonly retention?: RetentionService;
+    readonly extensions?: ExtensionDataService;
     readonly codexImports?: CodexImportService;
     readonly integrations?: InstanceIntegrationService;
     readonly workspaceSync?: WorkspaceSyncPolicyService;
@@ -273,6 +276,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.codexProjectObserver = input.codexProjectObserver;
     this.writes = input.writes;
     this.retention = input.retention;
+    this.extensions = input.extensions;
     this.codexImports = input.codexImports;
     this.jobStore = new JobStore(input.repository.database);
     if (input.writes !== undefined) coordinateSyncMethods(this.jobStore, ["createScan", "createApply", "createRestore", "createRecover", "createCodexImport", "requestCancellation", "markRunning", "markRequeued", "progress", "complete", "fail"], input.writes, "job-state");

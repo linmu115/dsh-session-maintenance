@@ -41,3 +41,4 @@ export * from "./retention-registration.js";
 export * from "./retention-journal.js";
 export * from "./retention-executor.js";
 export * from "./migrations/020-retention-journal.js";
+export * from "./extension-repository.js";

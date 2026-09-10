@@ -1,3 +1,6 @@
+import { SqliteExtensionRepository } from "@linmu/dsh-session-store";
+import { ExtensionDataService } from "./extensions/service.js";
+import { builtInExtensionAdapters } from "./extensions/adapters.js";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -70,6 +73,7 @@ function adapterWorkerEntryPoint(packageName: string, bundledFilename: string): 
 }
 
 export interface CompositionOptions {
+  readonly extensionAdapters?: readonly import("@linmu/dsh-session-contracts").ExtensionDataAdapter[];
   readonly stateRoot: string;
   readonly ownerMode?: "engine" | "offline";
   readonly clock?: () => string;
@@ -290,6 +294,7 @@ async function createComposition(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   return new SessionMaintenanceEngine({
+    extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), options.extensionAdapters ?? builtInExtensionAdapters),
     codexProjectMapping,
     codexProjectObserver,
     beforeProjectionPrepare: async () => {

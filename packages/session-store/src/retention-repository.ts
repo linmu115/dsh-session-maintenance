@@ -456,7 +456,7 @@ export class RetentionRepository {
         const schema = Number(
           database.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()?.version,
         );
-        if (![16, 17, 19, 20, 21].includes(schema)) {
+        if (![16, 17, 19, 20, 21, 22].includes(schema)) {
           addBlock("unknown-format", source.id, `Unsupported reference schema ${schema}`);
           continue;
         }

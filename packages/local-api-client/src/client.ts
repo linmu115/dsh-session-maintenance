@@ -1,3 +1,4 @@
+import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict } from "@linmu/dsh-session-contracts";
 import { z, type ZodType } from "zod";
 
 import {
@@ -611,6 +612,32 @@ class ApiClient {
 
   protected jsonPost(value: unknown): RequestInit {
     return { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
+  }
+
+  async listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]> {
+    return this.request("/v1/extensions/panels",{},z.custom<ExtensionPanel[]>(),signal);
+  }
+  async connectExtensions(input: ExtensionConnect): Promise<ExtensionPanel[]> {
+    return this.request("/v1/extensions/connect",this.jsonPost(input),z.custom<ExtensionPanel[]>());
+  }
+  async enableExtension(scope: ExtensionScope, enabled: boolean): Promise<ExtensionPanel[]> {
+    return this.request("/v1/extensions/enabled",this.jsonPost({scope,enabled}),z.custom<ExtensionPanel[]>());
+  }
+  async listExtensionObjects(query: ExtensionList, signal?: AbortSignal): Promise<ExtensionPage> {
+    const parameters = new URLSearchParams(Object.entries(query).filter(([,v])=>v!==undefined).map(([k,v]): [string,string]=>[k,String(v)]));
+    return this.request(`/v1/extensions/objects?${parameters}`,{},z.custom<ExtensionPage>(),signal);
+  }
+  async getExtensionObject(scope: ExtensionScope, objectId: string, signal?: AbortSignal): Promise<ExtensionDetail> {
+    return this.request(`/v1/extensions/object?${new URLSearchParams({...scope,objectId})}`,{},z.custom<ExtensionDetail>(),signal);
+  }
+  async writeExtensionObject(input: ExtensionWrite): Promise<ExtensionWriteResult> {
+    return this.request("/v1/extensions/write",this.jsonPost(input),z.custom<ExtensionWriteResult>());
+  }
+  async getExtensionConflict(scope: ExtensionScope, conflictId: string, signal?: AbortSignal): Promise<ExtensionConflict> {
+    return this.request(`/v1/extensions/conflict?${new URLSearchParams({...scope,conflictId})}`,{},z.custom<ExtensionConflict>(),signal);
+  }
+  async resolveExtensionConflict(scope: ExtensionScope, conflictId: string, revision: number, choice: "current" | "incoming"): Promise<ExtensionWriteResult> {
+    return this.request("/v1/extensions/resolve",this.jsonPost({scope,conflictId,revision,choice}),z.custom<ExtensionWriteResult>());
   }
 
   private jsonPatch(value: unknown): RequestInit {

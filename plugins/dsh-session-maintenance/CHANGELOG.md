@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.2.24 - 2026-09-10
+
+- Optional `extensionPlugins` profile configuration connects independent plugin
+  data domains to Engine 0.1.31. Host integrations use
+  `ctx.maintenanceExtensionData.bridge` for paginated reads and revision-checked
+  saves. Acknowledged conflicts retain both candidates instead of overwriting.
+- Extension objects live outside native session events. This release does not
+  migrate historical plugin events, modify ThoughtDAG, or add context snapshots.
+
 ## 0.2.23 - 2026-09-10
 
 - Pair with Engine 0.1.29 and RC1 Adapter 0.1.5. RC1 uses a persistent native

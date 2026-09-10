@@ -2,7 +2,9 @@ import { readFile, readdir } from "node:fs/promises";
 import { extname, join, relative } from "node:path";
 
 const root = process.cwd();
-const ignored = new Set([".git", "node_modules", "dist", "coverage"]);
+// Generated release bundles and source-inspection scratch files have their own
+// archive checks; they are not workspace runtime dependencies.
+const ignored = new Set([".git", ".artifacts", "node_modules", "dist", "coverage"]);
 const textExtensions = new Set([".ts", ".mts", ".js", ".mjs", ".json", ".yaml", ".yml", ".md"]);
 const files = [];
 

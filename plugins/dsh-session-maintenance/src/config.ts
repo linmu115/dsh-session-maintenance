@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { extensionConnectSchema, type ExtensionConnect } from "@linmu/dsh-session-contracts";
 
 export const SUPPORTED_DSH_VERSION = "0.1.1-rc.2" as const;
 
@@ -10,6 +11,7 @@ export interface Config {
   readonly maintenanceEndpoint?: "auto" | string;
   readonly adapterSelection?: "auto" | "pinned" | "experimental";
   readonly pinnedAdapterId?: string | null;
+  readonly extensionPlugins?: ExtensionConnect["plugins"];
 }
 
 export interface LauncherProjectionProfile {
@@ -41,6 +43,7 @@ function loopbackOrigin(value: string): string {
 }
 
 export function normalizeConfig(config: Config): Config {
+  if (config.extensionPlugins !== undefined) extensionConnectSchema.parse({instanceId:config.dshInstanceId,profileId:config.profileId,plugins:config.extensionPlugins});
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/u.test(config.connectionId)) throw new TypeError("connectionId 必须是可信安装器登记的 ID");
   if (!/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(config.dshInstanceId)) {
     throw new TypeError("dshInstanceId must be a registered ID, not a path");

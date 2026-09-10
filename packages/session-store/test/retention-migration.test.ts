@@ -9,7 +9,7 @@ it("SM-08 migration failure rolls back registry and registration, and retry is i
   const root=await mkdtemp(join(tmpdir(),"dsh-sm-retention-migration-SYNTHETIC-")), path=join(root,"metadata.sqlite");
   try {
     let db=openMaintenanceDatabase(path);
-    db.exec("DROP TABLE codex_project_mapping_removals; DROP TABLE codex_project_mapping_policy; DROP TABLE retention_batches; DROP TABLE retention_resources; DROP TABLE retention_sources; DROP TABLE retention_roots; DELETE FROM schema_migrations WHERE version >= 19; CREATE TABLE retention_sources(synthetic_conflict TEXT)"); db.close();
+    db.exec("DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections; DROP TABLE codex_project_mapping_removals; DROP TABLE codex_project_mapping_policy; DROP TABLE retention_batches; DROP TABLE retention_resources; DROP TABLE retention_sources; DROP TABLE retention_roots; DELETE FROM schema_migrations WHERE version >= 19; CREATE TABLE retention_sources(synthetic_conflict TEXT)"); db.close();
     expect(()=>openMaintenanceDatabase(path)).toThrow();
     db=new DatabaseSync(path);
     expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({version:17});
@@ -23,7 +23,7 @@ it("SM-08 migration failure rolls back registry and registration, and retry is i
 it("SM-09 journal migration preserves existing registry on failure and can retry",async()=>{
   const root=await mkdtemp(join(tmpdir(),"dsh-sm-retention-journal-SYNTHETIC-")),path=join(root,"metadata.sqlite");
   try {
-    let db=openMaintenanceDatabase(path);db.exec("DROP TABLE codex_project_mapping_removals; DROP TABLE codex_project_mapping_policy; DELETE FROM schema_migrations WHERE version>=20; DROP TABLE retention_batches; CREATE TABLE retention_batches(synthetic_conflict TEXT)");db.close();
+    let db=openMaintenanceDatabase(path);db.exec("DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections; DROP TABLE codex_project_mapping_removals; DROP TABLE codex_project_mapping_policy; DELETE FROM schema_migrations WHERE version>=20; DROP TABLE retention_batches; CREATE TABLE retention_batches(synthetic_conflict TEXT)");db.close();
     expect(()=>openMaintenanceDatabase(path)).toThrow();db=new DatabaseSync(path);
     expect(db.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toEqual({version:19});expect(db.prepare("SELECT COUNT(*) AS count FROM retention_roots").get()).toEqual({count:0});
     db.exec("DROP TABLE retention_batches");db.close();db=openMaintenanceDatabase(path);expect(db.prepare("SELECT COUNT(*) AS count FROM schema_migrations WHERE version=20").get()).toEqual({count:1});db.close();
