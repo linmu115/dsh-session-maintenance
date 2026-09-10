@@ -47,6 +47,8 @@ export interface RuntimeBrokerPreparedRun {
   readonly temporaryPersistenceRootId: string;
   readonly runtimeClientId: string;
   readonly state: "preparing";
+  readonly nativeMode?: "persistent-native-v1";
+  readonly controlRoot?: string;
 }
 
 export interface RuntimeBrokerAttachRunRequest {
@@ -55,6 +57,7 @@ export interface RuntimeBrokerAttachRunRequest {
   readonly runId: RunId;
   readonly temporaryPersistenceRootId: string;
   readonly attachedAt: string;
+  readonly nativeMode?: "persistent-native-v1";
 }
 
 export interface RuntimeBrokerAttachedRun {

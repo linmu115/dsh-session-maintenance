@@ -283,7 +283,8 @@ export class MaintenanceExternalLifecycleProvider {
       || !isAbsolute(run.persistenceRoot)
     ) throw new ProviderError("BROKER_PREPARE_INVALID", "Runtime Broker prepare acknowledgement is invalid", true);
     try {
-    const projectionRoot = dirname(run.persistenceRoot);
+    const projectionRoot = run.controlRoot ?? dirname(run.persistenceRoot);
+    if (!isAbsolute(projectionRoot)) throw new TypeError("Invalid runtime control directory");
     const patchPath = join(projectionRoot, "external-lifecycle.patch.yml");
     await mkdir(projectionRoot, { recursive: true });
     const patch = stringify([{
@@ -309,6 +310,7 @@ export class MaintenanceExternalLifecycleProvider {
       runId: run.runId,
       temporaryPersistenceRootId: run.temporaryPersistenceRootId,
       dshVersion: request.runtimeVersion,
+      ...(run.nativeMode ? { nativeMode: run.nativeMode } : {}),
     };
     const stored: StoredLifecycleHandle = {
       schemaVersion: 1,

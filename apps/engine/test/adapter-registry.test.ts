@@ -82,7 +82,10 @@ describe("Built-in Adapter registration and runtime composition", () => {
       expect(fixture.engine.resolveProjectionAdapter(selection.adapterId)).toBe(adapter);
       const lifecycle = fixture.engine.projectionLifecycleFactory({ adapterId: selection.adapterId, bridge: {} as never });
       expect(lifecycle.adapter).toBe(adapter);
-      expect(lifecycle.source).toBe(fixture.engine.canonicalProjectionSource);
+      // RC1 decorates the canonical source to restore its lifecycle evidence.
+      // Verify the source contract, rather than requiring object identity.
+      const sourceRun = { id: "synthetic-source-probe", branchId: "main" } as never;
+      expect(await lifecycle.source.load(sourceRun)).toEqual(await fixture.engine.canonicalProjectionSource.load(sourceRun));
       expect(Object.keys(selection.registration).sort()).toEqual(["enabled", "manifest", "source"]);
     } finally {
       inProcessProbe.mockRestore();

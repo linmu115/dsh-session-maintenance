@@ -6,6 +6,25 @@ import { describe, expect, it, vi } from "vitest";
 import { SessionPersistenceProjection } from "../src/projection-runtime.js";
 
 describe("RC1 empty projection materialization", () => {
+  it("N02/N05: registers persistent native metadata without create, append, or body hydration", async () => {
+    const create = vi.fn(), append = vi.fn(), ensureMaterialized = vi.fn();
+    const header = { version: 0, id: "native-ready", createdAt: 1, isSeeded: false, delegationDepth: 0, cwd: tmpdir() };
+    const put = vi.fn();
+    const overlay = new SessionPersistenceProjection({
+      sessionPersistence: { create, append, ensureMaterialized, list: async () => [header] },
+      workspaceRegistry: { replaceHeaderIndex: async () => {}, list: () => [],
+        create: async (path: string, title: string) => ({ id: "fixture", path, title, attachSession: async () => {} }) },
+      sessionProjectionCache: { table: { get: () => undefined, put } },
+    } as never, "projection:native-run");
+    const metadata = { nativeSessionId: header.id, updatedAt: "2026-09-10T00:00:00Z", hot: false, eventCount: 0,
+      payload: { header, inheritedEventCount: 0, title: "Empty native history", tags: ["fixture"] } };
+    const id = await overlay.attach({ type: "catalog", schemaVersion: 2, runId: "native-run", hotLimit: 0,
+      nativeMode: "persistent-native-v1", sessions: [metadata] });
+    expect(overlay.isHydrated(id, header.id)).toBe(true);
+    await overlay.beginHydration(id, metadata);
+    expect(create).not.toHaveBeenCalled(); expect(append).not.toHaveBeenCalled(); expect(ensureMaterialized).not.toHaveBeenCalled();
+    expect(put).toHaveBeenCalled();
+  });
   it.each([false, true])("uses official create/announce/materialize/borrow without any fake event (failure=%s)", async (fail) => {
     const ctx = new Context();
     const sessions = new SessionStore(ctx);

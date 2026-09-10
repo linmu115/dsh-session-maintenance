@@ -1,5 +1,6 @@
 import type { JsonValue, NativeSessionId } from "@linmu/dsh-session-adapter-sdk";
 import type { RunId } from "@linmu/dsh-session-contracts";
+import { readProjectionRecoveryDescriptor } from "./recovery.js";
 
 import {
   JsonProjectionDirectory,
@@ -17,6 +18,7 @@ export interface ProjectionRuntimeCatalogBeginFrame {
   readonly schemaVersion: 2;
   readonly runId: RunId;
   readonly hotLimit: number;
+  readonly nativeMode?: "persistent-native-v1";
   readonly sessionCount: number;
 }
 
@@ -191,10 +193,17 @@ export async function openProjectionRuntimeStream(
   }
   const directory = new JsonProjectionDirectory(projectionRootFor(runtimeRoot, runId));
   const sidecar = await directory.readSessionCatalog(runId);
+  const descriptor = await readProjectionRecoveryDescriptor(directory.root).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== "ENOENT") throw error;
+    return undefined;
+  });
+  const nativeMode = descriptor?.nativeSpace ? "persistent-native-v1" as const : undefined;
+  if (nativeMode) hotLimit = 0;
   const sessions = sidecar.sessions.map((entry, index) => ({ ...entry, hot: index < hotLimit }));
   return {
     frames: (async function* () {
-      yield line({ type: "catalog-begin", schemaVersion: 2, runId, hotLimit, sessionCount: sessions.length });
+      yield line({ type: "catalog-begin", schemaVersion: 2, runId, hotLimit, sessionCount: sessions.length,
+        ...(nativeMode ? { nativeMode } : {}) });
       yield* chunkCatalogSessions(sessions);
       yield line({ type: "catalog-end", sessionCount: sessions.length });
       for (const entry of sidecar.sessions.slice(0, hotLimit)) {

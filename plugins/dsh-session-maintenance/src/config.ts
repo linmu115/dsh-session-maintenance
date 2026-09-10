@@ -24,6 +24,7 @@ export interface LauncherProjectionProfile {
   readonly runId: string;
   readonly temporaryPersistenceRootId: string;
   readonly dshVersion: string;
+  readonly nativeMode?: "persistent-native-v1";
 }
 
 const SAFE_ID = /^[A-Za-z0-9@][A-Za-z0-9@/._:-]{0,255}$/u;
@@ -73,10 +74,11 @@ export function launcherProjectionProfile(
   const record = value as Record<string, unknown>;
   const allowed = new Set([
     "schemaVersion", "sessionSource", "maintenanceEndpoint", "adapterSelection", "pinnedAdapterId", "branchId",
-    "ownerClientId", "runtimeClientId", "runId", "temporaryPersistenceRootId", "dshVersion",
+    "ownerClientId", "runtimeClientId", "runId", "temporaryPersistenceRootId", "dshVersion", "nativeMode",
   ]);
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("Launcher Maintenance profile metadata contains unsupported fields");
   if (record.schemaVersion !== 1 || record.sessionSource !== "maintenance") throw new TypeError("Launcher Maintenance profile schema is unsupported");
+  if (record.nativeMode !== undefined && record.nativeMode !== "persistent-native-v1") throw new TypeError("Unsupported native persistence mode");
   if (record.adapterSelection !== "auto" && record.adapterSelection !== "pinned" && record.adapterSelection !== "experimental") {
     throw new TypeError("Launcher adapterSelection is invalid");
   }
@@ -103,6 +105,7 @@ export function launcherProjectionProfile(
     runId: record.runId as string,
     temporaryPersistenceRootId: record.temporaryPersistenceRootId as string,
     dshVersion: record.dshVersion,
+    ...(record.nativeMode ? { nativeMode: "persistent-native-v1" as const } : {}),
   };
 }
 

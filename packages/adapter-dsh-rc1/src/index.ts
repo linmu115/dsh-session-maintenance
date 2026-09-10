@@ -16,6 +16,8 @@ import {
   recoverUnmappedRc1ProjectionSession,
 } from "./recovery-session.js";
 import { isRc1PreparationOnlyAppend } from "./runtime-tail-recovery.js";
+import { rc1NativeSessionCodec } from "./native-session-codec.js";
+export { rc1NativeSessionCodec } from "./native-session-codec.js";
 
 export { manifest } from "./manifest.js";
 export {
@@ -37,6 +39,7 @@ export { readRc1CanonicalEventText } from "./readable-text.js";
 
 export const adapter = defineDshSessionAdapter({
   manifest,
+  nativeSessionCodec: rc1NativeSessionCodec,
   restoreNativeEvents: restoreRc1Metadata,
   probe: async (environment) => probeRc1(environment),
   materialize: materializeRc1,

@@ -39,13 +39,13 @@ describe("repair of an RC1 session rejected before canonical registration", () =
         zstdCompressSync(Buffer.from(JSON.stringify({ type: "session", ...storageHeader }) + "\n"), { params: { [constants.ZSTD_c_checksumFlag]: 1 } }),
         zstdCompressSync(Buffer.from(rows.map(row => JSON.stringify(row)).join("\n") + "\n"), { params: { [constants.ZSTD_c_checksumFlag]: 1 } }),
       ]));
-      await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: new Date(createdAt).toISOString() });
+      await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: new Date(createdAt).toISOString(), nativeMode: run.nativeMode });
       // Codex may advance while DSH still holds its startup projection.
       await appendFile(join(f.codexHome, "rollouts/thread-fixture.jsonl"), JSON.stringify({ timestamp: "2026-09-07T00:01:00.000Z", type: "response_item", payload: { type: "message", role: "assistant", content: [{ type: "output_text", text: "Codex advanced while DSH was open" }] } }) + "\n");
       await f.engine.importCodex({ operationId: "fixture-codex-live-advance", instanceIds: [f.engine.instances[0]!.id], mode: "content" });
       await expect(f.engine.closeProjectionRuntimeRun({ schemaVersion: 1, clientId: request.client.id, runId: run.runId, reason: "recovery" })).rejects.toThrow("No committed mapping exists");
       // A later run can refresh the shared cache while this failed run is retained.
-      const oldDirectory = new JsonProjectionDirectory(dirname(run.persistenceRoot));
+      const oldDirectory = new JsonProjectionDirectory(run.controlRoot ?? dirname(run.persistenceRoot));
       const baseRoot = await oldDirectory.baseProjectionRoot();
       expect(baseRoot).not.toBeNull();
       const otherNativeId = "session-from-a-later-run";
@@ -62,7 +62,7 @@ describe("repair of an RC1 session rejected before canonical registration", () =
       const logicalId = `logical-dsh-${createHash("sha256").update(`${request.instanceId}\0${nativeId}`).digest("hex").slice(0, 32)}`;
       await reopened.runWrite("fixture-registration-repair", async () => {
         const projectId = await new SqliteRuntimeProjectResolver(reopened!.repository.database).ensureLocalProject(cwd);
-        const directory = new JsonProjectionDirectory(dirname(run.persistenceRoot));
+        const directory = new JsonProjectionDirectory(run.controlRoot ?? dirname(run.persistenceRoot));
         await directory.writeSession(nativeId as never, { schemaVersion: 1, logicalSessionId: logicalId, baseVersionId: null, workspaceId: null, projectId, updatedAt: new Date(createdAt).toISOString(), title: "new-workspace", tags: [], inheritedEventCount: 0, header, events: [] });
         await directory.rebuildSessionCatalog(run.runId);
       });
@@ -71,7 +71,7 @@ describe("repair of an RC1 session rejected before canonical registration", () =
       const next = await reopened.prepareProjectionRuntimeRun(request);
       try {
         const mapped = (await reopened.projectionRunRepository.listProjectionSessions(next.runId)).find(session => session.logicalSessionId === logicalId)!;
-        const payload = await new JsonProjectionDirectory(dirname(next.persistenceRoot)).readSession(mapped.nativeSessionId) as { events: Array<{ type: string; data: { canonicalContent?: { evidenceRef: string } } }> };
+        const payload = await new JsonProjectionDirectory(next.controlRoot ?? dirname(next.persistenceRoot)).readSession(mapped.nativeSessionId) as { events: Array<{ type: string; data: { canonicalContent?: { evidenceRef: string } } }> };
         expect(payload.events).toHaveLength(rows.length);
         const evidence = new SqliteAdapterEvidenceStore(reopened.repository.database, reopened.objectStore);
         for (const [index, row] of rows.entries()) {

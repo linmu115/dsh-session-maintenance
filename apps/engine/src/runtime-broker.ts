@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 import {
   RUNTIME_MANAGED_PROJECT_DIRECTORY,
@@ -188,7 +188,7 @@ export class ProjectionRuntimeBroker {
       },
     });
     const temporaryPersistenceRootId = `projection:${prepared.run.id}`;
-    const persistenceRoot = join(prepared.projectionRoot, "runtime-sessions");
+    const persistenceRoot = prepared.nativeSpace?.root ?? join(prepared.projectionRoot, "runtime-sessions");
     this.runs.set(prepared.run.id, {
       adapterId,
       ownerClientId: input.client.id,
@@ -215,12 +215,16 @@ export class ProjectionRuntimeBroker {
       temporaryPersistenceRootId,
       runtimeClientId: input.runtimeClientId,
       state: "preparing",
+      ...(prepared.nativeSpace ? { nativeMode: "persistent-native-v1" as const, controlRoot: prepared.projectionRoot } : {}),
     };
   }
 
   async attachRun(input: RuntimeBrokerAttachRunRequest): Promise<RuntimeBrokerAttachedRun> {
     const run = this.run(input.runId);
     assertRuntime(run, input.clientId);
+    if (run.prepared.nativeSpace && input.nativeMode !== "persistent-native-v1") {
+      throw new Error("Runtime plugin must acknowledge persistent-native-v1");
+    }
     if (run.temporaryPersistenceRootId !== input.temporaryPersistenceRootId) {
       throw new Error("Runtime persistence-root acknowledgement does not match the prepared run");
     }
@@ -376,10 +380,16 @@ export class ProjectionRuntimeBroker {
       existing.closing = true;
       try {
         const runtimeWasAttached = existing.active !== null;
-        if (!runtimeWasAttached) {
+        if (!runtimeWasAttached && !existing.prepared.nativeSpace) {
           const receipt = await existing.lifecycle.discardPreparedRun(input.runId);
           this.runs.delete(input.runId);
           return { schemaVersion: 1, runId: input.runId, state: receipt.state, removedProjection: true };
+        }
+        if (!runtimeWasAttached) {
+          existing.registrar.acknowledge({ schemaVersion: 1, runId: input.runId,
+            clientId: existing.runtimeClientId, temporaryPersistenceRootId: existing.temporaryPersistenceRootId,
+            attachedAt: this.clock(), nativeMode: "persistent-native-v1" });
+          existing.active = await existing.lifecycle.attachRun(existing.prepared);
         }
         await this.flushAll(existing);
         const receipt = await this.recoverLifecycle(existing.lifecycle, input.runId, existing.adapterId);
@@ -400,12 +410,12 @@ export class ProjectionRuntimeBroker {
     const lifecycle = adapterId === alpha2Manifest.id
       ? probeLifecycle
       : this.lifecycleFactory({ adapterId, bridge });
-    if (persistedRun?.state === "preparing") {
+    const projectionRoot = projectionRootFor(lifecycle.runtimeRoot, input.runId);
+    const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
+    if (persistedRun?.state === "preparing" && !descriptor.nativeSpace) {
       const receipt = await lifecycle.discardPreparedRun(input.runId);
       return { schemaVersion: 1, runId: input.runId, state: receipt.state, removedProjection: true };
     }
-    const projectionRoot = projectionRootFor(lifecycle.runtimeRoot, input.runId);
-    const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
     if (descriptor.runtimeBroker === undefined) {
       throw new Error(`Projection run predates recoverable Runtime Broker ownership: ${input.runId}`);
     }
@@ -457,7 +467,7 @@ export class ProjectionRuntimeBroker {
       runId,
       async ({ projectionRoot, sessions }) => recoverRuntimeTailForAdapter({
         runId,
-        persistenceRoot: join(projectionRoot, "runtime-sessions"),
+        persistenceRoot: (await readProjectionRecoveryDescriptor(projectionRoot)).nativeSpace?.root ?? join(projectionRoot, "runtime-sessions"),
         observedAt: this.clock(),
         sessions: sessions.map((session) => ({
           nativeSessionId: session.projection.nativeSessionId,
@@ -529,7 +539,7 @@ export class ProjectionRuntimeBroker {
       if (typeof projectId !== "string" || projectId.length === 0) continue;
       byNativeSession.set(session.nativeSessionId, projectId as LogicalProjectId);
       byCwd.set(resolve(
-        run.prepared.projectionRoot,
+        run.prepared.nativeSpace ? dirname(run.prepared.nativeSpace.root) : run.prepared.projectionRoot,
         RUNTIME_MANAGED_PROJECT_DIRECTORY,
         runtimeManagedProjectSegment(projectId),
       ), projectId as LogicalProjectId);

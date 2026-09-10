@@ -9,6 +9,7 @@ export interface ProjectionRecoveryDescriptor {
   readonly maintenanceEndpoint: string;
   /** Retained read-only baseline used by this run's sparse projection overlay. */
   readonly baseProjectionRoot?: string;
+  readonly nativeSpace?: import("./native-space.js").NativeSpaceReference;
   readonly runtimeBroker?: {
     readonly ownerClientId: string;
     readonly runtimeClientId: string;

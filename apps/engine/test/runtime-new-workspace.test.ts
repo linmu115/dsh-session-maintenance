@@ -3,6 +3,7 @@ import { dirname, join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { JsonValue, RuntimeBrokerPrepareRunRequest, RuntimeBrokerPreparedRun } from "@linmu/dsh-session-contracts";
 import { JsonProjectionDirectory } from "@linmu/dsh-session-projection-lifecycle";
+import { rc1NativeSessionCodec } from "../../../packages/adapter-dsh-rc1/src/index.js";
 import { codexProjectKey } from "../src/codex-project-mapping.js";
 import { createEngineFixture, hashTree } from "./helpers.js";
 
@@ -30,7 +31,7 @@ describe("live DSH sessions in new local workspaces", () => {
       await mkdir(cwd);
       run = await f.engine.prepareProjectionRuntimeRun(request);
       await mkdir(run.persistenceRoot, { recursive: true });
-      await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at });
+      await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at, nativeMode: run.nativeMode });
       const nativeSessionId = "native-new-workspace" as never;
       const registration = { schemaVersion: 1 as const, clientId: request.runtimeClientId, runId: run.runId, nativeSessionId,
         header: { version: 0, id: nativeSessionId, cwd, createdAt: Date.parse(at), isSeeded: false }, title: "New DSH workspace conversation" };
@@ -50,6 +51,11 @@ describe("live DSH sessions in new local workspaces", () => {
         payload: { logicalSessionId: registered.logicalSessionId, canonicalHistoryMode: "native", events: [event] } });
       expect(receipt.status).toBe("committed");
       expect(receipt.logicalSessionId).toBe(registered.logicalSessionId);
+      const nativePayload = { header: registration.header, inheritedEventCount: 0, events: [event] };
+      const description = await rc1NativeSessionCodec.describe(nativePayload, run.persistenceRoot);
+      const nativePath = join(run.persistenceRoot, description.relativePath);
+      await mkdir(dirname(nativePath), { recursive: true });
+      await writeFile(nativePath, rc1NativeSessionCodec.encode(nativePayload, description));
       await f.engine.drainProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, runtimeFlushCompletedAt: at });
       await f.engine.closeProjectionRuntimeRun({ schemaVersion: 1, clientId: request.client.id, runId: run.runId, reason: "normal" });
       run = undefined;
@@ -57,7 +63,7 @@ describe("live DSH sessions in new local workspaces", () => {
       run = await f.engine.prepareProjectionRuntimeRun(request);
       const projected = (await f.engine.projectionRunRepository.listProjectionSessions(run.runId)).find(item => item.logicalSessionId === registered.logicalSessionId);
       expect(projected).toBeDefined();
-      const session = await new JsonProjectionDirectory(dirname(run.persistenceRoot)).readSession(projected!.nativeSessionId) as { events: JsonValue[]; header: { cwd: string }; projectId: string };
+      const session = await new JsonProjectionDirectory(run.controlRoot ?? dirname(run.persistenceRoot)).readSession(projected!.nativeSessionId) as { events: JsonValue[]; header: { cwd: string }; projectId: string };
       expect(session.events).toEqual([event]);
       expect(session.header.cwd).toBe(cwd);
       expect(session.projectId).toBe(membership.id);

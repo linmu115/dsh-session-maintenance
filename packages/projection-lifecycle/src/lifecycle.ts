@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { NativeSessionSpace, nativeSpaceReference, type NativeSpaceReference } from "./native-space.js";
 
 import type {
   AdapterVerificationResult,
@@ -83,6 +84,7 @@ export interface PreparedProjectionRunHandle {
   readonly inspection: ProjectionInspection;
   readonly verification: AdapterVerificationResult;
   readonly maintenanceEndpoint: string;
+  readonly nativeSpace?: NativeSpaceReference;
 }
 
 export interface ProjectionRecoverySessionSnapshot {
@@ -348,6 +350,9 @@ export class ProjectionLifecycle {
         runId,
         maintenanceEndpoint: input.maintenanceEndpoint,
         ...(persistentCache === null ? {} : { baseProjectionRoot: persistentCache.cacheRoot }),
+        ...(input.runtimeBroker && this.adapter.nativeSessionCodec ? {
+          nativeSpace: nativeSpaceReference(this.runtimeRoot, preparing, this.adapter.nativeSessionCodec),
+        } : {}),
         ...(input.runtimeBroker === undefined ? {} : {
           runtimeBroker: {
             ...input.runtimeBroker,
@@ -355,6 +360,9 @@ export class ProjectionLifecycle {
           },
         }),
       });
+      if (input.runtimeBroker && this.adapter.nativeSessionCodec) {
+        await new NativeSessionSpace(this.runtimeRoot, preparing, this.adapter, this.runRepository).prepare(directory);
+      }
       await this.statusLog.succeed(materializeSpan, {
         diagnosticDetailRef: "diag:projection-structure-verified",
       });
@@ -376,6 +384,9 @@ export class ProjectionLifecycle {
       inspection,
       verification,
       maintenanceEndpoint: input.maintenanceEndpoint,
+      ...(input.runtimeBroker && this.adapter.nativeSessionCodec ? {
+        nativeSpace: nativeSpaceReference(this.runtimeRoot, preparing, this.adapter.nativeSessionCodec),
+      } : {}),
     };
     this.preparedRuns.set(runId, { handle, directory, sessions, persistentCache });
     return handle;
@@ -453,6 +464,9 @@ export class ProjectionLifecycle {
       throw new ProjectionLifecycleError("RUN_NOT_PREPARED", runId, "Projection run is not safely discardable before runtime attach");
     }
     const projectionRoot = context?.handle.projectionRoot ?? projectionRootFor(this.runtimeRoot, runId);
+    if ((await readProjectionRecoveryDescriptor(projectionRoot)).nativeSpace) {
+      throw new ProjectionLifecycleError("RUN_NOT_PREPARED", runId, "Persistent native runs require tail recovery even before attach");
+    }
     const inspection = context?.handle.inspection ?? await this.preparedInspection(projectionRoot);
     const span = await this.startShutdownSpan(run);
     let cleanupStarted = false;
@@ -624,7 +638,7 @@ export class ProjectionLifecycle {
       await this.lease.setState(handle.run.id, "draining");
       await this.drainPending(context);
       const result = await this.verifyCheckpointAndDetach(context);
-      await refreshRunCache(context.persistentCache, context.handle.run, this.statusLog);
+      await this.checkpointNativeSpace(context.handle.run, context.directory, context.persistentCache);
       cleanupStarted = true;
       await removeProjectionRun(context.handle.projectionRoot);
       await this.lease.setState(handle.run.id, "closed");
@@ -685,7 +699,7 @@ export class ProjectionLifecycle {
         }
       }
       const result = await this.verifyCheckpointAndDetach(context);
-      await refreshRunCache(context.persistentCache, context.handle.run, this.statusLog);
+      await this.checkpointNativeSpace(context.handle.run, context.directory, context.persistentCache);
       cleanupStarted = true;
       await removeProjectionRun(context.handle.projectionRoot);
       await this.lease.setState(runId, "recovered");
@@ -819,11 +833,32 @@ export class ProjectionLifecycle {
     };
   }
 
+  private async checkpointNativeSpace(run: ProjectionRun, directory: JsonProjectionDirectory, cache: RunCacheContext | null): Promise<void> {
+    const descriptor = await readProjectionRecoveryDescriptor(directory.root);
+    const refresh = () => refreshRunCache(cache, run, this.statusLog);
+    if (!descriptor.nativeSpace) return refresh();
+    this.validateNativeSpace(run, descriptor.nativeSpace);
+    await new NativeSessionSpace(this.runtimeRoot, run, this.adapter, this.runRepository).checkpoint(directory,
+      cache ? new JsonProjectionDirectory(cache.cacheRoot) : undefined, refresh);
+  }
+
+  private validateNativeSpace(run: ProjectionRun, actual: NativeSpaceReference): void {
+    if (!this.adapter.nativeSessionCodec) throw new TypeError("Native-space Adapter capability is unavailable");
+    const expected = nativeSpaceReference(this.runtimeRoot, run, this.adapter.nativeSessionCodec);
+    if (actual.schemaVersion !== 1 || actual.key !== expected.key || resolve(actual.root) !== expected.root) {
+      throw new TypeError("Native-space recovery identity mismatch");
+    }
+  }
+
   private async restoreRecoveryContext(run: ProjectionRun): Promise<LifecycleProjectionContext> {
     const projectionRoot = projectionRootFor(this.runtimeRoot, run.id);
     const directory = new JsonProjectionDirectory(projectionRoot);
     const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
     if (descriptor.runId !== run.id) throw new TypeError("Projection recovery run ID mismatch");
+    if (descriptor.nativeSpace) {
+      this.validateNativeSpace(run, descriptor.nativeSpace);
+      await new NativeSessionSpace(this.runtimeRoot, run, this.adapter, this.runRepository).recoverPreparation(directory);
+    }
     const configuration: JsonValue = { branchId: run.branchId };
     const cacheManager = createRunCacheManager({ runtimeRoot: this.runtimeRoot, source: this.source,
       adapter: this.adapter, statusLog: this.statusLog, clock: this.clock });

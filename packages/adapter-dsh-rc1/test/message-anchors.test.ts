@@ -251,7 +251,7 @@ describe("Rc1 historical message anchors", () => {
     expect(adapter.manifest.capabilities).toContain("verified-anchor-resolution");
     // The version is part of projection cache fingerprints; old payloads must
     // not be reused after message identities and alias metadata change.
-    expect(adapter.manifest.packageVersion).toBe("0.1.2");
+    expect(adapter.manifest.packageVersion).toBe("0.1.5");
   });
 
   it("rejects stale aliases, duplicate targets, missing sessions, and mismatched payload identities", async () => {

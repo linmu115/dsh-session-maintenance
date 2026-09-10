@@ -34,6 +34,7 @@ export interface ProjectionRuntimeCatalog {
   readonly schemaVersion: 2;
   readonly runId: string;
   readonly hotLimit: number;
+  readonly nativeMode?: "persistent-native-v1";
   readonly sessions: readonly ProjectionRuntimeSessionMetadata[];
 }
 
@@ -42,6 +43,7 @@ export type ProjectionRuntimeCatalogTransferFrame = {
   readonly schemaVersion: 2;
   readonly runId: string;
   readonly hotLimit: number;
+  readonly nativeMode?: "persistent-native-v1";
   readonly sessionCount: number;
 } | {
   readonly type: "catalog-sessions";
@@ -93,7 +95,7 @@ export class InMemoryProjectionPersistenceOverlay implements ProjectionPersisten
     const registrationId = `projection:${catalog.runId}`;
     if (this.catalogs.has(registrationId)) throw new Error(`Projection overlay already exists: ${catalog.runId}`);
     this.catalogs.set(registrationId, structuredClone(catalog));
-    this.hydrated.set(registrationId, new Set());
+    this.hydrated.set(registrationId, new Set(catalog.nativeMode ? catalog.sessions.map(s => s.nativeSessionId) : []));
     this.counts.set(registrationId, new Map());
     return registrationId;
   }
@@ -306,14 +308,17 @@ export class ProjectionRuntimeRegistrar {
   private readonly catalogs = new Map<string, ProjectionRuntimeCatalog>();
   private readonly hydrationTails = new Map<string, Promise<void>>();
   private readonly clock: () => string;
+  private readonly nativeMode: "persistent-native-v1" | undefined;
 
   constructor(input: {
     readonly transport: ProjectionRuntimeTransport;
     readonly overlay: ProjectionPersistenceOverlay;
+    readonly nativeMode?: "persistent-native-v1";
     readonly clock?: () => string;
   }) {
     this.transport = input.transport;
     this.overlay = input.overlay;
+    this.nativeMode = input.nativeMode;
     this.clock = input.clock ?? (() => new Date().toISOString());
   }
 
@@ -327,8 +332,10 @@ export class ProjectionRuntimeRegistrar {
     const open = new Set<string>();
     for await (const frame of this.transport.stream(descriptor)) {
       if (frame.type === "catalog-begin") {
+        if (frame.nativeMode !== undefined && frame.nativeMode !== "persistent-native-v1") throw new TypeError("Unsupported native mode");
         if (catalogBegin !== undefined || catalog !== undefined) throw new TypeError("Projection startup stream returned more than one catalog begin");
         catalogBegin = frame;
+        if (frame.nativeMode !== this.nativeMode) throw new TypeError("Native persistence mode differs from the Launcher handoff");
         continue;
       }
       if (frame.type === "catalog-sessions") {
@@ -348,6 +355,7 @@ export class ProjectionRuntimeRegistrar {
           schemaVersion: 2,
           runId: catalogBegin.runId,
           hotLimit: catalogBegin.hotLimit,
+          ...(catalogBegin.nativeMode ? { nativeMode: catalogBegin.nativeMode } : {}),
           sessions: catalogSessions,
         }, descriptor.runId);
         registrationId = await this.overlay.attach(catalog);
@@ -556,6 +564,10 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
   async attach(catalog: ProjectionRuntimeCatalog): Promise<string> {
     const registrationId = `projection:${catalog.runId}`;
     if (registrationId !== this.expectedRootId) throw new Error("Runtime snapshot does not match the startup-patched persistence root");
+    if (catalog.nativeMode) {
+      const stored = new Set((await this.context.sessionPersistence.list()).map(s => s.id));
+      if (catalog.sessions.some(s => !stored.has(s.nativeSessionId))) throw new Error("Prepared native history is incomplete");
+    }
     if (this.catalogs.has(registrationId)) throw new Error(`Projection persistence is already attached: ${catalog.runId}`);
     const headers: Array<{ readonly version: number; readonly id: string; readonly createdAt: number; readonly delegationDepth: number; readonly isSeeded?: boolean; readonly cwd?: string }> = [];
     const normalizedSessions: ProjectionRuntimeSessionMetadata[] = [];
@@ -567,7 +579,9 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
       if (projectedHeader.id !== item.nativeSessionId || typeof projectedHeader.version !== "number" || typeof projectedHeader.createdAt !== "number") {
         throw new TypeError("DSH projected SessionHeader does not match its native session ID");
       }
-      const { header, managed } = await this.runtimeHeader(projectedHeader, payload);
+      const { header, managed } = catalog.nativeMode
+        ? { header: projectedHeader as never as { version: number; id: string; createdAt: number; delegationDepth: number; cwd: string }, managed: false }
+        : await this.runtimeHeader(projectedHeader, payload);
       if (managed) managedCwds += 1;
       headers.push(header);
       normalizedSessions.push({
@@ -641,7 +655,7 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
       ...catalog,
       sessions: normalizedSessions,
     });
-    this.hydrated.set(registrationId, new Set());
+    this.hydrated.set(registrationId, new Set(catalog.nativeMode ? catalog.sessions.map(s => s.nativeSessionId) : []));
     this.counts.set(registrationId, new Map());
     return registrationId;
   }
@@ -796,7 +810,8 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
   private isManagedWorkspacePath(path: string): boolean {
     const segments = resolve(path).split(/[\\/]+/u).map((segment) => segment.toLowerCase());
     const managed = RUNTIME_MANAGED_PROJECT_DIRECTORY.toLowerCase();
-    return segments.some((segment, index) => segment === managed && index > 0 && segments[index - 1] === "projection");
+    return segments.some((segment, index) => segment === managed && index > 0 && (segments[index - 1] === "projection"
+      || (index > 1 && segments[index - 2] === "native-spaces" && /^[a-f0-9]{64}$/u.test(segments[index - 1]!))));
   }
 
   private async seedProjectionCache(
@@ -932,6 +947,7 @@ export class RuntimeBrokerPluginClient {
   private readonly pendingBatches = new Map<string, PendingRuntimeBatch>();
   private readonly failures = new Map<string, unknown>();
   private readonly dynamicMetadata = new Map<string, ProjectedSessionMetadata>();
+  private readonly nativeMode: "persistent-native-v1" | undefined;
   private readonly observedDynamicSessions = new Set<string>();
   private readonly observedRevisions = new Map<string, number>();
   private readonly deferredPrefixes = new Map<string, JsonValue[]>();
@@ -945,6 +961,7 @@ export class RuntimeBrokerPluginClient {
     readonly temporaryPersistenceRootId: string;
     readonly maintenanceEndpoint: string;
     readonly clock?: () => string;
+    readonly nativeMode?: "persistent-native-v1";
     readonly fetchImpl?: typeof fetch;
   }) {
     this.connection = input.connection;
@@ -955,6 +972,7 @@ export class RuntimeBrokerPluginClient {
     this.endpoint = normalizeProjectionRuntimeDescriptor({ runId: input.runId, maintenanceEndpoint: input.maintenanceEndpoint }).maintenanceEndpoint;
     this.clock = input.clock ?? (() => new Date().toISOString());
     this.fetchImpl = input.fetchImpl ?? fetch;
+    this.nativeMode = input.nativeMode;
   }
 
   async attach(): Promise<void> {
@@ -966,6 +984,7 @@ export class RuntimeBrokerPluginClient {
       runId: this.runId as never,
       temporaryPersistenceRootId: this.temporaryPersistenceRootId,
       attachedAt: registration.attachedAt,
+      ...(this.nativeMode ? { nativeMode: this.nativeMode } : {}),
     };
     await this.post(`/v1/runtime-broker/runs/${encodeURIComponent(this.runId)}/attach`, body);
   }

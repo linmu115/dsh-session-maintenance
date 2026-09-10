@@ -121,7 +121,7 @@ describe("Codex project mapping composition and HTTP activation", () => {
       expect(sql).toContain("SAVEPOINT project_roots_replace");
       const projections = await f.engine.projectionRunRepository.listProjectionSessions(run.runId);
       expect(projections.map(item => item.logicalSessionId).sort()).toEqual(selectedIds);
-      const directory = new JsonProjectionDirectory(dirname(run.persistenceRoot));
+      const directory = new JsonProjectionDirectory(run.controlRoot ?? dirname(run.persistenceRoot));
       expect(await directory.listNativeSessionIds()).toHaveLength(2);
       const policy = (await (await fetch(endpoint, { headers: bearer })).json() as { configuration: CodexProjectMappingConfiguration }).configuration;
       expect(policy).toMatchObject({ pendingActivation: false, policy: { activeRevision: 1, activeProjectKeys: [f.key] } });

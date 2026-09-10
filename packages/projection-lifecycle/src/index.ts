@@ -8,3 +8,4 @@ export * from "./recovery.js";
 export * from "./lifecycle.js";
 export * from "./preflight.js";
 export * from "./persistent-cache.js";
+export * from "./native-space.js";

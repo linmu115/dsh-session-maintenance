@@ -12,6 +12,7 @@ import type {
   SessionVersionId,
 } from "@linmu/dsh-session-adapter-sdk";
 import { RUNTIME_MANAGED_PROJECT_DIRECTORY } from "@linmu/dsh-session-adapter-sdk";
+import type { NativeSessionArtifact } from "@linmu/dsh-session-adapter-sdk";
 
 import {
   parseRc1LogicalSessionHeader,
@@ -171,7 +172,7 @@ function projectKey(cwd: string): string {
   return `--${(readable.replace(/^-+/, "") || "root").slice(0, 251)}--`;
 }
 
-function expectedArtifactPath(root: string, header: JsonRecord, compression: RuntimeArtifact["compression"]): string {
+export function expectedRc1ArtifactPath(root: string, header: JsonRecord, compression: RuntimeArtifact["compression"]): string {
   const cwd = header.cwd;
   const project = cwd === undefined ? "_no-cwd" : typeof cwd === "string" ? projectKey(cwd) : fail(
     "RECOVERY_HEADER_MISMATCH",
@@ -599,7 +600,7 @@ export async function recoverRc1RuntimeTail(
     if (typeof nativeId !== "string") fail("RECOVERY_ARTIFACT_CORRUPT", "Rc1 header ID is missing");
     if (seen.has(nativeId)) fail("RECOVERY_LAYOUT_UNSUPPORTED", `Duplicate Rc1 artifact for native session ${nativeId}`);
     seen.add(nativeId);
-    if (!samePath(artifact.path, expectedArtifactPath(root, decoded.header, artifact.compression))) {
+    if (!samePath(artifact.path, expectedRc1ArtifactPath(root, decoded.header, artifact.compression))) {
       fail("RECOVERY_HEADER_MISMATCH", `Rc1 artifact path does not match SessionHeader for ${nativeId}`);
     }
     const mapping = mappings.get(nativeId);
@@ -662,4 +663,30 @@ export async function recoverRc1RuntimeTail(
   // therefore means there is no runtime tail to recover; the committed prefix
   // remains authoritative in Maintenance and is rebuilt on the next run.
   return operations;
+}
+
+/** Complete inventory for a retained native space; incomplete tails must be rebuilt after recovery. */
+export async function inspectRc1NativeSpace(root: string): Promise<readonly NativeSessionArtifact[]> {
+  const result: NativeSessionArtifact[] = [];
+  const ids = new Set<string>();
+  for (const artifact of await enumerateArtifacts(root)) {
+    const bytes = await readFile(artifact.path);
+    const decoded = await decodeArtifact(artifact);
+    const id = String(decoded.header.id);
+    if (ids.has(id) || !samePath(artifact.path, expectedRc1ArtifactPath(root, decoded.header, artifact.compression))) {
+      fail("RECOVERY_LAYOUT_UNSUPPORTED", `Duplicate or misplaced Rc1 artifact: ${id}`);
+    }
+    ids.add(id);
+    const complete = artifact.compression === "zstd"
+      ? scanZstdFrames(bytes).at(-1)?.end === bytes.length
+      : bytes.at(-1) === 10;
+    result.push({ nativeSessionId: id as NativeSessionId, relativePath: relative(root, artifact.path),
+      header: nativeHeader(decoded.header), events: decoded.events,
+      inheritedEventCount: Number(decoded.header.seedLength ?? 0), complete });
+  }
+  return result;
+}
+
+export function isRc1PreparationEvents(events: readonly JsonValue[]): boolean {
+  return events.every(isDeferredSessionPrelude);
 }

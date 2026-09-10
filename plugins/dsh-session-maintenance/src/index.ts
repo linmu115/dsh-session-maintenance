@@ -66,7 +66,8 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
         else ctx.logger.info(message);
       },
     );
-    const registrar = new ProjectionRuntimeRegistrar({ transport, overlay });
+    const registrar = new ProjectionRuntimeRegistrar({ transport, overlay,
+      ...(launchProfile.nativeMode ? { nativeMode: launchProfile.nativeMode } : {}) });
     const runtime = new RuntimeBrokerPluginClient({
       connection,
       registrar,
@@ -74,6 +75,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       runId: launchProfile.runId,
       temporaryPersistenceRootId: launchProfile.temporaryPersistenceRootId,
       maintenanceEndpoint: launchProfile.maintenanceEndpoint,
+      ...(launchProfile.nativeMode ? { nativeMode: launchProfile.nativeMode } : {}),
     });
     await runtime.attach();
     const lazyStatus = (stage: LazyHydrationStage, sessionId?: string, error?: unknown) => {
@@ -89,7 +91,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
         ctx.logger.info(message);
       }
     };
-    const restorePersistence = installLazyProjectionPersistence(
+    const restorePersistence = launchProfile.nativeMode ? () => undefined : installLazyProjectionPersistence(
       ctx.sessionPersistence as unknown as LazyReadableSessionPersistence,
       runtime,
       lazyStatus,

@@ -5,6 +5,9 @@ export * from "./conformance.js";
 export * from "./logical-digest.js";
 
 export type {
+  NativeSessionCodec,
+  NativeSessionArtifact,
+  NativeSessionFileDescription,
   AdapterEvidenceInputV1,
   AdapterEvidencePort,
   AdapterEvidenceRecordV1,

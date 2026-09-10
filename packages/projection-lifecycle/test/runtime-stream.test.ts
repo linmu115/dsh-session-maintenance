@@ -7,6 +7,7 @@ import type { JsonValue, NativeSessionId } from "@linmu/dsh-session-adapter-sdk"
 import type { RunId } from "@linmu/dsh-session-contracts";
 
 import { JsonProjectionDirectory, projectionRootFor } from "../src/materialize.js";
+import { writeProjectionRecoveryDescriptor } from "../src/recovery.js";
 import {
   PROJECTION_CATALOG_CHUNK_TARGET_BYTES,
   PROJECTION_EVENT_CHUNK_TARGET_BYTES,
@@ -46,6 +47,14 @@ async function fixture(count: number) {
 }
 
 describe("bounded projection runtime NDJSON", () => {
+  it("N02: sends only metadata in persistent-native mode regardless of the requested hot limit", async () => {
+    const { runtimeRoot, runId, directory } = await fixture(3);
+    await writeProjectionRecoveryDescriptor(directory.root, { schemaVersion: 1, runId, maintenanceEndpoint: "synthetic",
+      nativeSpace: { schemaVersion: 1, key: "synthetic", root: join(runtimeRoot, "native") } });
+    const frames = await collect((await openProjectionRuntimeStream(runtimeRoot, runId, 1000)).frames);
+    expect(frames[0]).toMatchObject({ nativeMode: "persistent-native-v1", hotLimit: 0, sessionCount: 3 });
+    expect(frames.map(frame => frame.type)).toEqual(["catalog-begin", "catalog-sessions", "catalog-end"]);
+  });
   it("sorts the sidecar by canonical updatedAt and marks exactly the newest 200 sessions hot", async () => {
     const { runtimeRoot, runId, directory } = await fixture(201);
     const sidecar = await directory.readSessionCatalog(runId);

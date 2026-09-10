@@ -120,6 +120,7 @@ const runtimeBrokerAttachSchema = z.strictObject({
   schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
   runId: runtimeBrokerIdSchema, temporaryPersistenceRootId: runtimeBrokerIdSchema,
   attachedAt: z.iso.datetime(),
+  nativeMode: z.literal("persistent-native-v1").optional(),
 });
 const runtimeBrokerAppendSchema = z.strictObject({
   schemaVersion: z.literal(1),

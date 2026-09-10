@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.23 - 2026-09-10
+
+- Pair with Engine 0.1.29 and RC1 Adapter 0.1.5. RC1 uses a persistent native
+  session directory prepared by Maintenance before the host starts.
+- Restore the complete metadata index without creating or appending old history.
+  Opening a cold session uses official persistence directly; the old 200-session
+  hydration limit does not apply in this mode.
+- Confirm the native mode explicitly and refuse incompatible launch metadata.
+  Alpha2 keeps its existing projection protocol.
+
 ## 0.2.20 - 2026-09-06
 
 - Pair with Engine 0.1.17: five main Dashboard sections, a persistent workspace

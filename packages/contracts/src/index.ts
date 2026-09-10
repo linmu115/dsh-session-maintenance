@@ -12,6 +12,7 @@ export * from "./http.js";
 export * from "./integrations.js";
 export * from "./jobs.js";
 export * from "./model.js";
+export * from "./native-session-space.js";
 export * from "./operations.js";
 export * from "./plans.js";
 export * from "./projection.js";
