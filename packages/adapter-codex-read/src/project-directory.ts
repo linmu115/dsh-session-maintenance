@@ -95,6 +95,12 @@ export async function readCodexDesktopProjectDirectory(
     projectsMigrated: migrationValue.projectsMigrated === true,
     threadAssignmentsMigrated: migrationValue.threadAssignmentsMigrated === true,
   };
+  // Desktop 26.903 still edits THREAD_PROJECT_ASSIGNMENTS while the server's
+  // directory is migrated. Its thread.project_id can therefore disagree with
+  // the active desktop assignment. Only an explicit supported migration phase
+  // establishes that authority; missing migration metadata remains conservative.
+  const desktopAssignmentsAuthoritative = migrationValue.version === 1
+    && migrationValue.projectsMigrated === true && migrationValue.threadAssignmentsMigrated === false;
   if (migration.threadAssignmentsMigrated && !migration.projectsMigrated) issues.push("Project assignment migration precedes directory migration.");
   const desktopProjects = field("local-projects", !migration.projectsMigrated);
   const desktopAssignments = field("thread-project-assignments", !migration.threadAssignmentsMigrated);
@@ -179,7 +185,8 @@ export async function readCodexDesktopProjectDirectory(
       else serverId = canonicalId(thread.project_id);
     }
     if (desktopId !== undefined && !projects.has(desktopId)) issues.push(`Unknown explicit project identity: ${thread.id}.`);
-    if (!migration.threadAssignmentsMigrated && desktopId !== undefined && serverId !== undefined && desktopId !== serverId) {
+    if (!migration.threadAssignmentsMigrated && !desktopAssignmentsAuthoritative
+      && desktopId !== undefined && serverId !== undefined && desktopId !== serverId) {
       issues.push(`Conflicting explicit project membership: ${thread.id}.`);
       continue;
     }

@@ -76,8 +76,30 @@ describe("explicit Codex desktop project membership", () => {
     expect(result.projects.find(p => p.projectId === "desktop-a")?.memberThreadIds).toEqual([]);
   });
 
-  it("rejects membership conflict during migration rather than selecting either project", async () => {
+  it("uses the desktop assignment during the explicit directory-only migration phase", async () => {
     const f = await fixture();
+    // Same-name cloud-linked and local projects remain distinct; stale server
+    // membership must not move the selected cloud-linked thread to the local one.
+    f.sql("UPDATE threads SET project_id='server-a' WHERE id='thread-b'");
+    const before = await Promise.all([readFile(f.path), readFile(f.databasePath)]);
+    const result = await f.read();
+    expect(result.safeForSelection).toBe(true);
+    expect(result.issues).toEqual([]);
+    expect(result.assignments["thread-b"]).toEqual({ projectId: "g-p-cloud", basis: "desktop-explicit" });
+    expect(result.projects.find(p => p.projectId === "desktop-a")?.memberThreadIds).toEqual(["thread-a"]);
+    expect(result.projects.find(p => p.projectId === "g-p-cloud")?.memberThreadIds).toEqual(["thread-b"]);
+    expect(await Promise.all([readFile(f.path), readFile(f.databasePath)])).toEqual(before);
+    f.state["app-server-projects-migration-by-host"] = { [f.hostKey]: { version: 1, projectsMigrated: true, threadAssignmentsMigrated: true } };
+    await f.save();
+    const migrated = await f.read();
+    expect(migrated.safeForSelection).toBe(true);
+    expect(migrated.assignments["thread-b"]).toEqual({ projectId: "desktop-a", basis: "thread-project-id" });
+  });
+
+  it("rejects conflicting membership when migration authority is not declared", async () => {
+    const f = await fixture();
+    delete f.state["app-server-projects-migration-by-host"];
+    await f.save();
     f.sql("UPDATE threads SET project_id='server-b' WHERE id='thread-a'");
     const result = await f.read();
     expect(result.safeForSelection).toBe(false);
