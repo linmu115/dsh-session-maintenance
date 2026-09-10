@@ -3,6 +3,7 @@ import type { AdapterEvidencePort, CanonicalProjectionInput, NativeAppendOperati
 import { adapter, normalizeRc1Append, materializeRc1, rc1ProjectedNativeRevision } from "../src/index.js";
 import { NATIVE_METADATA_TYPES, restoreRc1Metadata } from "../src/native-metadata.js";
 import { sourceWithEvidence } from "../../projection-lifecycle/src/source-evidence.js";
+import packageInfo from "../package.json";
 
 const at = "2026-09-09T00:00:00.000Z";
 const native = [...NATIVE_METADATA_TYPES].map((type, seq) => ({ type, seq, time: Date.parse(at) + seq,
@@ -19,6 +20,9 @@ async function project(events: any[]) {
   return payload;
 }
 describe("RC1 native metadata", () => {
+  it("advertises the package version used to invalidate cached projections", () => {
+    expect(adapter.manifest.packageVersion).toBe(packageInfo.version);
+  });
   it("retains native state and Codex detail across repeated roundtrips; portable history omits controls", async () => {
     const normalized = await normalizeRc1Append(operation(native));
     expect(normalized.events.every(e => e.kind === "system-metadata")).toBe(true);
