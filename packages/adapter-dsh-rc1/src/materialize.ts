@@ -180,7 +180,11 @@ function rawEnvelope(event: CanonicalEventV1): Rc1SessionEvent | undefined {
     seq: rc1SessionSeq(event.sequence),
     time: raw.time as number,
     data: raw.data as JsonValue,
-    ...(raw.ignorable === true ? { ignorable: true as const } : {}),
+    // Plugin display records are outside RC1's compiled event vocabulary. Old
+    // writers omitted the omission-safe marker; repair only this log-only type
+    // in the projection, never required controls or arbitrary external events.
+    ...(raw.ignorable === true || (raw.type === "dsh-runtime/detail" && raw.surfaceOp === undefined)
+      ? { ignorable: true as const } : {}),
     ...(raw.sourceEventSeqs === undefined
       ? {}
       : { sourceEventSeqs: decodeSourceEventSeqs(raw.sourceEventSeqs, event.sequence) }),

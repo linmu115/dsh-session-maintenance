@@ -7,7 +7,8 @@ import { sourceWithEvidence } from "../../projection-lifecycle/src/source-eviden
 const at = "2026-09-09T00:00:00.000Z";
 const native = [...NATIVE_METADATA_TYPES].map((type, seq) => ({ type, seq, time: Date.parse(at) + seq,
   data: type === "dsh-runtime/detail" ? { id: "execution", phase: "start", model: "astra", state: "completed", items: [] }
-    : { title: "title", provider: "deepseek", model: "native", messageSeqs: [], source: { kind: "user" } }, ignorable: true }));
+    : { title: "title", provider: "deepseek", model: "native", messageSeqs: [], source: { kind: "user" } } }));
+const readableNative = native.map(event => event.type === "dsh-runtime/detail" ? { ...event, ignorable: true } : event);
 const operation = (events: unknown[], mode = "native") => ({ runId: "synthetic-run", operationId: "synthetic-op", nativeSessionId: "synthetic-session", nativeRevision: events.length,
   observedAt: at, payload: { logicalSessionId: "logical", events, canonicalHistoryMode: mode } }) as NativeAppendOperation;
 async function project(events: any[]) {
@@ -22,7 +23,7 @@ describe("RC1 native metadata", () => {
     const normalized = await normalizeRc1Append(operation(native));
     expect(normalized.events.every(e => e.kind === "system-metadata")).toBe(true);
     const first = await project([...normalized.events]);
-    expect(first.events).toEqual(native);
+    expect(first.events).toEqual(readableNative);
     const second = await project([...(await normalizeRc1Append(operation(first.events))).events]);
     expect(second.events).toEqual(first.events);
     expect((await normalizeRc1Append(operation(native, "portable"))).events).toEqual([]);
@@ -38,7 +39,7 @@ describe("RC1 native metadata", () => {
     const full = await source.load({}), delta = await source.loadSessions({}, ["logical"]), pinned = await source.loadVersionEvents("logical", "v");
     expect(full.sessions[0].events).toEqual(delta.sessions[0].events);
     expect(full.sessions[0].events).toEqual(pinned);
-    expect((await project(pinned)).events).toEqual(native);
+    expect((await project(pinned)).events).toEqual(readableNative);
     expect(JSON.stringify(historical)).toBe(before);
     await expect(restoreRc1Metadata(historical, { readEvidence: async () => ({ ...(await evidence.readEvidence("0" as never))!, payload: { ...native[0], type: "user/message" } }) } as any)).rejects.toThrow("does not match");
     expect(await restoreRc1Metadata(historical, { readEvidence: async () => undefined })).toEqual(historical);
