@@ -59,6 +59,21 @@ async function fixture(withPlugin = true) {
 }
 
 describe("instance onboarding", () => {
+  it("requires the final rc2.2 plugin for RC2 without bypassing runtime attestation", async () => {
+    const f = await fixture();
+    f.catalog.versions[0]!.version = "0.1.5-rc.2";
+    await json(join(f.dataRoot, "config.json"), f.catalog);
+    const pluginPath = join(f.profileRoot, "node_modules", "dsh-session-maintenance", "package.json");
+    const plugin = JSON.parse(await readFile(pluginPath, "utf8"));
+    await json(pluginPath, { ...plugin, version: "0.2.25-rc2.1" });
+    expect((await f.discover()).targets[0]!.pluginReady).toBe(false);
+    await json(pluginPath, { ...plugin, version: "0.2.25-rc2.2" });
+    const target = (await f.discover()).targets[0]!;
+    expect(target.pluginReady).toBe(true);
+    expect(target.target.status).toBe("unsupported");
+    expect(target.runtimeCapabilities).toEqual([]);
+  });
+
   it("discovers exact instance/profile targets and resolves installed packages instead of trusting catalog versions", async () => {
     const f = await fixture();
     const found = await f.discover();
