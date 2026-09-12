@@ -55,15 +55,14 @@ export function rc2ProjectionContext(ctx: Pick<Context, 'sessionPersistence' | '
   };
 }
 
-/** Open the public domain instead of reaching into the cache service's private table. */
+/** Borrow the host cache domain; its service retains the only open/close ownership. */
 export async function bindRc2ProjectionContext(ctx: Context) {
-  const domain = await ctx.storageDomain.open(projectionCacheDomainSpec);
+  const domain = ctx.storageDomain.get(projectionCacheDomainSpec.name);
+  if (domain === undefined || domain.name !== projectionCacheDomainSpec.name) throw new TypeError('RC2 projection cache domain is not initialized');
   const table = domain.table('sessions');
-  try {
     const workspace = ctx.workspaceRegistry as unknown as SessionPersistenceProjectionContext['workspaceRegistry'];
     if (typeof workspace.replaceHeaderIndex !== 'function') throw new TypeError('Pinned RC2 workspace header index is unavailable');
     const context = rc2ProjectionContext({ sessionPersistence: ctx.sessionPersistence, workspaceRegistry: ctx.workspaceRegistry,
       sessionProjectionCache: { table } as unknown as Context['sessionProjectionCache'] });
-    return { context, dispose: async () => { await context.sessionPersistence.closeHydrationHandles!(); await domain.close(); } };
-  } catch (error) { await domain.close(); throw error; }
+    return { context, dispose: async () => { await context.sessionPersistence.closeHydrationHandles!(); } };
 }

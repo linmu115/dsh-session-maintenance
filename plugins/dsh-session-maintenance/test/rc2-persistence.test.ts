@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { rc2ProjectionContext } from '../src/rc2-persistence.js';
+import { rc2ProjectionContext, bindRc2ProjectionContext } from '../src/rc2-persistence.js';
 import { installRc2LazyProjectionPersistence } from '../src/rc2-lazy-persistence.js';
 
 const header = { version: 3, id: 'cold-session', createdAt: 1, isSeeded: false, delegationDepth: 0 };
@@ -69,4 +69,17 @@ describe('RC2 projection storage boundary', () => {
     await expect(pending).rejects.toThrow('detached during hydration');
     expect(open).not.toHaveBeenCalled();
   });
+});
+
+
+it('borrows the already-open host cache without opening or closing it', async () => {
+  const table = {};
+  const domain = { name: 'session_projcache', table: () => table, close: vi.fn(async () => { throw new Error('host owner only'); }) };
+  const open = vi.fn(async () => { throw new Error('already-open'); });
+  const ctx = { storageDomain: { get: () => domain, open }, workspaceRegistry: { replaceHeaderIndex() {} }, sessionPersistence: {}, sessionProjectionCache: {} };
+  const binding = await bindRc2ProjectionContext(ctx as never);
+  await binding.dispose();
+  expect(open).not.toHaveBeenCalled();
+  expect(domain.close).not.toHaveBeenCalled();
+  await expect(bindRc2ProjectionContext({ ...ctx, storageDomain: { get: () => undefined } } as never)).rejects.toThrow('not initialized');
 });
