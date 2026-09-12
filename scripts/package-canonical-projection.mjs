@@ -33,6 +33,7 @@ const replacements = new Map([
 ]);
 
 const workspacePackages = [
+  { path: "packages/adapter-dsh-0-1-5", kind: "dsh-adapter", docs: ["CHANGELOG.md", "BREAKING-CHANGES.md", "COMPATIBILITY.md"] },
   { path: "packages/contracts", kind: "adapter-contracts", docs: [] },
   { path: "packages/session-adapter-sdk", kind: "adapter-sdk", docs: [] },
   { path: "packages/adapter-dsh-alpha2", kind: "dsh-adapter", docs: ["CHANGELOG.md", "BREAKING-CHANGES.md", "COMPATIBILITY.md"] },
@@ -247,7 +248,7 @@ const manifestBase = {
   baselineGenerationId,
   runtimeMatrix: ["0.1.2-alpha.2", "0.1.1-rc.2"],
   source: { commit: sourceCommit, dirty: git(root, "status", "--porcelain") !== "", treeDigest: sourceTreeDigest },
-  adapters: ["dsh-alpha2", "dsh-rc2"],
+  adapters: ["dsh-alpha2", "dsh-rc2", "dsh-0.1.5"],
   artifacts: artifactRecords.sort((left, right) => left.name.localeCompare(right.name)),
   plugins: pluginRecords,
   excluded: ["dsh-codex-session-sync"],

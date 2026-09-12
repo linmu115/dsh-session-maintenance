@@ -1,3 +1,4 @@
+import { maintenanceRequired } from "./integrations/maintenance-policy.js";
 import { startManagedEngine, type EngineStartupMonitor } from "./engine-startup.js";
 import { randomBytes } from "node:crypto";
 import { open, mkdir, readFile, rename } from "node:fs/promises";
@@ -42,9 +43,10 @@ const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 15_000;
 const ENGINE_START_TIMEOUT_MS = 240_000;
 const HANDLE_DIRECTORY = "external-lifecycle-handles";
 const SHUTDOWN_PATH = "/dsh-session-maintenance/runtime/shutdown";
-const SUPPORTED_RUNTIME_ADAPTERS = new Map<string, null | "dsh-rc1">([
+const SUPPORTED_RUNTIME_ADAPTERS = new Map<string, null | "dsh-rc1" | "dsh-0.1.5">([
   ["0.1.2-alpha.2", null],
   ["0.1.2-rc.1", "dsh-rc1"],
+  ["0.1.5-rc.2", "dsh-0.1.5"],
 ]);
 
 const idSchema = z.string().regex(SAFE_ID);
@@ -56,6 +58,7 @@ const prepareRequestSchema = z.strictObject({
   profileId: idSchema,
   runtimeVersion: z.string().min(1).max(100),
   web: z.boolean(),
+  maintenanceRequired: z.boolean().optional(),
 });
 const beforeStopRequestSchema = z.strictObject({
   schemaVersion: z.literal(1),
@@ -230,11 +233,15 @@ export class MaintenanceExternalLifecycleProvider {
   }
 
   private async prepare(request: ExternalLifecyclePrepareRequest): Promise<ExternalLifecyclePrepareResponse> {
+    const required = request.maintenanceRequired === true || await maintenanceRequired(this.stateRoot,request.instanceId,request.profileId);
+    const integration = await resolveRuntimeIntegration(this.stateRoot, request);
+    const mustBind = required || integration !== undefined;
     if (!request.web || !SUPPORTED_RUNTIME_ADAPTERS.has(request.runtimeVersion)) {
-      return { schemaVersion: 1, enabled: false, handle: null, launch: null };
+      if(mustBind)throw new ProviderError("MAINTENANCE_RUNTIME_UNSUPPORTED","该实例要求维护接管，但目标宿主或启动入口不兼容。",false);
+      return {schemaVersion:1,enabled:false,handle:null,launch:null};
     }
-    const integration = this.requireBinding ? await resolveRuntimeIntegration(this.stateRoot, request) : undefined;
-    if (this.requireBinding && integration === undefined) return { schemaVersion: 1, enabled: false, handle: null, launch: null };
+    if (integration === undefined && (required || request.runtimeVersion === "0.1.5-rc.2" && this.requireBinding)) throw new ProviderError("MAINTENANCE_BINDING_REQUIRED","该实例要求维护接管，但缺少已验证的实例绑定。",false);
+    if (integration === undefined && (this.requireBinding || request.runtimeVersion === "0.1.5-rc.2")) return {schemaVersion:1,enabled:false,handle:null,launch:null};
     const pinnedAdapterId = integration?.adapterId ?? SUPPORTED_RUNTIME_ADAPTERS.get(request.runtimeVersion) ?? null;
     const configuration = {
       branchId: "main",
@@ -261,7 +268,7 @@ export class MaintenanceExternalLifecycleProvider {
           "@deepseek-ai/dsh-session": request.runtimeVersion,
           "@deepseek-ai/dsh-session-persistence": request.runtimeVersion,
         },
-        runtimeCapabilities: ["sessionPersistence", "session/event", "session/flush"],
+        runtimeCapabilities: integration?.runtimeCapabilities ?? ["sessionPersistence", "session/event", "session/flush"],
       },
       pinnedAdapterId: configuration.pinnedAdapterId as RuntimeBrokerPrepareRunRequest["pinnedAdapterId"],
       projectSelection: configuration.projectSelection as RuntimeBrokerPrepareRunRequest["projectSelection"],
@@ -340,6 +347,7 @@ export class MaintenanceExternalLifecycleProvider {
         launcherArgs: ["--patch", patchPath],
         args: [],
         env: {
+          ...(integration?.coreBinding ? {DSH_SESSION_MAINTENANCE_CORE_RECEIPT:integration.coreBinding.path,DSH_SESSION_MAINTENANCE_CORE_RECEIPT_SHA256:integration.coreBinding.sha256} : {}),
           DSH_SESSION_MAINTENANCE_LAUNCH_PROFILE: JSON.stringify(metadata),
           DSH_SESSION_MAINTENANCE_CONNECTION_PRIMARY: join(this.stateRoot, "connection.json"),
         },

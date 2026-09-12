@@ -4,6 +4,7 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { build } from "esbuild";
+import { dshRc2PackageMetadata } from "./dsh-rc2-bundle-plugin.mjs";
 
 import { deterministicTarGz, sha256, stableJson } from "./phase2-pack-lib.mjs";
 
@@ -92,6 +93,7 @@ const pluginClient = await build({
   metafile: true,
 });
 await copyFile(join(root, "packages", "dsh-core-extension", "dist", "rc2-host.js"), join(plugin, "lib", "rc2-host.js"));
+await copyFile(join(root, "packages", "dsh-core-extension", "dist", "dsh-015-host.js"), join(plugin, "lib", "dsh-015-host.js"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "cordis.patch.yml"), join(plugin, "cordis.patch.yml"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "README.md"), join(plugin, "README.md"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "CHANGELOG.md"), join(plugin, "CHANGELOG.md"));
@@ -109,6 +111,7 @@ delete packagedPluginManifest.scripts;
 await writeFile(join(plugin, "package.json"), `${stableJson(packagedPluginManifest)}\n`);
 
 const engineBundle = await build({
+  plugins: [dshRc2PackageMetadata()],
   absWorkingDir: root,
   entryPoints: ["apps/engine/src/main.ts"],
   outfile: join(engine, "engine", "dsh-session-maint.mjs"),
@@ -143,6 +146,18 @@ const rc1WorkerBundle = await build({
   platform: "node",
   format: "esm",
   target: "node22",
+  conditions: ["development"],
+  legalComments: "none",
+  metafile: true,
+});
+const v3WorkerBundle = await build({
+  absWorkingDir: root,
+  entryPoints: ["packages/adapter-dsh-0-1-5/src/rpc-worker.ts"],
+  outfile: join(engine, "engine", "adapters", "dsh-0-1-5-rpc-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node24",
   conditions: ["development"],
   legalComments: "none",
   metafile: true,
@@ -182,7 +197,7 @@ const sourceCommit = await git("rev-parse", "HEAD");
 const sourceDirty = (await git("status", "--porcelain")) !== "";
 const componentPaths = [
   "apps/engine", "apps/dashboard", "plugins/dsh-session-maintenance", "packages/contracts",
-  "packages/adapter-dsh-alpha2", "packages/adapter-dsh-rc1", "packages/adapter-dsh-rc2",
+  "packages/adapter-dsh-0-1-5", "packages/adapter-dsh-alpha2", "packages/adapter-dsh-rc1", "packages/adapter-dsh-rc2",
 ];
 const components = await Promise.all(componentPaths.map(async (path) => {
   const value = JSON.parse(await readFile(join(root, path, "package.json"), "utf8"));
@@ -228,6 +243,7 @@ const manifest = {
     adapterWorkers: {
       alpha2: portableInputs(alpha2WorkerBundle.metafile),
       rc1: portableInputs(rc1WorkerBundle.metafile),
+      v3: portableInputs(v3WorkerBundle.metafile),
       rc2: portableInputs(rc2WorkerBundle.metafile),
     },
     pluginHost: portableInputs(pluginHost.metafile),

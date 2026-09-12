@@ -1,0 +1,13 @@
+# Engine 0.1.32-rc2.1 backend changes
+
+Register additive adapter dsh-0.1.5 / dsh-0.1.5-v3-jsonl-zstd-v1 for exact host 0.1.5-rc.2. Keep all old registrations. Runtime discovery verifies the actual JSONL backend's catalog dependency, exact package versions, matching plugin 0.2.25-rc2.1 and accepted artifact receipts. The provider does not manufacture RC2 capabilities.
+
+Takeover requirement is persisted separately in maintenance-required.json. Connect sets it before publishing a binding; disconnect explicitly clears it. Unsupported versions, missing binding or bad receipt block required instances. Deleting integration-bindings.json alone cannot downgrade them to native startup.
+
+The runtime receipt at <profile>/maintenance-runtime-attestation.json has schemaVersion=1, instanceId, profileId, homeRoot, adapterId, formatId, runtimeVersion, engineVersion=0.1.32-rc2.1, launcherCapabilityDigest, runtimeCapabilities and files[{role,path,sha256}]. Unique required roles: cli, node, session, sessionPersistence, formatCatalog, maintenancePlugin, engine, coreBindingReceipt. Add unique role entries for every actual resolved package manifest; files must be absolute and hash-verified. Core receipt pins the actual JSONL/workspace/query implementations separately. launcherCapabilityDigest is the digest returned by the verified Launcher capability receipt, not merely the EXE hash. Core receipt file and hash are emitted as DSH_SESSION_MAINTENANCE_CORE_RECEIPT / DSH_SESSION_MAINTENANCE_CORE_RECEIPT_SHA256.
+
+Do not hand-create a native space. Broker prepare owns projection_runs and native-spaces, derives the key from JSON.stringify([instanceId,profileId,branchId,adapterId,formatId]) SHA-256, materializes/re-reads artifacts, and publishes space.json. Its returned persistenceRoot and run/client/root IDs are the plugin attach contract. The Core factory verifies that same native-space key and active owner. Main branch is the literal "main".
+
+/v1/references/resolve optionally accepts targetInstanceId/targetProfileId. Resolve exactly one active projection in this scope; zero or multiple results have no native target. Legacy no-scope calls also refuse ambiguity. Plugin proxy supplies the configured scope; browser scope is not trusted. Running native-created sessions retain their registered native IDs and receive Broker-owned scope/header metadata.
+
+Validation: targeted provider policy, artifact receipt, target resolution, source-owner export, runtime bridge and native-space fixtures, recursive Engine dependencies build and typecheck. Old provider/integration behavior is regression tested. No real instance deployment or data migration is performed here.

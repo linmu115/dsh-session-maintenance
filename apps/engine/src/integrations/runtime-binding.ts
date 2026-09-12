@@ -11,5 +11,5 @@ export async function resolveRuntimeIntegration(stateRoot: string, request: Exte
   if (target === undefined || target.target.status === "unsupported" || !target.pluginReady || target.target.version !== request.runtimeVersion || target.fingerprint !== binding.fingerprint) {
     throw new IntegrationError("INTEGRATION_RECHECK_REQUIRED", "实例或插件已改变，请在 Maintenance 设置中修复接入后再启动。");
   }
-  return { adapterId: binding.adapterId, packageVersions: target.packageVersions };
+  return { ...(target.coreBinding?{coreBinding:target.coreBinding}:{}), adapterId: binding.adapterId, packageVersions: target.packageVersions, runtimeCapabilities: target.runtimeCapabilities ?? ["sessionPersistence", "session/event", "session/flush"] };
 }

@@ -1,3 +1,4 @@
+import { setMaintenanceRequired } from "./maintenance-policy.js";
 import type { MaintenanceWriteScope, IntegrationAction, IntegrationDirectory, IntegrationTarget } from "@linmu/dsh-session-contracts";
 import { CODEX_NATIVE_SYNC_UNAVAILABLE } from "@linmu/dsh-session-contracts";
 import { IntegrationError, readIntegrationBindings, saveIntegrationBindings } from "./bindings.js";
@@ -54,6 +55,8 @@ export class InstanceIntegrationService {
       await this.options.writes.run("integration-disconnect", async () => {
         const bindings = await readIntegrationBindings(this.options.stateRoot);
         await saveIntegrationBindings(this.options.stateRoot, bindings.filter(item => item.targetId !== targetId));
+        const disconnected = bindings.find(item => item.targetId === targetId);
+        if(disconnected?.kind === "dsh" && disconnected.profileId !== null) await setMaintenanceRequired(this.options.stateRoot,disconnected.instanceId,disconnected.profileId,false);
       });
       return this.list();
     }
@@ -101,6 +104,7 @@ export class InstanceIntegrationService {
           assertCurrent();
           if (hookPath !== null) { await configureLauncherHook(after, this.options.installation); publishedHook = await readJsonIfPresent(hookPath); }
           assertCurrent();
+          if(after.target.kind === "dsh" && after.target.profile !== null) await setMaintenanceRequired(this.options.stateRoot,after.instanceId,after.target.profile,true);
           await saveIntegrationBindings(this.options.stateRoot, [...bindings.filter(item => item.targetId !== targetId), {
             targetId, kind: after.target.kind, instanceId: after.instanceId, profileId: after.target.profile,
             launcherDataRoot: after.launcherDataRoot, runtimeVersion: after.target.version, adapterId: after.target.adapterId,

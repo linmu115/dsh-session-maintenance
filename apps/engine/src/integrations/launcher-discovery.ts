@@ -1,3 +1,4 @@
+import { verifyDsh015RuntimeAttestation } from "./runtime-attestation.js";
 import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -15,7 +16,7 @@ const catalogSchema = z.object({
   instances: z.array(z.object({ id: z.string(), name: z.string(), home_id: z.string(), version_id: z.string(), env_overrides: z.record(z.string(), z.string()).optional() })),
 });
 export const SUPPORTED_DSH_INTEGRATIONS: Readonly<Record<string, string>> = {
-  "0.1.2-alpha.2": "dsh-alpha2", "0.1.2-rc.1": "dsh-rc1",
+  "0.1.2-alpha.2": "dsh-alpha2", "0.1.2-rc.1": "dsh-rc1", "0.1.5-rc.2": "dsh-0.1.5",
 };
 export interface DiscoveredIntegration {
   readonly target: IntegrationTarget;
@@ -28,6 +29,8 @@ export interface DiscoveredIntegration {
   readonly cliPath: string | null;
   readonly packageVersions: Readonly<Record<string, string>>;
   readonly pluginReady: boolean;
+  readonly runtimeCapabilities?: readonly string[];
+  readonly coreBinding?: {readonly path:string;readonly sha256:string};
   readonly codexSource?: RegisteredInstance;
   readonly codexRegistered?: boolean;
 }
@@ -53,7 +56,7 @@ async function packageVersion(path: string): Promise<string | null> {
   return parsed.success ? parsed.data.version : null;
 }
 function compatiblePlugin(version: string | null): boolean {
-  return version === "0.2.19" || version === "0.2.20";
+  return ["0.2.19","0.2.20","0.2.24","0.2.25-rc2.1"].includes(version ?? "");
 }
 
 function withinRoots(path: string, roots: readonly string[]): boolean {
@@ -117,6 +120,8 @@ async function runtimePackages(cliManifest: string, profileManifest: string, roo
     const found = await resolvePackage(profileManifest, name, roots) ?? await resolvePackage(cliManifest, name, roots) ?? (anchor === undefined ? null : await resolvePackage(anchor, name, roots));
     if (found !== null) { versions[name] = found.version; manifests.push(found.path); }
   }
+  const jsonl=await resolvePackage(cliManifest,"@deepseek-ai/dsh-session-persistence-jsonl",roots)??await resolvePackage(profileManifest,"@deepseek-ai/dsh-session-persistence-jsonl",roots)??(base===null?null:await resolvePackage(base.path,"@deepseek-ai/dsh-session-persistence-jsonl",roots));
+  if(jsonl){versions["@deepseek-ai/dsh-session-persistence-jsonl"]=jsonl.version;manifests.push(jsonl.path);const catalog=await resolvePackage(jsonl.path,"@deepseek-ai/dsh-session-format-catalog",roots);if(catalog){versions["@deepseek-ai/dsh-session-format-catalog"]=catalog.version;manifests.push(catalog.path);}}
   return { versions, manifests };
 }
 
@@ -187,7 +192,7 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
         const bundles = (profile as { dsh?: { profile?: { bundles?: unknown } } }).dsh?.profile?.bundles;
         const webApp = await resolveBundle(join(cliRoot, "package.json"), join(profileRoot, "package.json"), "@deepseek-ai/dsh-web-app", packageRoots);
         if (!Array.isArray(bundles) || !bundles.includes("@deepseek-ai/dsh-web-app") || webApp?.version !== version.version) issues.push("此配置没有启用匹配版本的 Web 应用，Launcher 不会按 Web 实例启动。");
-        const pluginReady = compatiblePlugin(pluginVersion) && plugin !== null && pluginRuntime?.path === plugin.path && maintenanceIntegrationBundleReady(plugin.patches) && Array.isArray(bundles) && bundles.includes("dsh-session-maintenance");
+        const pluginReady = (version.version === "0.1.5-rc.2" ? pluginVersion === "0.2.25-rc2.1" : compatiblePlugin(pluginVersion)) && plugin !== null && pluginRuntime?.path === plugin.path && maintenanceIntegrationBundleReady(plugin.patches) && Array.isArray(bundles) && bundles.includes("dsh-session-maintenance");
         const extraBundles = [];
         if (Array.isArray(bundles)) for (const name of bundles) {
           if (name === "dsh-session-maintenance" || name === "@deepseek-ai/dsh-web-app") continue;
@@ -197,6 +202,14 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
             extraBundles.push(bundle);
             if (name !== "@deepseek-ai/dsh-base") issues.push(...inspectDshIntegrationOverrides([bundle.patches]));
           }
+        }
+        let runtimeCapabilities:readonly string[]=["sessionPersistence","session/event","session/flush"];
+        let attestationDigest:string|null=null;
+        let coreBinding:{path:string;sha256:string}|undefined;
+        if(version.version === "0.1.5-rc.2") {
+          if(versions["@deepseek-ai/dsh-session-persistence-jsonl"]!==version.version)issues.push("实际 JSONL backend 未解析到 RC2。 ");
+          if(versions["@deepseek-ai/dsh-session-format-catalog"]!==version.version)issues.push("实际 format catalog 未解析到 RC2。");
+          try {const attested=await verifyDsh015RuntimeAttestation({profileRoot,instanceId:instance.id,profileId:entry.name,homeRoot,cliPath,launcherDigest:host.digest,resolvedManifests:manifests});runtimeCapabilities=attested.runtimeCapabilities;attestationDigest=attested.digest;coreBinding=attested.coreBinding;}catch(error){issues.push(error instanceof Error?error.message:"RC2 能力验证失败。");runtimeCapabilities=[];}
         }
         const id = integrationTargetId("dsh", canonicalLauncherRoot, instance.id, entry.name);
         const target: IntegrationTarget = {
@@ -208,8 +221,8 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
             { id: "lifecycle", label: "随实例启动和收尾", status: "unchecked", detail: "完成实例绑定后启用。" },
           ], issues,
         };
-        targets.push({ target, instanceId: instance.id, launcherDataRoot: canonicalLauncherRoot, homeRoot, versionRoot, profileRoot, cliPath, packageVersions: versions, pluginReady,
-          fingerprint: fingerprint([canonicalLauncherRoot, host.digest, instance.id, home.id, version.id, homeRoot, versionRoot, profileRoot, actualVersion, versions, manifests, plugin, webApp, bundles, extraBundles, patchDigests, instance.env_overrides ?? {}]) });
+        targets.push({ target, instanceId: instance.id, launcherDataRoot: canonicalLauncherRoot, homeRoot, versionRoot, profileRoot, cliPath, packageVersions: versions, pluginReady, runtimeCapabilities, ...(coreBinding?{coreBinding}:{}),
+          fingerprint: fingerprint([canonicalLauncherRoot, host.digest, attestationDigest, instance.id, home.id, version.id, homeRoot, versionRoot, profileRoot, actualVersion, versions, manifests, plugin, webApp, bundles, extraBundles, patchDigests, instance.env_overrides ?? {}]) });
         } catch {
           // A broken unrelated profile must not take down valid targets or scoped launches.
           const id = integrationTargetId("dsh", canonicalLauncherRoot, instance.id, entry.name);

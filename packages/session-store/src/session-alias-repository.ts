@@ -7,7 +7,6 @@ import type {
   StableLogicalReferenceResolution,
 } from "@linmu/dsh-session-contracts";
 
-import { SqliteNativeSessionReferenceRepository } from "./native-session-reference-repository.js";
 
 export type SessionAliasKind = "dsh-session" | "dsh-workspace" | "legacy-reference";
 
@@ -121,56 +120,23 @@ export class SqliteSessionAliasRepository {
     input: StableLogicalReference,
     instanceId?: string,
   ): Promise<StableLogicalReferenceResolution> {
-    let logicalSessionId = input.logicalSessionId;
-    if (logicalSessionId === null && input.legacyNativeSessionId !== null) {
-      const alias = instanceId === undefined
-        ? this.database.prepare(
-            `SELECT alias_kind, instance_id, native_id, logical_session_id,
-                    logical_workspace_id, created_at, last_seen_at
-             FROM session_aliases
-             WHERE alias_kind = 'legacy-reference' AND native_id = ?
-             ORDER BY last_seen_at DESC, instance_id ASC LIMIT 1`,
-          ).get(input.legacyNativeSessionId) as AliasRow | undefined
-        : undefined;
-      const resolvedAlias = alias === undefined
-        ? instanceId === undefined ? undefined : await this.resolve("legacy-reference", instanceId, input.legacyNativeSessionId)
-        : aliasFromRow(alias);
-      logicalSessionId = resolvedAlias?.target.logicalSessionId ?? null;
-      if (logicalSessionId === null) {
-        const activeLegacy = this.database.prepare(
-          `SELECT ps.run_id, ps.logical_session_id, ps.native_session_id
-           FROM projection_sessions ps
-           JOIN projection_runs pr ON pr.id = ps.run_id
-           WHERE ps.native_session_id = ? AND pr.state IN ('preparing', 'running', 'draining', 'verifying')
-           ORDER BY pr.heartbeat_at DESC, pr.id DESC LIMIT 1`,
-        ).get(input.legacyNativeSessionId) as ActiveProjectionRow | undefined;
-        logicalSessionId = activeLegacy?.logical_session_id as LogicalSessionId | undefined ?? null;
-      }
+    const targetInstanceId=input.targetInstanceId??instanceId;
+    const unavailable=(logicalSessionId:LogicalSessionId|null):StableLogicalReferenceResolution=>({referenceType:input.referenceType,logicalSessionId,logicalAnchorId:input.logicalAnchorId,nativeSessionId:null,nativeAnchorId:null,runId:null,status:"unavailable"});
+    const candidateIds=input.logicalSessionId===null?[]:[input.logicalSessionId as string];
+    if(input.logicalSessionId===null&&input.legacyNativeSessionId!==null){
+      const aliases=this.database.prepare("SELECT DISTINCT logical_session_id FROM session_aliases WHERE alias_kind = 'legacy-reference' AND native_id = ? AND logical_session_id IS NOT NULL").all(input.legacyNativeSessionId) as Array<{logical_session_id:string}>;
+      candidateIds.push(...aliases.map(row=>row.logical_session_id));
     }
-    if (logicalSessionId === null) {
-      return {
-        referenceType: input.referenceType,
-        logicalSessionId: null,
-        logicalAnchorId: input.logicalAnchorId,
-        nativeSessionId: null,
-        nativeAnchorId: null,
-        runId: null,
-        status: "unavailable",
-      };
-    }
-    const index = await new SqliteNativeSessionReferenceRepository(this.database)
-      .getReferenceIndex(logicalSessionId);
-    const active = index?.references.find((reference) => reference.referenceUse === "active-projection");
-    return {
-      referenceType: input.referenceType,
-      logicalSessionId,
-      logicalAnchorId: input.logicalAnchorId,
-      nativeSessionId: active?.nativeSessionId ?? null,
-      nativeAnchorId: active === undefined
-        ? null
-        : input.logicalAnchorId ?? input.legacyNativeAnchorId,
-      runId: active?.runId ?? null,
-      status: active === undefined ? "unavailable" : "resolved",
-    };
+    const parameters:(string|number)[]=[],identities:string[]=[];
+    if(candidateIds.length){identities.push(`ps.logical_session_id IN (${candidateIds.map(()=>"?").join(",")})`);parameters.push(...candidateIds);}
+    if(input.logicalSessionId===null&&input.legacyNativeSessionId!==null){identities.push("ps.native_session_id = ?");parameters.push(input.legacyNativeSessionId);}
+    if(!identities.length)return unavailable(input.logicalSessionId);
+    const scope:string[]=[];
+    if(targetInstanceId!==undefined){scope.push("pr.instance_id = ?");parameters.push(targetInstanceId);}
+    if(input.targetProfileId!==undefined){scope.push("pr.profile_id = ?");parameters.push(input.targetProfileId);}
+    const rows=this.database.prepare(`SELECT DISTINCT ps.run_id,ps.logical_session_id,ps.native_session_id FROM projection_sessions ps JOIN projection_runs pr ON pr.id = ps.run_id WHERE pr.state IN ('preparing','running','draining','verifying') AND (${identities.join(" OR ")}) ${scope.length?`AND ${scope.join(" AND ")}`:""} LIMIT 2`).all(...parameters) as unknown as ActiveProjectionRow[];
+    if(rows.length!==1)return unavailable(input.logicalSessionId??(new Set(candidateIds).size===1?candidateIds[0] as LogicalSessionId:null));
+    const active=rows[0]!;
+    return {referenceType:input.referenceType,logicalSessionId:active.logical_session_id as LogicalSessionId,logicalAnchorId:input.logicalAnchorId,nativeSessionId:active.native_session_id as StableLogicalReferenceResolution["nativeSessionId"],nativeAnchorId:input.logicalAnchorId??input.legacyNativeAnchorId,runId:active.run_id as StableLogicalReferenceResolution["runId"],status:"resolved"};
   }
 }

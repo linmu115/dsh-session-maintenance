@@ -155,6 +155,8 @@ const runtimeBrokerDrainSchema = z.strictObject({
 });
 const projectionHotLimitSchema = z.coerce.number().int().min(0).max(1_000);
 const stableReferenceRequestSchema = z.strictObject({
+  targetInstanceId: z.string().min(1).max(256).optional(),
+  targetProfileId: z.string().min(1).max(256).optional(),
   referenceType: z.enum(["annotation", "sticker", "obsidian-reference"]),
   logicalSessionId: z.string().min(1).nullable(),
   logicalAnchorId: z.string().min(1).nullable(),

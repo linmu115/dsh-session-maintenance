@@ -1,0 +1,7 @@
+import {describe,it,expect} from "vitest";
+import {mkdtemp,rm,writeFile} from "node:fs/promises";
+import {tmpdir} from "node:os";
+import {join} from "node:path";
+import {MaintenanceExternalLifecycleProvider} from "../src/external-lifecycle-provider.js";
+import {setMaintenanceRequired} from "../src/integrations/maintenance-policy.js";
+describe("V3 required takeover policy",()=>{it("blocks missing binding and unsupported versions before connecting to Engine, while optional native instances remain optional",async()=>{const root=await mkdtemp(join(tmpdir(),"synthetic-v3-policy-"));try{let connections=0;const provider=new MaintenanceExternalLifecycleProvider(root,{connection:async()=>{connections++;throw new Error("must not connect");}});const request={schemaVersion:1,phase:"prepare",instanceId:"synthetic",profileId:"web",runtimeVersion:"0.1.5-rc.2",web:true} as const;expect(await provider.handle(request)).toMatchObject({enabled:false});await setMaintenanceRequired(root,"synthetic","web",true);await expect(provider.handle(request)).rejects.toThrow(/绑定/);await expect(provider.handle({...request,runtimeVersion:"future"})).rejects.toThrow(/不兼容/);await expect(provider.handle({...request,web:false})).rejects.toThrow();expect(connections).toBe(0);await setMaintenanceRequired(root,"synthetic","web",false);expect(await provider.handle(request)).toMatchObject({enabled:false});}finally{await rm(root,{recursive:true,force:true});}});});

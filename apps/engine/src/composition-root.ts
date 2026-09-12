@@ -1,3 +1,4 @@
+import { adapter as v3Adapter } from "@linmu/dsh-session-adapter-0-1-5";
 import { SqliteExtensionRepository } from "@linmu/dsh-session-store";
 import { ExtensionDataService } from "./extensions/service.js";
 import { builtInExtensionAdapters } from "./extensions/adapters.js";
@@ -194,6 +195,7 @@ async function createComposition(
     ...(options.clock === undefined ? {} : { now: options.clock }),
   });
   const builtinAdapters = [
+    { adapter: v3Adapter, generationId: "builtin-canonical-0-1-5", packageName: "@linmu/dsh-session-adapter-0-1-5", workerFile: "dsh-0-1-5-rpc-worker.mjs" },
     {
       adapter: alpha2Adapter,
       generationId: "builtin-canonical-alpha2",
@@ -321,7 +323,7 @@ async function createComposition(
           await verifyCodexSource(target.codexSource);
           return;
         }
-        await adapterRegistry.select({ environment: { dshVersion: target.target.version, packageVersions: target.packageVersions, runtimeCapabilities: ["sessionPersistence", "session/event", "session/flush"] }, ...(target.target.adapterId === null ? {} : { pinnedAdapterId: target.target.adapterId as never }) });
+        await adapterRegistry.select({ environment: { dshVersion: target.target.version, packageVersions: target.packageVersions, runtimeCapabilities: target.runtimeCapabilities ?? ["sessionPersistence", "session/event", "session/flush"] }, ...(target.target.adapterId === null ? {} : { pinnedAdapterId: target.target.adapterId as never }) });
       },
       registerSource: async target => {
         if (target.target.kind !== "codex") return;
@@ -358,6 +360,7 @@ async function createComposition(
         bridge,
         canonicalEngine,
         evidencePort: evidenceStore,
+        resolveSourceAdapter: event => builtinAdapters.map(item => item.adapter).find(owner => event.id.startsWith(`${owner.manifest.id}:`) || (typeof event.content === "object" && event.content !== null && !Array.isArray(event.content) && typeof (event.content as Readonly<Record<string, unknown>>).sourceKind === "string" && String((event.content as Readonly<Record<string, unknown>>).sourceKind).startsWith(`${owner.manifest.id}/`))),
         checkpointRepository: repository,
         runtimeRoot: join(options.stateRoot, "projection-runtime"),
         ...(options.clock === undefined ? {} : { clock: options.clock }),

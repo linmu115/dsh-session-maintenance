@@ -411,7 +411,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     let resolution = await this.sessionAliases.resolveStableReference(input);
     if (resolution.runId === null) return resolution;
     const run = await this.projectionRunRepository.getProjectionRun(resolution.runId);
-    if (run === undefined) return resolution;
+    if (run === undefined || (input.targetInstanceId !== undefined && run.instanceId !== input.targetInstanceId) || (input.targetProfileId !== undefined && run.profileId !== input.targetProfileId)) return { ...resolution, nativeSessionId:null, nativeAnchorId:null, runId:null, status:"unavailable" };
     const indexSpan = await this.statusLog.start({
       runId: run.id,
       leaseId: run.leaseId,
