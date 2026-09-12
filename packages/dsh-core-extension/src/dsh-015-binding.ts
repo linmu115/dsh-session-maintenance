@@ -55,7 +55,7 @@ async function verifyReceipt(input:Dsh015CoreBindingInput){
 export async function createDsh015CoreHostBinding(input:Dsh015CoreBindingInput){
  const ctx=object(input.runtime),storage=object(ctx.sessionPersistence),sessions=object(ctx.sessions),workspace=object(ctx.workspaceRegistry);
  const {receipt,loaded}=await verifyReceipt(input);
- requireMethods(storage,["stat","list","open","create"]);requireMethods(sessions,["get","prepare","enter"]);requireMethods(workspace,["list","get","archiveSession"]);requireMethods(ctx.sessionQuery,["readSession"]);requireMethods(ctx.storageDomain,["open"]);
+ requireMethods(storage,["stat","list","open","create"]);requireMethods(sessions,["get","prepare","enter"]);requireMethods(workspace,["list","get","archiveSession"]);requireMethods(ctx.sessionQuery,["readSession"]);requireMethods(ctx.storageDomain,["get"]);
  requireMethods(loaded.sessionPersistence,["validateStoredEvents"]);
  // Exactly two registry primitives lack public unarchive equivalents in fixed RC2. Never route them through the legacy CoreHost.
  requireMethods(workspace,["enqueueOperation","setState"]);
@@ -64,7 +64,12 @@ export async function createDsh015CoreHostBinding(input:Dsh015CoreBindingInput){
  if(basename(root)!=="sessions"||basename(dirname(root))!==key||basename(dirname(dirname(root)))!=="native-spaces")throw new TypeError("Core writes require this instance's Broker native space");
  const assertSpace=async()=>{const state=object(JSON.parse(await readFile(join(dirname(root),"space.json"),"utf8")));if(state.key!==key||state.owner!==input.runId||!["ready","clean"].includes(state.state))throw new TypeError("RC2 native-space owner is not this run");};await assertSpace();
  for(const [field,role] of [["sessions","session"],["sessionPersistence","jsonlPersistence"],["workspaceRegistry","workspace"],["sessionProjectionCache","projectionCache"]] as const){const implementation=loaded[role]!.default;if(typeof implementation!=="function"||!(ctx[field] instanceof implementation))throw new TypeError(`RC2 live service does not belong to the attested module: ${field}`);}
- const domain=await ctx.storageDomain.open(loaded.projectionCache!.projectionCacheDomainSpec),table=domain.table("sessions");requireMethods(table,["get","put","delete"]);
+ // The attested cache service owns this single-open domain. Borrow the public
+ // facility lookup without opening a second owner or closing the host's domain.
+ const domain=ctx.storageDomain.get(loaded.projectionCache!.projectionCacheDomainSpec.name);
+ if(!domain)throw new TypeError("RC2 projection cache domain is not initialized");
+ requireMethods(domain,["table"]);
+ const table=domain.table("sessions");requireMethods(table,["get","put","delete"]);
  const original={open:storage.open.bind(storage),create:storage.create.bind(storage),stat:storage.stat.bind(storage),list:storage.list.bind(storage)};
  type Owner={id:string;handle?:Dsh015SessionHandle};const local=new AsyncLocalStorage<Owner>(),reserved=new Set<string>(),externalWriters=new Map<string,number>();const disposers:(()=>void)[]=[];
  const check=(id:string)=>{if(reserved.has(id)&&local.getStore()?.id!==id)throw new Error(`DSH_BUSY: Maintenance owns ${id}`);};
@@ -75,7 +80,7 @@ export async function createDsh015CoreHostBinding(input:Dsh015CoreBindingInput){
  patch(storage,"create",old=>(header,...rest)=>track(header.id,()=>old(header,...rest)));
  patch(sessions,"prepare",old=>(id,...rest)=>{if(typeof id==="string")check(id);return old(id,...rest);});
  patch(sessions,"enter",old=>(session,...rest)=>{check(session.id);return old(session,...rest);});
- } catch (error) { for(const dispose of disposers.reverse())dispose();await domain.close();throw error; }
+ } catch (error) { for(const dispose of disposers.reverse())dispose();throw error; }
  const borrowed=(handle:Dsh015SessionHandle):Dsh015SessionHandle=>({id:handle.id,header:handle.header,inheritedEventCount:handle.inheritedEventCount,access:handle.access,read:handle.read.bind(handle),append:handle.append.bind(handle),flush:handle.flush.bind(handle),close:async()=>{}});
  const persistence:Dsh015SessionPersistence={stat:original.stat,list:original.list,open:async(id,access)=>{const owner=local.getStore();if(access==="read")return original.open(id,access);if(owner?.id!==id)throw new TypeError("Offline admission is required before opening a writer");owner.handle??=await original.open(id,"write");return borrowed(owner.handle!);},create:async(header,options)=>{const owner=local.getStore();if(owner?.id!==header.id||owner.handle)throw new TypeError("Offline create has no exclusive admission");owner.handle=await original.create(header,options);return borrowed(owner.handle!);}};
  const withOfflineSession=async<T>(id:string,action:()=>Promise<T>):Promise<T>=>{
@@ -98,7 +103,7 @@ export async function createDsh015CoreHostBinding(input:Dsh015CoreBindingInput){
   const file=await open(temporary,"wx",0o600);try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}try{v3NativeSessionCodec.verifyEncoded?.(await readFile(temporary),artifact as never,description);await rename(temporary,path);}finally{await unlink(temporary).catch((e:NodeJS.ErrnoException)=>{if(e.code!=="ENOENT")throw e;});}
  };
  const host=new Dsh015CoreHost({persistence,isSessionLive:id=>sessions.get(id)!==undefined||Boolean(externalWriters.get(id)),observation:async()=>{await verifyReceipt(input);return receipt.observation;},validateStoredEvents:(header,events)=>loaded.sessionPersistence!.validateStoredEvents(header,events),metadata,withOfflineSession,restoreOfflineSession});
- return {host,expectedContractFingerprint:receipt.expectedContractFingerprint,materializationProbe:()=>probeBuiltDsh015CoreHost(receipt.materialization),dispose:async()=>{if(reserved.size)throw new Error("Cannot dispose an active offline transaction");for(const dispose of disposers.reverse())dispose();await domain.close();}};
+ return {host,expectedContractFingerprint:receipt.expectedContractFingerprint,materializationProbe:()=>probeBuiltDsh015CoreHost(receipt.materialization),dispose:async()=>{if(reserved.size)throw new Error("Cannot dispose an active offline transaction");for(const dispose of disposers.reverse())dispose();}};
 }
 
 /** Collect a reviewable receipt from the actual importer closure; caller approves its digest after validation. No files are written. */
