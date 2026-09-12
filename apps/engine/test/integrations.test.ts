@@ -8,7 +8,7 @@ import { MaintenanceWriteCoordinator } from "@linmu/dsh-session-store";
 import type { CanonicalWorkspaceDirectory } from "@linmu/dsh-session-contracts";
 import { discoverLauncherIntegrations } from "../src/integrations/launcher-discovery.js";
 import { InstanceIntegrationService } from "../src/integrations/service.js";
-import { readIntegrationBindings } from "../src/integrations/bindings.js";
+import { readIntegrationBindings, integrationBindingsPath } from "../src/integrations/bindings.js";
 import { resolveRuntimeIntegration } from "../src/integrations/runtime-binding.js";
 import { WorkspaceSyncPolicyService } from "../src/integrations/sync-policy.js";
 import { MaintenanceExternalLifecycleProvider } from "../src/external-lifecycle-provider.js";
@@ -129,6 +129,13 @@ describe("instance onboarding", () => {
     const hook = JSON.parse(await readFile(join(f.dataRoot, "runtime-lifecycle.json"), "utf8"));
     expect(hook.args.slice(0, 5)).toEqual(prefix);
     expect(hook.args[5]).toBe(f.engineEntry);
+    expect(hook.args).not.toContain("--require-binding");
+    const policy = JSON.parse(await readFile(join(f.stateRoot, "maintenance-required.json"), "utf8"));
+    expect(policy.required).toContainEqual({ instanceId: "instance-a", profileId: "web" });
+    await unlink(integrationBindingsPath(f.stateRoot));
+    const provider = new MaintenanceExternalLifecycleProvider(f.stateRoot);
+    await expect(provider.handle({ schemaVersion: 1, phase: "prepare", instanceId: "instance-a", profileId: "web", runtimeVersion: "0.1.2-rc.1", web: true }))
+      .rejects.toMatchObject({ code: "MAINTENANCE_BINDING_REQUIRED" });
   });
 
   it("refuses another provider even when it is named main.js and uses the same arguments", async () => {

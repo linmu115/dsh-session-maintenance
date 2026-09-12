@@ -98,7 +98,9 @@ export async function desiredLauncherHook(target: DiscoveredIntegration, options
     throw new IntegrationError("LAUNCHER_HOOK_CONFLICT", "Launcher 正由另一套启动接入配置管理，未覆盖它。请先处理现有接入。");
   }
   const args = [...previous.args]; args[index - 1] = options.engineEntry;
-  if (!args.includes("--require-binding")) args.push("--require-binding");
+  // Preserve the existing global admission mode. Turning a legacy hook strict
+  // here would disable unrelated, previously managed instances with no binding.
+  // The newly connected target remains protected by its separate required policy.
   return { ...previous, args, timeoutMs: 300_000 };
 }
 async function profilePnpmStoreBase(profileRoot: string, fallback: string): Promise<string> {
