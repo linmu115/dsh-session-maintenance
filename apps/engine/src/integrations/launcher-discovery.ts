@@ -5,7 +5,8 @@ import { createRequire } from "node:module";
 import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { parseDocument } from "yaml";
-import { inspectDshIntegrationOverrides, maintenanceIntegrationBundleReady } from "@linmu/dsh-adapter-dsh";
+import { maintenanceIntegrationBundleReady } from "@linmu/dsh-adapter-dsh";
+import { inspectRc2ProfileOverrides } from "./rc2-profile-overrides.js";
 import type { AdapterProbe, IntegrationTarget, RegisteredInstance } from "@linmu/dsh-session-contracts";
 import { IntegrationError, readJsonIfPresent } from "./bindings.js";
 import { inspectLauncherCapabilities } from "./launcher-capabilities.js";
@@ -168,7 +169,8 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
             } catch { issues.push("用户配置无法解析，请在 Launcher 中修复配置后重新检查接入。"); }
           }
         }
-        issues.push(...inspectDshIntegrationOverrides(patches));
+        const overrideScope = { runtimeVersion: version.version, instanceId: instance.id, profileId: entry.name };
+        issues.push(...inspectRc2ProfileOverrides(patches, overrideScope));
         const npmRoot = join(versionRoot, "node_modules", "@deepseek-ai", "dsh");
         const checkoutRoot = join(versionRoot, "apps", "cli");
         const cliRoot = await stat(join(checkoutRoot, "package.json")).then(() => checkoutRoot, () => npmRoot);
@@ -200,7 +202,7 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
           if (bundle === null) issues.push("此配置包含无法加载的插件组件，请在 Launcher 中修复后重新检查。");
           else {
             extraBundles.push(bundle);
-            if (name !== "@deepseek-ai/dsh-base") issues.push(...inspectDshIntegrationOverrides([bundle.patches]));
+            if (name !== "@deepseek-ai/dsh-base") issues.push(...inspectRc2ProfileOverrides([bundle.patches], overrideScope));
           }
         }
         let runtimeCapabilities:readonly string[]=["sessionPersistence","session/event","session/flush"];
