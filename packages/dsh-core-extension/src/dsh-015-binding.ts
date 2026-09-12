@@ -68,6 +68,7 @@ export async function createDsh015CoreHostBinding(input:Dsh015CoreBindingInput){
  // facility lookup without opening a second owner or closing the host's domain.
  const domain=ctx.storageDomain.get(loaded.projectionCache!.projectionCacheDomainSpec.name);
  if(!domain)throw new TypeError("RC2 projection cache domain is not initialized");
+ if(domain.name!=="session_projcache"||loaded.projectionCache!.projectionCacheDomainSpec.version!==7)throw new TypeError("Pinned RC2 projection domain identity/version drift");
  requireMethods(domain,["table"]);
  const table=domain.table("sessions");requireMethods(table,["get","put","delete"]);
  const original={open:storage.open.bind(storage),create:storage.create.bind(storage),stat:storage.stat.bind(storage),list:storage.list.bind(storage)};
