@@ -1,3 +1,4 @@
+import { NATIVE_SOURCE_EXPORT_DIGEST_ALGORITHM, serializeNativeSourceExport, type NativeSourceExportV1 } from "@linmu/dsh-session-contracts";
 import { createHash } from "node:crypto";
 import type { JsonValue } from "@linmu/dsh-session-adapter-sdk";
 export type Obj = { readonly [key: string]: JsonValue };
@@ -8,3 +9,10 @@ function canonical(v: unknown): unknown { if (Array.isArray(v)) return v.map(can
 export function digest(v: unknown): string { return `sha256:${createHash("sha256").update(JSON.stringify(canonical(v))).digest("hex")}`; }
 export const HOST_VERSION = "0.1.5-rc.2";
 export const FORMAT_ID = "dsh-0.1.5-v3-jsonl-zstd-v1";
+
+/** Verify source-owner transport receipts with the exporter contract, independently of projection digests. */
+export function verifySourceExport(source: NativeSourceExportV1): void {
+ if (source.digestAlgorithm !== NATIVE_SOURCE_EXPORT_DIGEST_ALGORITHM) throw new TypeError("Unsupported source-owner export digest algorithm");
+ const actual = `sha256:${createHash("sha256").update(serializeNativeSourceExport(source.events)).digest("hex")}`;
+ if (source.contentDigest !== actual) throw new TypeError("Source-owner export digest mismatch");
+}

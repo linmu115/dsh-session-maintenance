@@ -1,3 +1,5 @@
+import { NATIVE_SOURCE_EXPORT_DIGEST_ALGORITHM, serializeNativeSourceExport } from "@linmu/dsh-session-contracts";
+import { verifySourceExport } from "../../adapter-dsh-0-1-5/src/common.js";
 import {describe,it,expect} from "vitest";
 import {sourceWithEvidence} from "../src/source-evidence.js";
 import {adapter as rc1,normalizeRc1Append} from "../../adapter-dsh-rc1/src/index.js";
@@ -21,4 +23,17 @@ describe("source-owner exports for V3",()=>{
   const source=sourceWithEvidence({load:async()=>({run,sessions:[{events:[event]}],workspaces:[]})} as any,v3,{readEvidence:async()=>{throw new Error("must not reach store")}} as any,()=>owner);
   await expect(source.load(run as any)).rejects.toThrow("foreign evidence read");
  });
+});
+
+it("uses the same versioned UTF-16 digest contract for exporter and consumer", async () => {
+ const event = {id:"case-order",kind:"other",extensions:{},source:{platform:"dsh"},rawPayload:{a:1,A:2,_:3,z:[{b:1,B:2}]}};
+ const owner = {...rc1,restoreNativeEvents:async(events:any)=>events};
+ const input = {run,workspaces:[],sessions:[{session:{headVersionId:"v"},events:[event]}]} as any;
+ const exported = await sourceWithEvidence({load:async()=>input},v3,{readEvidence:async()=>{throw Error("unused")}} as any,()=>owner).load(run as any);
+ const receipt=exported.sessions[0]!.nativeSourceExports![0]!;
+ expect(receipt.digestAlgorithm).toBe(NATIVE_SOURCE_EXPORT_DIGEST_ALGORITHM);
+ expect(serializeNativeSourceExport({a:1,A:2,_:3})).toBe('{"A":2,"_":3,"a":1}');
+ expect(()=>verifySourceExport(receipt)).not.toThrow();
+ expect(()=>verifySourceExport({...receipt,digestAlgorithm:undefined} as any)).toThrow(/algorithm/);
+ expect(()=>verifySourceExport({...receipt,events:[{...event,rawPayload:{changed:true}}]} as any)).toThrow(/digest mismatch/);
 });

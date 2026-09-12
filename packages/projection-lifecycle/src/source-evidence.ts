@@ -1,8 +1,8 @@
+import { NATIVE_SOURCE_EXPORT_DIGEST_ALGORITHM, serializeNativeSourceExport } from "@linmu/dsh-session-contracts";
 import { createHash } from "node:crypto";
 import type { AdapterEvidencePort, CanonicalEventV1, CanonicalProjectionInput, CanonicalProjectionSource, DshSessionAdapterV1, IncrementalCanonicalProjectionSource, NativeSourceExportV1, SessionVersionId } from "@linmu/dsh-session-contracts";
 export type SourceAdapterResolver = (event:CanonicalEventV1)=>DshSessionAdapterV1|undefined;
-function canonicalize(value:unknown):unknown {if(Array.isArray(value))return value.map(canonicalize);if(value!==null&&typeof value==="object")return Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([k,v])=>[k,canonicalize(v)]));return value;}
-function digest(value:unknown):string{return `sha256:${createHash("sha256").update(JSON.stringify(canonicalize(value))).digest("hex")}`;}
+function digest(value:unknown):string{return `sha256:${createHash("sha256").update(serializeNativeSourceExport(value)).digest("hex")}`;}
 /** Source owners alone receive scoped evidence reads. Target receives immutable, hashed exports. */
 export function sourceWithEvidence(source:CanonicalProjectionSource,adapter:DshSessionAdapterV1,evidence?:AdapterEvidencePort,resolveOwner?:SourceAdapterResolver):CanonicalProjectionSource {
  if(!evidence)return source;
@@ -17,7 +17,7 @@ export function sourceWithEvidence(source:CanonicalProjectionSource,adapter:DshS
    if(restored.length!==group.length||restored.some((e,i)=>e.id!==group[i]!.id))throw new TypeError("Source owner changed canonical identities during export");
    restored.forEach(e=>replacements.set(e.id,e));
    const metadata=restored.find(e=>e.extensions.nativeHeader!==undefined)?.extensions;
-   exports.push({schemaVersion:1,adapterId:owner.manifest.id,nativeFormatId:owner.nativeSessionCodec?.formatId??owner.manifest.id,canonicalVersion:version,contentDigest:digest(restored),events:restored,...(metadata?.nativeHeader===undefined?{}:{header:metadata.nativeHeader,...(typeof metadata.inheritedEventCount==="number"?{inheritedEventCount:metadata.inheritedEventCount}:{})})});
+   exports.push({schemaVersion:1,digestAlgorithm:NATIVE_SOURCE_EXPORT_DIGEST_ALGORITHM,adapterId:owner.manifest.id,nativeFormatId:owner.nativeSessionCodec?.formatId??owner.manifest.id,canonicalVersion:version,contentDigest:digest(restored),events:restored,...(metadata?.nativeHeader===undefined?{}:{header:metadata.nativeHeader,...(typeof metadata.inheritedEventCount==="number"?{inheritedEventCount:metadata.inheritedEventCount}:{})})});
   }
   return {events:events.map(e=>replacements.get(e.id)??e),exports};
  };

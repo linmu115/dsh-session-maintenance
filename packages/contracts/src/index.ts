@@ -26,3 +26,5 @@ export * from "./status.js";
 export * from "./store.js";
 export * from "./write-coordination.js";
 export * from "./extension-data.js";
+
+export * from "./native-source-export.js";

@@ -101,6 +101,7 @@ export interface AdapterProbeResult {
 
 export interface NativeSourceExportV1 {
   readonly schemaVersion: 1;
+  readonly digestAlgorithm: "sha256-json-utf16-v1";
   readonly adapterId: AdapterId;
   readonly nativeFormatId: string;
   readonly canonicalVersion: SessionVersionId | null;
