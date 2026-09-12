@@ -3,3 +3,5 @@ export * from "./contract.js";
 export * from "./gateway.js";
 export * from "./http.js";
 export * from "./remote.js";
+
+export * from "./dsh-015.js";

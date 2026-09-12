@@ -41,7 +41,8 @@ export interface DshCoreProbe {
 }
 
 export interface DshNativeSessionHeader {
-  readonly version: 0;
+  readonly version: 0 | 3;
+  readonly isSeeded?: boolean;
   readonly id: string;
   readonly createdAt: number;
   readonly cwd?: string;
@@ -68,6 +69,7 @@ export type DshSessionArtifactCapture =
   | {
       readonly exists: true;
       readonly header: DshNativeSessionHeader;
+      readonly inheritedEventCount?: number;
       readonly events: readonly DshNativeEvent[];
       readonly revision: string;
       readonly artifact: string;
@@ -130,6 +132,7 @@ export interface DshCoreCaptureRequest {
 export interface DshCoreApplyRequest {
   readonly snapshot: DshCoreSnapshot;
   readonly header?: DshNativeSessionHeader;
+  readonly inheritedEventCount?: number;
   readonly events: readonly DshNativeEvent[];
   readonly workspaceId?: string;
   readonly archived?: boolean;

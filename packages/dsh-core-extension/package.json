@@ -10,16 +10,21 @@
       "default": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json && node scripts/verify-materialization.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@linmu/dsh-session-contracts": "workspace:*",
-    "@linmu/dsh-session-domain": "workspace:*"
+    "@linmu/dsh-session-domain": "workspace:*",
+    "@linmu/dsh-session-adapter-0-1-5": "workspace:*"
   },
   "devDependencies": {
-    "@linmu/dsh-session-test-support": "workspace:*"
+    "@linmu/dsh-session-test-support": "workspace:*",
+    "@deepseek-ai/dsh-session-persistence-jsonl": "0.1.5-rc.2",
+    "@deepseek-ai/cordis": "4.0.2"
   }
 }
