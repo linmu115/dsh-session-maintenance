@@ -9,7 +9,7 @@ it("pins RC2 scope, closure, capabilities and exact artifact bytes before granti
  const root=await mkdtemp(join(tmpdir(),"synthetic-runtime-attestation-"));try{
   const profileRoot=join(root,"profile"),homeRoot=join(root,"home");await mkdir(profileRoot);await mkdir(homeRoot);
   const files=[];for(const role of ["cli","node","session","sessionPersistence","formatCatalog","maintenancePlugin","engine","coreBindingReceipt"]){const path=join(root,role),content=`synthetic-${role}`;await writeFile(path,content);files.push({role,path,sha256:createHash("sha256").update(content).digest("hex")})}
-  const receipt={schemaVersion:1,instanceId:"i",profileId:"web",homeRoot,adapterId:"dsh-0.1.5",formatId:"dsh-0.1.5-v3-jsonl-zstd-v1",runtimeVersion:"0.1.5-rc.2",engineVersion:"0.1.32-rc2.1",launcherCapabilityDigest:"a".repeat(64),runtimeCapabilities:[...REQUIRED_CAPABILITIES],files};
+  const receipt={schemaVersion:1,instanceId:"i",profileId:"web",homeRoot,adapterId:"dsh-0.1.5",formatId:"dsh-0.1.5-v3-jsonl-zstd-v1",runtimeVersion:"0.1.5-rc.2",engineVersion:"0.1.32-rc2.2",launcherCapabilityDigest:"a".repeat(64),runtimeCapabilities:[...REQUIRED_CAPABILITIES],files};
   const input={profileRoot,instanceId:"i",profileId:"web",homeRoot,cliPath:files[0]!.path,launcherDigest:receipt.launcherCapabilityDigest,resolvedManifests:[files[2]!.path]};
   const save=async(value:any)=>writeFile(join(profileRoot,DSH015_ATTESTATION_FILE),JSON.stringify(value));
   await save(receipt);expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
