@@ -4,7 +4,7 @@
 
 ## 0.1.5-rc.2 候选接入
 
-版本 0.2.25-rc2.1 配合 Engine 0.1.32-rc2.1。Launcher 先准备 `persistent-native-v1`，登记实际 Node/CLI/宿主包与插件构件，再传入 `DSH_SESSION_MAINTENANCE_CORE_RECEIPT` 及 `_SHA256`。回执绑定当前 instance/profile/run；不能用仅版本号相同的另一份 Session 实例替代。原始历史、附件和跨版本转换另有证据链，不以成功加载插件代替数据验收。
+版本 0.2.25-rc2.2 配合 Engine 0.1.32-rc2.1。Launcher 先准备 `persistent-native-v1`，登记实际 Node/CLI/宿主包与插件构件，再传入 `DSH_SESSION_MAINTENANCE_CORE_RECEIPT` 及 `_SHA256`。回执绑定当前 instance/profile/run；不能用仅版本号相同的另一份 Session 实例替代。原始历史、附件和跨版本转换另有证据链，不以成功加载插件代替数据验收。
 
 ## 当前能力
 

@@ -1,3 +1,7 @@
+# 0.2.25-rc2.2 — 2026-09-12
+
+- Rebuild the host integration with the verified V3 history converter, versioned export digest and typed resource codec used by Engine 0.1.32-rc2.2. Refresh the paired artifact and runtime attestation; retain the prior candidate archive for rollback.
+
 # Changelog
 
 ## 0.2.25-rc2.1 - 2026-09-12
