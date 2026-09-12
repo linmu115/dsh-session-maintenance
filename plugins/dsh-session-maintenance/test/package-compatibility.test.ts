@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 
 describe("package compatibility policy", () => {
-  it("does not gate installation on host versions", async () => {
+  it("pins the runtime ABI verified against RC2", async () => {
     const packageJson = JSON.parse(
       await readFile(new URL("../package.json", import.meta.url), "utf8"),
     ) as {
@@ -13,8 +13,10 @@ describe("package compatibility policy", () => {
       dshWorkshop: { compatibility?: unknown };
     };
 
-    expect(packageJson.version).toMatch(/^0\.2\.\d+$/u);
-    expect(new Set(Object.values(packageJson.peerDependencies))).toEqual(new Set(["*"]));
+    expect(packageJson.version).toBe("0.2.25-rc2.1");
+    for (const [name, version] of Object.entries(packageJson.peerDependencies)) {
+      if (name.startsWith("@deepseek-ai/dsh-")) expect(version).toBe("0.1.5-rc.2");
+    }
     expect(packageJson.dsh.client.inject).toContain("@deepseek-ai/dsh-client-ui-slots");
     expect(packageJson.dsh.client.inject).toContain("@deepseek-ai/dsh-client-ui-settings");
     expect(packageJson.dshWorkshop.compatibility).toBeUndefined();

@@ -96,6 +96,7 @@ describe("restricted Engine proxy", () => {
       legacyNativeAnchorId: "anchor-alpha1",
     });
     expect(requestBody).toEqual({
+      targetInstanceId: "dsh-fixture", targetProfileId: "web",
       referenceType: "sticker",
       logicalSessionId: "logical-session-1",
       logicalAnchorId: "logical-anchor-1",

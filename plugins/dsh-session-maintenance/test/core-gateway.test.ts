@@ -42,11 +42,12 @@ describe("DSH rc.2 Core host entry", () => {
     expect(await response.text()).not.toContain("sessions.get");
   });
 
-  it("unregisters both host endpoints when Cordis unloads the plugin", () => {
+  it("unregisters both host endpoints when Cordis unloads the plugin", async () => {
     const unregistrations = [vi.fn(), vi.fn()];
     const registrations: string[] = [];
     let dispose: (() => void) | undefined;
     const ctx = {
+      provide: vi.fn(),
       webServer: {
         register: vi.fn((input: { readonly path: string }) => {
           registrations.push(input.path);
@@ -55,9 +56,9 @@ describe("DSH rc.2 Core host entry", () => {
       },
       effect: (callback: () => () => void) => { dispose = callback(); },
     };
-    expect(() => apply(ctx as never, { connectionId: "primary", dshInstanceId: "dsh-web", profileId: "web" })).not.toThrow();
+    await apply(ctx as never, { connectionId: "primary", dshInstanceId: "dsh-web", profileId: "web" });
     expect(registrations).toEqual(["/dsh-session-maintenance/api", "/dsh-session-maintenance/core"]);
-    dispose?.();
+    await dispose?.();
     expect(unregistrations[0]).toHaveBeenCalledOnce();
     expect(unregistrations[1]).toHaveBeenCalledOnce();
   });

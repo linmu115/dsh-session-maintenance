@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { launcherProjectionProfile, normalizeConfig } from "../src/config.js";
+import { launcherProjectionProfile, launcherCoreBinding, normalizeConfig } from "../src/config.js";
 
 const base = {
   connectionId: "primary",
@@ -75,4 +75,15 @@ describe("Launcher Maintenance profile contract", () => {
       }),
     })).toThrow("unsupported fields");
   });
+});
+
+it("binds the RC2 Core receipt to the prepared instance and refuses incomplete registration", () => {
+  const profile = launcherProjectionProfile(base, { DSH_SESSION_MAINTENANCE_LAUNCH_PROFILE: JSON.stringify({
+    schemaVersion: 1, sessionSource: "maintenance", maintenanceEndpoint: "http://127.0.0.1:41780", adapterSelection: "auto",
+    pinnedAdapterId: null, branchId: "main", ...brokerFields, dshVersion: "0.1.5-rc.2", nativeMode: "persistent-native-v1",
+  }) });
+  const environment = { DSH_SESSION_MAINTENANCE_CORE_BINDING_RECEIPT: "D:/fixture/receipt.json", DSH_SESSION_MAINTENANCE_CORE_BINDING_SHA256: "a".repeat(64) };
+  expect(launcherCoreBinding(base, profile, environment)).toMatchObject({ instanceId: base.dshInstanceId, profileId: base.profileId, runId: brokerFields.runId });
+  expect(() => launcherCoreBinding(base, null, environment)).toThrow("prepared");
+  expect(() => launcherCoreBinding(base, profile, { ...environment, DSH_SESSION_MAINTENANCE_CORE_BINDING_SHA256: "wrong" })).toThrow("incomplete");
 });

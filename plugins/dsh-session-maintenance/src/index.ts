@@ -1,10 +1,12 @@
+import { bindRc2ProjectionContext } from './rc2-persistence.js';
+import { installRc2LazyProjectionPersistence } from './rc2-lazy-persistence.js';
 import type { Context } from "@deepseek-ai/cordis";
 import { MaintenanceExtensionBridge, registerMaintenanceExtensionData } from "./extension-data.js";
 import s from "@deepseek-ai/schemastery";
 import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
 import type { JsonValue } from "@linmu/dsh-session-contracts";
 
-import { connectionDescriptorPath, launcherProjectionProfile, normalizeConfig, type Config as PluginConfig } from "./config.js";
+import { connectionDescriptorPath, launcherProjectionProfile, launcherCoreBinding, normalizeConfig, type Config as PluginConfig } from "./config.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
 import { launchDashboard } from "./dashboard-launcher.js";
 import { createProxyHandler, FileConnectionProvider, RestrictedEngineProxy } from "./engine-proxy.js";
@@ -16,7 +18,7 @@ import {
   RuntimeBrokerPluginClient,
 } from "./projection-runtime.js";
 import { createRuntimeShutdownHandler } from "./runtime-shutdown.js";
-import { installLazyProjectionPersistence, type LazyHydrationStage, type LazyReadableSessionPersistence } from "./lazy-persistence.js";
+import { type LazyHydrationStage } from "./lazy-persistence.js";
 
 export const name = "dsh-session-maintenance";
 export type Config = PluginConfig;
@@ -32,11 +34,11 @@ export const Config: s = s.object({
   extensionPlugins: s.array(s.object({ namespace:s.string(),pluginVersion:s.string(),writerId:s.string() })),
 });
 
-export const inject = ["webServer", "appExit", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery"] as const;
+export const inject = ["webServer", "appExit", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery", "storageDomain"] as const;
 
 interface HostContext extends CoreRuntimeContext {
   readonly appExit: (code: number) => void;
-  readonly sessions: CoreRuntimeContext["sessions"] & { flush(session: Session): Promise<void> };
+  readonly sessions: CoreRuntimeContext["sessions"] & { flush(session: Session): Promise<boolean> };
   readonly webServer: { register(input: { kind: "prefix"; path: string; handler: ReturnType<typeof createProxyHandler> | ReturnType<typeof createCoreGatewayHandler> }): void | (() => void) };
   readonly logger?: { info(message: string): void; warn(message: string): void };
   effect(callback: () => void | (() => void | Promise<void>), label?: string): void;
@@ -48,19 +50,25 @@ interface HostContext extends CoreRuntimeContext {
 export async function apply(ctx: HostContext, input: PluginConfig): Promise<void> {
   const config = normalizeConfig({ ...input, pinnedAdapterId: input.pinnedAdapterId || null });
   const launchProfile = launcherProjectionProfile(config);
+  const coreBinding = launcherCoreBinding(config, launchProfile);
   const descriptorPath = connectionDescriptorPath(config.connectionId);
   const connection = descriptorPath === undefined
     ? { current: async () => { throw new Error("维护引擎连接尚未由可信安装器登记"); } }
     : new FileConnectionProvider(descriptorPath);
   const proxy = new RestrictedEngineProxy(config, connection, fetch, launchProfile?.runId);
+  (ctx as unknown as Context).provide("maintenanceReferenceResolver", {
+    resolve: (location: import("./engine-proxy.js").ProxyRequest) => proxy.invoke({ ...location, operation: "reference:resolve" }),
+  });
   if (launchProfile !== null) {
     const transport = new HttpProjectionRuntimeTransport(fetch, async () => {
       const current = await connection.current();
       if (current.origin !== launchProfile.maintenanceEndpoint) throw new Error("Launcher Runtime Broker endpoint differs from the trusted Engine descriptor");
       return `Bearer ${current.token}`;
     });
+    const projectionBinding = await bindRc2ProjectionContext(ctx as unknown as Context);
+    ctx.effect(() => () => projectionBinding.dispose(), "dsh-session-maintenance: projection domain");
     const overlay = new SessionPersistenceProjection(
-      ctx as never,
+      projectionBinding.context,
       launchProfile.temporaryPersistenceRootId,
       (stage, detail) => {
         const fields = Object.entries(detail).map(([key, value]) => `${key}=${String(value)}`).join(" ");
@@ -80,7 +88,8 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       maintenanceEndpoint: launchProfile.maintenanceEndpoint,
       ...(launchProfile.nativeMode ? { nativeMode: launchProfile.nativeMode } : {}),
     });
-    await runtime.attach();
+    try { await runtime.attach(); }
+    catch (error) { throw new Error("RC2 prepared runtime could not attach", { cause: error }); }
     if (config.extensionPlugins !== undefined) {
       const extensions = new MaintenanceExtensionBridge(connection,{instanceId:config.dshInstanceId,profileId:config.profileId},config.extensionPlugins);
       try {
@@ -105,8 +114,8 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
         ctx.logger.info(message);
       }
     };
-    const restorePersistence = launchProfile.nativeMode ? () => undefined : installLazyProjectionPersistence(
-      ctx.sessionPersistence as unknown as LazyReadableSessionPersistence,
+    const restorePersistence = launchProfile.nativeMode ? () => undefined : installRc2LazyProjectionPersistence(
+      (ctx as unknown as Context).sessionPersistence,
       runtime,
       lazyStatus,
     );
@@ -154,14 +163,16 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     path: "/dsh-session-maintenance/api",
     handler: createProxyHandler(proxy),
   });
+  const coreHandler = createCoreGatewayHandler({ runtime: ctx, connection, ...(coreBinding === undefined ? {} : { binding: coreBinding }) });
   const unregisterCore = ctx.webServer.register({
     kind: "prefix",
     path: "/dsh-session-maintenance/core",
-    handler: createCoreGatewayHandler({ runtime: ctx, connection }),
+    handler: coreHandler,
   });
-  ctx.effect(() => () => {
+  ctx.effect(() => async () => {
     if (typeof unregisterCore === "function") unregisterCore();
     if (typeof unregisterProxy === "function") unregisterProxy();
+    await coreHandler.dispose();
   }, "dsh-session-maintenance: host gateways");
   ctx.inject?.(["resourceManagementActions"], (actionContext) => {
     registerManagerActions(actionContext, proxy, launchDashboard);
@@ -175,3 +186,10 @@ export * from "./manager-actions.js";
 export * from "./projection-runtime.js";
 export * from "./runtime-shutdown.js";
 export * from "./lazy-persistence.js";
+
+
+declare module "@deepseek-ai/cordis" {
+  interface Context {
+    maintenanceReferenceResolver: { resolve(location: import("./engine-proxy.js").ProxyRequest): Promise<import("./engine-proxy.js").ProxyResult> };
+  }
+}

@@ -1,6 +1,10 @@
 # DSH Session Maintenance
 
-这是 DeepSeek Harness 的稳定会话入口。Maintenance 保存与 DSH 版本无关的规范会话和逻辑工作区；Launcher 启动 Alpha2、RC1 或 RC2 时，把同一真源转换为该版本认识的临时投影，正常关闭后清空实例内的会话文件。
+这是 DeepSeek Harness 的稳定会话入口。Maintenance 保存与 DSH 版本无关的规范会话和逻辑工作区；Launcher 启动时由对应 adapter 提供原生会话。当前 RC2 候选使用持久 native space，由 Broker 管理所有权及关闭排空；正常关闭保留已确认的原生空间。
+
+## 0.1.5-rc.2 候选接入
+
+版本 0.2.25-rc2.1 配合 Engine 0.1.32-rc2.1。Launcher 先准备 `persistent-native-v1`，登记实际 Node/CLI/宿主包与插件构件，再传入 `DSH_SESSION_MAINTENANCE_CORE_RECEIPT` 及 `_SHA256`。回执绑定当前 instance/profile/run；不能用仅版本号相同的另一份 Session 实例替代。原始历史、附件和跨版本转换另有证据链，不以成功加载插件代替数据验收。
 
 ## 当前能力
 

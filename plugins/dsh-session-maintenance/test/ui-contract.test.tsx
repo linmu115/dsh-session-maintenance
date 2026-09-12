@@ -19,7 +19,7 @@ function root(className: string, hasTitle: boolean): ParentNode {
   return { querySelectorAll: () => [row] } as unknown as ParentNode;
 }
 
-describe("DSH 0.1.1-rc.2 UI contract", () => {
+describe("DSH 0.1.5-rc.2 UI contract", () => {
   it("accepts the captured service and selector contract", () => {
     expect(verifyUiContract(context(), root("_sessionRow_rc2_17", true))).toEqual({ compatible: true, fingerprint: SUPPORTED_CLIENT_FINGERPRINT });
   });

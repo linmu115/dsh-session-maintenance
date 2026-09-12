@@ -18,16 +18,9 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   conditions: ["development"],
-  external: [
-    "@deepseek-ai/cordis",
-    "@deepseek-ai/dsh-session",
-    "@deepseek-ai/dsh-session-persistence",
-    "@deepseek-ai/dsh-session-projection-cache",
-    "@deepseek-ai/dsh-session-query",
-    "@deepseek-ai/dsh-workspace",
-  ],
+  external: ["@deepseek-ai/*"],
   legalComments: "none",
 });
 
@@ -48,6 +41,6 @@ await build({
   footer: { js: "return module.exports;\n}});" },
 });
 
-await copyFile(join(workspaceRoot, "packages", "dsh-core-extension", "dist", "rc2-host.js"), join(lib, "rc2-host.js"));
+await copyFile(join(workspaceRoot, "packages", "dsh-core-extension", "dist", "dsh-015-host.js"), join(lib, "dsh-015-host.js"));
 await writeFile(join(lib, "index.d.ts"), "export declare const name = \"dsh-session-maintenance\";\nexport declare function apply(ctx: unknown, config: unknown): void;\n");
 await writeFile(join(lib, "client", "index.d.ts"), "export declare function apply(ctx: unknown): void;\n");

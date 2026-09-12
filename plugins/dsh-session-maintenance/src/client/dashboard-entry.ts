@@ -1,3 +1,4 @@
+import { createElement, useEffect, type ReactNode } from 'react';
 import type { ClientContext, MaintenanceActions } from "./context.js";
 
 export async function openDashboard(actions: MaintenanceActions, instanceId?: string, sessionId?: string, signal?: AbortSignal): Promise<string> {
@@ -14,7 +15,7 @@ export async function openDashboard(actions: MaintenanceActions, instanceId?: st
 }
 
 interface BetterSidebarLike {
-  registerTab(input: { id: string; title: string; order: number; single: boolean; component: () => null }): () => void;
+  registerTab(input: { id: string; title: string; order: number; single: boolean; component: () => ReactNode }): () => void;
 }
 
 export function registerOptionalSidebar(ctx: ClientContext, open: () => void): () => void {
@@ -25,6 +26,9 @@ export function registerOptionalSidebar(ctx: ClientContext, open: () => void): (
     title: "会话维护",
     order: 45,
     single: true,
-    component: () => { queueMicrotask(open); return null; },
+    component: function MaintenanceDashboardTab() {
+      useEffect(() => { open(); }, []);
+      return createElement('button', { type: 'button', onClick: open }, '打开会话维护看板');
+    },
   });
 }

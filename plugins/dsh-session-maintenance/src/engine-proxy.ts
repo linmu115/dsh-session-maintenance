@@ -175,7 +175,7 @@ export class RestrictedEngineProxy {
   private readonly fetchImpl: typeof fetch;
   private readonly pending = new Map<string, Promise<ProxyResult>>();
 
-  constructor(config: Config, connection: EngineConnectionProvider, fetchImpl: typeof fetch = fetch,
+  constructor(private readonly config: Config, connection: EngineConnectionProvider, fetchImpl: typeof fetch = fetch,
     private readonly projectionRunId?: string) {
     this.connection = connection;
     this.defaultInstanceId = config.dshInstanceId;
@@ -199,6 +199,8 @@ export class RestrictedEngineProxy {
     }
     if (input.operation === "reference:resolve") {
       const value = await this.engine("/v1/references/resolve", "POST", {
+        targetInstanceId: this.config.dshInstanceId,
+        targetProfileId: this.config.profileId,
         referenceType: input.referenceType,
         logicalSessionId: input.logicalSessionId ?? null,
         logicalAnchorId: input.logicalAnchorId ?? null,

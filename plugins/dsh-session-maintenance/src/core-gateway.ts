@@ -1,69 +1,57 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-
-import {
-  LockedRc2CoreExtension,
-  RC2_CORE_CONTRACT_OBSERVATION,
-  Rc2CoreHost,
-  probeBuiltRc2CoreHost,
-  type Rc2RuntimeContext,
-} from "@linmu/dsh-core-extension";
-import {
-  DshGatewayTokenService,
-  DshHostGateway,
-  createDshGatewayHttpHandler,
-} from "@linmu/dsh-host-gateway";
-
+import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-session";
+import type {} from "@deepseek-ai/dsh-session-persistence";
+import type {} from "@deepseek-ai/dsh-workspace";
+import type {} from "@deepseek-ai/dsh-session-query";
+import type {} from "@deepseek-ai/dsh-session-projection-cache";
+import { createDsh015CoreHostBinding, LockedDsh015CoreExtension, type Dsh015CoreBindingInput } from "@linmu/dsh-core-extension";
+import { DshGatewayTokenService, DshHostGateway, createDshGatewayHttpHandler } from "@linmu/dsh-host-gateway";
 import type { EngineConnectionProvider } from "./engine-proxy.js";
 
 const ENDPOINT = "/dsh-session-maintenance/core";
-
-export interface CoreRuntimeContext extends Rc2RuntimeContext {
+export interface CoreRuntimeContext extends Pick<Context, "sessions" | "sessionPersistence" | "workspaceRegistry" | "sessionProjectionCache" | "sessionQuery"> {
   readonly webServer: { register(input: { kind: "prefix"; path: string; handler: (request: IncomingMessage, response: ServerResponse) => Promise<void> }): void | (() => void) };
 }
+export type CoreBindingRegistration = Omit<Dsh015CoreBindingInput, "runtime" | "importAnchor">;
 
-function method(value: unknown, name: string): void {
-  if (typeof value !== "function") throw new TypeError(`DSH rc.2 Core service drift: ${name}`);
-}
-
-export function assertRc2RuntimeSurface(ctx: Rc2RuntimeContext): void {
+/** Cheap diagnostic only; compatibility is established by the attested binding. */
+export function assertRc2RuntimeSurface(ctx: CoreRuntimeContext): void {
+  const method = (value: unknown, name: string) => { if (typeof value !== "function") throw new TypeError(`DSH 0.1.5-rc.2 service drift: ${name}`); };
   method(ctx.sessions?.get, "sessions.get");
-  for (const name of ["list", "inspect", "locate", "create", "append"] as const) method(ctx.sessionPersistence?.[name], `sessionPersistence.${name}`);
-  method(ctx.sessionPersistence?.coordinator?.serialize, "sessionPersistence.coordinator.serialize");
-  method(ctx.sessionPersistence?.coordinator?.preparations?.invalidate, "sessionPersistence.coordinator.preparations.invalidate");
-  for (const name of ["list", "get", "archiveSession", "setState", "enqueueOperation", "replaceHeaderIndex"] as const) method(ctx.workspaceRegistry?.[name], `workspaceRegistry.${name}`);
-  for (const name of ["get", "put", "delete"] as const) method(ctx.sessionProjectionCache?.table?.[name], `sessionProjectionCache.table.${name}`);
-  for (const name of ["_ensureReady", "_reconcile", "_serialized"] as const) method(ctx.sessionQuery?.[name], `sessionQuery.${name}`);
+  for (const name of ["list", "stat", "open", "create"] as const) method(ctx.sessionPersistence?.[name], `sessionPersistence.${name}`);
+  method(ctx.sessionQuery?.readSession, "sessionQuery.readSession");
 }
 
 export function createCoreGatewayHandler(input: {
-  readonly runtime: Rc2RuntimeContext;
+  readonly runtime: CoreRuntimeContext;
   readonly connection: EngineConnectionProvider;
+  readonly binding?: CoreBindingRegistration;
 }) {
-  let extension: LockedRc2CoreExtension | undefined;
-  let surfaceError: string | undefined;
+  let binding: Promise<Awaited<ReturnType<typeof createDsh015CoreHostBinding>>> | undefined;
+  let extension: LockedDsh015CoreExtension | undefined;
+  let disposed = false;
   let tokenState: { readonly capability: string; readonly service: DshGatewayTokenService } | undefined;
-  try {
-    assertRc2RuntimeSurface(input.runtime);
-    extension = new LockedRc2CoreExtension(new Rc2CoreHost(input.runtime, RC2_CORE_CONTRACT_OBSERVATION));
-  } catch (error) {
-    surfaceError = error instanceof Error ? error.message : "DSH rc.2 Core service surface is unavailable";
-  }
-  return createDshGatewayHttpHandler({
+  const handler = createDshGatewayHttpHandler({
     endpoint: ENDPOINT,
-    createGateway: async (expectedScope) => {
-      if (extension === undefined) throw new TypeError(surfaceError ?? "DSH rc.2 Core service surface is unavailable");
+    createGateway: async expectedScope => {
+      if (disposed) throw new TypeError("RC2 Core gateway is disposed");
+      if (input.binding === undefined) throw new TypeError("RC2 Core receipt requires a registered Launcher native-space binding");
+      if (expectedScope.instanceId !== input.binding.instanceId) throw new TypeError("RC2 Core scope belongs to another instance");
+      assertRc2RuntimeSurface(input.runtime);
+      const active = await (binding ??= createDsh015CoreHostBinding({ ...input.binding, runtime: input.runtime, importAnchor: import.meta.url }));
+      if (disposed) throw new TypeError("RC2 Core gateway is disposed");
+      extension ??= new LockedDsh015CoreExtension(active.host, active.expectedContractFingerprint);
       const connection = await input.connection.current();
-      if (tokenState?.capability !== connection.token) {
-        tokenState = {
-          capability: connection.token,
-          service: new DshGatewayTokenService({ secret: Buffer.from(connection.token) }),
-        };
-      }
-      return new DshHostGateway({
-        extensions: new Map([[expectedScope.instanceId, extension]]),
-        tokens: tokenState.service,
-        materializationProbe: probeBuiltRc2CoreHost,
-      });
+      if (tokenState?.capability !== connection.token) tokenState = { capability: connection.token, service: new DshGatewayTokenService({ secret: Buffer.from(connection.token) }) };
+      return new DshHostGateway({ extensions: new Map([[input.binding.instanceId, extension]]), tokens: tokenState.service, materializationProbe: active.materializationProbe });
     },
   });
+  return Object.assign(handler, { dispose: async () => {
+    disposed = true;
+    if (binding !== undefined) {
+      const result = await binding.then(value => ({ value }), () => ({ value: undefined }));
+      await result.value?.dispose();
+    }
+  } });
 }

@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { extensionConnectSchema, type ExtensionConnect } from "@linmu/dsh-session-contracts";
 
-export const SUPPORTED_DSH_VERSION = "0.1.1-rc.2" as const;
+export const SUPPORTED_DSH_VERSION = "0.1.5-rc.2" as const;
 
 export interface Config {
   readonly connectionId: string;
@@ -130,4 +130,16 @@ export function connectionDescriptorPath(
   const localAppData = environment.LOCALAPPDATA;
   if (localAppData === undefined || localAppData.trim().length === 0) return undefined;
   return join(localAppData, "DSH-Session-Maintenance", "connection.json");
+}
+
+/** The Launcher pins an inspected importer receipt; browser requests cannot override it. */
+export function launcherCoreBinding(config: Config, profile: LauncherProjectionProfile | null,
+  environment: Readonly<Record<string, string | undefined>> = process.env): import("./core-gateway.js").CoreBindingRegistration | undefined {
+  const receiptPath = environment.DSH_SESSION_MAINTENANCE_CORE_RECEIPT ?? environment.DSH_SESSION_MAINTENANCE_CORE_BINDING_RECEIPT;
+  const receiptSha256 = environment.DSH_SESSION_MAINTENANCE_CORE_RECEIPT_SHA256 ?? environment.DSH_SESSION_MAINTENANCE_CORE_BINDING_SHA256;
+  if (!receiptPath && !receiptSha256) return undefined;
+  if (!profile || profile.nativeMode !== "persistent-native-v1" || profile.dshVersion !== SUPPORTED_DSH_VERSION)
+    throw new TypeError("RC2 Core binding requires a prepared persistent native space");
+  if (!receiptPath || !receiptSha256 || !/^[a-f0-9]{64}$/u.test(receiptSha256)) throw new TypeError("RC2 Core receipt registration is incomplete");
+  return { instanceId: config.dshInstanceId, profileId: config.profileId, runId: profile.runId, branchId: profile.branchId, receiptPath, receiptSha256 };
 }

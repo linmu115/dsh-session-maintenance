@@ -77,6 +77,7 @@ export interface ProjectionPersistenceOverlay {
   beginHydration(registrationId: string, session: ProjectionRuntimeSessionMetadata): Promise<void>;
   appendHydrationEvents(registrationId: string, nativeSessionId: string, events: readonly JsonValue[]): Promise<void>;
   finishHydration(registrationId: string, nativeSessionId: string, eventCount: number): Promise<void>;
+  abortHydration?(registrationId: string, nativeSessionId: string, error: unknown): Promise<void>;
   isHydrated(registrationId: string, nativeSessionId: string): boolean;
   listHeaders(registrationId: string): readonly JsonValue[];
   beginDrain(registrationId: string): Promise<void>;
@@ -330,6 +331,7 @@ export class ProjectionRuntimeRegistrar {
     let catalog: ProjectionRuntimeCatalog | undefined;
     let registrationId: string | undefined;
     const open = new Set<string>();
+    try {
     for await (const frame of this.transport.stream(descriptor)) {
       if (frame.type === "catalog-begin") {
         if (frame.nativeMode !== undefined && frame.nativeMode !== "persistent-native-v1") throw new TypeError("Unsupported native mode");
@@ -366,6 +368,14 @@ export class ProjectionRuntimeRegistrar {
     }
     if (catalog === undefined || registrationId === undefined) throw new TypeError("Projection startup stream omitted its catalog");
     if (open.size > 0) throw new TypeError("Projection startup stream ended inside a session");
+    } catch (error) {
+      if (registrationId !== undefined) {
+        try {
+          await Promise.all([...open].map(id => this.overlay.abortHydration?.(registrationId!, id, error)));
+        } finally { await this.overlay.detach(registrationId); }
+      }
+      throw error;
+    }
     this.registrations.set(descriptor.runId, registrationId);
     this.catalogs.set(descriptor.runId, catalog);
     return { registrationId, attachedAt: this.clock() };
@@ -394,7 +404,10 @@ export class ProjectionRuntimeRegistrar {
       if (open.size > 0 || !this.overlay.isHydrated(registrationId, nativeSessionId)) {
         throw new TypeError("Single-session projection stream ended before hydration completed");
       }
-    })().finally(() => this.hydrationTails.delete(key));
+    })().catch(async error => {
+      await this.overlay.abortHydration?.(registrationId, nativeSessionId, error);
+      throw error;
+    }).finally(() => this.hydrationTails.delete(key));
     this.hydrationTails.set(key, hydration);
     return hydration;
   }
@@ -486,7 +499,7 @@ function validateCatalog(catalog: ProjectionRuntimeCatalog, runId: string): Proj
   return catalog;
 }
 
-interface SessionPersistenceProjectionContext {
+export interface SessionPersistenceProjectionContext {
   readonly sessions?: {
     prepare(id: string, options: { readonly meta: unknown }): import("@deepseek-ai/dsh-session").Session;
     enter(session: import("@deepseek-ai/dsh-session").Session): () => void;
@@ -500,6 +513,9 @@ interface SessionPersistenceProjectionContext {
     ): Promise<void>;
     append(id: string, events: readonly JsonValue[]): Promise<void>;
     list(): Promise<readonly { readonly id: string }[]>;
+    finishHydration?(id: string): Promise<void>;
+    abortHydration?(id: string, error: unknown): Promise<void>;
+    closeHydrationHandles?(): Promise<void>;
     ensureMaterialized?(session: import("@deepseek-ai/dsh-session").Session): Promise<void>;
   };
   readonly workspaceRegistry: {
@@ -662,6 +678,7 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
 
   async beginHydration(registrationId: string, session: ProjectionRuntimeSessionMetadata): Promise<void> {
     this.catalog(registrationId);
+    if (this.draining.has(registrationId)) throw new Error("Projection is draining");
     if (this.isHydrated(registrationId, session.nativeSessionId)) return;
     const projected = this.catalog(registrationId).sessions.find((item) => item.nativeSessionId === session.nativeSessionId);
     if (projected === undefined) throw new Error(`DSH projected session is not registered: ${session.nativeSessionId}`);
@@ -692,7 +709,9 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
   async finishHydration(registrationId: string, nativeSessionId: string, eventCount: number): Promise<void> {
     const count = this.countsFor(registrationId).get(nativeSessionId);
     if (count !== eventCount) throw new Error(`DSH projected event count mismatch: ${String(count)} != ${eventCount}`);
-    if (eventCount === 0) {
+    if (this.context.sessionPersistence.finishHydration !== undefined) {
+      await this.context.sessionPersistence.finishHydration(nativeSessionId);
+    } else if (eventCount === 0) {
       // RC1 create() is lazy: no append means no file. Use the official live
       // lifecycle + ensureMaterialized(), not a fabricated session event.
       const sessions = this.context.sessions;
@@ -716,6 +735,11 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
     this.hydrated.get(registrationId)!.add(nativeSessionId);
   }
 
+  async abortHydration(registrationId: string, nativeSessionId: string, error: unknown): Promise<void> {
+    this.catalog(registrationId);
+    await this.context.sessionPersistence.abortHydration?.(nativeSessionId, error);
+  }
+
   isHydrated(registrationId: string, nativeSessionId: string): boolean {
     this.catalog(registrationId);
     return this.hydrated.get(registrationId)!.has(nativeSessionId);
@@ -735,7 +759,7 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
 
   async pending(registrationId: string): Promise<number> {
     this.catalog(registrationId);
-    return 0;
+    return [...this.countsFor(registrationId).keys()].filter(id => !this.isHydrated(registrationId, id)).length;
   }
 
   async hideSession(_registrationId: string, _nativeSessionId: string): Promise<void> {
@@ -744,6 +768,7 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
 
   async detach(registrationId: string): Promise<void> {
     this.catalog(registrationId);
+    await this.context.sessionPersistence.closeHydrationHandles?.();
     this.catalogs.delete(registrationId);
     this.hydrated.delete(registrationId);
     this.counts.delete(registrationId);
@@ -820,6 +845,7 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
     const payload = object(item.payload, "DSH projected session");
     const header = object(payload.header ?? null, "DSH projected SessionHeader");
     const identity = {
+      formatVersion: Number(header.version),
       createdAt: Number(header.createdAt),
       ...(typeof header.cwd === "string" ? { cwd: header.cwd } : {}),
       ...(typeof header.isSeeded === "boolean" ? {
@@ -832,12 +858,13 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
       ? current as { readonly identity?: unknown; readonly rows?: unknown }
       : undefined;
     const currentIdentity = currentRecord?.identity !== null && typeof currentRecord?.identity === "object" && !Array.isArray(currentRecord.identity)
-      ? currentRecord.identity as { readonly createdAt?: unknown; readonly cwd?: unknown; readonly isSeeded?: unknown; readonly inheritedEventCount?: unknown }
+      ? currentRecord.identity as { readonly formatVersion?: unknown; readonly createdAt?: unknown; readonly cwd?: unknown; readonly isSeeded?: unknown; readonly inheritedEventCount?: unknown }
       : undefined;
     const lineageMatches = identity.isSeeded === undefined
       || ((currentIdentity?.isSeeded ?? false) === identity.isSeeded
         && (currentIdentity?.inheritedEventCount ?? 0) === identity.inheritedEventCount);
-    const sameIdentity = currentIdentity?.createdAt === identity.createdAt
+    const sameIdentity = currentIdentity?.formatVersion === identity.formatVersion
+      && currentIdentity?.createdAt === identity.createdAt
       && currentIdentity.cwd === identity.cwd
       && lineageMatches;
     const rows = sameIdentity && currentRecord?.rows !== null && typeof currentRecord?.rows === "object" && !Array.isArray(currentRecord.rows)

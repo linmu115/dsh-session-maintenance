@@ -75,9 +75,9 @@ describe("DSH projection runtime", () => {
   it("registers every catalog header, hydrates only hot sessions at startup, and single-flights a cold click", async () => {
     const runId = "run-hot-cold";
     const hot = { nativeSessionId: "native-hot", updatedAt: "2026-09-01T02:00:00.000Z", hot: true, eventCount: 2,
-      payload: { logicalSessionId: "logical-hot", baseVersionId: "version-hot", projectId: "project-hot", projectTitle: "Hot project", title: "Hot title", inheritedEventCount: 0, header: { version: 0, id: "native-hot", createdAt: 2, isSeeded: false }, events: [] } };
+      payload: { logicalSessionId: "logical-hot", baseVersionId: "version-hot", projectId: "project-hot", projectTitle: "Hot project", title: "Hot title", inheritedEventCount: 0, header: { version: 3, id: "native-hot", createdAt: 2, isSeeded: false }, events: [] } };
     const cold = { nativeSessionId: "native-cold", updatedAt: "2026-09-01T01:00:00.000Z", hot: false, eventCount: 1,
-      payload: { logicalSessionId: "logical-cold", baseVersionId: "version-cold", projectId: "project-cold", projectTitle: "Cold project", title: "Cold title", inheritedEventCount: 0, header: { version: 0, id: "native-cold", createdAt: 1, isSeeded: false }, events: [] } };
+      payload: { logicalSessionId: "logical-cold", baseVersionId: "version-cold", projectId: "project-cold", projectTitle: "Cold project", title: "Cold title", inheritedEventCount: 0, header: { version: 3, id: "native-cold", createdAt: 1, isSeeded: false }, events: [] } };
     const catalog = { type: "catalog" as const, schemaVersion: 2 as const, runId, hotLimit: 1, sessions: [hot, cold] };
     const create = vi.fn(async () => undefined);
     const append = vi.fn(async () => undefined);
@@ -147,7 +147,7 @@ describe("DSH projection runtime", () => {
     expect(deleteWorkspace).toHaveBeenCalledWith("workspace-stale-run");
     expect(attached).toEqual(expect.arrayContaining(["native-hot", "native-cold"]));
     expect(projectionCache.get("native-hot")).toMatchObject({
-      identity: { createdAt: 2, isSeeded: false, inheritedEventCount: 0 },
+      identity: { formatVersion: 3, createdAt: 2, isSeeded: false, inheritedEventCount: 0 },
       rows: {
         title: { ver: 1, seq: 1, val: "Hot title" },
         sessionListMetadata: { ver: 1, seq: 1, val: { blank: false } },

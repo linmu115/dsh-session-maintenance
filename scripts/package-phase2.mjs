@@ -6,13 +6,15 @@ import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
 import { dshRc2PackageMetadata } from "./dsh-rc2-bundle-plugin.mjs";
 
-import { deterministicTarGz, sha256, stableJson } from "./phase2-pack-lib.mjs";
+import { deterministicTarGz, readTarGz, sha256, stableJson } from "./phase2-pack-lib.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
 const outFlag = args.indexOf("--out");
 const out = resolve(outFlag >= 0 ? args[outFlag + 1] : join(root, ".artifacts", "phase2"));
 const skipBuild = args.includes("--skip-build");
+const archiveFlag = args.indexOf("--plugin-archive");
+const pluginArchive = archiveFlag < 0 ? undefined : resolve(args[archiveFlag + 1]);
 const sourcePluginManifest = JSON.parse(await readFile(join(root, "plugins", "dsh-session-maintenance", "package.json"), "utf8"));
 const sourceEngineManifest = JSON.parse(await readFile(join(root, "apps", "engine", "package.json"), "utf8"));
 const version = sourcePluginManifest.version;
@@ -62,16 +64,9 @@ const pluginHost = await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   conditions: ["development"],
-  external: [
-    "@deepseek-ai/cordis",
-    "@deepseek-ai/dsh-session",
-    "@deepseek-ai/dsh-session-persistence",
-    "@deepseek-ai/dsh-session-projection-cache",
-    "@deepseek-ai/dsh-session-query",
-    "@deepseek-ai/dsh-workspace",
-  ],
+  external: ["@deepseek-ai/*"],
   legalComments: "none",
   metafile: true,
 });
@@ -92,7 +87,6 @@ const pluginClient = await build({
   footer: { js: "return module.exports;\n}});" },
   metafile: true,
 });
-await copyFile(join(root, "packages", "dsh-core-extension", "dist", "rc2-host.js"), join(plugin, "lib", "rc2-host.js"));
 await copyFile(join(root, "packages", "dsh-core-extension", "dist", "dsh-015-host.js"), join(plugin, "lib", "dsh-015-host.js"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "cordis.patch.yml"), join(plugin, "cordis.patch.yml"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "README.md"), join(plugin, "README.md"));
@@ -118,7 +112,7 @@ const engineBundle = await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   conditions: ["development"],
   legalComments: "none",
   banner: {
@@ -133,7 +127,7 @@ const alpha2WorkerBundle = await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   conditions: ["development"],
   legalComments: "none",
   metafile: true,
@@ -145,7 +139,7 @@ const rc1WorkerBundle = await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   conditions: ["development"],
   legalComments: "none",
   metafile: true,
@@ -169,7 +163,7 @@ const rc2WorkerBundle = await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   conditions: ["development"],
   legalComments: "none",
   metafile: true,
@@ -219,7 +213,15 @@ const buildInfo = {
   lockfile: { name: "pnpm-lock.yaml", sha256: lockfileSha256 },
 };
 await writeFile(join(engine, "BUILD-INFO.json"), `${stableJson(buildInfo)}\n`);
-const pluginBytes = await deterministicTarGz(plugin, "package");
+const pluginBytes = pluginArchive === undefined ? await deterministicTarGz(plugin, "package") : await readFile(pluginArchive);
+if (pluginArchive !== undefined) {
+  const entries = readTarGz(pluginBytes);
+  const supplied = JSON.parse(entries.get("package/package.json").toString("utf8"));
+  if (supplied.name !== sourcePluginManifest.name || supplied.version !== version) throw new Error("Supplied integration package identity differs");
+  for (const name of ["lib/index.js", "lib/client/index.js", "lib/dsh-015-host.js", "cordis.patch.yml"]) {
+    if (!entries.get(`package/${name}`)?.equals(await readFile(join(plugin, name)))) throw new Error(`Supplied integration package differs: ${name}`);
+  }
+}
 await writeFile(join(engine, "engine", "dsh-session-maintenance.tgz"), pluginBytes);
 await writeFile(join(engine, "engine", "integration-package.json"), `${stableJson({
   schemaVersion: 1,
@@ -233,7 +235,7 @@ await writeFile(join(out, pluginName), pluginBytes);
 await writeFile(join(out, engineName), engineBytes);
 const manifest = {
   ...buildInfo,
-  supportedContracts: { dsh: "0.1.1-rc.2", dshRc1: "0.1.2-rc.1", cordis: "4.0.2", codexRead: "0.146.0" },
+  supportedContracts: { dsh: "0.1.5-rc.2", dshLegacyRc2: "0.1.1-rc.2", dshRc1: "0.1.2-rc.1", cordis: "4.0.2", codexRead: "0.146.0" },
   artifacts: [
     { name: engineName, sha256: sha256(engineBytes), bytes: engineBytes.byteLength, kind: "engine-dashboard" },
     { name: pluginName, sha256: sha256(pluginBytes), bytes: pluginBytes.byteLength, kind: "dsh-plugin" },

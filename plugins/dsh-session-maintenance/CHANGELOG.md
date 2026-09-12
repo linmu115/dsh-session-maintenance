@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.2.25-rc2.1 - 2026-09-12
+
+- DSH 0.1.5-rc.2 / Engine 0.1.32-rc2.1: V3 persistence handles own create/append/flush/close; empty histories use the real JSONL writer and failed hydration cannot be handed off.
+- Cold list/stat use metadata without replay; concurrent opens share hydration. Shutdown waits for persistence and Broker durability.
+- Current cache records include formatVersion and lineage, using the public storage domain rather than a private cache table. RC2 workspace row/slot selectors remain valid.
+- Reference resolution is bound to the current instance and profile. Publish a host resolver for Obsidian background deletion.
+- Core writes require an attested exact RC2 importer, prepared Broker native space, owned writer and scope. Missing receipt disables only the Core endpoint, with no legacy coordinator fallback.
+- Keep dashboard, SCM actions, safe canonical delete, extension objects and event cards. Sidebar dashboard opens once per mount.
+- Validation: TypeScript and 65 plugin tests, including official RC2 JSONL empty-session success/failure, pass. Combined Launcher acceptance is recorded separately.
+
+
 ## 0.2.24 - 2026-09-10
 
 - Optional `extensionPlugins` profile configuration connects independent plugin
