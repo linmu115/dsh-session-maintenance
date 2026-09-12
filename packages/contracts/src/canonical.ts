@@ -315,6 +315,8 @@ export interface SessionTombstone {
 }
 
 export interface StableLogicalReference {
+  readonly targetInstanceId?: string;
+  readonly targetProfileId?: string;
   readonly referenceType: "annotation" | "sticker" | "obsidian-reference";
   readonly logicalSessionId: LogicalSessionId | null;
   readonly logicalAnchorId: string | null;

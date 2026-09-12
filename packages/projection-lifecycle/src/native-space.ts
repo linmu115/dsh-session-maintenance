@@ -157,6 +157,9 @@ export class NativeSessionSpace {
         const bytes = this.codec.encode(payload, description);
         const staged = `${randomUUID()}.native`;
         await durableWrite(join(this.control, staged), bytes);
+        const reread = await readFile(join(this.control, staged));
+        if (hash(reread) !== hash(bytes)) throw new Error("Staged native bytes changed before publication");
+        this.codec.verifyEncoded?.(reread, payload, description);
         replacements.push({ path: description.relativePath, staged, hash: hash(bytes), previous: actual });
         next[item.nativeSessionId] = { digest, path: description.relativePath, identity: "pending" };
       }

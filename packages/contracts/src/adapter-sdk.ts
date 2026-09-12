@@ -99,7 +99,19 @@ export interface AdapterProbeResult {
   readonly issues: readonly CompatibilityIssue[];
 }
 
+export interface NativeSourceExportV1 {
+  readonly schemaVersion: 1;
+  readonly adapterId: AdapterId;
+  readonly nativeFormatId: string;
+  readonly canonicalVersion: SessionVersionId | null;
+  readonly contentDigest: string;
+  readonly events: readonly CanonicalEventV1[];
+  readonly header?: JsonValue;
+  readonly inheritedEventCount?: number;
+}
+
 export interface CanonicalProjectionSessionInput {
+  readonly nativeSourceExports?: readonly NativeSourceExportV1[];
   readonly session: CanonicalSessionRecord;
   readonly events: readonly CanonicalEventV1[];
   readonly workspaceId: LogicalWorkspaceId | null;

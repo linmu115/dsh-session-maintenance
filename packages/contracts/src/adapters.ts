@@ -145,6 +145,10 @@ export interface DshSessionAdapterV1 {
     events: readonly import("./canonical.js").CanonicalEventV1[],
     evidence: Pick<AdapterEvidencePort, "readEvidence">,
   ): Promise<readonly import("./canonical.js").CanonicalEventV1[]>;
+  /** Owning adapter classifies its source records before scoped evidence export. */
+  ownsCanonicalEvent?(event: import("./canonical.js").CanonicalEventV1): boolean;
+  /** Opt in to source-owner export instead of implicit foreign evidence reads. */
+  readonly acceptsSourceExports?: boolean;
   probe(environment: DshEnvironmentDescriptor): Promise<AdapterProbeResult>;
   materialize(
     input: CanonicalProjectionInput,

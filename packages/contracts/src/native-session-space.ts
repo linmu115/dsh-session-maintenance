@@ -20,6 +20,8 @@ export interface NativeSessionCodec {
   readonly formatId: string;
   describe(metadata: JsonValue, persistenceRoot: string): Promise<NativeSessionFileDescription>;
   encode(payload: JsonValue, description: NativeSessionFileDescription): Uint8Array;
+  /** Re-read staged bytes through the format decoder before atomic publication. */
+  verifyEncoded?(bytes: Uint8Array, payload: JsonValue, description: NativeSessionFileDescription): void;
   /** Strictly validates native layout and decodes all records, including complete zstd frames. */
   inspect(persistenceRoot: string): Promise<readonly NativeSessionArtifact[]>;
   isPreparationOnly(events: readonly JsonValue[]): boolean;

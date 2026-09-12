@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { randomUUID } from "node:crypto";
 import { access, mkdir, open, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
@@ -417,7 +418,16 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
       await handle.close();
     }
     try {
-      await rename(temporary, path);
+      // Windows readers and scanners can briefly deny replacement after fsync.
+      // Retry the same atomic operation; never unlink the published catalog.
+      for (let attempt = 0; ; attempt += 1) {
+        try { await rename(temporary, path); break; }
+        catch (error) {
+          if (process.platform !== "win32" || attempt >= 6
+            || !["EPERM", "EACCES", "EBUSY"].includes((error as NodeJS.ErrnoException).code ?? "")) throw error;
+          await delay(10 * 2 ** attempt);
+        }
+      }
     } catch (error) {
       await rm(temporary, { force: true }).catch(() => undefined);
       throw error;

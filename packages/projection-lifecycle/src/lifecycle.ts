@@ -49,7 +49,7 @@ import {
   projectionCacheRootFor,
 } from "./persistent-cache.js";
 import { createRunCacheManager, refreshRunCache, type RunCacheContext } from "./run-cache.js";
-import { sourceWithEvidence } from "./source-evidence.js";
+import { sourceWithEvidence, type SourceAdapterResolver } from "./source-evidence.js";
 import { ProjectionWriteAheadLog } from "./wal.js";
 import {
   readProjectionRecoveryDescriptor,
@@ -201,6 +201,7 @@ export class ProjectionLifecycle {
     readonly bridge: DshRuntimeBridgeV1;
     readonly canonicalEngine?: ProjectionCanonicalEngine;
     readonly evidencePort?: AdapterEvidencePort;
+    readonly resolveSourceAdapter?: SourceAdapterResolver;
     readonly checkpointRepository?: Pick<CheckpointRepository, "saveCheckpoint">;
     readonly runtimeRoot: string;
     readonly clock?: () => string;
@@ -208,7 +209,7 @@ export class ProjectionLifecycle {
   }) {
     this.runRepository = input.runRepository;
     this.statusLog = input.statusLog;
-    this.source = sourceWithEvidence(input.source, input.adapter, input.evidencePort);
+    this.source = sourceWithEvidence(input.source, input.adapter, input.evidencePort, input.resolveSourceAdapter);
     this.adapter = input.adapter;
     this.bridge = input.bridge;
     this.canonicalEngine = input.canonicalEngine;

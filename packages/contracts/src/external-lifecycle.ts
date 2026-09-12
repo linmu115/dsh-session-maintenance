@@ -7,6 +7,8 @@ export interface ExternalLifecyclePrepareRequest {
   readonly profileId: string;
   readonly runtimeVersion: string;
   readonly web: boolean;
+  /** Stable launcher policy, independent from the repairable Engine binding. */
+  readonly maintenanceRequired?: boolean;
 }
 
 export interface ExternalLifecycleBeforeStopRequest {

@@ -1,0 +1,1 @@
+Synthetic released-v0-real-shapes.jsonl fixture copied verbatim from the MIT-licensed DeepSeek Harness, fixed commit fb2c4b9e698e30edb738bca4cf0618587db7d203, packages/session/session-persistence-jsonl/tests/fixtures. No user session data. Used to compare the adapter against the fixed official catalog.
