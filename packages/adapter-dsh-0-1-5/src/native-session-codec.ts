@@ -8,14 +8,16 @@ import { expectedV3ArtifactPath } from "./layout.js";
 import { validateV3, sessionFormatCatalog } from "./official.js";
 import { inspectV3NativeSpace, decodeGeneration } from "./generation-reader.js";
 import type { SessionFormatArtifact } from "@deepseek-ai/dsh-session-format";
+import { preparePortableResources, validatePortableAttachments } from "./portable-resources.js";
 export function isV3PreparationEvents(events:readonly unknown[]):boolean{return events.every(value=>{const e=record(value);return ["session/end-seed","permission/preset","sandbox/mode","approval/policy"].includes(String(e.type));});}
 function frame(rows:readonly unknown[]):Buffer{return zstdCompressSync(Buffer.from(rows.map(r=>JSON.stringify(r)+"\n").join("")),{params:{[constants.ZSTD_c_checksumFlag]:1}});}
 export const v3NativeSessionCodec:NativeSessionCodec={formatId:FORMAT_ID,
+ prepareResources:preparePortableResources,
  async describe(metadata,root){const payload=record(metadata),raw=record(payload.header),header=parseV3LogicalSessionHeader(raw,String(raw.id));let cwd: string|undefined;
  if(typeof header.cwd==="string"){try{if((await stat(header.cwd)).isDirectory())cwd=resolve(header.cwd);}catch(error){if(!["ENOENT","ENOTDIR","EPERM","EACCES"].includes((error as NodeJS.ErrnoException).code??""))throw error;}}
  if(cwd===undefined){cwd=join(dirname(root),RUNTIME_MANAGED_PROJECT_DIRECTORY,runtimeManagedProjectSegment(typeof payload.projectId==="string"?payload.projectId:null));await mkdir(cwd,{recursive:true});}
  const effective={...header,cwd};return {relativePath:relative(root,expectedV3ArtifactPath(root,effective,"zstd")),header:effective};},
- encode(value,description){const p=record(value),h=record(description.header),artifact=validateV3({header:parseV3LogicalSessionHeader(h,String(h.id)),inheritedEventCount:count(p.inheritedEventCount),events:p.events as unknown as SessionFormatArtifact["events"]});
+ encode(value,description){validatePortableAttachments(value);const p=record(value),h=record(description.header),artifact=validateV3({header:parseV3LogicalSessionHeader(h,String(h.id)),inheritedEventCount:count(p.inheritedEventCount),events:p.events as unknown as SessionFormatArtifact["events"]});
  const buffers=[frame([sessionFormatCatalog.encodeCurrentHeader(artifact.header,artifact.inheritedEventCount)])];
  for(let i=0;i<artifact.events.length;i+=512)buffers.push(frame(artifact.events.slice(i,i+512).map(e=>sessionFormatCatalog.encodeCurrentEvent(e))));
  const bytes=Buffer.concat(buffers);const reread=decodeGeneration(bytes,"zstd",3);if(!reread.complete||digest(reread.artifact)!==digest(artifact))throw new Error("New native artifact is incomplete");return bytes;},

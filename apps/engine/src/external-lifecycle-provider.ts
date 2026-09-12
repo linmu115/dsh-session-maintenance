@@ -297,7 +297,7 @@ export class MaintenanceExternalLifecycleProvider {
     const patch = stringify([{
       id: "session-persistence-jsonl",
       config: { root: run.persistenceRoot },
-    }]);
+    }, ...(pinnedAdapterId === "dsh-0.1.5" ? [{id:"attachment-local",config:{dshHome:dirname(run.persistenceRoot)}}] : [])]);
     const patchHandle = await open(patchPath, "w", 0o600);
     try {
       await patchHandle.writeFile(patch, "utf8");

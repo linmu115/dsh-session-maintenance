@@ -141,6 +141,9 @@ export class NativeSessionSpace {
     const desired = new Set<string>();
     const normalized = [];
     for (const item of catalog.sessions) {
+      // Resource verification also runs for unchanged native files: a missing immutable
+      // attachment must be repaired or refused before a retained projection is ready.
+      if (this.codec.prepareResources) await this.codec.prepareResources(await directory.readSession(item.nativeSessionId), this.reference.root);
       const description = await this.codec.describe(item.payload, this.reference.root);
       const path = await ownedPath(this.reference.root, description.relativePath);
       if (desired.has(path.toLowerCase())) throw new TypeError("Native artifact path collision");

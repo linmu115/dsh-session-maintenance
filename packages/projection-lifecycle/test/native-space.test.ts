@@ -37,6 +37,17 @@ async function fixture() {
 }
 
 describe("persistent native session space", () => {
+  it("checks adapter resources before publishing both fresh and retained native files", async () => {
+    const f=await fixture(),first=run("resources-first"),data={a:payload("a")};await f.setup(first,data);
+    const prepareResources=vi.fn(async()=>{}),codec={...rc1NativeSessionCodec,prepareResources},withResources={...adapter,nativeSessionCodec:codec};
+    const initial=new NativeSessionSpace(f.root,first,withResources,f.repository);await initial.prepare(f.directory);
+    expect(prepareResources).toHaveBeenCalledWith(data.a,initial.reference.root);
+    await initial.checkpoint(f.directory);f.states.set(first.id,{...first,state:"closed"});
+    const next=run("resources-next");await f.setup(next,data);prepareResources.mockRejectedValueOnce(new Error("immutable attachment corrupt"));
+    await expect(new NativeSessionSpace(f.root,next,withResources,f.repository).prepare(f.directory)).rejects.toThrow("immutable attachment corrupt");
+    const current=JSON.parse(await readFile(join(dirname(initial.reference.root),"space.json"),"utf8"));
+    expect(current.owner).toBe(first.id);expect(current.state).toBe("clean");
+  });
   it("N01/N02/N03: materializes all 205 sessions, retains unchanged files, updates only changed content", async () => {
     const f = await fixture(); const first = run("run-one");
     const data = Object.fromEntries(Array.from({ length: 205 }, (_, i) => [`s${i}`, payload(`s${i}`)]));

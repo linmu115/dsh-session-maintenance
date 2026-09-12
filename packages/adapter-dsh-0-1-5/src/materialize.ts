@@ -1,7 +1,8 @@
 import type { CanonicalProjectionInput, CanonicalProjectionSessionInput, JsonValue, ProjectionManifest, ProjectionManifestCompositionInput, ProjectionWriter } from "@linmu/dsh-session-adapter-sdk";
 import type { SessionFormatArtifact, SessionFormatEvent, SessionFormatHeader } from "@deepseek-ai/dsh-session-format";
-import { materializeRc1, rc1NativeSessionId } from "@linmu/dsh-session-adapter-rc1";
-import { digest, record, isRecord, count, FORMAT_ID } from "./common.js";
+import { rc1NativeSessionId } from "@linmu/dsh-session-adapter-rc1";
+import { digest, record, isRecord, count, FORMAT_ID, verifySourceExport } from "./common.js";
+import { materializePortableV3, restorePortableCanonical } from "./portable-v3.js";
 import { migrateLegacy } from "./legacy-import.js";
 import { validateV3 } from "./official.js";
 import { manifest } from "./manifest.js";
@@ -35,19 +36,21 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
   const rawNative=prefix.every(e=>isRecord(e.rawPayload)&&typeof e.rawPayload.type==="string"&&! ["text-chunks","reasoning-chunks","tool-call-chunks"].includes(e.rawPayload.type)&&Number.isSafeInteger(e.rawPayload.seq));
   let header:SessionFormatHeader={version:0,id:nativeId,createdAt,delegationDepth:0,isSeeded:false,...(item.projectRoot?{cwd:item.projectRoot}:{})}, raw:readonly SessionFormatEvent[];
   const exported=item.nativeSourceExports??[];
-  for(const source of exported)if(source.contentDigest!==digest(source.events))throw new TypeError("Source-owner export digest mismatch");
+  for(const source of exported)verifySourceExport(source);
   const nativeHeader=exported.find(e=>e.header!==undefined)?.header??item.events.find(e=>e.extensions.nativeHeader!==undefined)?.extensions.nativeHeader;
   let cut=exported.find(e=>e.header!==undefined)?.inheritedEventCount??item.events.find(e=>e.extensions.nativeHeader!==undefined)?.extensions.inheritedEventCount??0;
   if(nativeHeader!==undefined)header={...record(nativeHeader),id:nativeId,version:firstV3===0?3:Number(prefix[0]?.extensions.nativeFormatVersion??0)} as unknown as SessionFormatHeader;
+  let portable: ReturnType<typeof materializePortableV3> | undefined;
   if(firstV3===0){header={...header,version:3};raw=[];cut=header.isSeeded?count(cut):0;}
   else if(rawNative)raw=prefix.map(e=>e.rawPayload as unknown as SessionFormatEvent);
   else {
    if(prefix.some(e=>e.kind==="other"&&e.rawPayload===null&&e.source.platform==="dsh"))throw new TypeError("Native source evidence must be restored by its owner before conversion");
-   let portable:JsonValue|undefined;
-   await materializeRc1({...input,workspaces:[],sessions:[{...item,events:prefix}]},{writeWorkspace:async()=>{},writeSession:async(_id,payload)=>{portable=payload;}});
-   const previous=record(portable);base={...base,anchorAliases:previous.anchorAliases??{}};raw=previous.events as unknown as SessionFormatEvent[];
+   if(prefix.some(e=>e.source.platform==="dsh"))throw new TypeError("Mixed native and portable history needs an explicit epoch converter");
+   portable=materializePortableV3(header,prefix);
+   if(digest(restorePortableCanonical(portable.artifact))!==digest(prefix))throw new TypeError("Portable V3 source restoration differs from canonical");
+   base={...base,anchorAliases:portable.anchorAliases,portableAttachments:portable.attachments as unknown as JsonValue};raw=[];
   }
-  const converted=firstV3===0?undefined:migrateLegacy({header,events:raw,inheritedEventCount:count(cut)});
+  const converted=firstV3===0?undefined:portable??migrateLegacy({header,events:raw,inheritedEventCount:count(cut)});
   const all=[...(converted?.artifact.events??[]),...tail.map(e=>{if(!isRecord(e.rawPayload))throw new TypeError("V3 event evidence is unavailable");return e.rawPayload as unknown as SessionFormatEvent;})];
   const artifact=validateV3({header:converted?.artifact.header??header,events:all,inheritedEventCount:converted?.artifact.inheritedEventCount??count(cut)});
   const legacyAliases=[...new Set(item.events.map(e=>e.source.sessionId).filter(id=>id!==nativeId))];
