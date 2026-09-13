@@ -1,4 +1,4 @@
-import { canonicalEventProjectionPolicy, type SessionContextAdapter, type CanonicalEventV1, type JsonValue } from "@linmu/dsh-session-contracts";
+import { canonicalEventProjectionPolicy, readCanonicalConversationTopologyV1, type SessionContextAdapter, type CanonicalEventV1, type JsonValue } from "@linmu/dsh-session-contracts";
 import { digest, isRecord, record } from "./common.js";
 import { v3ProjectedNativeRevision } from "./materialize.js";
 
@@ -18,6 +18,22 @@ function referenceText(content: JsonValue): string {
 
 /** RC2's completed assistant identity and its conversion receipt define the cut. */
 export const v3SessionContext: SessionContextAdapter = {
+  selectedTurnStart(events) {
+    const last = events.at(-1);
+    if (!last) throw new Error("来源轮次不可用");
+    const topology = readCanonicalConversationTopologyV1(last);
+    let start: number;
+    if (topology) {
+      start = events.findIndex(event => readCanonicalConversationTopologyV1(event)?.turnId === topology.turnId);
+    } else {
+      // Native RC2 records the boundary separately from its user messages.
+      start = events.findLastIndex(event => isRecord(event.rawPayload) && event.rawPayload.type === 'turn/start');
+      if (start < 0) throw new Error("无法确认被引用回复所在的问答轮次");
+    }
+    const first = this.entries(events.slice(start))[0];
+    if (!first) throw new Error("被引用轮次没有可读取的内容");
+    return first.eventId;
+  },
   cutoff(source, projection, anchorId) {
     const p = record(projection);
     if (!Array.isArray(p.events)) throw new Error("来源会话没有已登记的原生历史");

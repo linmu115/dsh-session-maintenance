@@ -25,27 +25,44 @@ const key = (r: SessionContextRecord, query?: string) => createHash("sha256").up
 
 /** Pure pagination; every character of a long message remains reachable by a cursor. */
 export function readContextPage(record: SessionContextRecord, entries: readonly SessionContextEntry[], maxBytes: number,
-  cursor?: string, query?: string): SessionContextPage {
+  cursor?: string, query?: string, selectedTurnStartEventId?: string): SessionContextPage {
   let index = entries.length - 1, offset = 0;
+  let turnStart: number | undefined;
+  if (selectedTurnStartEventId !== undefined) {
+    if (cursor || query) throw new Error("首轮上下文不能同时指定游标或搜索词");
+    turnStart = entries.findIndex(entry => entry.eventId === selectedTurnStartEventId);
+    if (turnStart < 0) throw new Error("来源轮次起点不可用");
+    index = turnStart;
+  }
   const fingerprint = key(record, query);
   if (cursor) {
     const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
-    if (!Array.isArray(parsed) || parsed.length !== 3 || parsed[0] !== fingerprint
+    if (!Array.isArray(parsed) || ![3,5].includes(parsed.length) || parsed[0] !== fingerprint
       || !Number.isSafeInteger(parsed[1]) || !Number.isSafeInteger(parsed[2]) || parsed[1] < 0 || parsed[1] >= entries.length || parsed[2] < 0
       || parsed[2] > entries[parsed[1]]!.text.length) throw new Error("引用读取游标无效");
     [index, offset] = [parsed[1], parsed[2]];
+    if (parsed.length === 5) {
+      if (query || parsed[3] !== 'selected-turn' || !Number.isSafeInteger(parsed[4]) || parsed[4] < 0 || parsed[4] > index)
+        throw new Error("引用读取游标无效");
+      turnStart = parsed[4];
+    }
   }
+  // Initial turn material is embedded in an annotation envelope. Account for
+  // escaping tag characters as well as ordinary JSON; plain tool reads stay unchanged.
+  const measure = turnStart === undefined ? size : (value: unknown) => Buffer.byteLength(
+    JSON.stringify(value).replace(/[<>&\u2028\u2029]/gu, character => `\\u${character.charCodeAt(0).toString(16).padStart(4,'0')}`));
   const page: SessionContextPage = { referenceId:record.referenceId,sourceSessionId:record.sourceSessionId,
     sourceVersionId:record.sourceVersionId,cutoffEventId:record.cutoffEventId,items:[],nextCursor:null,hasMore:false,
-    remainingBytes:0,budgetExhausted:false };
+    remainingBytes:0,budgetExhausted:false, ...(turnStart === undefined ? {} : {selectedTurn:{complete:false}}) };
   // Leave headroom for cursor, allowance and surrounding JSON fields.
-  const contentLimit = Math.max(0, maxBytes - size(page) - 512);
+  const contentLimit = Math.max(0, maxBytes - measure(page) - 512);
   let used = 0;
-  while (index >= 0) {
+  const direction = turnStart === undefined ? -1 : 1;
+  while (index >= 0 && index < entries.length) {
     const entry = entries[index]!;
     // Empty model-visible content (for example, stripped reasoning) and an
     // exhausted message cursor must advance to older material, not repeat.
-    if (offset >= entry.text.length) { index--; offset=0; continue; }
+    if (offset >= entry.text.length) { index+=direction; offset=0; continue; }
     const start = query ? entry.text.toLowerCase().indexOf(query.toLowerCase(), offset) : offset;
     if (start < 0) { index--; offset=0; continue; }
     const begin = query ? start : offset;
@@ -54,22 +71,29 @@ export function readContextPage(record: SessionContextRecord, entries: readonly 
       ...(query ? { readCursor: Buffer.from(JSON.stringify([key(record),index,Math.max(0,start-150)])).toString('base64url') } : {}) };
     while (low < high) {
       const n = Math.ceil((low + high) / 2);
-      if (size({...item,text:entry.text.slice(begin,begin+n)}) <= contentLimit - used) low=n; else high=n-1;
+      if (measure({...item,text:entry.text.slice(begin,begin+n)}) <= contentLimit - used) low=n; else high=n-1;
     }
     if (low === 0) break;
     // Avoid splitting surrogate pairs; next cursor resumes exactly after the returned fragment.
     if (/[\uD800-\uDBFF]/u.test(entry.text.charAt(begin+low-1))) low--;
     if (low === 0) break;
     item.text=entry.text.slice(begin,begin+low);item.complete=begin+low===entry.text.length;
-    page.items.push(item);used+=size(item);
-    if (item.complete) { index--;offset=0; }
+    page.items.push(item);used+=measure(item);
+    if (item.complete) { index+=direction;offset=0; }
     else if (query) { offset = start + Math.max(query.length, low); }
     else { offset=begin+low;break; }
     if (page.items.length >= 20) break;
   }
+  if (turnStart !== undefined && index >= entries.length) {
+    page.selectedTurn!.complete = true;
+    index = turnStart - 1; offset = 0;
+    // Do not eagerly consume earlier turns, even when space remains on this page.
+    turnStart = undefined;
+  }
   page.hasMore=index>=0;
-  page.nextCursor=page.hasMore?Buffer.from(JSON.stringify([fingerprint,index,offset])).toString("base64url"):null;
+  page.nextCursor=page.hasMore?Buffer.from(JSON.stringify([fingerprint,index,offset,
+    ...(turnStart === undefined ? [] : ['selected-turn',turnStart])])).toString("base64url"):null;
   page.budgetExhausted=page.hasMore&&page.items.length===0;
-  if (size(page)>maxBytes) throw new Error("引用结果的最小描述超过剩余预算");
+  if (measure(page)>maxBytes) throw new Error("引用结果的最小描述超过剩余预算");
   return page;
 }

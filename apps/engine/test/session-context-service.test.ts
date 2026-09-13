@@ -43,7 +43,7 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       const incompatible=await post('directory',{});
       expect(incompatible.status).toBe(409);expect(JSON.stringify(incompatible.value)).toContain('版本不兼容');
       expect(JSON.stringify(incompatible.value)).toContain('0.3.12-rc2.999');
-      for(const version of ['0.3.12-rc2.1','0.3.12-rc2.2','0.3.12-rc2.3']){
+      for(const version of ['0.3.12-rc2.1','0.3.12-rc2.2','0.3.12-rc2.3','0.3.12-rc2.4']){
         connect(version);
         expect((await post('directory',{})).status,version).toBe(200);
       }
@@ -64,6 +64,14 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       expect(page.status,JSON.stringify(page.value)).toBe(200);
       expect(JSON.stringify(page.value)).toContain('AFTER-SELECTION');expect(JSON.stringify(page.value)).not.toContain('FUTURE');
       expect(page.value.sourceVersionId).toBe(captured.value.sourceVersionId);
+      const initial=await post('read',{...ref,executionId:'initial-submission',view:'selected-turn'});
+      expect(initial.status,JSON.stringify(initial.value)).toBe(200);
+      expect(initial.value.items.map((item:any)=>item.role)).toEqual(['user','assistant']);
+      expect(initial.value.items[0].text).toBe('old question');
+      expect(initial.value.items[1].text).toContain('AFTER-SELECTION');
+      expect(initial.value).toMatchObject({sourceVersionId:captured.value.sourceVersionId,selectedTurn:{complete:true},hasMore:false});
+      expect(JSON.stringify(initial.value)).not.toContain('FUTURE');
+      expect((await post('read',{...ref,executionId:'invalid-initial',view:'selected-turn',query:'anything'})).status).toBe(409);
       const search=await post('read',{...ref,executionId:'turn-one',query:'FUTURE'});
       expect(search.value.items).toEqual([]);
       expect((await post('read',{...ref,targetNativeSessionId:'source-native',executionId:'foreign'})).status).toBe(409);
@@ -74,6 +82,7 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       expect((await post('bind',{...ref,targetMessageId:null})).value.state).toBe('revoked');
       expect((await post('bind',{...ref,targetMessageId:null})).status).toBe(200);
       expect((await post('read',{...ref,executionId:'next-turn'})).status).toBe(409);
+      expect((await post('read',{...ref,executionId:'next-initial',view:'selected-turn'})).status).toBe(409);
       expect(f.engine.extensions!.list(scope).items).toHaveLength(1);
       expect(await Promise.all([hashTree(f.codexHome),hashTree(f.dshHome)])).toEqual(before);
     } finally {await f.cleanupAll();}

@@ -25,10 +25,13 @@ describe('RC2 completed-reply range',()=>{
       session:{id:'portable',headVersionId:'version',createdAt:at,updatedAt:at,title:'imported',tags:[]},events,workspaceId:null,
     }]} as any,{writeWorkspace:async()=>{},writeSession:async(_id,payload)=>{projection=payload;}});
     expect(v3SessionContext.cutoff(events as any,projection,'message-1').eventId).toBe('portable-1');
+    expect(v3SessionContext.selectedTurnStart(events as any)).toBe('portable-2');
     expect(JSON.stringify(v3SessionContext.entries(events.slice(0,2) as any))).not.toContain('LATER-IMPORTED');
   });
   it('cuts at the complete selected reply, includes its remainder, excludes all later turns',async()=>{
     const f=await native();
+    expect(v3SessionContext.selectedTurnStart(f.events.slice(0,5))).toBe(f.events[3]!.id);
+    expect(v3SessionContext.selectedTurnStart(f.events)).toBe(f.events[9]!.id);
     const cut=v3SessionContext.cutoff(f.events,f.payload,'14:assistant-step1:1');
     expect(cut.eventId).toBe(f.events[4]!.id);
     const text=JSON.stringify(v3SessionContext.entries(f.events.slice(0,5)));

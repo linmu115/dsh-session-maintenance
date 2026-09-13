@@ -7,6 +7,47 @@ const ref: SessionContextRecord = { schemaVersion:1,referenceId:'ref-a',sourceSe
   state:'sent',targetMessageId:'user',createdAt:'2026-09-13T00:00:00Z' };
 
 describe('bounded fixed upstream pages', () => {
+  it('supplies the selected question and completed answer first, then explicitly continues into older turns', () => {
+    const entries = [
+      {eventId:'old-q',role:'user',text:'earlier question'},
+      {eventId:'old-a',role:'assistant',text:'earlier answer'},
+      {eventId:'q',role:'user',text:'How does checkpointing save memory?'},
+      {eventId:'end',role:'assistant',text:'Recompute activations to trade compute for memory. Full reply ending.'},
+    ];
+    const initial=readContextPage(ref,entries,8000,undefined,undefined,'q');
+    expect(initial.items.map(item=>item.eventId)).toEqual(['q','end']);
+    expect(initial).toMatchObject({selectedTurn:{complete:true},hasMore:true});
+    const older=readContextPage(ref,entries,8000,initial.nextCursor!);
+    expect(older.items.map(item=>item.eventId)).toEqual(['old-a','old-q']);
+    expect(older).toMatchObject({hasMore:false,nextCursor:null});
+  });
+  it('counts escaped source markup against initial context space',()=>{
+    const entries=[{eventId:'end',role:'assistant',text:'<div>&</div>\u2028'.repeat(3000)}];
+    const initial=readContextPage(ref,entries,2048,undefined,undefined,'end');
+    const encoded=JSON.stringify(initial).replace(/[<>&\u2028\u2029]/gu,c=>`\\u${c.charCodeAt(0).toString(16).padStart(4,'0')}`);
+    expect(Buffer.byteLength(encoded)).toBeLessThanOrEqual(2048);
+    expect(initial.selectedTurn?.complete).toBe(false);
+  });
+  it('continues a long initial turn without skipping characters, repeating the turn, or fetching earlier turns automatically', () => {
+    const answer='完整回答😀\\\"\n'.repeat(1300);
+    const entries=[{eventId:'older',role:'user',text:'OLDER ONLY ON REQUEST'},
+      {eventId:'q',role:'user',text:'The source question'}, {eventId:'end',role:'assistant',text:answer}];
+    let page=readContextPage(ref,entries,2048,undefined,undefined,'q');
+    const items=[...page.items];
+    expect(page.selectedTurn?.complete).toBe(false);
+    let calls=0;
+    while (!page.selectedTurn?.complete) {
+      expect(Buffer.byteLength(JSON.stringify(page))).toBeLessThanOrEqual(2048);
+      page=readContextPage(ref,entries,2048,page.nextCursor!);
+      items.push(...page.items);
+      expect(++calls).toBeLessThan(200);
+    }
+    expect(items.filter(item=>item.eventId==='end').map(item=>item.text).join('')).toBe(answer);
+    expect(items.filter(item=>item.eventId==='q').map(item=>item.text).join('')).toBe('The source question');
+    expect(items.some(item=>item.eventId==='older')).toBe(false);
+    expect(readContextPage(ref,entries,2048,page.nextCursor!).items[0]?.eventId).toBe('older');
+    expect(()=>readContextPage({...ref,sourceVersionId:'other'},entries,2048,page.nextCursor!)).toThrow('游标');
+  });
   it('reassembles every character of a long Chinese/emoji/tool-output message without growing a return', () => {
     const text = '中文😀\\\"\n'.repeat(2500);
     const entries = [{eventId:'end',role:'assistant',text}];

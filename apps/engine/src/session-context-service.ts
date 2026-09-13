@@ -124,7 +124,12 @@ export class SessionContextService {
       const adapter=this.engine.resolveProjectionAdapter(a.run.adapterId)?.sessionContext;
       if(!adapter)throw unavailable("缺少读取此引用所需的版本 Adapter");
       let page;
-      try {page=readContextPage(a.record,adapter.entries(events.slice(0,index+1)),reservation.bytes,q.cursor,q.query);}
+      try {
+        if (q.view && (q.cursor || q.query)) throw new Error("首轮上下文不能同时指定游标或搜索词");
+        const fixed = events.slice(0,index+1);
+        page=readContextPage(a.record,adapter.entries(fixed),reservation.bytes,q.cursor,q.query,
+          q.view === "selected-turn" ? adapter.selectedTurnStart(fixed) : undefined);
+      }
       catch(error){throw unavailable(error instanceof Error?error.message:"引用读取失败");}
       // A revoke may have been serialized while the immutable source was being read.
       await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
