@@ -6,6 +6,8 @@ import type {
   RunId,
   UnmappedNativeRecoverySession,
 } from "@linmu/dsh-session-adapter-sdk";
+import { isAbsolute } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 
 import {
   parseV3LogicalSessionHeader,
@@ -23,10 +25,11 @@ function record(value: JsonValue, description: string): Readonly<Record<string, 
 export function recoverV3ProjectionSession(
   projection: ProjectionSession,
   payload: JsonValue,
+  nativeMetadata?: JsonValue,
 ): NativeRecoverySession {
   const session = record(payload, "V3 recovery session");
   if (session.header === undefined) throw new TypeError("V3 recovery SessionHeader is missing");
-  const header = parseV3LogicalSessionHeader(
+  let header = parseV3LogicalSessionHeader(
     session.header,
     projection.nativeSessionId,
     "V3 recovery SessionHeader",
@@ -39,6 +42,20 @@ export function recoverV3ProjectionSession(
   }
   const inheritedEventCount = v3SessionLogOffset(session.inheritedEventCount);
   validateV3Lineage(header, inheritedEventCount);
+  if (nativeMetadata !== undefined) {
+    const registered = record(nativeMetadata, "V3 registered native metadata");
+    const effective = parseV3LogicalSessionHeader(registered.header, projection.nativeSessionId, "V3 registered native header");
+    const { cwd: _originalCwd, ...originalIdentity } = header;
+    const { cwd: effectiveCwd, ...effectiveIdentity } = effective;
+    if (registered.logicalSessionId !== projection.logicalSessionId
+      || registered.instanceId !== session.instanceId || registered.profileId !== session.profileId
+      || registered.inheritedEventCount !== inheritedEventCount
+      || !isDeepStrictEqual(originalIdentity, effectiveIdentity)
+      || typeof effectiveCwd !== "string" || !isAbsolute(effectiveCwd)) {
+      throw new TypeError("Registered native header differs beyond its prepared working directory");
+    }
+    header = effective;
+  }
   if (!Array.isArray(session.events) || session.events.length < projection.nativeRevision) {
     throw new TypeError(`V3 recovery projection is shorter than committed revision: ${projection.nativeSessionId}`);
   }

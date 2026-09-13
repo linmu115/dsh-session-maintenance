@@ -200,7 +200,7 @@ describe("persistent ProjectionLifecycle", () => {
     });
 
     const first = await open();
-    const identity = projectionCacheIdentity(adapter, { branchId: "main" });
+    const identity = projectionCacheIdentity(adapter, { branchId: "main", instanceId: "alpha2-retained", profileId: "web" });
     const cacheRoot = projectionCacheRootFor(runtimeRoot, adapter.manifest.id, identity.configurationDigest);
     const cachedSession = join(cacheRoot, "sessions", `${Buffer.from(alpha2NativeSessionId("logical-retained" as never), "utf8").toString("base64url")}.json`);
     const firstMtime = (await stat(cachedSession, { bigint: true })).mtimeNs;
@@ -264,7 +264,7 @@ describe("persistent ProjectionLifecycle", () => {
       branchId: "main" as never,
       maintenanceEndpoint: "http://127.0.0.1:41781",
     });
-    const identity = projectionCacheIdentity(adapter, { branchId: "main" });
+    const identity = projectionCacheIdentity(adapter, { branchId: "main", instanceId: "alpha2-overlay", profileId: "web" });
     const cacheRoot = projectionCacheRootFor(runtimeRoot, adapter.manifest.id, identity.configurationDigest);
     const nativeSessionId = alpha2NativeSessionId("logical-retained" as never);
     const unchangedNativeSessionId = alpha2NativeSessionId("logical-unchanged" as never);
@@ -377,7 +377,7 @@ describe("persistent ProjectionLifecycle", () => {
     const receipt = await recoveryLifecycle.recover(handle.run.id);
     expect(receipt).toMatchObject({ state: "recovered", removedProjection: true });
     expect(await new ProjectionWriteAheadLog(handle.projectionRoot).pending()).toHaveLength(0);
-    const identity = projectionCacheIdentity(adapter, { branchId: "main" });
+    const identity = projectionCacheIdentity(adapter, { branchId: "main", instanceId: "alpha2-recovery", profileId: "web" });
     const cacheRoot = projectionCacheRootFor(runtimeRoot, adapter.manifest.id, identity.configurationDigest);
     const cached = await new JsonProjectionDirectory(cacheRoot).readSession(nativeSessionId) as { readonly events: readonly unknown[] };
     expect(cached.events).toHaveLength(1);

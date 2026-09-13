@@ -187,6 +187,8 @@ export interface DshSessionAdapterV1 {
   recoverProjectionSession?(
     projection: ProjectionSession,
     payload: JsonValue,
+    /** Optional persisted native-space catalog metadata, never newly inferred filesystem state. */
+    nativeMetadata?: JsonValue,
   ): NativeRecoverySession;
   /** Recovers only a payload left by an interrupted native-session registration. */
   recoverUnmappedProjectionSession?(

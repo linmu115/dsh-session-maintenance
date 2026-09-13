@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { NativeSessionSpace, nativeSpaceReference, type NativeSpaceReference } from "./native-space.js";
 
 import type {
@@ -265,7 +266,7 @@ export class ProjectionLifecycle {
       const cacheManager = createRunCacheManager({ runtimeRoot: this.runtimeRoot, source: this.source,
         adapter: this.adapter, statusLog: this.statusLog, clock: this.clock });
       if (cacheManager !== undefined) {
-        const configuration: JsonValue = { branchId: preparing.branchId };
+        const configuration: JsonValue = { branchId: preparing.branchId, instanceId: preparing.instanceId, profileId: preparing.profileId };
         const cached = await cacheManager.apply({ run: preparing, configuration });
         persistentCache = { manager: cacheManager, cacheRoot: cached.cacheRoot, configuration };
         const baseDirectory = new JsonProjectionDirectory(cached.cacheRoot);
@@ -313,7 +314,7 @@ export class ProjectionLifecycle {
             logicalSessionId: item.session.id,
             logicalAnchorId: null,
             legacyNativeSessionId: null,
-          }, preparing);
+          }, preparing, directory);
           if (reference.nativeSessionId === null || reference.status !== "resolved") {
             throw new Error(`Adapter did not resolve native identity for ${item.session.id}`);
           }
@@ -680,11 +681,22 @@ export class ProjectionLifecycle {
         if (this.canonicalEngine === undefined) throw new Error("Canonical session engine is unavailable during recovery");
         const snapshots = await this.recoverySnapshots(context);
         const projects = new Map(snapshots.map((snapshot) => [snapshot.projection.nativeSessionId, snapshot.projectId]));
-        for (const operation of await operationSource({
+        const operations = await operationSource({
           run,
           projectionRoot: context.handle.projectionRoot,
           sessions: snapshots,
-        })) {
+        });
+        // The native reader has now verified every registered header and the
+        // committed prefix. Align only this run's overlay before durable tail
+        // replay so the same header reaches validation, canonical metadata and
+        // the final manifest/checkpoint, including recovery with no new tail.
+        for (const snapshot of snapshots) {
+          const payload = snapshot.payload as Readonly<Record<string, JsonValue>>;
+          if (!isDeepStrictEqual(payload.header, snapshot.header)) {
+            await context.directory.replaceSession(snapshot.projection.nativeSessionId, { ...payload, header: snapshot.header });
+          }
+        }
+        for (const operation of operations) {
           const receipt = await commitProjectionAppend({
             context,
             operation,
@@ -860,7 +872,7 @@ export class ProjectionLifecycle {
       this.validateNativeSpace(run, descriptor.nativeSpace);
       await new NativeSessionSpace(this.runtimeRoot, run, this.adapter, this.runRepository).recoverPreparation(directory);
     }
-    const configuration: JsonValue = { branchId: run.branchId };
+    const configuration: JsonValue = { branchId: run.branchId, instanceId: run.instanceId, profileId: run.profileId };
     const cacheManager = createRunCacheManager({ runtimeRoot: this.runtimeRoot, source: this.source,
       adapter: this.adapter, statusLog: this.statusLog, clock: this.clock });
     let persistentCache: RunCacheContext | null = null;
@@ -1137,9 +1149,15 @@ export class ProjectionLifecycle {
       throw new TypeError(`Adapter does not expose recovery projection decoding: ${this.adapter.manifest.id}`);
     }
     const snapshots: ProjectionRecoverySessionSnapshot[] = [];
+    const descriptor = await readProjectionRecoveryDescriptor(context.directory.root);
+    const nativeCatalog = descriptor.nativeSpace
+      ? new Map((await context.directory.readSessionCatalog(context.handle.run.id)).sessions.map(item => [item.nativeSessionId, item.payload]))
+      : undefined;
     for (const active of context.sessions.values()) {
       const payload = await context.directory.readSession(active.projection.nativeSessionId);
-      const recovered = this.adapter.recoverProjectionSession(active.projection, payload);
+      const nativeMetadata = nativeCatalog?.get(active.projection.nativeSessionId);
+      if (nativeCatalog && nativeMetadata === undefined) throw new TypeError("Native recovery catalog is missing a registered session");
+      const recovered = this.adapter.recoverProjectionSession(active.projection, payload, nativeMetadata);
       snapshots.push({
         projection: active.projection,
         payload,

@@ -16,6 +16,7 @@ import type {
   ProjectionDeltaApplyReceiptV1,
   ProjectionInspection,
   ProjectionManifest,
+  ProjectionReader,
   ProjectionRun,
   ProjectionWriter,
 } from "@linmu/dsh-session-contracts";
@@ -276,11 +277,11 @@ export class PersistentProjectionCache {
     await directory.initialize();
     const writer = new CacheProjectionWriter(directory, true, [], []);
     try {
+      const projectionManifest = await this.adapter.materialize(projectionInput, writer);
       const nativeIds = new Map(await Promise.all(projectionInput.sessions.map(async (item) => [
         item.session.id,
-        await this.nativeSessionId(item, run),
+        await this.nativeSessionId(item, run, directory),
       ] as const)));
-      const projectionManifest = await this.adapter.materialize(projectionInput, writer);
       await directory.writeManifest(projectionManifest);
       await directory.rebuildSessionCatalog(run.id, new Map(projectionInput.sessions.map((item) => [
         nativeIds.get(item.session.id)!,
@@ -420,7 +421,7 @@ export class PersistentProjectionCache {
     const writer = new CacheProjectionWriter(directory, false, [...currentByLogical.values()], current.workspaces);
     const partialManifest = await this.adapter.materialize(selected, writer);
     for (const item of selected.sessions) {
-      const nativeSessionId = await this.nativeSessionId(item, run);
+      const nativeSessionId = await this.nativeSessionId(item, run, directory);
       const old = currentByLogical.get(item.session.id);
       if (old !== undefined && old.nativeSessionId !== nativeSessionId) {
         if (await directory.removeSession(old.nativeSessionId)) removedSessions += 1;
@@ -509,12 +510,13 @@ export class PersistentProjectionCache {
   private async nativeSessionId(
     item: CanonicalProjectionSessionInput,
     run: ProjectionRun,
+    reader: ProjectionReader,
   ): Promise<NativeSessionId> {
     const reference = await this.adapter.resolveReference({
       logicalSessionId: item.session.id,
       logicalAnchorId: null,
       legacyNativeSessionId: null,
-    }, run);
+    }, run, reader);
     if (reference.nativeSessionId === null || reference.status !== "resolved") {
       throw new TypeError(`Adapter did not resolve native identity for ${item.session.id}`);
     }
