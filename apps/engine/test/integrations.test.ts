@@ -77,6 +77,12 @@ describe("instance onboarding", () => {
     expect(upstream.pluginReady).toBe(true);
     expect(upstream.target.status).toBe("unsupported");
     expect(upstream.runtimeCapabilities).toEqual([]);
+    const currentVersion = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
+    await json(pluginPath, { ...plugin, version: currentVersion });
+    const current = (await f.discover()).targets[0]!;
+    expect(current.pluginReady).toBe(true);
+    expect(current.target.status).toBe("unsupported");
+    expect(current.runtimeCapabilities).toEqual([]);
   });
 
   it("discovers exact instance/profile targets and resolves installed packages instead of trusting catalog versions", async () => {

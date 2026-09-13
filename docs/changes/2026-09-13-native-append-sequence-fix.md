@@ -29,3 +29,7 @@ Deployment also exposed a release-version allowlist that omitted rc2.4. The
 attestation schema now admits this tested release; the regression test reads the
 current package version so future release bumps cannot silently omit it. Exact
 artifact hashes, instance identity and capability checks remain required.
+Launcher discovery also recognizes paired plugin 0.2.26-rc2.3 as already
+installed, avoiding an unnecessary install during reconnect. Its test likewise
+checks the current packaged plugin version while preserving the requirement for
+a separately verified RC2 host attestation.
