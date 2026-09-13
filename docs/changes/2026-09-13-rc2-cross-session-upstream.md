@@ -13,7 +13,7 @@
 | Annotation Core | 0.3.12-rc2.1 | 共用选择器、目标页引用气泡、准备与真实提交绑定、按需工具、共享预算 |
 | Sidechat | 0.4.7-rc2.1 | AI 回复选区浮窗增加“跨会话引用”入口 |
 | Maintenance 插件 | 0.2.26-rc2.1 | 在当前运行范围内向 Core 提供后端能力，捕获前提交来源和目标待保存事件 |
-| Session Maintenance Engine | 0.1.33-rc2.1 | 固定来源范围、目录、读取/搜索、扩展对象状态与范围校验 |
+| Session Maintenance Engine | 0.1.33-rc2.2 | 固定来源范围、目录、读取/搜索、扩展对象状态与范围校验；明确兼容本机 Codex 新增的两列会话索引 |
 | Codex Runtime / Runtime Support | 0.2.0-dev.16 / 0.1.0-dev.8 | 披露当前原生执行的可信窗口与已用量，供引用工具按需读取预算使用 |
 | RC2 Adapter | 仓库内同步更新 | 根据完成回复与原生转换回执确定截止事件，解释历史格式 |
 | 现有 Obsidian Suite / Lifecycle / Reference Adapter / Sticker | 配套 rc2.3 包 | 接受新 Core 的依赖声明；不增加 P2 功能或迁移对象 |

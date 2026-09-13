@@ -14,6 +14,7 @@ it("pins RC2 scope, closure, capabilities and exact artifact bytes before granti
   const save=async(value:any)=>writeFile(join(profileRoot,DSH015_ATTESTATION_FILE),JSON.stringify(value));
   await save(receipt);expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   await save({...receipt,engineVersion:"0.1.33-rc2.1"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
+  await save({...receipt,engineVersion:"0.1.33-rc2.2"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   await save({...receipt,engineVersion:"0.1.33-rc2.0"});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_REQUIRED"});
   await save(receipt);
   await expect(verifyDsh015RuntimeAttestation({...input,instanceId:"other"})).rejects.toMatchObject({code:"V3_ATTESTATION_IDENTITY_MISMATCH"});

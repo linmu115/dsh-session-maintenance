@@ -41,6 +41,25 @@ const schemaHex = sha256Canonical({
 });
 export const CODEX_SCHEMA_FINGERPRINT = `codex-read/0.146.0/schema-3:${schemaHex}`;
 
+// The observed Desktop schema appends exactly these two nullable columns.
+// Keep both complete contracts: arbitrary additions, reordering, changed types,
+// and missing columns still fail before any rollout body is read.
+const extendedThreadColumns = [
+  ...CODEX_REQUIRED_THREAD_COLUMNS,
+  ["originator", "TEXT", 0, 0],
+  ["daybreak_enabled", "BOOLEAN", 0, 0],
+] as const;
+const extendedSchemaHex = sha256Canonical({
+  tables: [{ name: "threads", columns: extendedThreadColumns }],
+  sessionIndex: ["id", "thread_name", "updated_at"],
+  envelopes: [...CODEX_SUPPORTED_ENVELOPES],
+});
+export const CODEX_EXTENDED_SCHEMA_FINGERPRINT = `codex-read/0.146.0/schema-4:${extendedSchemaHex}`;
+const knownThreadSchemas = new Map([
+  [JSON.stringify(CODEX_REQUIRED_THREAD_COLUMNS), CODEX_SCHEMA_FINGERPRINT],
+  [JSON.stringify(extendedThreadColumns), CODEX_EXTENDED_SCHEMA_FINGERPRINT],
+]);
+
 const contract = (version: string, fingerprint = CODEX_SCHEMA_FINGERPRINT): AdapterContractRef => ({
   adapter: "codex-read",
   platformVersion: version,
@@ -86,21 +105,22 @@ export async function probeCodexInstance(
     }));
     const { columns, rolloutPath } = snapshot;
 
-    if (JSON.stringify(columns) !== JSON.stringify(CODEX_REQUIRED_THREAD_COLUMNS)) {
+    const fingerprint = knownThreadSchemas.get(JSON.stringify(columns));
+    if (fingerprint === undefined) {
       return {
         status: "unsupported",
         contract: contract(instance.platformVersion, "unsupported-schema"),
         capabilities: [],
         issues: [{
           code: "ADAPTER_INCOMPATIBLE",
-          message: `Codex threads schema fingerprint mismatch: ${schemaHex.slice(0, 12)}:${sha256Canonical(columns).slice(0, 12)}`,
+          message: `Codex threads schema does not match either supported contract: ${sha256Canonical(columns).slice(0, 12)}`,
         }],
       };
     }
     // A closed project scope validates the database contract here. Individual selected
     // rollouts are validated by observe(); probing must never read another project's sample.
     if (threadIds !== undefined) {
-      return { status: "compatible", contract: contract(instance.platformVersion),
+      return { status: "compatible", contract: contract(instance.platformVersion, fingerprint),
         capabilities: ["list", "observe", "normalize", "verify-read"], issues: [] };
     }
     if (rolloutPath === undefined) {
@@ -118,7 +138,7 @@ export async function probeCodexInstance(
 
     return {
       status: "compatible",
-      contract: contract(instance.platformVersion),
+      contract: contract(instance.platformVersion, fingerprint),
       capabilities: ["list", "observe", "normalize", "verify-read"],
       issues: [],
     };

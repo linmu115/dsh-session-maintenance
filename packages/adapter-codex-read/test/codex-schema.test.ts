@@ -42,6 +42,60 @@ afterEach(async () => {
 });
 
 describe("Codex adapter schema boundaries", () => {
+  it.each([
+    { name: "original 38 columns", sql: "", contract: "/schema-3:" },
+    { name: "known 40 columns", sql: "ALTER TABLE threads ADD COLUMN originator TEXT; ALTER TABLE threads ADD COLUMN daybreak_enabled BOOLEAN", contract: "/schema-4:" },
+  ])("reads the $name contract without changing conversation semantics", async ({ sql, contract }) => {
+    const sandbox = await createFixtureSandbox("codex-known-schema");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    if (sql) {
+      const database = new DatabaseSync(join(sandbox.codexHome, "state_5.sqlite"));
+      try { database.exec(sql); } finally { database.close(); }
+    }
+    const registered = instance(sandbox);
+    const scoped = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox, threadIds: new Set(["thread-fixture"]) });
+    const scopedProbe = await scoped.probe(registered);
+    expect(scopedProbe.status).toBe("compatible");
+    expect(scopedProbe.contract.schemaFingerprint).toContain(contract);
+    expect(scoped.debugCounters().rolloutProbeReads).toBe(0);
+
+    const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    const probe = await adapter.probe(registered);
+    expect(probe.status).toBe("compatible");
+    expect(probe.contract).toEqual(scopedProbe.contract);
+    const summaries = await collect(adapter.list(registered));
+    expect(summaries).toHaveLength(1);
+    const observation = await adapter.observe(registered, summaries[0]!.key, summaries[0]!.hint);
+    expect(observation.kind).toBe("stable");
+    if (observation.kind !== "stable") throw new Error("Synthetic known-schema observation was unstable");
+    expect((await adapter.normalize(observation)).events.map(event => event.role)).toEqual(["user", "assistant"]);
+  });
+
+  it.each([
+    { name: "only one known extra column", sql: "ALTER TABLE threads ADD COLUMN originator TEXT" },
+    { name: "wrong originator type", sql: "ALTER TABLE threads ADD COLUMN originator INTEGER; ALTER TABLE threads ADD COLUMN daybreak_enabled BOOLEAN" },
+    { name: "wrong daybreak type", sql: "ALTER TABLE threads ADD COLUMN originator TEXT; ALTER TABLE threads ADD COLUMN daybreak_enabled INTEGER" },
+    { name: "changed original column type", sql: "ALTER TABLE threads DROP COLUMN project_id; ALTER TABLE threads ADD COLUMN project_id INTEGER; ALTER TABLE threads ADD COLUMN originator TEXT; ALTER TABLE threads ADD COLUMN daybreak_enabled BOOLEAN" },
+    { name: "wrong nullability", sql: "ALTER TABLE threads ADD COLUMN originator TEXT NOT NULL DEFAULT ''; ALTER TABLE threads ADD COLUMN daybreak_enabled BOOLEAN" },
+    { name: "reordered known extras", sql: "ALTER TABLE threads ADD COLUMN daybreak_enabled BOOLEAN; ALTER TABLE threads ADD COLUMN originator TEXT" },
+    { name: "missing required column", sql: "ALTER TABLE threads DROP COLUMN project_id; ALTER TABLE threads ADD COLUMN originator TEXT; ALTER TABLE threads ADD COLUMN daybreak_enabled BOOLEAN" },
+    { name: "unknown extra after known extras", sql: "ALTER TABLE threads ADD COLUMN originator TEXT; ALTER TABLE threads ADD COLUMN daybreak_enabled BOOLEAN; ALTER TABLE threads ADD COLUMN unexpected TEXT" },
+  ])("rejects $name before reading any rollout body", async ({ sql }) => {
+    const sandbox = await createFixtureSandbox("codex-rejected-schema");
+    cleanups.push(sandbox.cleanup);
+    await writeCodexFixtureHome(sandbox.codexHome);
+    const database = new DatabaseSync(join(sandbox.codexHome, "state_5.sqlite"));
+    try { database.exec(sql); } finally { database.close(); }
+    const adapter = new CodexReadAdapter({ fixtureGuard: assertFixtureSandbox });
+    expect(await adapter.probe(instance(sandbox))).toMatchObject({
+      status: "unsupported", capabilities: [],
+      contract: { schemaFingerprint: "unsupported-schema" },
+      issues: [{ code: "ADAPTER_INCOMPATIBLE" }],
+    });
+    expect(adapter.debugCounters()).toEqual({ rolloutBodyReads: 0, rolloutProbeReads: 0 });
+  });
+
   it("parses JSONL incrementally across arbitrary chunk boundaries", async () => {
     const bytes = Buffer.from(
       '{"type":"session_meta","payload":{"id":"thread-stream"}}\r\n' +
