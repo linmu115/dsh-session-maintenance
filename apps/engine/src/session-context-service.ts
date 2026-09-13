@@ -14,7 +14,10 @@ export class SessionContextService {
     const run = await this.engine.projectionRunRepository.getProjectionRun(runId as RunId);
     if (!run || run.state !== "running") throw unavailable("目标实例的会话空间尚未就绪");
     const panel = this.engine.extensions?.panels().find(p=>p.scope.instanceId===run.instanceId&&p.scope.profileId===run.profileId&&p.scope.namespace===SESSION_CONTEXT_NAMESPACE);
-    if (panel?.status !== "ready") throw unavailable("当前实例没有启用跨会话引用");
+    if (!panel) throw unavailable("当前实例尚未配置跨会话引用");
+    if (panel.status === "incompatible") throw unavailable(`跨会话引用版本不兼容（Annotation Core ${panel.pluginVersion}），请更新匹配的 Maintenance 扩展适配器`);
+    if (panel.status === "missing-adapter") throw unavailable("当前 Maintenance 缺少跨会话引用扩展适配器");
+    if (panel.status !== "ready") throw unavailable("当前实例的跨会话引用已停用");
     return { run, scope:panel.scope, writerId:panel.writerId, extensions:this.engine.extensions! };
   }
   private identity(runId: string, nativeSessionId: string) {

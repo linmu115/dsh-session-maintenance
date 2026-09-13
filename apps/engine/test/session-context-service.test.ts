@@ -29,7 +29,6 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       const prefix=original.map((event,seq)=>({...event,seq,time:seq+1}));
       expect((await append(prefix,'append-first')).status).toBe('committed');
       const scope={instanceId:request.instanceId,profileId:'web',namespace:'annotation-upstream'};
-      f.engine.extensions!.connect({instanceId:scope.instanceId,profileId:scope.profileId,plugins:[{namespace:scope.namespace,pluginVersion:'0.3.12-rc2.1',writerId:'dsh-annotation-core'}]});
       const server=await f.startServer();
       const post=async(operation:string,input:object,auth=true)=>{
         const res=await fetch(server.origin+'/v1/session-context/'+operation,{method:'POST',headers:{'content-type':'application/json',
@@ -37,6 +36,20 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
         return {status:res.status,value:await res.json() as any};
       };
       expect((await post('directory',{},false)).status).toBe(401);
+      expect(JSON.stringify((await post('directory',{})).value)).toContain('尚未配置');
+      const connect=(pluginVersion:string)=>f.engine.extensions!.connect({instanceId:scope.instanceId,profileId:scope.profileId,
+        plugins:[{namespace:scope.namespace,pluginVersion,writerId:'dsh-annotation-core'}]});
+      connect('0.3.12-rc2.999');
+      const incompatible=await post('directory',{});
+      expect(incompatible.status).toBe(409);expect(JSON.stringify(incompatible.value)).toContain('版本不兼容');
+      expect(JSON.stringify(incompatible.value)).toContain('0.3.12-rc2.999');
+      for(const version of ['0.3.12-rc2.1','0.3.12-rc2.2','0.3.12-rc2.3']){
+        connect(version);
+        expect((await post('directory',{})).status,version).toBe(200);
+      }
+      f.engine.extensions!.enable(scope,false);
+      expect(JSON.stringify((await post('directory',{})).value)).toContain('已停用');
+      f.engine.extensions!.enable(scope,true);
       const workspaces=await post('directory',{});expect(workspaces.status).toBe(200);
       expect(workspaces.value.items[0].title).not.toBe('未分组');
       const directory=await post('directory',{workspaceId:workspaces.value.items[0].id});
