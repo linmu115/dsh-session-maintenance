@@ -25,26 +25,35 @@ const key = (r: SessionContextRecord, query?: string) => createHash("sha256").up
 
 /** Pure pagination; every character of a long message remains reachable by a cursor. */
 export function readContextPage(record: SessionContextRecord, entries: readonly SessionContextEntry[], maxBytes: number,
-  cursor?: string, query?: string, selectedTurnStartEventId?: string): SessionContextPage {
+  cursor?: string, query?: string, selectedTurnStartEventId?: string, selectedReplyEventId?: string): SessionContextPage {
   let index = entries.length - 1, offset = 0;
   let turnStart: number | undefined;
+  let replyIndex: number | undefined;
   if (selectedTurnStartEventId !== undefined) {
     if (cursor || query) throw new Error("首轮上下文不能同时指定游标或搜索词");
     turnStart = entries.findIndex(entry => entry.eventId === selectedTurnStartEventId);
     if (turnStart < 0) throw new Error("来源轮次起点不可用");
     index = turnStart;
+    if (selectedReplyEventId !== undefined) {
+      replyIndex = entries.findIndex(entry => entry.eventId === selectedReplyEventId);
+      if (replyIndex < turnStart) throw new Error("来源问答的回复位置不可用");
+    }
   }
   const fingerprint = key(record, query);
   if (cursor) {
     const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
-    if (!Array.isArray(parsed) || ![3,5].includes(parsed.length) || parsed[0] !== fingerprint
+    if (!Array.isArray(parsed) || ![3,5,6].includes(parsed.length) || parsed[0] !== fingerprint
       || !Number.isSafeInteger(parsed[1]) || !Number.isSafeInteger(parsed[2]) || parsed[1] < 0 || parsed[1] >= entries.length || parsed[2] < 0
       || parsed[2] > entries[parsed[1]]!.text.length) throw new Error("引用读取游标无效");
     [index, offset] = [parsed[1], parsed[2]];
-    if (parsed.length === 5) {
+    if (parsed.length >= 5) {
       if (query || parsed[3] !== 'selected-turn' || !Number.isSafeInteger(parsed[4]) || parsed[4] < 0 || parsed[4] > index)
         throw new Error("引用读取游标无效");
       turnStart = parsed[4];
+      if (parsed.length === 6) {
+        if (!Number.isSafeInteger(parsed[5]) || parsed[5] < parsed[4] || parsed[5] >= entries.length) throw new Error("引用读取游标无效");
+        replyIndex = parsed[5];
+      }
     }
   }
   // Initial turn material is embedded in an annotation envelope. Account for
@@ -54,12 +63,20 @@ export function readContextPage(record: SessionContextRecord, entries: readonly 
   const page: SessionContextPage = { referenceId:record.referenceId,sourceSessionId:record.sourceSessionId,
     sourceVersionId:record.sourceVersionId,cutoffEventId:record.cutoffEventId,items:[],nextCursor:null,hasMore:false,
     remainingBytes:0,budgetExhausted:false, ...(turnStart === undefined ? {} : {selectedTurn:{complete:false}}) };
+  const included = (position: number) => replyIndex === undefined || position === replyIndex || entries[position]!.role === 'user';
+  if (turnStart !== undefined && replyIndex !== undefined) {
+    const omitted = entries.map((entry,position)=>({entry,position})).filter(({entry,position})=>position>=turnStart!&&!included(position)&&entry.text.length>0);
+    page.selectedTurn!.omittedIntermediateItems = omitted.length;
+    const latest = omitted.at(-1);
+    if (latest) page.selectedTurn!.detailsCursor = Buffer.from(JSON.stringify([fingerprint,latest.position,0])).toString('base64url');
+  }
   // Leave headroom for cursor, allowance and surrounding JSON fields.
   const contentLimit = Math.max(0, maxBytes - measure(page) - 512);
   let used = 0;
   const direction = turnStart === undefined ? -1 : 1;
   while (index >= 0 && index < entries.length) {
     const entry = entries[index]!;
+    if (!included(index)) { index+=direction; offset=0; continue; }
     // Empty model-visible content (for example, stripped reasoning) and an
     // exhausted message cursor must advance to older material, not repeat.
     if (offset >= entry.text.length) { index+=direction; offset=0; continue; }
@@ -92,7 +109,7 @@ export function readContextPage(record: SessionContextRecord, entries: readonly 
   }
   page.hasMore=index>=0;
   page.nextCursor=page.hasMore?Buffer.from(JSON.stringify([fingerprint,index,offset,
-    ...(turnStart === undefined ? [] : ['selected-turn',turnStart])])).toString("base64url"):null;
+    ...(turnStart === undefined ? [] : ['selected-turn',turnStart,...(replyIndex === undefined ? [] : [replyIndex])])])).toString("base64url"):null;
   page.budgetExhausted=page.hasMore&&page.items.length===0;
   if (measure(page)>maxBytes) throw new Error("引用结果的最小描述超过剩余预算");
   return page;

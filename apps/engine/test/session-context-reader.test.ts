@@ -7,6 +7,29 @@ const ref: SessionContextRecord = { schemaVersion:1,referenceId:'ref-a',sourceSe
   state:'sent',targetMessageId:'user',createdAt:'2026-09-13T00:00:00Z' };
 
 describe('bounded fixed upstream pages', () => {
+  it('puts the question and selected answer ahead of large intermediate tool traces',()=>{
+    const entries=[{eventId:'older',role:'user',text:'OLDER'},
+      {eventId:'question',role:'user',text:'梯度检查点如何节省显存？'},
+      {eventId:'commentary',role:'assistant',text:'Let me search the documentation.'},
+      {eventId:'tool',role:'tool',text:'HUGE TOOL OUTPUT '.repeat(8000)},
+      {eventId:'end',role:'assistant',text:'通过重新计算中间激活值，以额外计算时间换取显存。完整回答结束。'}];
+    const initial=readContextPage(ref,entries,2048,undefined,undefined,'question','end');
+    expect(initial.items.map(item=>item.eventId)).toEqual(['question','end']);
+    expect(initial.selectedTurn).toMatchObject({complete:true,omittedIntermediateItems:2});
+    expect(initial.items[1]!.text).toContain('完整回答结束');
+    expect(readContextPage(ref,entries,2048,initial.nextCursor!).items[0]?.eventId).toBe('older');
+    expect(readContextPage(ref,entries,2048,initial.selectedTurn!.detailsCursor!).items[0]?.eventId).toBe('tool');
+    const long=[...entries.slice(0,-1),{...entries[4]!,text:'很长的回答😀'.repeat(3000)}];
+    let page=readContextPage(ref,long,2048,undefined,undefined,'question','end'),answer='';
+    for(let calls=0;calls<100;calls++){
+      expect(page.items.every(item=>['question','end'].includes(item.eventId))).toBe(true);
+      answer+=page.items.filter(item=>item.eventId==='end').map(item=>item.text).join('');
+      if(page.selectedTurn?.complete)break;
+      page=readContextPage(ref,long,2048,page.nextCursor!);
+    }
+    expect(answer).toBe(long[4]!.text);
+    expect(page.selectedTurn?.complete).toBe(true);
+  });
   it('supplies the selected question and completed answer first, then explicitly continues into older turns', () => {
     const entries = [
       {eventId:'old-q',role:'user',text:'earlier question'},

@@ -18,6 +18,12 @@ function referenceText(content: JsonValue): string {
 
 /** RC2's completed assistant identity and its conversion receipt define the cut. */
 export const v3SessionContext: SessionContextAdapter = {
+  selectedReply(events) {
+    const visible = new Set(this.entries(events).map(entry => entry.eventId));
+    const reply = events.findLast(event => event.kind === 'assistant-message' && visible.has(event.id));
+    if (!reply) throw new Error("被引用回复没有可读取的正文");
+    return reply.id;
+  },
   selectedTurnStart(events) {
     const last = events.at(-1);
     if (!last) throw new Error("来源轮次不可用");

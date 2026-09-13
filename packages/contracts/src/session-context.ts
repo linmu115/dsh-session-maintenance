@@ -33,13 +33,14 @@ export interface SessionContextAdapter {
   entries(events: readonly CanonicalEventV1[]): readonly SessionContextEntry[];
   /** First model-visible event of the turn ending at the supplied completed-reply cutoff. */
   selectedTurnStart(events: readonly CanonicalEventV1[]): string;
+  selectedReply(events: readonly CanonicalEventV1[]): string;
 }
 export interface SessionContextPage {
   referenceId: string; sourceSessionId: string; sourceVersionId: string; cutoffEventId: string;
   items: Array<{ eventId: string; role: string; text: string; offset: number; complete: boolean; readCursor?: string }>;
   nextCursor: string | null; hasMore: boolean; remainingBytes: number; budgetExhausted: boolean;
   /** Present for the initial chronological turn and its continuations. Older history stays on demand. */
-  selectedTurn?: { complete: boolean };
+  selectedTurn?: { complete: boolean; omittedIntermediateItems?: number; detailsCursor?: string };
 }
 export interface SessionContextDirectory {
   items: Array<{ id: string; title: string; logicalSessionId?: string }>;

@@ -128,7 +128,8 @@ export class SessionContextService {
         if (q.view && (q.cursor || q.query)) throw new Error("首轮上下文不能同时指定游标或搜索词");
         const fixed = events.slice(0,index+1);
         page=readContextPage(a.record,adapter.entries(fixed),reservation.bytes,q.cursor,q.query,
-          q.view === "selected-turn" ? adapter.selectedTurnStart(fixed) : undefined);
+          q.view === "selected-turn" ? adapter.selectedTurnStart(fixed) : undefined,
+          q.view === "selected-turn" ? adapter.selectedReply(fixed) : undefined);
       }
       catch(error){throw unavailable(error instanceof Error?error.message:"引用读取失败");}
       // A revoke may have been serialized while the immutable source was being read.

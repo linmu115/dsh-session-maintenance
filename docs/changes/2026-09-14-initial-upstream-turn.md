@@ -1,6 +1,6 @@
 # 跨会话引用默认提供所在问答轮次
 
-Engine 0.1.33-rc2.6，DSH Maintenance 0.2.26-rc2.5，配合 Annotation Core 0.3.12-rc2.4。
+Engine 0.1.33-rc2.7，DSH Maintenance 0.2.26-rc2.6，配合 Annotation Core 0.3.12-rc2.5。
 
 原实现只在发送时检验引用身份，初始提示中仅有选文。选择“换取显存”后，模型可能不知道原问题在讨论梯度检查点，并要求用户再次许可读取来源。
 
@@ -13,3 +13,5 @@ Engine 0.1.33-rc2.6，DSH Maintenance 0.2.26-rc2.5，配合 Annotation Core 0.3.
 兼容清单同步加入新 Core、Engine 和 Maintenance 插件版本，保留已验证旧组合。其余关联插件仅扩展 peer 版本范围。
 
 验证覆盖：原生与导入会话轮次起点；真实 Engine 认证 HTTP 读取固定版本；问答初始顺序；未来轮次排除；撤销与跨目标拒绝；长中文及 emoji 连续分页；搜索游标兼容；初始额度与后续读取合计；实际 DSH 提交接纳、原生事件持久化及幂等重试。类型、构建、打包和副本验证结果保存在 `D:\AI\DeepSeekHarness-Plugin\artifacts\upstream-turn-context-20260914`。
+
+实际引用验证补充：来源轮次中的大工具输出曾占满初始额度。默认材料现在只优先提供本轮问题和选中的已完成回答，中间 assistant 步骤及工具输出不预载；`omittedIntermediateItems` 说明省略数量，`detailsCursor` 提供按需读取入口。`turnComplete` 表示这些问题/回答正文完整，不代表读过省略的工具过程；完整后的 `nextCursor` 仍指向更早轮次。工具很多的来源也必须能先看到原问题和所选回答。
