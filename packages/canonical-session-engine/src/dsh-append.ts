@@ -94,6 +94,26 @@ function activeTombstone(snapshot: CanonicalSessionSnapshot): boolean {
   return snapshot.tombstone !== null && snapshot.tombstone.restoredAt === null;
 }
 
+/** Native projections may have fewer rows than their canonical source history. */
+function sequenceAfterBase(
+  base: readonly CanonicalEventV1[],
+  appended: readonly CanonicalEventV1[],
+): readonly CanonicalEventV1[] {
+  const last = base.at(-1)?.sequence;
+  const first = appended[0]?.sequence;
+  if (last === undefined || first === undefined || first > last) return appended;
+  // Shift the whole batch equally: malformed internal order still fails version
+  // validation. Native identities and raw event offsets remain untouched.
+  const offset = last + 1 - first;
+  return appended.map(event => {
+    if (!Number.isSafeInteger(event.sequence) || event.sequence < 0
+      || !Number.isSafeInteger(event.sequence + offset)) {
+      throw new TypeError(`Invalid canonical append sequence: ${event.id}`);
+    }
+    return { ...event, sequence: event.sequence + offset };
+  });
+}
+
 export async function appendDsh(
   store: CanonicalSessionEngineStore,
   input: DshAppendInput,
@@ -176,7 +196,7 @@ export async function appendDsh(
   }
 
   assertAppendTarget(targetId, appendedEvents);
-  const combinedEvents = [...baseEvents, ...appendedEvents];
+  const combinedEvents = [...baseEvents, ...sequenceAfterBase(baseEvents, appendedEvents)];
   const versionEvents = input.canonicalHistoryMode === "portable"
     ? withPlannedConversationTopology(combinedEvents).events
     : combinedEvents;

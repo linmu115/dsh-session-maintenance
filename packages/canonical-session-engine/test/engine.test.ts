@@ -105,6 +105,53 @@ function projection(operationId: string) {
 }
 
 describe("CanonicalSessionEngine", () => {
+  it("appends a shorter native projection after its full canonical history and retries once", async () => {
+    const store = new MemoryEngineStore();
+    const engine = new CanonicalSessionEngine(store);
+    const logicalSessionId = "logical-native-reprojection" as LogicalSessionId;
+    const input = { logicalSessionId, title: "synthetic reprojection", tags: [], archivedAt: null,
+      workspaceId: null, observedAt: at, canonicalHistoryMode: "native" as const };
+    const prefix = Array.from({ length: 4850 }, (_, seq) => event(logicalSessionId, `legacy-${seq}`, seq, "fixture", "dsh"));
+    const seed = await engine.appendDsh({ ...input, appendedEvents: prefix, projection: projection("reprojection-seed") });
+    const native = [255, 256, 257, 258].map(seq => ({
+      ...event(logicalSessionId, `v3-${seq}`, seq, "fixture tail", "dsh"),
+      rawPayload: { type: "session/end-seed", seq, time: 1, data: {} },
+    }));
+    const append = { ...input, baseVersionId: seed.versionId!, appendedEvents: native,
+      projection: { ...projection("reprojection-tail"), nativeRevision: 259 } };
+    const receipt = await engine.appendDsh(append);
+    const version = store.versions.get(receipt.versionId!)!;
+    expect(version.events.slice(0, 4850)).toEqual(prefix);
+    expect(version.events.slice(-4).map(e => e.sequence)).toEqual([4850, 4851, 4852, 4853]);
+    expect(version.events.slice(-4).map(({ sequence: _sequence, ...e }) => e))
+      .toEqual(native.map(({ sequence: _sequence, ...e }) => e));
+    expect(await engine.appendDsh(append)).toEqual(receipt);
+    expect(store.mutations).toHaveLength(2);
+    const next = await engine.appendDsh({ ...input, baseVersionId: receipt.versionId!,
+      appendedEvents: [event(logicalSessionId, "v3-259", 259, "next", "dsh")],
+      projection: { ...projection("reprojection-next"), nativeRevision: 260 } });
+    expect(store.versions.get(next.versionId!)!.events.at(-1)?.sequence).toBe(4854);
+    expect(store.mutations.at(-1)?.projectionReceipt?.projectionRevision).toBe(260);
+  });
+
+  it("keeps invalid order, duplicate identities and invalid offsets rejected while rebasing", async () => {
+    const store = new MemoryEngineStore();
+    const engine = new CanonicalSessionEngine(store);
+    const logicalSessionId = "logical-invalid-reprojection" as LogicalSessionId;
+    const input = { logicalSessionId, title: "fixture", tags: [], archivedAt: null, workspaceId: null, observedAt: at };
+    const seed = await engine.appendDsh({ ...input, appendedEvents: [event(logicalSessionId, "legacy", 500, "fixture", "dsh")],
+      projection: projection("invalid-seed") });
+    for (const [index, tail] of [
+      [event(logicalSessionId, "a", 5, "fixture", "dsh"), event(logicalSessionId, "b", 4, "fixture", "dsh")],
+      [event(logicalSessionId, "legacy", 5, "fixture", "dsh")],
+      [event(logicalSessionId, "a", -1, "fixture", "dsh")],
+    ].entries()) {
+      await expect(engine.appendDsh({ ...input, baseVersionId: seed.versionId!, appendedEvents: tail,
+        projection: projection(`invalid-tail-${index}`) })).rejects.toThrow();
+    }
+    expect(store.mutations).toHaveLength(1);
+  });
+
   it("keeps imported source IDs stable after repair and a subsequent ordinary synchronization", async () => {
     const store = new MemoryEngineStore();
     const engine = new CanonicalSessionEngine(store);
