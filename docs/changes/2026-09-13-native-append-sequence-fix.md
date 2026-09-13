@@ -21,3 +21,11 @@ passed, including synthetic 4,850-to-255 history conversion, the next append,
 receipt replay, invalid input rejection and existing crash-recovery coverage.
 Engine 0.1.33-rc2.4 is paired with plugin 0.2.26-rc2.3. Live deployment and recovery
 receipts are recorded under artifacts/reference-delivery-fix-20260913.
+
+Live recovery committed the failed batch and the remaining native tail, adding
+nine canonical events while preserving all 4,850 previous events byte-for-byte
+at the canonical object level. The failed operation now has a durable receipt.
+Deployment also exposed a release-version allowlist that omitted rc2.4. The
+attestation schema now admits this tested release; the regression test reads the
+current package version so future release bumps cannot silently omit it. Exact
+artifact hashes, instance identity and capability checks remain required.

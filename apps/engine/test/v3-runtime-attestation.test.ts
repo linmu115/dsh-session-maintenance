@@ -1,5 +1,5 @@
 import {describe,it,expect} from "vitest";
-import {mkdtemp,mkdir,writeFile,rm} from "node:fs/promises";
+import {mkdtemp,mkdir,writeFile,readFile,rm} from "node:fs/promises";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {createHash} from "node:crypto";
@@ -16,6 +16,8 @@ it("pins RC2 scope, closure, capabilities and exact artifact bytes before granti
   await save({...receipt,engineVersion:"0.1.33-rc2.1"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   await save({...receipt,engineVersion:"0.1.33-rc2.2"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   await save({...receipt,engineVersion:"0.1.33-rc2.3"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
+  const currentVersion=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8")).version;
+  await save({...receipt,engineVersion:currentVersion});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   await save({...receipt,engineVersion:"0.1.33-rc2.0"});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_REQUIRED"});
   await save(receipt);
   await expect(verifyDsh015RuntimeAttestation({...input,instanceId:"other"})).rejects.toMatchObject({code:"V3_ATTESTATION_IDENTITY_MISMATCH"});
