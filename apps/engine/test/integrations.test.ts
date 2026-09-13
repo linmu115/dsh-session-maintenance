@@ -72,7 +72,7 @@ describe("instance onboarding", () => {
     expect(target.pluginReady).toBe(true);
     expect(target.target.status).toBe("unsupported");
     expect(target.runtimeCapabilities).toEqual([]);
-    await json(pluginPath, { ...plugin, version: "0.2.26-rc2.1" });
+    await json(pluginPath, { ...plugin, version: "0.2.26-rc2.2" });
     const upstream = (await f.discover()).targets[0]!;
     expect(upstream.pluginReady).toBe(true);
     expect(upstream.target.status).toBe("unsupported");

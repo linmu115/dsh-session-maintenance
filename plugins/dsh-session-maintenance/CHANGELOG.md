@@ -1,3 +1,8 @@
+# 0.2.26-rc2.2 — 2026-09-13
+
+- Pair the installed integration with Engine 0.1.33-rc2.3 after the V3 startup and effective-header recovery fixes. The shared V3 adapter code is part of the plugin bundle, so this release refreshes the exact host artifact and attestation together.
+- Preserve the existing upstream-reference contract and optional namespace; no additional source-history backups are created.
+
 # 0.2.26-rc2.1 — 2026-09-13
 
 - Pair with Engine 0.1.33-rc2.1 and Core 0.3.12-rc2.1 for optional annotation-upstream references.
