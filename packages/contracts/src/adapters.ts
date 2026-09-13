@@ -137,6 +137,7 @@ export interface ProjectionReader {
 }
 
 export interface DshSessionAdapterV1 {
+  readonly sessionContext?: import("./session-context.js").SessionContextAdapter;
   readonly manifest: AdapterManifestV1;
   /** Optional complete native-file projection, prepared before the host starts. */
   readonly nativeSessionCodec?: import("./native-session-space.js").NativeSessionCodec;

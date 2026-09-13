@@ -1,5 +1,6 @@
 import { ExtensionDataError } from "@linmu/dsh-session-contracts";
 import { routeExtensionRequest } from "./extension-routes.js";
+import { routeSessionContext } from "./session-context-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
 import { z, ZodError } from "zod";
@@ -270,6 +271,7 @@ export async function routeRequest(
     if (await routeRetentionRequest(request, response, url, context.engine.retention)) return;
     if (await routeIntegrationRequest(request, response, url, context.engine)) return;
     if (await routeExtensionRequest(request, response, url, context.engine)) return;
+    if (await routeSessionContext(request, response, url, context.engine)) return;
     if (request.method === "GET" && url.pathname === "/v1/instances") {
       send(response, 200, { instances: await context.engine.listInstances() });
       return;

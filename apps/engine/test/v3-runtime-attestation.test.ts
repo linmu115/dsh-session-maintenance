@@ -13,6 +13,9 @@ it("pins RC2 scope, closure, capabilities and exact artifact bytes before granti
   const input={profileRoot,instanceId:"i",profileId:"web",homeRoot,cliPath:files[0]!.path,launcherDigest:receipt.launcherCapabilityDigest,resolvedManifests:[files[2]!.path]};
   const save=async(value:any)=>writeFile(join(profileRoot,DSH015_ATTESTATION_FILE),JSON.stringify(value));
   await save(receipt);expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
+  await save({...receipt,engineVersion:"0.1.33-rc2.1"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
+  await save({...receipt,engineVersion:"0.1.33-rc2.0"});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_REQUIRED"});
+  await save(receipt);
   await expect(verifyDsh015RuntimeAttestation({...input,instanceId:"other"})).rejects.toMatchObject({code:"V3_ATTESTATION_IDENTITY_MISMATCH"});
   const foreign=join(root,"foreign-manifest");await writeFile(foreign,"{}");await expect(verifyDsh015RuntimeAttestation({...input,resolvedManifests:[foreign]})).rejects.toMatchObject({code:"V3_PACKAGE_CLOSURE_MISMATCH"});
   await save({...receipt,runtimeCapabilities:[]});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_CAPABILITY_MISSING"});

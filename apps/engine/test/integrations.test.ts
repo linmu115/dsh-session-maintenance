@@ -59,7 +59,7 @@ async function fixture(withPlugin = true) {
 }
 
 describe("instance onboarding", () => {
-  it("requires the final rc2.2 plugin for RC2 without bypassing runtime attestation", async () => {
+  it("accepts the attested RC2 baseline and upstream plugin without admitting the earlier candidate", async () => {
     const f = await fixture();
     f.catalog.versions[0]!.version = "0.1.5-rc.2";
     await json(join(f.dataRoot, "config.json"), f.catalog);
@@ -72,6 +72,11 @@ describe("instance onboarding", () => {
     expect(target.pluginReady).toBe(true);
     expect(target.target.status).toBe("unsupported");
     expect(target.runtimeCapabilities).toEqual([]);
+    await json(pluginPath, { ...plugin, version: "0.2.26-rc2.1" });
+    const upstream = (await f.discover()).targets[0]!;
+    expect(upstream.pluginReady).toBe(true);
+    expect(upstream.target.status).toBe("unsupported");
+    expect(upstream.runtimeCapabilities).toEqual([]);
   });
 
   it("discovers exact instance/profile targets and resolves installed packages instead of trusting catalog versions", async () => {

@@ -1,4 +1,6 @@
 import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict } from "@linmu/dsh-session-contracts";
+import { sessionContextRecordSchema, type SessionContextCapture, type SessionContextRead, type SessionContextDirectory,
+  type SessionContextPage } from "@linmu/dsh-session-contracts";
 import { z, type ZodType } from "zod";
 
 import {
@@ -616,6 +618,18 @@ class ApiClient {
 
   async listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]> {
     return this.request("/v1/extensions/panels",{},z.custom<ExtensionPanel[]>(),signal);
+  }
+  async listSessionContextTargets(runId: string, workspaceId?: string, after?: string, signal?: AbortSignal) {
+    return this.request('/v1/session-context/directory',this.jsonPost({runId,workspaceId,after}),z.custom<SessionContextDirectory>(),signal);
+  }
+  async captureSessionContext(input: SessionContextCapture, signal?: AbortSignal) {
+    return this.request('/v1/session-context/capture',this.jsonPost(input),sessionContextRecordSchema,signal);
+  }
+  async readSessionContext(input: SessionContextRead, signal?: AbortSignal) {
+    return this.request('/v1/session-context/read',this.jsonPost(input),z.custom<SessionContextPage>(),signal);
+  }
+  async bindSessionContext(runId: string, targetNativeSessionId: string, referenceId: string, targetMessageId: string|null, signal?: AbortSignal) {
+    return this.request('/v1/session-context/bind',this.jsonPost({runId,targetNativeSessionId,referenceId,targetMessageId}),sessionContextRecordSchema,signal);
   }
   async connectExtensions(input: ExtensionConnect): Promise<ExtensionPanel[]> {
     return this.request("/v1/extensions/connect",this.jsonPost(input),z.custom<ExtensionPanel[]>());

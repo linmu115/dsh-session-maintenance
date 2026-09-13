@@ -32,7 +32,7 @@ import {
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
 import { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
-import { ProjectionLifecycle } from "@linmu/dsh-session-projection-lifecycle";
+import { ProjectionLifecycle, sourceWithEvidence, type SourceAdapterResolver } from "@linmu/dsh-session-projection-lifecycle";
 import { MaintenanceWriteCoordinator, coordinateAsyncMethods, SqliteCanonicalRepository, SqliteCanonicalProjectionSource, SqliteAdapterEvidenceStore, SqliteAdapterRegistryRepository, SqliteCanonicalSessionEngineStore, SqliteProjectionRunRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
 import { ConfirmationService, TransactionExecutor } from "@linmu/dsh-session-transaction-engine";
 
@@ -230,6 +230,7 @@ async function createComposition(
   coordinateAsyncMethods(adapterRegistry, ["register", "select"], writes, "adapter-registration");
   const projectionRunRepository = coordinateAsyncMethods(new SqliteProjectionRunRepository(repository.database), ["createProjectionRun", "setProjectionRunState", "setProjectionRunCheckpoint", "upsertProjectionSession", "saveOperationReceipt"], writes, "projection-state");
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
+  const resolveSourceAdapter: SourceAdapterResolver = event => builtinAdapters.map(item => item.adapter).find(owner => event.id.startsWith(`${owner.manifest.id}:`) || (typeof event.content === "object" && event.content !== null && !Array.isArray(event.content) && typeof (event.content as Readonly<Record<string, unknown>>).sourceKind === "string" && String((event.content as Readonly<Record<string, unknown>>).sourceKind).startsWith(`${owner.manifest.id}/`)));
   const canonicalEngine = coordinateAsyncMethods(new CanonicalSessionEngine(
     new SqliteCanonicalSessionEngineStore(repository.database, objectStore, writes),
   ), ["observeCodex", "retitleCodexMirror", "appendDsh", "importDshNative", "tombstone", "restore"], writes, "canonical-commit");
@@ -349,6 +350,11 @@ async function createComposition(
     codexImports,
     retention,
     resolveProjectionAdapter: (adapterId) => adapterRegistry.resolveRuntimeAdapter(adapterId),
+    projectionSourceFor: adapterId => {
+      const adapter=adapterRegistry.resolveRuntimeAdapter(adapterId);
+      if(!adapter)throw new TypeError(`Unsupported projection adapter: ${adapterId}`);
+      return sourceWithEvidence(canonicalProjectionSource,adapter,evidenceStore,resolveSourceAdapter);
+    },
     projectionLifecycleFactory: ({ adapterId, bridge }) => {
       const adapter = adapterRegistry.resolveRuntimeAdapter(adapterId);
       if (adapter === undefined) throw new TypeError(`Unsupported built-in projection adapter: ${adapterId}`);
@@ -360,7 +366,7 @@ async function createComposition(
         bridge,
         canonicalEngine,
         evidencePort: evidenceStore,
-        resolveSourceAdapter: event => builtinAdapters.map(item => item.adapter).find(owner => event.id.startsWith(`${owner.manifest.id}:`) || (typeof event.content === "object" && event.content !== null && !Array.isArray(event.content) && typeof (event.content as Readonly<Record<string, unknown>>).sourceKind === "string" && String((event.content as Readonly<Record<string, unknown>>).sourceKind).startsWith(`${owner.manifest.id}/`))),
+        resolveSourceAdapter,
         checkpointRepository: repository,
         runtimeRoot: join(options.stateRoot, "projection-runtime"),
         ...(options.clock === undefined ? {} : { clock: options.clock }),

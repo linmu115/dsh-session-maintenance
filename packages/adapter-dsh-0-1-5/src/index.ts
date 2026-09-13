@@ -1,4 +1,5 @@
 import { defineDshSessionAdapter } from "@linmu/dsh-session-adapter-sdk";
+import { v3SessionContext } from "./session-context.js";
 
 import { inspectV3, verifyV3 } from "./inspect.js";
 import { manifest } from "./manifest.js";
@@ -38,6 +39,7 @@ export * from "./lineage.js";
 
 
 export const adapter = defineDshSessionAdapter({
+  sessionContext: v3SessionContext,
   manifest,
   acceptsSourceExports: true,
   ownsCanonicalEvent: ownsV3CanonicalEvent,

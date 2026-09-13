@@ -1,4 +1,5 @@
 import type { ExtensionDataService } from "./extensions/service.js";
+import { SessionContextService } from "./session-context-service.js";
 import {
   SessionMaintenanceError,
   normalizedSessionSchema,
@@ -200,6 +201,7 @@ function prefix(left: readonly string[], right: readonly string[]): boolean {
 }
 
 export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
+  readonly sessionContext = new SessionContextService(this);
   readonly instances: readonly RegisteredInstance[];
   readonly adapters: readonly SessionReadAdapter[];
   readonly repository: SqliteSessionRepository;
@@ -208,6 +210,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly adapterRegistry: AdapterRegistry;
   readonly projectionRunRepository: ProjectionRunRepository;
   readonly canonicalProjectionSource: CanonicalProjectionSource;
+  readonly projectionSourceFor: (adapterId: AdapterId) => CanonicalProjectionSource;
   readonly sessionAliases: SqliteSessionAliasRepository;
   readonly projectionRuntimeRoot: string;
   readonly canonicalEngine: CanonicalSessionEngine;
@@ -255,6 +258,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly adapterRegistry: AdapterRegistry;
     readonly projectionRunRepository: ProjectionRunRepository;
     readonly canonicalProjectionSource: CanonicalProjectionSource;
+    readonly projectionSourceFor?: (adapterId: AdapterId) => CanonicalProjectionSource;
     readonly sessionAliases?: SqliteSessionAliasRepository;
     readonly projectionRuntimeRoot: string;
     readonly canonicalEngine: CanonicalSessionEngine;
@@ -305,6 +309,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       input.repository.database, this.sessionQueries, this.statusLog, this.projectionRunRepository, this.clock,
     );
     this.canonicalProjectionSource = input.canonicalProjectionSource;
+    this.projectionSourceFor = input.projectionSourceFor ?? (() => this.canonicalProjectionSource);
     this.sessionAliases = input.sessionAliases
       ?? new SqliteSessionAliasRepository(input.repository.database);
     this.projectionRuntimeRoot = input.projectionRuntimeRoot;

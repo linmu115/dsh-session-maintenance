@@ -10,8 +10,8 @@ export { rc1NativeSessionId as v3NativeSessionId };
 export { digest } from "./common.js";
 export function catalogDigest(sessionDigests:Readonly<Record<string,string>>, workspaceIds:readonly string[]):string {return digest({sessions:Object.entries(sessionDigests).sort(([a],[b])=>a.localeCompare(b)),workspaces:[...new Set(workspaceIds)].sort()});}
 export function composeV3ProjectionManifest(input:ProjectionManifestCompositionInput):ProjectionManifest {return {schemaVersion:1,runId:input.run.id,adapterId:manifest.id,sessionCount:Object.keys(input.sessionDigests).length,workspaceCount:new Set(input.workspaceIds).size,catalogDigest:catalogDigest(input.sessionDigests,input.workspaceIds),sessionDigests:input.sessionDigests};}
-function canonicalDigest(item:CanonicalProjectionSessionInput):string {return digest(item.events.map(e=>({id:e.id,contentDigest:e.contentDigest,source:e.source,rawPayload:e.rawPayload})));}
-export function v3ProjectedNativeRevision(item:CanonicalProjectionSessionInput,value:JsonValue):number {
+function canonicalDigest(item:Pick<CanonicalProjectionSessionInput,"events">):string {return digest(item.events.map(e=>({id:e.id,contentDigest:e.contentDigest,source:e.source,rawPayload:e.rawPayload})));}
+export function v3ProjectedNativeRevision(item:Pick<CanonicalProjectionSessionInput,"events">,value:JsonValue):number {
  const payload=record(value);if(!Array.isArray(payload.events))throw new TypeError("V3 projection events are missing");
  if(payload.conversionLedger===undefined){
   // Runtime-created sessions have no legacy conversion prefix; every canonical row must attest a V3 native row.

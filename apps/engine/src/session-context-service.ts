@@ -1,0 +1,135 @@
+import { createHash } from "node:crypto";
+import { ExtensionDataError, SESSION_CONTEXT_NAMESPACE, sessionContextCaptureSchema, sessionContextReadSchema,
+  sessionContextRecordSchema, type SessionContextCapture, type SessionContextRecord, type SessionContextRead,
+  type SessionContextDirectory, type LogicalSessionId, type SessionVersionId, type NativeSessionId, type RunId, type JsonValue, type AdapterId } from "@linmu/dsh-session-contracts";
+import { JsonProjectionDirectory, projectionRootFor } from "@linmu/dsh-session-projection-lifecycle";
+import type { SessionMaintenanceEngine } from "./engine.js";
+import { ContextReadBudgets, readContextPage } from "./session-context-reader.js";
+
+const unavailable = (message: string) => new ExtensionDataError("CONTEXT_UNAVAILABLE",message,409);
+export class SessionContextService {
+  private readonly budgets = new ContextReadBudgets();
+  constructor(private readonly engine: SessionMaintenanceEngine) {}
+  private async access(runId: string) {
+    const run = await this.engine.projectionRunRepository.getProjectionRun(runId as RunId);
+    if (!run || run.state !== "running") throw unavailable("目标实例的会话空间尚未就绪");
+    const panel = this.engine.extensions?.panels().find(p=>p.scope.instanceId===run.instanceId&&p.scope.profileId===run.profileId&&p.scope.namespace===SESSION_CONTEXT_NAMESPACE);
+    if (panel?.status !== "ready") throw unavailable("当前实例没有启用跨会话引用");
+    return { run, scope:panel.scope, writerId:panel.writerId, extensions:this.engine.extensions! };
+  }
+  private identity(runId: string, nativeSessionId: string) {
+    const value = this.engine.sessionQueries.resolveProjectionSessionIdentity(runId,nativeSessionId);
+    if (!value || value.status !== "active") throw unavailable("会话未接入当前实例，或已删除");
+    const mapping=this.engine.repository.database.prepare("SELECT mode FROM projection_sessions WHERE run_id=? AND native_session_id=?").get(runId,nativeSessionId) as {mode:string}|undefined;
+    if(!mapping||["hidden","recovery-only"].includes(mapping.mode))throw unavailable("会话没有在当前实例中启用");
+    return value;
+  }
+  async directory(runId: string, workspaceId?: string, after = ""): Promise<SessionContextDirectory> {
+    await this.access(runId);
+    const db = this.engine.repository.database;
+    const join = `FROM projection_sessions ps JOIN logical_sessions s ON s.id=ps.logical_session_id
+      LEFT JOIN project_memberships m ON m.logical_session_id=s.id LEFT JOIN logical_projects w ON w.id=m.project_id AND w.deleted_at IS NULL
+      WHERE ps.run_id=? AND ps.mode NOT IN ('hidden','recovery-only') AND s.tombstoned_at IS NULL`;
+    const rows = workspaceId === undefined
+      ? db.prepare(`SELECT DISTINCT COALESCE(w.id,'@ungrouped') id,COALESCE(w.name,'未分组') title ${join}
+          AND COALESCE(w.id,'@ungrouped')>? ORDER BY id LIMIT 51`).all(runId,after)
+      : db.prepare(`SELECT ps.native_session_id id,s.display_title title,s.id logicalSessionId ${join}
+          AND COALESCE(w.id,'@ungrouped')=? AND ps.native_session_id>? ORDER BY id LIMIT 51`).all(runId,workspaceId,after);
+    const items = rows as unknown as SessionContextDirectory["items"];
+    return { items:items.slice(0,50),nextCursor:items.length>50?items[49]!.id:null };
+  }
+  async capture(request: SessionContextCapture): Promise<SessionContextRecord> {
+    const input=sessionContextCaptureSchema.parse(request), a=await this.access(input.runId);
+    const source=this.identity(input.runId,input.sourceNativeSessionId), target=this.identity(input.runId,input.targetNativeSessionId);
+    if (source.logicalSessionId===target.logicalSessionId) throw unavailable("跨会话引用请选择另一个会话");
+    const referenceId="upstream-"+createHash("sha256").update(JSON.stringify([a.scope,target.logicalSessionId,input.operationId])).digest("hex");
+    try {
+      const old=sessionContextRecordSchema.parse(a.extensions.get(a.scope,referenceId).object.content.body);
+      if (old.sourceSessionId!==source.logicalSessionId || old.sourceAnchorId!==input.anchorId || old.selectedText!==input.selectedText)
+        throw unavailable("同一引用操作的来源发生变化");
+      if(old.state==="revoked")throw unavailable("这个引用操作已撤销，请重新选择来源");
+      return old;
+    } catch (error) { if (!(error instanceof ExtensionDataError) || error.code!=="EXTENSION_NOT_FOUND") throw error; }
+    const snapshot=await this.engine.canonicalEngine.store.getSession(source.logicalSessionId as LogicalSessionId);
+    const version=snapshot?.headVersionId?await this.engine.canonicalEngine.store.getVersion(snapshot.headVersionId):undefined;
+    if (!version) throw unavailable("来源回复尚未登记到会话真源，请稍后重试");
+    const adapter=this.engine.resolveProjectionAdapter(a.run.adapterId)?.sessionContext;
+    if (!adapter) throw unavailable("当前 DSH 版本 Adapter 尚未支持固定上游引用");
+    const payload=await new JsonProjectionDirectory(projectionRootFor(this.engine.projectionRuntimeRoot,a.run.id)).readSession(input.sourceNativeSessionId as NativeSessionId);
+    const restored=await this.engine.projectionSourceFor(a.run.adapterId).loadVersionEvents?.(source.logicalSessionId as LogicalSessionId,version.id);
+    if(!restored)throw unavailable("来源版本缺少可验证的格式读取能力");
+    let cutoff;
+    try {cutoff=adapter.cutoff(restored,payload,input.anchorId);}
+    catch(error){throw unavailable(error instanceof Error?error.message:"无法定位来源完成位置");}
+    const originalCutoff=version.events.find(event=>event.id===cutoff.eventId);
+    if(!originalCutoff)throw unavailable("来源格式读取改变了原始完成位置身份");
+    const record: SessionContextRecord={schemaVersion:1,referenceId,sourceSessionId:source.logicalSessionId,sourceVersionId:version.id,
+      cutoffEventId:cutoff.eventId,cutoffDigest:originalCutoff.contentDigest,targetSessionId:target.logicalSessionId,selectedText:input.selectedText,
+      sourceTitle:source.title.slice(0,500),sourceAnchorId:input.anchorId,state:"pending",targetMessageId:null,createdAt:new Date().toISOString()};
+    const result=a.extensions.write({scope:a.scope,writerId:a.writerId,objectId:referenceId,expectedRevision:0,deleted:false,
+      content:{schemaVersion:1,title:record.sourceTitle,body:record as unknown as JsonValue,references:[
+        {logicalSessionId:record.sourceSessionId,messageId:record.cutoffEventId,sourceVersion:record.sourceVersionId},
+        {logicalSessionId:record.targetSessionId}]}});
+    if(result.status==="conflict")throw unavailable("引用保存冲突，请重试");
+    return record;
+  }
+  async record(runId: string, targetNativeSessionId: string, referenceId: string, allowRevoked = false) {
+    const a=await this.access(runId), target=this.identity(runId,targetNativeSessionId);
+    const object=a.extensions.get(a.scope,referenceId).object,record=sessionContextRecordSchema.parse(object.content.body);
+    if(object.deleted||(!allowRevoked&&record.state==="revoked")||record.targetSessionId!==target.logicalSessionId)throw unavailable("此引用在目标会话中不可用");
+    return {...a,object,record};
+  }
+  async bind(runId: string, targetNativeSessionId: string, referenceId: string, targetMessageId: string | null) {
+    const a=await this.record(runId,targetNativeSessionId,referenceId,targetMessageId===null);
+    if(a.record.state==="revoked"&&targetMessageId===null)return a.record;
+    if(a.record.state==="sent"&&targetMessageId===a.record.targetMessageId)return a.record;
+    if (a.record.targetMessageId && targetMessageId && a.record.targetMessageId!==targetMessageId) throw unavailable("引用已经绑定另一次提交");
+    const record={...a.record,state:targetMessageId?"sent" as const:"revoked" as const,targetMessageId};
+    const result=a.extensions.write({scope:a.scope,writerId:a.writerId,objectId:referenceId,expectedRevision:a.object.revision,deleted:false,
+      content:{...a.object.content,body:record as unknown as JsonValue}});
+    if(result.status==="conflict")throw unavailable("引用状态保存冲突，请重试");
+    return record;
+  }
+  private async source(record: SessionContextRecord, adapterId: AdapterId) {
+    try {
+      const source=await this.engine.canonicalEngine.store.getSession(record.sourceSessionId as LogicalSessionId);
+      if(!source||source.session.tombstonedAt)throw unavailable("来源会话已删除");
+      const version=await this.engine.canonicalEngine.store.getVersion(record.sourceVersionId as SessionVersionId);
+      if(!version||version.logicalSessionId!==record.sourceSessionId)throw unavailable("来源版本已清理或不可用");
+      const index=version.events.findIndex(e=>e.id===record.cutoffEventId&&e.contentDigest===record.cutoffDigest);
+      if(index<0)throw unavailable("来源完成位置已不可解析");
+      const events=await this.engine.projectionSourceFor(adapterId).loadVersionEvents?.(record.sourceSessionId as LogicalSessionId,record.sourceVersionId as SessionVersionId);
+      if(!events||events.length!==version.events.length||events.some((e,i)=>e.id!==version.events[i]!.id))throw unavailable("来源格式读取改变了原始事件身份");
+      return {events,index};
+    } catch(error) {
+      if(error instanceof ExtensionDataError)throw error;
+      throw unavailable("来源版本已清理或不可用，无法读取固定上游");
+    }
+  }
+  async inspect(runId: string, targetNativeSessionId: string, referenceId: string) {
+    const a=await this.record(runId,targetNativeSessionId,referenceId);
+    await this.source(a.record,a.run.adapterId);
+    return a.record;
+  }
+  async read(request: SessionContextRead) {
+    const q=sessionContextReadSchema.parse(request),a=await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
+    const reservation=this.budgets.reserve(JSON.stringify([a.scope,a.record.targetSessionId,q.executionId]),q.totalBytes,q.maxBytes);
+    if(reservation.bytes<1024){reservation.settle(0);throw unavailable("本轮引用读取预算已用完，请依据已读取材料回答");}
+    let settled=false;
+    try {
+      const {events,index}=await this.source(a.record,a.run.adapterId);
+      const adapter=this.engine.resolveProjectionAdapter(a.run.adapterId)?.sessionContext;
+      if(!adapter)throw unavailable("缺少读取此引用所需的版本 Adapter");
+      let page;
+      try {page=readContextPage(a.record,adapter.entries(events.slice(0,index+1)),reservation.bytes,q.cursor,q.query);}
+      catch(error){throw unavailable(error instanceof Error?error.message:"引用读取失败");}
+      // A revoke may have been serialized while the immutable source was being read.
+      await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
+      // Reserve enough space for remainingBytes digits; the complete serialized return is charged.
+      page.remainingBytes=Math.max(0,q.totalBytes);const bytes=Buffer.byteLength(JSON.stringify(page));
+      page.remainingBytes=reservation.settle(bytes);settled=true;
+      page.budgetExhausted=page.remainingBytes<1024;
+      return page;
+    } finally {if(!settled)reservation.settle(0);}
+  }
+}

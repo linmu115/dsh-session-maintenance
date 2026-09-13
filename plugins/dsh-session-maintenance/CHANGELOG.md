@@ -1,3 +1,8 @@
+# 0.2.26-rc2.1 — 2026-09-13
+
+- Pair with Engine 0.1.33-rc2.1 and Core 0.3.12-rc2.1 for optional annotation-upstream references.
+- Scope capture, fixed-version reads and durable target binding to the current prepared run. No full source snapshots are added.
+
 # 0.2.25-rc2.2 — 2026-09-12
 
 - Rebuild the host integration with the verified V3 history converter, versioned export digest and typed resource codec used by Engine 0.1.32-rc2.2. Refresh the paired artifact and runtime attestation; retain the prior candidate archive for rollback.
