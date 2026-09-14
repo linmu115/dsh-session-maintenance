@@ -258,12 +258,14 @@ export class SessionGraphStore {
   }
   settleDisclosure(scope: ExtensionScope, writerId: string, record: SessionContextRecord, requestId: string, delivery: "returned" | "failed") {
     const object = this.store.get(scope, logObjectId(record.targetSessionId));
-    if (!object) throw fail("读取回执尚未保存");
+    if (!object || object.deleted) return { recorded: false as const, reason: "not-recorded-or-trimmed" as const };
     const log = graphDisclosureLogSchema.parse(object.content.body);
     const matching = log.items.filter(item => item.referenceId === record.referenceId && item.requestId === requestId);
-    if (matching.length !== 1) throw fail("读取回执不存在、已裁剪或请求身份不唯一");
+    if (matching.length === 0) return { recorded: false as const, reason: "not-recorded-or-trimmed" as const };
+    if (matching.length !== 1) throw fail("读取回执请求身份不唯一");
     const { receiptId: _id, referenceId: _ref, sourceSessionId: _source, targetSessionId: _target,
       sourceVersionId: _version, cutoffEventId: _cutoff, recordedAt: _at, ...input } = matching[0]!;
     this.appendDisclosure(scope, writerId, record, { ...input, delivery });
+    return { recorded: true as const };
   }
 }

@@ -73,8 +73,9 @@ export class SessionGraphService {
     return this.graphs.appendDisclosure(a.scope, a.writerId, record, input);
   }
   async settleDisclosure(runId: string, record: SessionContextRecord, requestId: string, delivery: "returned" | "failed") {
-    const a = await this.graphAccess(runId, true); if (!a) return;
-    this.graphs.settleDisclosure(a.scope, a.writerId, record, requestId, delivery);
+    const a = await this.graphAccess(runId, true);
+    if (!a) return { recorded: false as const, reason: "extension-unavailable" as const };
+    return this.graphs.settleDisclosure(a.scope, a.writerId, record, requestId, delivery);
   }
   async disclosures(runId: string, objectId: string, after?: string) {
     const a = (await this.graphAccess(runId))!, doc = await this.load(runId, objectId);

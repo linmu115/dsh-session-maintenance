@@ -39,3 +39,9 @@ contracts 和 local-api-client 构建通过；Engine、Dashboard、Maintenance �
 ## 组合验证范围
 
 本提交不代替用户的副本交互验收。ThoughtDAG 的画布目录需要排除 disclosures 对象；读取位置展示必须区分 prepared/returned/failed。实际 AI 返回范围与宿主交付证据由本轮 Annotation/SessionContext 钩子提供，不能凭 UI 预览宣称模型已读取。旧对象仍需在用户明确进入并核验归属后迁移，不执行批量猜测迁移。
+
+## 交叉审查后的迟到回执修复
+
+交叉核对 Annotation `3b92984` 与本轮 SessionContext 钩子时，确认读取发生在 ThoughtDAG 停用期间、确认交付前重新启用时，原先的 settle 会因没有日志对象而报错；旧明细已裁剪时迟到确认也会永久失败。图服务现在返回明确的 `recorded:false` 和 `not-recorded-or-trimmed`／`extension-unavailable` 原因，不创建虚假回执，不阻止合法独立读取或初始引用绑定。已有回执身份不唯一、失败回执复活和真实存储写入错误仍然拒绝；记录存在且更新成功才返回 `recorded:true`。Context 服务负责透传此结果并继续拒绝已撤销引用的 returned 确认。
+
+新增合成测试覆盖无日志对象、旧记录裁剪、合法确认、身份歧义和存储失败不被吞掉。图域与真实 SessionContext 回归共 10 项通过，Engine 类型检查通过。只读来源预览继续不生成 AI 已读回执；现有初始准备/已交付区分和单调收紧预算未发现本轮引入的倒退。

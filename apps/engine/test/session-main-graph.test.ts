@@ -166,4 +166,33 @@ describe("session main graph domain", () => {
       expect(page.coverageTruncated).toBe(false);
     } finally { db.close(); }
   });
+  it("reports missing or trimmed acknowledgements without inventing delivery or blocking independent reads", () => {
+    const { db, graphs, reference } = fixture(1);
+    try {
+      const ref = reference();
+      expect(graphs.settleDisclosure(scope, writer, ref, "while-disabled", "returned"))
+        .toEqual({ recorded: false, reason: "not-recorded-or-trimmed" });
+      expect(db.prepare("SELECT count(*) n FROM extension_objects WHERE namespace='thoughtdag'").get()!.n).toBe(0);
+      graphs.appendDisclosure(scope, writer, ref, read("first"));
+      graphs.appendDisclosure(scope, writer, ref, read("next"));
+      expect(graphs.settleDisclosure(scope, writer, ref, "first", "returned"))
+        .toEqual({ recorded: false, reason: "not-recorded-or-trimmed" });
+      expect(graphs.settleDisclosure(scope, writer, ref, "next", "returned")).toEqual({ recorded: true });
+      expect(graphs.disclosures(scope, "Y").items.map(item => item.requestId)).toEqual(["next"]);
+      expect(graphs.disclosures(scope, "Y").trimmedCount).toBe(1);
+    } finally { db.close(); }
+  });
+  it("still rejects ambiguous acknowledgement identities and propagates real receipt write failures", () => {
+    const { db, graphs, reference } = fixture();
+    try {
+      const ref = reference();
+      graphs.appendDisclosure(scope, writer, ref, read("same"));
+      graphs.appendDisclosure(scope, writer, ref, { ...read("same"), executionId: "other-execution" });
+      expect(() => graphs.settleDisclosure(scope, writer, ref, "same", "returned")).toThrow("身份不唯一");
+      graphs.appendDisclosure(scope, writer, ref, read("write-failure"));
+      db.exec("CREATE TRIGGER synthetic_receipt_write_failure BEFORE UPDATE ON extension_objects WHEN NEW.namespace='thoughtdag' BEGIN SELECT RAISE(ABORT,'synthetic receipt disk failure'); END");
+      expect(() => graphs.settleDisclosure(scope, writer, ref, "write-failure", "returned")).toThrow("synthetic receipt disk failure");
+      expect(graphs.disclosures(scope, "Y").items.find(item => item.requestId === "write-failure")!.delivery).toBe("prepared");
+    } finally { db.close(); }
+  });
 });
