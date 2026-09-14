@@ -1,6 +1,7 @@
 import { bindRc2ProjectionContext } from './rc2-persistence.js';
 import { MaintenanceSessionContext,registerSessionContext } from './session-context.js';
 import { MaintenanceGraph, registerMaintenanceGraph } from './session-graph.js';
+import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-knowledge.js';
 import { installRc2LazyProjectionPersistence } from './rc2-lazy-persistence.js';
 import type { Context } from "@deepseek-ai/cordis";
 import { MaintenanceExtensionBridge, registerMaintenanceExtensionData } from "./extension-data.js";
@@ -104,6 +105,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       try {
         await extensions.connect();
         await registerMaintenanceExtensionData(ctx as unknown as Context,extensions);
+        registerMaintenanceKnowledge(ctx as unknown as Context,new MaintenanceKnowledge(connection,launchProfile.runId,ctx as unknown as Context));
         if(config.extensionPlugins.some(p=>p.namespace==="annotation-upstream")) {
           registerSessionContext(ctx as unknown as Context,new MaintenanceSessionContext(connection,launchProfile.runId,id=>runtime.flush(id)));
         }

@@ -1,4 +1,4 @@
-import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict } from "@linmu/dsh-session-contracts";
+import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict, NetworkPage, NetworkImpact } from "@linmu/dsh-session-contracts";
 import { sessionContextRecordSchema, type SessionContextCapture, type SessionContextRead, type SessionContextDirectory,
   type SessionContextPage } from "@linmu/dsh-session-contracts";
 import { z, type ZodType } from "zod";
@@ -618,6 +618,12 @@ class ApiClient {
 
   async listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]> {
     return this.request("/v1/extensions/panels",{},z.custom<ExtensionPanel[]>(),signal);
+  }
+  async queryKnowledgeNetwork(runId: string, input: Record<string, unknown>, signal?: AbortSignal): Promise<NetworkPage> {
+    return this.request('/v1/session-knowledge/network', this.jsonPost({ runId, input }), z.custom<NetworkPage>(), signal);
+  }
+  async queryKnowledgeImpact(runId: string, logicalSessionId: string, signal?: AbortSignal): Promise<NetworkImpact> {
+    return this.request('/v1/session-knowledge/impact', this.jsonPost({ runId, input: { logicalSessionId } }), z.custom<NetworkImpact>(), signal);
   }
   async listSessionContextTargets(runId: string, workspaceId?: string, after?: string, signal?: AbortSignal) {
     return this.request('/v1/session-context/directory',this.jsonPost({runId,workspaceId,after}),z.custom<SessionContextDirectory>(),signal);

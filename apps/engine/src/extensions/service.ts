@@ -34,6 +34,7 @@ export class ExtensionDataService {
   }
   enable(scope: ExtensionScope, enabled: boolean) { this.store.enable(extensionScopeSchema.parse(scope),enabled); return this.panels(); }
   list(query: ExtensionList) { return this.store.list(query); }
+  transaction<T>(action: () => T): T { return this.store.transaction(action); }
   private ready(scope: ExtensionScope): { adapter: ExtensionDataAdapter; panel: ExtensionPanel } {
     extensionScopeSchema.parse(scope);
     const panel = this.panels().find(p=>p.scope.instanceId===scope.instanceId&&p.scope.profileId===scope.profileId&&p.scope.namespace===scope.namespace);

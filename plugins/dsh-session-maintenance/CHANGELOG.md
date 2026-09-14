@@ -457,3 +457,8 @@
 - Add Launcher maintenance-backed Profile metadata without storing permanent session directories.
 
 The Alpha2 and RC2 end-to-end manual chain remains a user acceptance gate before this Generation is registered as stable.
+# 0.2.26-rc2.7 — 2026-09-14
+
+- Pair with Engine 0.1.33-rc2.8 and Annotation Core 0.3.12-rc2.6 for ThoughtDAG 0.4.14-rc2.1 on DSH 0.1.5-rc.2.
+- Publish the run-scoped graph directory, stable session resolution, bounded preview and extension storage bridge. Graph material captures preserve source versions; removed canvases can be listed and restored.
+- Keep graph layout in the optional ThoughtDAG extension domain and semantic upstream links in Annotation. No source-history snapshots or real-home migrations are introduced by this package preparation.

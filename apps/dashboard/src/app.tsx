@@ -13,6 +13,7 @@ import type { IntegrationApi } from "./integration-page.js";
 import type { WorkspaceSyncApi } from "./sync-page.js";
 import { SessionReader } from "./session-reader.js";
 import { DashboardAppearanceControl } from "./appearance.js";
+import { KnowledgeNetworkView, type KnowledgeNetworkApi } from './knowledge-network.js';
 
 const PlansPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).PlansPage }));
 const CheckpointsPage = lazy(async () => ({ default: (await import("./catalog-pages.js")).CheckpointsPage }));
@@ -28,7 +29,7 @@ const SyncPage = lazy(async () => ({ default: (await import("./sync-page.js")).S
 const ExtensionPage = lazy(async () => ({ default: (await import("./extension-page.js")).ExtensionPageView }));
 
 type View = "sessions" | "sync" | "checkpoints" | "storage" | "settings" | "extensions";
-export type DashboardApi = WorkbenchApi & OperationsApi & CatalogApi & RecentlyDeletedApi & RunCenterApi & AdapterPageApi & StorageGovernanceApi & IntegrationApi & WorkspaceSyncApi & ExtensionPageApi;
+export type DashboardApi = WorkbenchApi & OperationsApi & CatalogApi & RecentlyDeletedApi & RunCenterApi & AdapterPageApi & StorageGovernanceApi & IntegrationApi & WorkspaceSyncApi & ExtensionPageApi & KnowledgeNetworkApi;
 
 /** Advanced tools mount only when opened, so reading never depends on them. */
 function Advanced(props: { readonly title: string; readonly children: ReactNode }) {
@@ -59,7 +60,7 @@ export function DashboardApp(props: { readonly api: DashboardApi; readonly initi
       {view === "sync" ? <div key={`sync-${request}`} className="page-stack"><SyncPage api={props.api} /><Advanced title="导入与运行进度"><RunCenterPage api={props.api} /></Advanced><Advanced title="高级：历史同步计划"><PlansPage api={props.api} /></Advanced></div> : null}
       {view === "checkpoints" ? <div key={`restore-${request}`} className="page-stack"><div className="dsm-page-heading"><div><h2>恢复点</h2><p>找回最近删除的会话，或查看已有保护记录支持的恢复方式。</p></div></div><RecentlyDeletedPage api={props.api} onOpenSession={openSession} onRestored={() => setRestoredRevision((value) => value + 1)} /><CheckpointsPage api={props.api} /><Advanced title="高级：历史事务与恢复"><TransactionsPage api={props.api} /></Advanced></div> : null}
       {view === "storage" ? <StorageGovernancePage key={request} api={props.api} /> : null}
-      {view === "extensions" ? <ExtensionPage key={request} api={props.api} onOpenSession={openSession} /> : null}
+      {view === "extensions" ? <div className="page-stack" key={request}><KnowledgeNetworkView api={props.api} onOpenSession={openSession} /><ExtensionPage api={props.api} onOpenSession={openSession} /></div> : null}
       {view === "settings" ? <div key={`settings-${request}`} className="page-stack"><div className="dsm-page-heading"><div><h2>设置</h2><p>管理本机接入与维护偏好。</p></div></div><IntegrationPage api={props.api} /><Advanced title="维护偏好"><SettingsPage api={props.api} /></Advanced><Advanced title="高级：诊断"><DiagnosticsPage api={props.api} /></Advanced><Advanced title="高级：适配器详情"><AdapterPage api={props.api} /></Advanced></div> : null}
     </Suspense>
   </DashboardShell>;

@@ -74,7 +74,7 @@ describe("RC2 managed graph navigation", () => {
         selection: { sourceVersionId: first.value.sourceVersionId, sourceAnchorId: "missing" } })).status).toBe(409);
       const scope = { instanceId: request.instanceId, profileId: "web", namespace: "annotation-upstream" };
       f.engine.extensions!.connect({ instanceId: scope.instanceId, profileId: scope.profileId,
-        plugins: [{ namespace: scope.namespace, pluginVersion: "0.3.12-rc2.5", writerId: "dsh-annotation-core" }] });
+        plugins: [{ namespace: scope.namespace, pluginVersion: "0.3.12-rc2.6", writerId: "dsh-annotation-core" }] });
       const reference = await f.engine.sessionContext.capture({ runId: run.runId, sourceNativeSessionId: "source-native",
         targetNativeSessionId: "target-native", operationId: "graph-ref", anchorId: "reply-one", selectedText: "問" });
       await f.engine.sessionContext.bind(run.runId, "target-native", reference.referenceId, "actual-user");

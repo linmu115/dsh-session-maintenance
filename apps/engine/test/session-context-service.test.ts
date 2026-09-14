@@ -43,7 +43,7 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       const incompatible=await post('directory',{});
       expect(incompatible.status).toBe(409);expect(JSON.stringify(incompatible.value)).toContain('版本不兼容');
       expect(JSON.stringify(incompatible.value)).toContain('0.3.12-rc2.999');
-      for(const version of ['0.3.12-rc2.1','0.3.12-rc2.2','0.3.12-rc2.3','0.3.12-rc2.4','0.3.12-rc2.5']){
+      for(const version of ['0.3.12-rc2.1','0.3.12-rc2.2','0.3.12-rc2.3','0.3.12-rc2.4','0.3.12-rc2.5','0.3.12-rc2.6']){
         connect(version);
         expect((await post('directory',{})).status,version).toBe(200);
       }
