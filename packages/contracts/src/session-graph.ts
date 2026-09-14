@@ -41,7 +41,10 @@ const nodeData = z.strictObject({
   kind: z.enum(["session", "sticker", "material", "note", "placeholder"]), label: z.string().max(500),
   logicalSessionId: id.optional(), namespace: id.optional(), objectId: id.optional(), referenceId: id.optional(),
   excerpt: z.string().max(4000).optional(), sourceVersionId: id.optional(), sourceAnchorId: id.optional(),
+  creationWorkspaceId: id.optional(),
 }).superRefine((value, ctx) => {
+  if (value.creationWorkspaceId && value.kind !== "placeholder")
+    ctx.addIssue({ code: "custom", message: "工作区创建意图仅适用于未绑定空卡片" });
   if (value.kind === "session" && !value.logicalSessionId)
     ctx.addIssue({ code: "custom", message: "会话节点必须引用逻辑会话身份" });
   if ((value.kind === "sticker" || value.kind === "note") && (!value.namespace || !value.objectId))

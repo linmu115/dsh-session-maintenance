@@ -45,3 +45,5 @@ contracts 和 local-api-client 构建通过；Engine、Dashboard、Maintenance �
 交叉核对 Annotation `3b92984` 与本轮 SessionContext 钩子时，确认读取发生在 ThoughtDAG 停用期间、确认交付前重新启用时，原先的 settle 会因没有日志对象而报错；旧明细已裁剪时迟到确认也会永久失败。图服务现在返回明确的 `recorded:false` 和 `not-recorded-or-trimmed`／`extension-unavailable` 原因，不创建虚假回执，不阻止合法独立读取或初始引用绑定。已有回执身份不唯一、失败回执复活和真实存储写入错误仍然拒绝；记录存在且更新成功才返回 `recorded:true`。Context 服务负责透传此结果并继续拒绝已撤销引用的 returned 确认。
 
 新增合成测试覆盖无日志对象、旧记录裁剪、合法确认、身份歧义和存储失败不被吞掉。图域与真实 SessionContext 回归共 10 项通过，Engine 类型检查通过。只读来源预览继续不生成 AI 已读回执；现有初始准备/已交付区分和单调收紧预算未发现本轮引入的倒退。
+
+占位节点另允许保存 `creationWorkspaceId`，仅适用于 placeholder。界面可在真实创建请求前保存已选工作区，丢失创建响应后的重试继续使用同一工作区；节点绑定后清除该临时意图。schema 测试验证占位节点可恢复此字段、已绑定节点不能保留该意图。

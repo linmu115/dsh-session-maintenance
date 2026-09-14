@@ -17,6 +17,11 @@ describe("managed graph schema", () => {
       { id: "b", position: { x: 1, y: 1 }, data: { kind: "placeholder", label: "接收" } },
     ], edges: [{ id: "ab", source: "a", target: "b", data: { kind: "pending" } }] };
     expect(() => thoughtDagAdapter.validate({ ...content(body), schemaVersion: 2 })).not.toThrow();
+    (body.nodes[0]!.data as any).creationWorkspaceId = "chosen-workspace";
+    expect(() => thoughtDagAdapter.validate({ ...content(body), schemaVersion: 2 })).not.toThrow();
+    const bound = structuredClone(body);
+    Object.assign(bound.nodes[0]!.data, { kind: "session", logicalSessionId: "bound-session" });
+    expect(() => thoughtDagAdapter.validate({ ...content(bound), schemaVersion: 2 })).toThrow("工作区创建意图");
     expect(() => thoughtDagAdapter.validate(content(body))).toThrow();
     expect(() => thoughtDagAdapter.validate({ ...content({ nodes: [], edges: [] }), schemaVersion: 2 })).toThrow();
     (body.edges[0]!.data as any).cutoffEventId = "invented";
