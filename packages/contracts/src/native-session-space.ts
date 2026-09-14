@@ -20,6 +20,11 @@ export interface NativeSessionCodec {
   readonly formatId: string;
   /** Publish and verify immutable resources before the owning session can become ready. */
   prepareResources?(payload: JsonValue, persistenceRoot: string): Promise<void>;
+  /** Metadata only; must never embed attachment bytes or session text. */
+  resourceManifest?(payload: JsonValue): JsonValue;
+  /** Verify retained immutable resources without reading the owning session body.
+   * Return false only for missing resources which prepareResources can repair. */
+  verifyResources?(manifest: JsonValue, persistenceRoot: string): Promise<boolean>;
   describe(metadata: JsonValue, persistenceRoot: string): Promise<NativeSessionFileDescription>;
   encode(payload: JsonValue, description: NativeSessionFileDescription): Uint8Array;
   /** Re-read staged bytes through the format decoder before atomic publication. */

@@ -8,7 +8,8 @@ import { ContextReadBudgets, readContextPage } from "./session-context-reader.js
 
 const unavailable = (message: string) => new ExtensionDataError("CONTEXT_UNAVAILABLE",message,409);
 export class SessionContextService {
-  private readonly budgets = new ContextReadBudgets();
+  private budgetStore?: ContextReadBudgets;
+  private get budgets(){return this.budgetStore??=new ContextReadBudgets(this.engine.repository.database);}
   constructor(private readonly engine: SessionMaintenanceEngine) {}
   private async access(runId: string) {
     const run = await this.engine.projectionRunRepository.getProjectionRun(runId as RunId);
@@ -125,7 +126,10 @@ export class SessionContextService {
   }
   async read(request: SessionContextRead) {
     const q=sessionContextReadSchema.parse(request),a=await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
-    const reservation=this.budgets.reserve(JSON.stringify([a.scope,a.record.targetSessionId,q.executionId]),q.totalBytes,q.maxBytes);
+    this.budgets.cleanup();
+    let reservation:ReturnType<ContextReadBudgets['reserve']>;
+    try{reservation=this.budgets.reserve(JSON.stringify([a.run.id,a.record.targetSessionId,q.executionId]),q.totalBytes,q.maxBytes,a.run.id);}
+    catch(error){throw unavailable(error instanceof Error?error.message:'本轮引用读取不可用');}
     if(reservation.bytes<1024){reservation.settle(0);throw unavailable("本轮引用读取预算已用完，请依据已读取材料回答");}
     let settled=false;
     try {
@@ -145,9 +149,15 @@ export class SessionContextService {
       await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
       // Reserve enough space for remainingBytes digits; the complete serialized return is charged.
       page.remainingBytes=Math.max(0,q.totalBytes);const bytes=Buffer.byteLength(JSON.stringify(page));
-      page.remainingBytes=reservation.settle(bytes);settled=true;
+      settled=true;page.remainingBytes=reservation.settle(bytes);
       page.budgetExhausted=page.remainingBytes<1024;
       return page;
-    } finally {if(!settled)reservation.settle(0);}
+    } finally {if(!settled)try{reservation.settle(0);}catch{/* A completed execution already discarded this reservation. */}}
   }
+  async endExecution(runId:string,targetNativeSessionId:string,executionId:string){
+    const a=await this.access(runId),target=this.identity(runId,targetNativeSessionId);
+    this.budgets.end(JSON.stringify([a.run.id,target.logicalSessionId,executionId]),a.run.id);
+    this.budgets.cleanup();return {ended:true};
+  }
+  cleanupExecutions(){this.budgets.cleanup();}
 }

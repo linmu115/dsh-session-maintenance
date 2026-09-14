@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from "node:util";
 import type { DshSessionAdapterV1, JsonValue, NativeSessionCodec, ProjectionRun, ProjectionRunRepository } from "@linmu/dsh-session-contracts";
 import { JsonProjectionDirectory } from "./materialize.js";
 
-interface FileState { readonly digest: string | null; readonly path: string; readonly identity: string; }
+interface FileState { readonly digest: string | null; readonly path: string; readonly identity: string; readonly resources?: JsonValue; }
 interface SpaceManifest {
   readonly schemaVersion: 1;
   readonly key: string;
@@ -141,9 +141,6 @@ export class NativeSessionSpace {
     const desired = new Set<string>();
     const normalized = [];
     for (const item of catalog.sessions) {
-      // Resource verification also runs for unchanged native files: a missing immutable
-      // attachment must be repaired or refused before a retained projection is ready.
-      if (this.codec.prepareResources) await this.codec.prepareResources(await directory.readSession(item.nativeSessionId), this.reference.root);
       const description = await this.codec.describe(item.payload, this.reference.root);
       const path = await ownedPath(this.reference.root, description.relativePath);
       if (desired.has(path.toLowerCase())) throw new TypeError("Native artifact path collision");
@@ -154,9 +151,17 @@ export class NativeSessionSpace {
       if (prior && prior.path === description.relativePath && prior.identity !== actual) throw new Error("Native file changed after checkpoint");
       if (actual !== null && (!prior || prior.path !== description.relativePath)) throw new Error("Refusing to overwrite an unowned native file");
       if (prior?.digest === digest && prior.path === description.relativePath && actual !== null) {
-        next[item.nativeSessionId] = prior;
+        let resources=prior.resources;
+        if(this.codec.prepareResources&&!(resources!==undefined&&this.codec.verifyResources&&await this.codec.verifyResources(resources,this.reference.root))){
+          const payload=await directory.readSession(item.nativeSessionId);
+          await this.codec.prepareResources(payload,this.reference.root);
+          resources=this.codec.resourceManifest?.(payload);
+        }
+        next[item.nativeSessionId] = {...prior,...(resources===undefined?{}:{resources})};
       } else {
         const payload = await directory.readSession(item.nativeSessionId);
+        if(this.codec.prepareResources)await this.codec.prepareResources(payload,this.reference.root);
+        const resources=this.codec.resourceManifest?.(payload);
         const bytes = this.codec.encode(payload, description);
         const staged = `${randomUUID()}.native`;
         await durableWrite(join(this.control, staged), bytes);
@@ -164,7 +169,7 @@ export class NativeSessionSpace {
         if (hash(reread) !== hash(bytes)) throw new Error("Staged native bytes changed before publication");
         this.codec.verifyEncoded?.(reread, payload, description);
         replacements.push({ path: description.relativePath, staged, hash: hash(bytes), previous: actual });
-        next[item.nativeSessionId] = { digest, path: description.relativePath, identity: "pending" };
+        next[item.nativeSessionId] = { digest, path: description.relativePath, identity: "pending",...(resources===undefined?{}:{resources}) };
       }
       normalized.push({ ...item, payload: { ...obj(item.payload), header: description.header } });
     }
@@ -256,10 +261,12 @@ export class NativeSessionSpace {
     for (const artifact of artifacts) {
       const item = metadata.get(artifact.nativeSessionId);
       let digest: string | null = null;
+      let resources: JsonValue | undefined;
       if (!item) {
         if (!this.codec.isPreparationOnly(artifact.events)) throw new Error(`Unregistered native history requires recovery: ${artifact.nativeSessionId}`);
       } else {
         const payload = obj(await directory.readSession(artifact.nativeSessionId));
+        resources=this.codec.resourceManifest?.(payload);
         const events = payload.events as readonly JsonValue[];
         const expected = (await this.codec.describe(item.payload, this.reference.root)).header;
         const originalHeader = { ...obj(payload.header!), delegationDepth: obj(payload.header!).delegationDepth ?? 0 };
@@ -275,7 +282,7 @@ export class NativeSessionSpace {
         metadata.delete(artifact.nativeSessionId);
       }
       const path = await ownedPath(this.reference.root, artifact.relativePath);
-      files[artifact.nativeSessionId] = { digest, path: artifact.relativePath, identity: (await identity(path))! };
+      files[artifact.nativeSessionId] = { digest, path: artifact.relativePath, identity: (await identity(path))!,...(resources===undefined?{}:{resources}) };
     }
     if (metadata.size !== 0) throw new Error("Native checkpoint is missing committed sessions");
     // Validate the pinned run BEFORE refreshing its shared base, which can advance

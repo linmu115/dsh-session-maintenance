@@ -80,7 +80,10 @@ export class SessionKnowledgeService {
     const objectId='migration-'+hash(q.vaultId+'\0'+q.nativeSessionId).slice(0,40);
     let previous:ExtensionObject|undefined;
     try{previous=extensions.get(scope,objectId).object;}catch(e){if(!(e instanceof ExtensionDataError)||e.code!=='EXTENSION_NOT_FOUND')throw e;}
-    if(previous){const old=stickerMigrationSchema.parse(previous.content.body);if(old.sourceDigest!==q.sourceDigest||old.migrationId!==q.migrationId||old.logicalSessionId!==identity.logicalSessionId)throw fail('MIGRATION_CONFLICT','旧对象与迁移回执不一致，请先解决冲突');if(old.phase==='active')return {object:previous,mappings:old.mappings};}
+    if(previous){const old=stickerMigrationSchema.parse(previous.content.body);if(old.sourceDigest!==q.sourceDigest||old.sourceRevision!==q.sourceRevision||old.migrationId!==q.migrationId||old.logicalSessionId!==identity.logicalSessionId)throw fail('MIGRATION_CONFLICT','旧对象与迁移回执不一致，请先解决冲突');
+      const requestedIds=q.stickers.map(item=>item.legacyId).sort();
+      if(stable(old.mappings.map(item=>item.legacyId).sort())!==stable(requestedIds))throw fail('MIGRATION_CONFLICT','迁移对象集合与暂存回执不一致，请重试完整迁移');
+      if(old.phase==='active')return {object:previous,mappings:old.mappings};}
     if(new Set(q.stickers.map(s=>s.legacyId)).size!==q.stickers.length)throw fail('MIGRATION_CONFLICT','旧对象身份重复');
     const mappings=q.stickers.map(s=>({legacyId:s.legacyId,objectId:'legacy-'+hash(q.vaultId+'\0'+identity.logicalSessionId+'\0'+s.legacyId).slice(0,40)}));
     if(q.phase==='activate'&&!previous)throw fail('MIGRATION_NOT_STAGED','必须先完成导入与回执核对');
@@ -140,23 +143,46 @@ export class SessionKnowledgeService {
   }
   async network(runId:string,input:unknown):Promise<NetworkPage> {
     const q=networkQuerySchema.parse(input),{scope,extensions}=await this.context(runId),db=this.engine.repository.database;
+    if(q.logicalSessionId)await this.engine.sessionGraph.resolve(runId,{logicalSessionId:q.logicalSessionId});
     const ready = new Set(extensions.panels().filter(p => p.scope.instanceId === scope.instanceId && p.scope.profileId === scope.profileId && p.status === 'ready').map(p => p.scope.namespace));
     const rows=db.prepare(`WITH items AS (
-      SELECT 'session:'||s.id key,'session' kind,s.display_title title,json_array(s.id) ids,NULL namespace,NULL objectId,NULL revision,0 deleted,0 conflicts,1 available
+      SELECT 'session:'||s.id key,'session' kind,s.display_title title,json_array(s.id) ids,NULL namespace,NULL objectId,NULL revision,0 deleted,0 conflicts,NULL reference_json,s.display_title search_text
       FROM projection_sessions ps JOIN logical_sessions s ON s.id=ps.logical_session_id WHERE ps.run_id=? AND ${visible}
       UNION ALL
       SELECT o.namespace||':'||o.object_id key,CASE o.namespace WHEN 'thoughtdag' THEN 'canvas' WHEN 'stickers' THEN 'sticker' ELSE 'note' END kind,o.title,
         (SELECT json_group_array(json_extract(r.value,'$.logicalSessionId')) FROM json_each(o.content_json,'$.references') r) ids,
         o.namespace,o.object_id,o.revision,o.deleted,
         (SELECT count(*) FROM extension_conflicts c WHERE c.instance_id=o.instance_id AND c.profile_id=o.profile_id AND c.namespace=o.namespace AND c.object_id=o.object_id),
-        COALESCE((SELECT configured*enabled FROM extension_connections c WHERE c.instance_id=o.instance_id AND c.profile_id=o.profile_id AND c.namespace=o.namespace),0)
+        NULL,o.title
       FROM extension_objects o WHERE o.instance_id=? AND o.profile_id=? AND o.namespace IN ('thoughtdag','stickers','obsidian-links')
       AND COALESCE(json_extract(o.content_json,'$.body.kind'),'')!='migration'
       AND ${activeImport}
       AND NOT EXISTS(SELECT 1 FROM json_each(o.content_json,'$.references') r WHERE NOT EXISTS(SELECT 1 FROM projection_sessions ps JOIN logical_sessions s ON s.id=ps.logical_session_id WHERE ps.run_id=? AND ${visible} AND ps.logical_session_id=json_extract(r.value,'$.logicalSessionId')))
-    ) SELECT * FROM items WHERE key>? AND (?='all' OR kind=?) AND (?=1 OR deleted=0) AND instr(lower(title),lower(?))>0 ORDER BY key LIMIT 51`)
-      .all(runId,scope.instanceId,scope.profileId,runId,q.after??'',q.kind,q.kind,q.includeDeleted?1:0,q.query) as unknown as Array<{key:string;kind:'session'|'canvas'|'sticker'|'note';title:string;ids:string;namespace:string|null;objectId:string|null;revision:number|null;deleted:number;conflicts:number;available:number}>;
-    return {items:rows.slice(0,50).map(r=>({key:r.key,kind:r.kind,title:r.title.slice(0,500),logicalSessionIds:JSON.parse(r.ids),...(r.namespace?{namespace:r.namespace,objectId:r.objectId!,revision:r.revision!}:{}),deleted:!!r.deleted,conflicts:r.conflicts,available:r.kind==='session'||ready.has(r.namespace!)})),nextCursor:rows.length>50?rows[49]!.key:null};
+      UNION ALL
+      SELECT 'annotation-upstream:'||o.object_id,'reference',s.display_title||' → '||t.display_title,
+        json_array(s.id,t.id),o.namespace,o.object_id,o.revision,o.deleted,
+        (SELECT count(*) FROM extension_conflicts c WHERE c.instance_id=o.instance_id AND c.profile_id=o.profile_id AND c.namespace=o.namespace AND c.object_id=o.object_id),
+        json_object('referenceId',json_extract(o.content_json,'$.body.referenceId'),'sourceSessionId',s.id,'targetSessionId',t.id,
+          'sourceVersionId',json_extract(o.content_json,'$.body.sourceVersionId'),'sourceAnchorId',json_extract(o.content_json,'$.body.sourceAnchorId'),
+          'state',json_extract(o.content_json,'$.body.state'),'sourceTitle',substr(s.display_title,1,500),'targetTitle',substr(t.display_title,1,500)),
+        s.display_title||' '||t.display_title||' '||o.object_id||' '||COALESCE(json_extract(o.content_json,'$.body.selectedText'),'')
+      FROM extension_objects o JOIN logical_sessions s ON s.id=json_extract(o.content_json,'$.body.sourceSessionId')
+        JOIN logical_sessions t ON t.id=json_extract(o.content_json,'$.body.targetSessionId')
+      WHERE o.instance_id=? AND o.profile_id=? AND o.namespace='annotation-upstream'
+        AND json_extract(o.content_json,'$.body.state') IN ('sent','revoked')
+        AND s.tombstoned_at IS NULL AND t.tombstoned_at IS NULL
+        AND EXISTS(SELECT 1 FROM projection_sessions ps WHERE ps.run_id=? AND ps.logical_session_id=s.id AND ps.mode NOT IN ('hidden','recovery-only'))
+        AND EXISTS(SELECT 1 FROM projection_sessions ps WHERE ps.run_id=? AND ps.logical_session_id=t.id AND ps.mode NOT IN ('hidden','recovery-only'))
+    ) SELECT * FROM items WHERE key>? AND (?='all' OR kind=?) AND (?=1 OR deleted=0) AND instr(lower(search_text),lower(?))>0
+      AND (? IS NULL OR EXISTS(SELECT 1 FROM json_each(ids) member WHERE member.value=?))
+      AND (?='all' OR (kind='reference' AND CASE ? WHEN 'incoming' THEN json_extract(reference_json,'$.targetSessionId') ELSE json_extract(reference_json,'$.sourceSessionId') END=?))
+      ORDER BY key LIMIT 51`)
+      .all(runId,scope.instanceId,scope.profileId,runId,scope.instanceId,scope.profileId,runId,runId,
+        q.after??'',q.kind,q.kind,q.includeDeleted?1:0,q.query,q.logicalSessionId??null,q.logicalSessionId??null,q.direction,q.direction,q.logicalSessionId??null) as unknown as Array<{key:string;kind:NetworkPage['items'][number]['kind'];title:string;ids:string;namespace:string|null;objectId:string|null;revision:number|null;deleted:number;conflicts:number;reference_json:string|null}>;
+    return {items:rows.slice(0,50).map(r=>{const reference=r.reference_json?JSON.parse(r.reference_json) as NonNullable<NetworkPage['items'][number]['reference']>:undefined;return {
+      key:r.key,kind:r.kind,title:r.title.slice(0,500),logicalSessionIds:JSON.parse(r.ids),...(r.namespace?{namespace:r.namespace,objectId:r.objectId!,revision:r.revision!}:{}),
+      deleted:!!r.deleted,conflicts:r.conflicts,available:r.kind==='session'||(ready.has(r.namespace!)&&(!reference||reference.state==='sent')),
+      ...(reference?{reference}:{})};}),nextCursor:rows.length>50?rows[49]!.key:null};
   }
   async impact(runId:string,input:unknown):Promise<NetworkImpact> {
     const q=networkImpactSchema.parse(input),{scope}=await this.context(runId);

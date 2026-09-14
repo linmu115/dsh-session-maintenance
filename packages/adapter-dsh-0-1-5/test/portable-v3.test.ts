@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION as TOPOLOGY } from "@linmu/dsh-session-contracts";
 import { materializePortableV3, restorePortableCanonical } from "../src/portable-v3.js";
-import { preparePortableResources, validatePortableAttachments } from "../src/portable-resources.js";
+import { preparePortableResources, validatePortableAttachments, portableResourceManifest, verifyPortableResources } from "../src/portable-resources.js";
 import { materializeV3 } from "../src/materialize.js";
 import { visibleContext } from "../src/official.js";
 import { v3NativeSessionCodec } from "../src/native-session-codec.js";
@@ -13,6 +13,22 @@ const png="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCA
 function row(kind:string,sequence:number,content:unknown,step=0):any {return {schemaVersion:1,id:`original-${sequence}`,logicalSessionId:"synthetic",sequence,kind,role:kind==="user-message"?"user":"assistant",content,contentDigest:`original-digest-${sequence}`,source:{platform:"codex",instanceId:"codex-test",sessionId:"source-test",eventId:`source-${sequence}`,cursor:String(sequence)},rawPayload:{original:true},extensions:{[TOPOLOGY]:{schemaVersion:1,turnId:"turn-0",turnOrdinal:0,stepId:kind==="user-message"?null:`step-${step}`,stepOrdinal:kind==="user-message"?null:step,phase:kind==="user-message"?"user":kind==="assistant-message"?"assistant":kind,inference:"derived"}}};}
 function fixture(){return [row("user-message",0,{text:"input",attachments:[{name:"pixel.png",source:`data:image/png;base64,${png}`}]}),row("reasoning",1,{text:"reason",attachments:[]}),row("tool-call",2,{callId:"exact-call",name:"example",arguments:'{"b": 1,"A":2}',protocol:"synthetic"}),row("other",3,{schemaVersion:1,type:"other",reason:"unsupported-source-event",sourceKind:"codex/example",label:"retained",summary:"record between call and result",evidenceRef:null}),row("tool-result",4,{callId:"exact-call",name:"example",outputText:"unchanged\r\nresult",protocol:"synthetic"}),row("assistant-message",5,{id:"exact-assistant",text:"final",attachments:[]},1)];}
 describe("dedicated canonical V3 projection",()=>{
+ it('verifies retained resource identities without session bodies and distinguishes missing from corrupt assets',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'dsh-portable-manifest-fixture-'));
+  try{
+   const sessions=join(root,'native-spaces','a'.repeat(64),'sessions');await mkdir(sessions,{recursive:true});
+   const material=materializePortableV3(header,[row('user-message',0,{text:'private session text',attachments:[{name:'pixel.png',source:`data:image/png;base64,${png}`},{name:'data.bin',source:'data:application/octet-stream;base64,AAECAw=='}]})]);
+   const payload={...material.artifact,portableAttachments:material.attachments} as any;
+   const manifest=portableResourceManifest(payload);expect(JSON.stringify(manifest)).not.toContain(png);expect(JSON.stringify(manifest)).not.toContain('private session text');
+   expect(v3NativeSessionCodec.resourceManifest).toBe(portableResourceManifest);expect(v3NativeSessionCodec.verifyResources).toBe(verifyPortableResources);
+   expect(await verifyPortableResources(manifest,sessions)).toBe(false);
+   await preparePortableResources(payload,sessions);expect(await verifyPortableResources(manifest,sessions)).toBe(true);
+   const item=material.attachments[1]!,digest=String(item.ref.attachmentId).slice(7),file=join(sessions,'..','attachments','v1','files',digest.slice(0,2),digest,'data.bin');
+   await rm(file);expect(await verifyPortableResources(manifest,sessions)).toBe(false);
+   await preparePortableResources(payload,sessions);expect(await verifyPortableResources(manifest,sessions)).toBe(true);
+   await writeFile(file,'corrupt');await expect(verifyPortableResources(manifest,sessions)).rejects.toThrow(/differs/);
+  }finally{await rm(root,{recursive:true,force:true});}
+ });
  it("keeps ordered image/file content and archives log-only reasoning without model exposure",()=>{
   const source=[row("user-message",0,{text:"body",attachments:[{name:"one.png",source:`data:image/png;base64,${png}`},{name:"two.bin",source:"data:application/octet-stream;base64,AAECAw=="},{name:"three.png",source:`data:image/png;base64,${png}`}]}),row("reasoning",1,{text:"private reasoning sentinel"}),row("assistant-message",2,{text:"visible answer"})];
   const result=materializePortableV3(header,source),context=visibleContext(result.artifact) as any[];

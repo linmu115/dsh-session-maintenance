@@ -8,11 +8,12 @@ import { expectedV3ArtifactPath } from "./layout.js";
 import { validateV3, sessionFormatCatalog } from "./official.js";
 import { inspectV3NativeSpace, decodeGeneration } from "./generation-reader.js";
 import type { SessionFormatArtifact } from "@deepseek-ai/dsh-session-format";
-import { preparePortableResources, validatePortableAttachments } from "./portable-resources.js";
+import { preparePortableResources, validatePortableAttachments, portableResourceManifest, verifyPortableResources } from "./portable-resources.js";
 export function isV3PreparationEvents(events:readonly unknown[]):boolean{return events.every(value=>{const e=record(value);return ["session/end-seed","permission/preset","sandbox/mode","approval/policy"].includes(String(e.type));});}
 function frame(rows:readonly unknown[]):Buffer{return zstdCompressSync(Buffer.from(rows.map(r=>JSON.stringify(r)+"\n").join("")),{params:{[constants.ZSTD_c_checksumFlag]:1}});}
 export const v3NativeSessionCodec:NativeSessionCodec={formatId:FORMAT_ID,
  prepareResources:preparePortableResources,
+ resourceManifest:portableResourceManifest,verifyResources:verifyPortableResources,
  async describe(metadata,root){const payload=record(metadata),raw=record(payload.header),header=parseV3LogicalSessionHeader(raw,String(raw.id));let cwd: string|undefined;
  if(typeof header.cwd==="string"){try{if((await stat(header.cwd)).isDirectory())cwd=resolve(header.cwd);}catch(error){if(!["ENOENT","ENOTDIR","EPERM","EACCES"].includes((error as NodeJS.ErrnoException).code??""))throw error;}}
  if(cwd===undefined){cwd=join(dirname(root),RUNTIME_MANAGED_PROJECT_DIRECTORY,runtimeManagedProjectSegment(typeof payload.projectId==="string"?payload.projectId:null));await mkdir(cwd,{recursive:true});}

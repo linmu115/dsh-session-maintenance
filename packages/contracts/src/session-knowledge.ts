@@ -7,10 +7,18 @@ export const noteIdentitySchema = z.strictObject({
   vaultId: id, noteId: id, notePath: z.string().min(1).max(2048),
   blockId: id.optional(), heading: z.string().max(500).optional(),
 });
+export const noteSelectionSchema = z.strictObject({
+  selectedText: z.string().min(1).max(16000),
+  selectedTextHash: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  occurrence: z.number().int().nonnegative(),
+});
 export const sessionStickerSchema = z.strictObject({
   kind: z.literal('session'), logicalSessionId: id,
   source: z.strictObject({ logicalSessionId: id, sourceVersionId: id, sourceAnchorId: id, referenceId: id.optional() }).optional(),
   note: noteIdentitySchema.optional(),
+  noteSelection: noteSelectionSchema.optional(),
+}).superRefine((value, context) => {
+  if (value.noteSelection && !value.note) context.addIssue({code:'custom',message:'笔记选段必须包含稳定笔记身份'});
 });
 export const legacyStickerSchema = z.strictObject({
   kind: z.literal('annotation'), logicalSessionId: id, legacyStickerId: id,
@@ -45,11 +53,16 @@ export const knowledgeMigrationSchema = z.strictObject({
 });
 export const networkQuerySchema = z.strictObject({
   query: z.string().max(200).default(''), after: z.string().max(2048).optional(),
-  kind: z.enum(['all', 'session', 'canvas', 'sticker', 'note']).default('all'),
+  kind: z.enum(['all', 'session', 'canvas', 'sticker', 'note', 'reference']).default('all'),
   includeDeleted: z.boolean().default(false),
+  logicalSessionId: id.optional(),
+  direction: z.enum(['all','incoming','outgoing']).default('all'),
+}).superRefine((value,context)=>{
+  if(value.direction!=='all'&&!value.logicalSessionId)context.addIssue({code:'custom',message:'按来源或去向查询需要选择会话'});
 });
 export const networkImpactSchema = z.strictObject({ logicalSessionId: id, depth: z.number().int().min(1).max(8).default(4) });
 export type NoteIdentity = z.infer<typeof noteIdentitySchema>;
+export type NoteSelection = z.infer<typeof noteSelectionSchema>;
 export type SessionSticker = z.infer<typeof sessionStickerSchema>;
 export type KnowledgeLink = z.infer<typeof knowledgeLinkSchema>;
 export type KnowledgeWrite = z.input<typeof knowledgeWriteSchema>;
@@ -57,9 +70,11 @@ export type KnowledgeList = z.input<typeof knowledgeListSchema>;
 export type KnowledgeMigration = z.input<typeof knowledgeMigrationSchema>;
 export type KnowledgePage = { items: ExtensionObject[]; nextCursor: string | null };
 export interface NetworkItem {
-  key: string; kind: 'session' | 'canvas' | 'sticker' | 'note'; title: string;
+  key: string; kind: 'session' | 'canvas' | 'sticker' | 'note' | 'reference'; title: string;
   logicalSessionIds: string[]; namespace?: string; objectId?: string; revision?: number;
   deleted: boolean; conflicts: number; available: boolean;
+  reference?: {referenceId:string;sourceSessionId:string;targetSessionId:string;sourceVersionId:string;
+    sourceAnchorId:string;state:'sent'|'revoked';sourceTitle:string;targetTitle:string};
 }
 export interface NetworkPage { items: NetworkItem[]; nextCursor: string | null }
 export interface NetworkImpact {

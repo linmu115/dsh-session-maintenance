@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JsonValue, ProjectionRun, ProjectionRunRepository } from "@linmu/dsh-session-contracts";
 import { adapter, rc1NativeSessionCodec } from "../../adapter-dsh-rc1/src/index.js";
 import { JsonProjectionDirectory, NativeSessionSpace, nativeSpaceReference } from "../src/index.js";
+import { preparePortableResources, portableResourceManifest, verifyPortableResources } from '../../adapter-dsh-0-1-5/src/portable-resources.js';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -37,6 +38,20 @@ async function fixture() {
 }
 
 describe("persistent native session space", () => {
+  it('uses RC2 resource receipts on a warm start and only reloads a body to repair missing resources',async()=>{
+    const f=await fixture(),first=run('receipt-first'),data={a:payload('a'),b:payload('b')};await f.setup(first,data);
+    const verifyResources=vi.fn(verifyPortableResources),prepareResources=vi.fn(preparePortableResources);
+    const withResources={...adapter,nativeSessionCodec:{...rc1NativeSessionCodec,prepareResources,resourceManifest:portableResourceManifest,verifyResources}};
+    const initial=new NativeSessionSpace(f.root,first,withResources,f.repository);await initial.prepare(f.directory);
+    await initial.checkpoint(f.directory);f.states.set(first.id,{...first,state:'closed'});
+    const next=run('receipt-next');await f.setup(next,data);const read=vi.spyOn(f.directory,'readSession');prepareResources.mockClear();
+    const retained=new NativeSessionSpace(f.root,next,withResources,f.repository);await retained.prepare(f.directory);
+    expect(read).not.toHaveBeenCalled();expect(prepareResources).not.toHaveBeenCalled();expect(verifyResources).toHaveBeenCalledTimes(2);
+    await retained.checkpoint(f.directory);f.states.set(next.id,{...next,state:'closed'});
+    const repair=run('receipt-repair');await f.setup(repair,data);read.mockClear();prepareResources.mockClear();verifyResources.mockResolvedValueOnce(false);
+    await new NativeSessionSpace(f.root,repair,withResources,f.repository).prepare(f.directory);
+    expect(read.mock.calls.map(call=>call[0])).toEqual(['a']);expect(prepareResources).toHaveBeenCalledTimes(1);
+  });
   it("checks adapter resources before publishing both fresh and retained native files", async () => {
     const f=await fixture(),first=run("resources-first"),data={a:payload("a")};await f.setup(first,data);
     const prepareResources=vi.fn(async()=>{}),codec={...rc1NativeSessionCodec,prepareResources},withResources={...adapter,nativeSessionCodec:codec};

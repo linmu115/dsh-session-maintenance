@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createEngineFixture, hashTree } from './helpers.js';
-import { REQUIRED_CAPABILITIES } from '@linmu/dsh-session-adapter-0-1-5';
+import { REQUIRED_CAPABILITIES, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { JsonProjectionDirectory, projectionRootFor } from '@linmu/dsh-session-projection-lifecycle';
 import { contextHeader, contextEvents } from '../../../packages/adapter-dsh-0-1-5/test/context-fixture.js';
 import type { RuntimeBrokerPrepareRunRequest } from '@linmu/dsh-session-contracts';
 
@@ -83,6 +86,12 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       expect((await post('read',{...ref,executionId:'invalid-initial',view:'selected-turn',query:'anything'})).status).toBe(409);
       const search=await post('read',{...ref,executionId:'turn-one',query:'FUTURE'});
       expect(search.value.items).toEqual([]);
+      expect((await post('end-execution',{targetNativeSessionId:'target-native',executionId:'turn-one'},false)).status).toBe(401);
+      expect((await post('end-execution',{targetNativeSessionId:'target-native',executionId:'turn-one'})).value).toEqual({ended:true});
+      expect((await post('end-execution',{targetNativeSessionId:'target-native',executionId:'turn-one'})).status).toBe(200);
+      const replay=await post('read',{...ref,executionId:'turn-one'});
+      expect(replay.status).toBe(409);expect(JSON.stringify(replay.value)).toContain('不能重放');
+      expect((await post('read',{...ref,executionId:'turn-two'})).status).toBe(200);
       expect((await post('read',{...ref,targetNativeSessionId:'source-native',executionId:'foreign'})).status).toBe(409);
       expect((await post('bind',{...ref,targetMessageId:'target-user'})).value.state).toBe('sent');
       const revision=f.engine.extensions!.get(scope,ref.referenceId).object.revision;
@@ -93,6 +102,19 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       expect((await post('read',{...ref,executionId:'next-turn'})).status).toBe(409);
       expect((await post('read',{...ref,executionId:'next-initial',view:'selected-turn'})).status).toBe(409);
       expect(f.engine.extensions!.list(scope).items).toHaveLength(1);
+      expect(f.engine.repository.database.prepare('SELECT count(*) n FROM context_read_executions WHERE run_id=?').get(run.runId)!.n).toBeGreaterThan(0);
+      // This fixture registers through the bridge without an actual DSH writer;
+      // provide its synthetic native files before exercising normal close.
+      const projection=new JsonProjectionDirectory(projectionRootFor(f.engine.projectionRuntimeRoot,run.runId));
+      for(const id of ['source-native','target-native']){
+        const payload=await projection.readSession(id as never),description=await v3NativeSessionCodec.describe(payload,run.persistenceRoot);
+        const path=join(run.persistenceRoot,description.relativePath);await mkdir(dirname(path),{recursive:true});
+        await writeFile(path,v3NativeSessionCodec.encode(payload,description));
+      }
+      await f.engine.drainProjectionRuntimeRun({schemaVersion:1,clientId:request.runtimeClientId,runId:run.runId,runtimeFlushCompletedAt:at});
+      await f.engine.closeProjectionRuntimeRun({schemaVersion:1,clientId:request.client.id,runId:run.runId,reason:'normal'});
+      expect(f.engine.repository.database.prepare('SELECT count(*) n FROM context_read_executions WHERE run_id=?').get(run.runId)!.n).toBe(0);
+      expect((await post('read',{...ref,executionId:'turn-one'})).status).toBe(409);
       expect(await Promise.all([hashTree(f.codexHome),hashTree(f.dshHome)])).toEqual(before);
     } finally {await f.cleanupAll();}
   },60000);

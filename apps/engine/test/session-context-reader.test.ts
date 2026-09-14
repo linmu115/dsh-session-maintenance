@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { DatabaseSync } from 'node:sqlite';
+import { MIGRATION_023 } from '../../../packages/session-store/src/migrations/023-context-executions.js';
 import { ContextReadBudgets, readContextPage } from '../src/session-context-reader.js';
 import type { SessionContextRecord } from '@linmu/dsh-session-contracts';
 
@@ -124,7 +126,8 @@ describe('bounded fixed upstream pages', () => {
     expect(page).toMatchObject({hasMore:false,nextCursor:null});
   });
   it('does not reset a turn allowance for retries, parallel pages or a larger requested limit', () => {
-    const budgets = new ContextReadBudgets();
+    const db=new DatabaseSync(':memory:');db.exec(MIGRATION_023);
+    const budgets = new ContextReadBudgets(db);
     const a = budgets.reserve('target/turn', 12000, 8000);
     const b = budgets.reserve('target/turn', 64000, 8000);
     expect([a.bytes,b.bytes]).toEqual([8000,4000]);
@@ -134,5 +137,19 @@ describe('bounded fixed upstream pages', () => {
     expect(retry.bytes).toBe(2000); retry.settle(2000);
     expect(budgets.reserve('target/turn',64000,8000).bytes).toBe(0);
     expect(budgets.reserve('target/next-turn',12000,8000).bytes).toBe(8000);
+    db.close();
+  });
+  it('reclaims ended executions without a 10000 limit and rejects replay after recreating the service',()=>{
+    const db=new DatabaseSync(':memory:');db.exec(MIGRATION_023);const budgets=new ContextReadBudgets(db);
+    try{
+      for(let i=0;i<10005;i++){const key='turn-'+i;budgets.reserve(key,24000,8000,'active-run').settle(0);budgets.end(key,'active-run');}
+      expect(budgets.reserve('new-turn',24000,8000,'active-run').bytes).toBe(8000);
+      expect(db.prepare("SELECT count(*) n FROM context_read_executions WHERE state='active'").get()!.n).toBe(1);
+      const recreated=new ContextReadBudgets(db);
+      expect(()=>recreated.reserve('turn-1',24000,8000,'active-run')).toThrow('重放');
+      expect(recreated.reserve('new-turn',24000,24000,'active-run').bytes).toBe(16000);
+      db.exec("CREATE TABLE projection_runs(id TEXT,state TEXT); INSERT INTO projection_runs VALUES('active-run','closed')");recreated.cleanup();
+      expect(db.prepare('SELECT count(*) n FROM context_read_executions').get()!.n).toBe(0);
+    }finally{db.close();}
   });
 });

@@ -13,6 +13,10 @@ export async function routeSessionContext(request: IncomingMessage,response: Ser
     result=await engine.sessionContext.directory(q.runId,q.workspaceId,q.after);
   }else if(operation==="capture") result=await engine.runWrite("context-capture",()=>engine.sessionContext.capture(sessionContextCaptureSchema.parse(body)));
   else if(operation==="read") result=await engine.sessionContext.read(sessionContextReadSchema.parse(body));
+  else if(operation==="end-execution") {
+    const q=sessionContextScopeSchema.extend({executionId:z.string().min(1).max(256)}).parse(body);
+    result=await engine.sessionContext.endExecution(q.runId,q.targetNativeSessionId,q.executionId);
+  }
   else if(operation==="bind") {
     const q=sessionContextScopeSchema.extend({referenceId:z.string().min(1).max(256),targetMessageId:z.string().min(1).max(256).nullable()}).parse(body);
     result=await engine.runWrite("context-bind",()=>engine.sessionContext.bind(q.runId,q.targetNativeSessionId,q.referenceId,q.targetMessageId));

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { REQUIRED_CAPABILITIES } from "@linmu/dsh-session-adapter-0-1-5";
 import type { RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
 import { createEngineFixture, hashTree } from "./helpers.js";
@@ -89,9 +89,18 @@ describe("RC2 managed graph navigation", () => {
       expect((await post("relations")).value.items).toEqual([]);
       expect((await post("resolve", { target: { nativeSessionId: "target-native" } })).status).toBe(409);
       expect((await append(contextEvents().slice(7), "graph-next")).status).toBe("committed");
-      expect((await post("preview", { logicalSessionId: sourceId, cursor: first.value.nextCursor })).status).toBe(409);
-      expect((await post("preview", { logicalSessionId: sourceId,
-        selection: { sourceVersionId: first.value.sourceVersionId, sourceAnchorId: "reply-one" } })).status).toBe(409);
+      const retainedPage=await post("preview", { logicalSessionId: sourceId, cursor: first.value.nextCursor });
+      expect(retainedPage.status,JSON.stringify(retainedPage.value)).toBe(200);
+      expect(retainedPage.value.sourceVersionId).toBe(first.value.sourceVersionId);
+      expect(JSON.stringify(retainedPage.value)).not.toContain('FUTURE-');
+      const retainedSelection=await post("preview", { logicalSessionId: sourceId,
+        selection: { sourceVersionId: first.value.sourceVersionId, sourceAnchorId: "reply-one" } });
+      expect(retainedSelection.status,JSON.stringify(retainedSelection.value)).toBe(200);
+      expect(retainedSelection.value.items[0].text).toBe('old question');
+      const removedBlob=vi.spyOn(f.engine.canonicalEngine.store,'getVersion').mockRejectedValueOnce(new Error('synthetic removed event body'));
+      expect((await post('preview',{logicalSessionId:sourceId,selection:{sourceVersionId:first.value.sourceVersionId,sourceAnchorId:'reply-one'}})).status).toBe(409);
+      removedBlob.mockRestore();
+      expect((await post('preview',{logicalSessionId:sourceId,selection:{sourceVersionId:'removed-version',sourceAnchorId:'reply-one'}})).status).toBe(409);
       const latest = await post("preview", { logicalSessionId: sourceId });
       expect(latest.value.items.map((row: any) => row.text)).toEqual(["FUTURE-SENTINEL", "FUTURE-ANSWER"]);
       const earlier = await post("preview", { logicalSessionId: sourceId, cursor: latest.value.nextCursor });

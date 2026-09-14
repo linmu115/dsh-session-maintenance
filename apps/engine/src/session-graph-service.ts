@@ -2,7 +2,7 @@ import { z } from "zod";
 import {
   ExtensionDataError, graphResolveSchema, sessionContextRecordSchema,
   type GraphResolve, type GraphSessionIdentity, type GraphPreviewPage, type GraphPreviewSelection,
-  type GraphRelationPage, type SessionContextDirectory, type RunId, type LogicalSessionId, type NativeSessionId,
+  type GraphRelationPage, type SessionContextDirectory, type RunId, type LogicalSessionId, type NativeSessionId, type SessionVersionId, type JsonValue,
 } from "@linmu/dsh-session-contracts";
 import { JsonProjectionDirectory, projectionRootFor } from "@linmu/dsh-session-projection-lifecycle";
 import type { SessionMaintenanceEngine } from "./engine.js";
@@ -57,22 +57,37 @@ export class SessionGraphService {
     const run = await this.run(runId), identity = await this.resolve(runId, { logicalSessionId });
     if (cursor && selection) throw unavailable("继续读取不能同时更改预览来源");
     const snapshot = await this.engine.canonicalEngine.store.getSession(logicalSessionId as LogicalSessionId);
-    const version = snapshot?.headVersionId ? await this.engine.canonicalEngine.store.getVersion(snapshot.headVersionId) : undefined;
-    if (!version) throw unavailable("会话尚无已登记回复");
+    if (!snapshot?.headVersionId) throw unavailable("会话尚无已登记回复");
     let q: PreviewCursor;
     try { q = cursor ? cursorSchema.parse(JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")))
-      : { run: runId, session: logicalSessionId, version: selection?.sourceVersionId ?? version.id,
+      : { run: runId, session: logicalSessionId, version: selection?.sourceVersionId ?? snapshot.headVersionId,
         before: null, anchor: selection?.sourceAnchorId ?? null, entry: 0, offset: 0 }; }
     catch { throw unavailable("预览游标无效，请重新展开节点"); }
-    if (q.run !== runId || q.session !== logicalSessionId || q.version !== version.id)
-      throw unavailable("来源版本已改变，请重新选择回复；不会自动换用最新上下文");
-    const adapter = this.engine.resolveProjectionAdapter(run.adapterId)?.sessionGraph;
+    if (q.run !== runId || q.session !== logicalSessionId) throw unavailable("预览游标不属于当前会话");
+    const version = await this.engine.canonicalEngine.store.getVersion(q.version as SessionVersionId)
+      .catch(()=>{throw unavailable("固定来源版本已清理或不可用；不会换用最新上下文");});
+    if (!version || version.logicalSessionId !== logicalSessionId) throw unavailable("固定来源版本已清理或不可用；不会换用最新上下文");
+    const versionAdapter = this.engine.resolveProjectionAdapter(run.adapterId);
+    const adapter = versionAdapter?.sessionGraph;
     if (!adapter) throw unavailable("当前版本 Adapter 未提供画布预览");
-    const events = await this.engine.projectionSourceFor(run.adapterId).loadVersionEvents?.(logicalSessionId as LogicalSessionId, version.id);
+    const events = await this.engine.projectionSourceFor(run.adapterId).loadVersionEvents?.(logicalSessionId as LogicalSessionId, version.id)
+      .catch(()=>{throw unavailable("固定来源正文已清理或不可用；不会换用最新上下文");});
     if (!events || events.length !== version.events.length || events.some((e, i) => e.id !== version.events[i]!.id))
       throw unavailable("来源格式读取改变了原始事件身份");
-    const projection = await new JsonProjectionDirectory(projectionRootFor(this.engine.projectionRuntimeRoot, run.id))
+    let projection: JsonValue;
+    if (version.id === snapshot.headVersionId) projection = await new JsonProjectionDirectory(projectionRootFor(this.engine.projectionRuntimeRoot, run.id))
       .readSession(identity.nativeSessionId as NativeSessionId);
+    else {
+      // Ask the version Adapter to reconstruct only this retained version in memory.
+      // The live projection may contain a newer conversion ledger and is never rewritten.
+      let retained: JsonValue | undefined;
+      await versionAdapter!.materialize({run,workspaces:[],sessions:[{
+        session:{...snapshot.session,headVersionId:version.id},events,workspaceId:null,
+      }]},{writeWorkspace:async()=>{},writeSession:async(_id,value)=>{if(retained!==undefined)throw unavailable("固定来源产生多个会话");retained=value;}})
+        .catch(()=>{throw unavailable("固定来源版本无法转换为可读格式；不会换用最新上下文");});
+      if(retained===undefined)throw unavailable("固定来源版本无法转换为可读格式");
+      projection=retained;
+    }
     let turn;
     try { turn = adapter.completedTurn(events, projection, q.before ?? undefined, q.anchor ?? undefined); }
     catch (error) { throw unavailable(error instanceof Error ? error.message : "无法确认完整回复"); }
@@ -111,8 +126,9 @@ export class SessionGraphService {
     if (page.items.length === 0 || Buffer.byteLength(JSON.stringify(page)) > pageBytes) throw unavailable("预览身份过长，无法在本次额度内读取");
     // A concurrent append or delete cannot silently turn this result into another source.
     await this.resolve(runId, { logicalSessionId });
-    const latest = await this.engine.canonicalEngine.store.getSession(logicalSessionId as LogicalSessionId);
-    if (latest?.headVersionId !== version.id) throw unavailable("来源在读取期间已变化，请重新展开节点");
+    const retained = await this.engine.canonicalEngine.store.getVersion(version.id)
+      .catch(()=>{throw unavailable("固定来源版本已清理或不可用");});
+    if(!retained||retained.logicalSessionId!==logicalSessionId)throw unavailable("固定来源版本已清理或不可用");
     return page;
   }
   async relations(runId: string, after = ""): Promise<GraphRelationPage> {

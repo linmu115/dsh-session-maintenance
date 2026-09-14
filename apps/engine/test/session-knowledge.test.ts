@@ -33,6 +33,9 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   await expect(api.legacyState(run.runId,'source')).rejects.toThrow();
   expect((await api.migration(run.runId,migrated)).mappings).toEqual(staged.mappings);
   await expect(api.migration(run.runId,{...migrated,sourceDigest:'b'.repeat(64)})).rejects.toThrow();
+  await expect(api.migration(run.runId,{...migrated,phase:'activate',stickers:[]})).rejects.toThrow('集合');
+  await expect(api.migration(run.runId,{...migrated,phase:'activate',sourceRevision:'changed'})).rejects.toThrow('回执');
+  await expect(api.migration(run.runId,{...migrated,phase:'activate',stickers:[{...migrated.stickers[0]!,record:{stickerId:'old-id',markdown:'changed'}}]})).rejects.toThrow('核对');
   const activated=await api.migration(run.runId,{...migrated,phase:'activate'});expect(activated.object.content.body).toMatchObject({phase:'active'});
   const legacy=await api.legacyState(run.runId,'source');
   const update={document:{sessionId:'source',stickers:[{stickerId:'old-id',sessionId:'source',markdown:'用户注释',quote:'重点'}]},expectedRevision:legacy.document.revision};
@@ -60,6 +63,16 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   await f.engine.appendProjectionRuntimeEvent(request.runtimeClientId,{runId:run.runId,nativeSessionId:'target' as never,operationId:'target-turn' as never,nativeRevision:events.at(-1)!.seq+1,observedAt:at,payload:{logicalSessionId:ids.target!,instanceId:request.instanceId,header:{...header,id:'target'},inheritedEventCount:0,events}});
   const reverse=await f.engine.sessionContext.capture({runId:run.runId,sourceNativeSessionId:'target',targetNativeSessionId:'source',operationId:'reverse',anchorId:'reply-one',selectedText:'重点'});
   await f.engine.sessionContext.bind(run.runId,'source',reverse.referenceId,'reverse-user');
+  const referenceNetwork=await api.network(run.runId,{kind:'reference',query:'重点'});
+  expect(referenceNetwork.items).toHaveLength(2);
+  expect(referenceNetwork.items.every(item=>item.reference?.state==='sent')).toBe(true);
+  expect(JSON.stringify(referenceNetwork)).not.toContain('selectedText');
+  const incoming=await api.network(run.runId,{kind:'reference',logicalSessionId:ids.target,direction:'incoming'});
+  expect(incoming.items.map(item=>item.reference?.referenceId)).toEqual([ref.referenceId]);
+  const outgoing=await api.network(run.runId,{kind:'reference',logicalSessionId:ids.target,direction:'outgoing'});
+  expect(outgoing.items.map(item=>item.reference?.referenceId)).toEqual([reverse.referenceId]);
+  await expect(api.network(run.runId,{direction:'incoming'})).rejects.toThrow();
+  await expect(api.network(run.runId,{logicalSessionId:'foreign',direction:'incoming'})).rejects.toThrow();
   const cycle=await api.impact(run.runId,{logicalSessionId:ids.source,depth:8});expect(cycle.items).toHaveLength(2);expect(cycle.visited).toBe(2);expect(cycle.truncated).toBe(false);
   for(let i=0;i<60;i++)await api.write(run.runId,{...sticker,title:'分页贴纸'+i,objectId:'page-'+String(i).padStart(3,'0')});
   const first=await api.network(run.runId,{kind:'sticker'});expect(first.items).toHaveLength(50);expect(first.nextCursor).toBeTruthy();
@@ -81,6 +94,12 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   const dashboard=new MaintenanceClient({origin:server.origin,token:server.token});
   expect((await dashboard.queryKnowledgeNetwork(run.runId,{query:'共享'})).items).toHaveLength(2);
   expect((await dashboard.queryKnowledgeImpact(run.runId,ids.source!)).items).toHaveLength(2);
+  const two={...migrated,migrationId:'target-migration',nativeSessionId:'target',stickers:[{legacyId:'a',title:'A',record:{stickerId:'a'}},{legacyId:'b',title:'B',record:{stickerId:'b'}}]};
+  await api.migration(run.runId,two);
+  await expect(api.migration(run.runId,{...two,phase:'activate',stickers:two.stickers.slice(0,1)})).rejects.toThrow('集合');
+  expect((await api.migration(run.runId,{...two,phase:'activate',stickers:[...two.stickers].reverse()})).mappings).toHaveLength(2);
+  await f.engine.sessionContext.bind(run.runId,'source',reverse.referenceId,null);
+  expect((await api.network(run.runId,{kind:'reference',logicalSessionId:ids.source,direction:'incoming'})).items[0]?.reference?.state).toBe('revoked');
   expect(await hashTree(f.dshHome)).toBe(before);
  }finally{await f.cleanupAll();}
 },60000);

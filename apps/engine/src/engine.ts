@@ -335,6 +335,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       })).adapterId,
     });
     if (this.writes !== undefined) {
+      coordinateAsyncMethods(this.sessionContext, ["read", "endExecution"], this.writes, "context-execution");
       coordinateAsyncMethods(this.runtimeBroker, ["prepareRun", "attachRun", "append", "registerSession", "flush", "drainRun", "closeRun", "recoverRun"], this.writes, "runtime-lifecycle");
       coordinateSyncMethods(this.sessionCommands, ["restoreSession", "deleteWorkspace"], this.writes, "session-maintenance");
       coordinateAsyncMethods(this.sessionCommands, ["updateSession", "deleteSession", "deleteProjectedSession"], this.writes, "session-maintenance");
@@ -389,8 +390,11 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     return this.runtimeBroker.drainRun(input);
   }
 
-  closeProjectionRuntimeRun(input: RuntimeBrokerCloseRunRequest): Promise<RuntimeBrokerClosedRun> {
-    return this.runtimeBroker.closeRun(input);
+  async closeProjectionRuntimeRun(input: RuntimeBrokerCloseRunRequest): Promise<RuntimeBrokerClosedRun> {
+    return this.runWrite("context-run-close",async()=>{
+      try{return await this.runtimeBroker.closeRun(input);}
+      finally{this.sessionContext.cleanupExecutions();}
+    });
   }
 
   async getProjectionRuntimeSnapshot(runId: RunId): Promise<ProjectionRuntimeSnapshot | undefined> {

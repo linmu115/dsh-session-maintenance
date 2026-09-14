@@ -25,6 +25,7 @@ import { MIGRATION_019 } from "./migrations/019-retention-registry.js";
 import { MIGRATION_020 } from "./migrations/020-retention-journal.js";
 import { MIGRATION_021 } from "./migrations/021-codex-project-mapping.js";
 import { MIGRATION_022 } from "./migrations/022-extension-data.js";
+import { MIGRATION_023 } from "./migrations/023-context-executions.js";
 
 interface VersionRow {
   readonly version: number | null;
@@ -415,6 +416,17 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
     try {
       database.exec(MIGRATION_022);
       database.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(22, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) {
+      try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
+      database.close(); throw error;
+    }
+  }
+  if (currentVersion < 23) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_023);
+      database.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(23, new Date().toISOString());
       database.exec("COMMIT");
     } catch (error) {
       try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }

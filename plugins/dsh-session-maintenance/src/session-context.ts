@@ -22,6 +22,7 @@ export class MaintenanceSessionContext {
   inspect(targetNativeSessionId:string,referenceId:string){return this.request<SessionContextRecord>("inspect",{targetNativeSessionId,referenceId});}
   bind(targetNativeSessionId:string,referenceId:string,targetMessageId:string|null){return this.request<SessionContextRecord>("bind",{targetNativeSessionId,referenceId,targetMessageId});}
   read(input:Omit<SessionContextRead,"runId">){return this.request<SessionContextPage>("read",input);}
+  endExecution(targetNativeSessionId:string,executionId:string){return this.request<{ended:true}>("end-execution",{targetNativeSessionId,executionId});}
 }
 declare module "@deepseek-ai/cordis" { interface Context {maintenanceSessionContext:MaintenanceSessionContext} }
 export function registerSessionContext(ctx:Context,value:MaintenanceSessionContext){ctx.provide("maintenanceSessionContext",value);}

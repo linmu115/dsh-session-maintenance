@@ -1,23 +1,44 @@
 import { createHash } from "node:crypto";
+import type { DatabaseSync } from "node:sqlite";
 import type { SessionContextEntry, SessionContextPage, SessionContextRecord } from "@linmu/dsh-session-contracts";
 
 /** One execution shares its allowance across references, searches, retries and concurrent calls. */
 export class ContextReadBudgets {
-  private readonly executions = new Map<string, { used: number; limit: number }>();
-  reserve(key: string, limit: number, requested: number): { bytes: number; settle: (used: number) => number } {
-    // Fail closed on capacity; never evict an active execution to give it a fresh budget.
-    let entry = this.executions.get(key);
-    if (!entry) {
-      if (this.executions.size >= 10000) throw new Error("引用读取执行数量达到上限");
-      entry = { used: 0, limit }; this.executions.set(key, entry);
-    }
-    entry.limit = Math.min(entry.limit, limit);
-    const bytes = Math.max(0, Math.min(requested, entry.limit - entry.used)); entry.used += bytes;
+  constructor(private readonly database: DatabaseSync) {}
+  private transaction<T>(work:()=>T):T {
+    this.database.exec('SAVEPOINT context_budget');
+    try{const result=work();this.database.exec('RELEASE context_budget');return result;}
+    catch(error){this.database.exec('ROLLBACK TO context_budget; RELEASE context_budget');throw error;}
+  }
+  reserve(key: string, limit: number, requested: number, runId='test'): { bytes: number; settle: (used: number) => number } {
+    const digest=createHash('sha256').update(key).digest('hex');
+    const bytes=this.transaction(()=>{
+      this.database.prepare("INSERT OR IGNORE INTO context_read_executions VALUES(?,?,'active',0,?)").run(digest,runId,limit);
+      const entry=this.database.prepare('SELECT * FROM context_read_executions WHERE execution_key=?').get(digest)!;
+      if(entry.state!=='active'||entry.run_id!==runId)throw new Error('本轮引用读取已经结束；不能重放已完成执行');
+      const nextLimit=Math.min(Number(entry.limit_bytes),limit),available=Math.max(0,Math.min(requested,nextLimit-Number(entry.used_bytes)));
+      this.database.prepare('UPDATE context_read_executions SET used_bytes=used_bytes+?,limit_bytes=? WHERE execution_key=?').run(available,nextLimit,digest);
+      return available;
+    });
     let settled = false;
     return { bytes, settle: used => {
       if (settled || used < 0 || used > bytes) throw new Error("Invalid context budget settlement");
-      settled = true; entry!.used -= bytes - used; return Math.max(0, entry!.limit - entry!.used);
+      settled = true;return this.transaction(()=>{
+        const entry=this.database.prepare('SELECT state FROM context_read_executions WHERE execution_key=?').get(digest);
+        if(entry?.state!=='active')throw new Error('本轮引用读取已经结束');
+        this.database.prepare('UPDATE context_read_executions SET used_bytes=used_bytes-? WHERE execution_key=?').run(bytes-used,digest);
+        const remaining=this.database.prepare('SELECT limit_bytes-used_bytes remaining FROM context_read_executions WHERE execution_key=?').get(digest)!;
+        return Math.max(0,Number(remaining.remaining));
+      });
     } };
+  }
+  end(key:string,runId:string):void {
+    const digest=createHash('sha256').update(key).digest('hex');
+    // Retain only a compact replay tombstone until the owning run has terminated.
+    this.database.prepare("INSERT INTO context_read_executions VALUES(?,?,'closed',0,0) ON CONFLICT(execution_key) DO UPDATE SET state='closed',used_bytes=0,limit_bytes=0").run(digest,runId);
+  }
+  cleanup():void {
+    this.database.exec("DELETE FROM context_read_executions WHERE run_id IN (SELECT id FROM projection_runs WHERE state IN ('closed','recovered','quarantined'))");
   }
 }
 const size = (v: unknown) => Buffer.byteLength(JSON.stringify(v));

@@ -6,6 +6,28 @@ import { record } from "./common.js";
 import { imageDimensions, type PortableAttachment } from "./portable-content.js";
 
 const hash=(data:Uint8Array)=>createHash("sha256").update(data).digest("hex");
+/** A native-space receipt keeps identities and sizes, never base64 or text. */
+export function portableResourceManifest(value:JsonValue):JsonValue {
+ return {schemaVersion:1,items:validatePortableAttachments(value).map(item=>({kind:item.kind,attachmentId:item.ref.attachmentId,bytes:item.ref.bytes,
+  ...(item.kind==='file'?{name:String(item.ref.name)}:{})}))} as JsonValue;
+}
+export async function verifyPortableResources(value:JsonValue,persistenceRoot:string):Promise<boolean> {
+ const manifest=record(value);if(manifest.schemaVersion!==1||!Array.isArray(manifest.items))throw new TypeError('Invalid retained resource manifest');
+ const sessions=resolve(persistenceRoot),home=dirname(sessions);
+ if(manifest.items.length&&(basename(sessions)!=='sessions'||!/^[a-f0-9]{64}$/.test(basename(home))||basename(dirname(home))!=='native-spaces'))throw new TypeError('Attachments require a Broker-owned native space');
+ let missing=false;
+ for(const value of manifest.items){const item=record(value);
+  if(!['image','file'].includes(String(item.kind))||typeof item.attachmentId!=='string'||!/^sha256:[a-f0-9]{64}$/.test(item.attachmentId)||!Number.isSafeInteger(item.bytes)||Number(item.bytes)<0)throw new TypeError('Invalid retained attachment identity');
+  const digest=item.attachmentId.slice(7),root=join(home,'attachments','v1');
+  const paths=item.kind==='image'?[join(root,'objects',digest.slice(0,2),digest)]:[join(root,'file-objects',digest.slice(0,2),digest)];
+  if(item.kind==='file'){
+   if(typeof item.name!=='string'||!item.name.length||/[\\/\u0000-\u001f<>:"|?*]/.test(item.name)||item.name==='.'||item.name==='..'||/[. ]$/.test(item.name))throw new TypeError('Unsafe retained file name');
+   paths.push(join(root,'files',digest.slice(0,2),digest,item.name));
+  }
+  for(const path of paths){await safePath(home,path);try{const info=await lstat(path);if(!info.isFile()||info.isSymbolicLink())throw new TypeError('Retained attachment is not a regular file');const bytes=await readFile(path);if(bytes.length!==item.bytes||hash(bytes)!==digest)throw new TypeError('Existing attachment differs from canonical');}catch(error){if((error as NodeJS.ErrnoException).code==='ENOENT')missing=true;else throw error;}}
+ }
+ return !missing;
+}
 export function validatePortableAttachments(value:JsonValue): readonly PortableAttachment[] {
  const payload=record(value),items=payload.portableAttachments??[];
  if(!Array.isArray(items))throw new TypeError("Invalid portable attachment inventory");
