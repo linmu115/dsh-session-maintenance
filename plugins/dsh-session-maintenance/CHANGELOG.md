@@ -1,3 +1,10 @@
+# 0.2.26-rc2.10 — 2026-09-14
+
+- Pair with Engine 0.1.33-rc2.14 (schema 23), Annotation Core 0.3.12-rc2.7, ThoughtDAG 0.4.14-rc2.5, Sticker Board 0.7.3-rc2.12 and Obsidian Companion 0.6.4-rc2.5 on DSH 0.1.5-rc.2.
+- Expose execution-end receipts for durable bounded upstream reads; preserve fixed material previews and independent incoming/outgoing network references.
+- Reuse unchanged RC2 native bodies while verifying immutable attachment inventories. Require an exact staged migration set and share bounded selected-note sticker metadata.
+- Refresh the paired host artifact and runtime attestation; no full-history or per-turn snapshots are added.
+
 # 0.2.26-rc2.2 — 2026-09-13
 
 - Pair the installed integration with Engine 0.1.33-rc2.3 after the V3 startup and effective-header recovery fixes. The shared V3 adapter code is part of the plugin bundle, so this release refreshes the exact host artifact and attestation together.

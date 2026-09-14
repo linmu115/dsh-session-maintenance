@@ -21,7 +21,7 @@ function unique(ids: string[]): void {
 }
 export const thoughtDagAdapter: ExtensionDataAdapter = {
   capabilities,
-  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4"], schemaVersions: [1],
+  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5"], schemaVersions: [1],
   validate(content) {
     if (typeof content.body === "object" && content.body !== null && !Array.isArray(content.body) && "managedSchema" in content.body)
       managedGraphSchema.parse(content.body);
@@ -49,19 +49,19 @@ const knowledgeLink = z.strictObject({ vaultId: id, notePath: id, blockId: id.op
   syncState: z.enum(["pending","synced","failed"]), sourceVersion: id.optional() });
 export const obsidianLinksAdapter: ExtensionDataAdapter = {
   capabilities,
-  namespace: "obsidian-links", label: "知识链接", pluginVersions: ["0.3.23", "0.6.4-rc2.4"], schemaVersions: [1, 2],
+  namespace: "obsidian-links", label: "知识链接", pluginVersions: ["0.3.23", "0.6.4-rc2.4", "0.6.4-rc2.5"], schemaVersions: [1, 2],
   validate(content) { (content.schemaVersion === 2 ? knowledgeLinkSchema : knowledgeLink).parse(content.body); },
   summarize(body) { const managed=knowledgeLinkSchema.safeParse(body);if(managed.success)return `${managed.data.note.notePath} · ${managed.data.syncState}`;const link = knowledgeLink.parse(body); return `${link.notePath} · ${link.links.length} 条链接`; },
   preview(body) { const managed=knowledgeLinkSchema.safeParse(body);if(managed.success)return {kind:'rows',total:1,rows:[{label:managed.data.note.notePath,text:managed.data.logicalSessionId}]};const link=knowledgeLink.parse(body);return {kind:"rows",total:link.links.length,rows:link.links.slice(0,100).map(l=>({label:l.target,text:l.relation==="backlink"?"双链":"引用"}))}; },
 };
 export const stickerAdapter: ExtensionDataAdapter = {
-  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10', '0.7.3-rc2.11'], schemaVersions: [1],
+  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10', '0.7.3-rc2.11', '0.7.3-rc2.12'], schemaVersions: [1],
   validate(content) { stickerObjectSchema.parse(content.body); },
   summarize(body) { const value=stickerObjectSchema.parse(body);return value.kind==='session'?'独立会话入口':value.kind==='migration'?`迁移 · ${value.phase}`:'普通贴纸'; },
   preview(body) { const value=stickerObjectSchema.parse(body);return {kind:'rows',total:1,rows:[{label:value.kind==='session'?'目标会话':value.kind==='migration'?'迁移目标':'所属会话',text:value.logicalSessionId}]}; },
 };
 export const upstreamAdapter: ExtensionDataAdapter = {
-  capabilities,namespace:SESSION_CONTEXT_NAMESPACE,label:"跨会话上游引用",pluginVersions:["0.3.12-rc2.1","0.3.12-rc2.2","0.3.12-rc2.3","0.3.12-rc2.4","0.3.12-rc2.5","0.3.12-rc2.6"],schemaVersions:[1],
+  capabilities,namespace:SESSION_CONTEXT_NAMESPACE,label:"跨会话上游引用",pluginVersions:["0.3.12-rc2.1","0.3.12-rc2.2","0.3.12-rc2.3","0.3.12-rc2.4","0.3.12-rc2.5","0.3.12-rc2.6","0.3.12-rc2.7"],schemaVersions:[1],
   validate(content){sessionContextRecordSchema.parse(content.body);},
   summarize(body){const r=sessionContextRecordSchema.parse(body);return `${r.sourceTitle} · ${{pending:'待发送',sent:'已发送',revoked:'已解除'}[r.state]}`;},
   preview(body){const r=sessionContextRecordSchema.parse(body);return {kind:"rows",total:1,rows:[{label:r.sourceTitle,text:r.selectedText.slice(0,2000)}]};},
