@@ -16,7 +16,7 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   const header={...contextHeader,cwd:f.root};const ids:Record<string,string>={};
   for(const nativeSessionId of ['source','target'])ids[nativeSessionId]=(await f.engine.registerProjectionRuntimeSession({schemaVersion:1,clientId:request.runtimeClientId,runId:run.runId,nativeSessionId:nativeSessionId as never,header:{...header,id:nativeSessionId},title:nativeSessionId})).logicalSessionId;
   const scope={instanceId:request.instanceId,profileId:'web'};
-  f.engine.extensions!.connect({...scope,plugins:[{namespace:'stickers',pluginVersion:'0.7.3-rc2.9',writerId:'dsh-session-sticker-board'},{namespace:'obsidian-links',pluginVersion:'0.6.4-rc2.4',writerId:'obsidian-deepharness-bridge'},{namespace:'thoughtdag',pluginVersion:'0.4.14-rc2.2',writerId:'dsh-thoughtdag'},{namespace:'annotation-upstream',pluginVersion:'0.3.12-rc2.6',writerId:'dsh-annotation-core'}]});
+  f.engine.extensions!.connect({...scope,plugins:[{namespace:'stickers',pluginVersion:'0.7.3-rc2.11',writerId:'dsh-session-sticker-board'},{namespace:'obsidian-links',pluginVersion:'0.6.4-rc2.4',writerId:'obsidian-deepharness-bridge'},{namespace:'thoughtdag',pluginVersion:'0.4.14-rc2.2',writerId:'dsh-thoughtdag'},{namespace:'annotation-upstream',pluginVersion:'0.3.12-rc2.6',writerId:'dsh-annotation-core'}]});
   const api=f.engine.sessionKnowledge;
   const sessionCount=()=>f.engine.repository.database.prepare('SELECT COUNT(*) n FROM logical_sessions').get()!.n;
   const count=sessionCount();
