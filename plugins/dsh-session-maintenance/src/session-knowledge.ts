@@ -2,8 +2,8 @@ import { createHash } from 'node:crypto';
 import type { IncomingMessage,ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
 import type { EngineConnectionProvider } from './engine-proxy.js';
-const operations=new Set(['status','list','get','write','migrate','network','impact','legacy-state','legacy-save']);
-const wrapped = new Set(['list','write','migrate','network','impact','legacy-save']);
+const operations=new Set(['status','list','get','write','migrate','legacy-state','legacy-save']);
+const wrapped = new Set(['list','write','migrate','legacy-save']);
 const id=(value:unknown)=>{if(typeof value!=='string'||!value.trim()||value.length>256)throw new Error('操作身份无效');return value;};
 export class MaintenanceKnowledge {
   readonly protocolVersion=1;
@@ -36,6 +36,7 @@ export class MaintenanceKnowledge {
     })();this.creates.set(key,task);try{return await task;}finally{this.creates.delete(key);}
   }
   async dispatch(operation:string,input:Record<string,unknown>) {
+    if(operation==='source-markers')return this.ctx.maintenanceGraph.sourceMarkers(id(input.nativeSessionId),input.after===undefined?undefined:id(input.after));
     if(operation==='create-session')return this.createSession(id(input.operationId),id(input.workspaceId));
     if(operation==='create-workspaces') {
       const after=input.after===undefined?'':id(input.after);

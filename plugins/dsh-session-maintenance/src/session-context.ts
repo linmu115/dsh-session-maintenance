@@ -1,5 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type { SessionContextCapture,SessionContextRead,SessionContextRecord,SessionContextDirectory,SessionContextPage } from "@linmu/dsh-session-contracts";
+import type { SessionContextCapture,SessionContextRead,SessionContextRecord,SessionContextDirectory,SessionContextPage,SessionContextDescription } from "@linmu/dsh-session-contracts";
 import type { EngineConnectionProvider } from "./engine-proxy.js";
 
 /** A host-only, instance-bound Interface; callers never choose the run or receive credentials. */
@@ -20,6 +20,10 @@ export class MaintenanceSessionContext {
     return this.request<SessionContextRecord>("capture",input);
   }
   inspect(targetNativeSessionId:string,referenceId:string){return this.request<SessionContextRecord>("inspect",{targetNativeSessionId,referenceId});}
+  describe(targetNativeSessionId:string,referenceId:string){return this.request<SessionContextDescription>("describe",{targetNativeSessionId,referenceId});}
+  settleRead(targetNativeSessionId:string,referenceId:string,requestId:string,delivery:'returned'|'failed'){
+    return this.request<{recorded:true}>('settle-read',{targetNativeSessionId,referenceId,requestId,delivery});
+  }
   bind(targetNativeSessionId:string,referenceId:string,targetMessageId:string|null){return this.request<SessionContextRecord>("bind",{targetNativeSessionId,referenceId,targetMessageId});}
   read(input:Omit<SessionContextRead,"runId">){return this.request<SessionContextPage>("read",input);}
   endExecution(targetNativeSessionId:string,executionId:string){return this.request<{ended:true}>("end-execution",{targetNativeSessionId,executionId});}

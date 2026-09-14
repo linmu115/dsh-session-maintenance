@@ -46,7 +46,7 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       const incompatible=await post('directory',{});
       expect(incompatible.status).toBe(409);expect(JSON.stringify(incompatible.value)).toContain('版本不兼容');
       expect(JSON.stringify(incompatible.value)).toContain('0.3.12-rc2.999');
-      for(const version of ['0.3.12-rc2.1','0.3.12-rc2.2','0.3.12-rc2.3','0.3.12-rc2.4','0.3.12-rc2.5','0.3.12-rc2.6','0.3.12-rc2.7']){
+      for(const version of ['0.3.12-rc2.1','0.3.12-rc2.2','0.3.12-rc2.3','0.3.12-rc2.4','0.3.12-rc2.5','0.3.12-rc2.6','0.3.12-rc2.7','0.3.12-rc2.8']){
         connect(version);
         expect((await post('directory',{})).status,version).toBe(200);
       }
@@ -76,16 +76,42 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       expect(page.status,JSON.stringify(page.value)).toBe(200);
       expect(JSON.stringify(page.value)).toContain('AFTER-SELECTION');expect(JSON.stringify(page.value)).not.toContain('FUTURE');
       expect(page.value.sourceVersionId).toBe(captured.value.sourceVersionId);
-      const initial=await post('read',{...ref,executionId:'initial-submission',view:'selected-turn'});
+      // A frontend-closed capture repairs/creates only Y's graph after the graph plugin connects.
+      f.engine.extensions!.connect({instanceId:scope.instanceId,profileId:scope.profileId,plugins:[
+        {namespace:scope.namespace,pluginVersion:'0.3.12-rc2.8',writerId:'dsh-annotation-core'},
+        {namespace:'thoughtdag',pluginVersion:'0.4.14-rc2.6',writerId:'thoughtdag'},
+      ]});
+      expect((await post('capture',input)).value).toEqual(captured.value);
+      const graph=await f.engine.sessionGraph.ensure(run.runId,mappings['target-native'].logicalSessionId);
+      expect(graph.graph.ownerSessionId).toBe(mappings['target-native'].logicalSessionId);
+      expect(graph.graph.edges).toHaveLength(1);
+      const edge=graph.graph.edges[0]!;
+      expect(graph.graph.nodes.find(n=>n.id===edge.source)?.data.logicalSessionId).toBe(mappings['source-native'].logicalSessionId);
+      expect(graph.graph.nodes.find(n=>n.id===edge.target)?.data.logicalSessionId).toBe(mappings['target-native'].logicalSessionId);
+      const described=await post('describe',ref);
+      expect(described.value).toMatchObject({sourceNativeSessionId:'source-native',record:captured.value});
+      expect((await post('describe',{...ref,targetNativeSessionId:'source-native'})).status).toBe(409);
+      const initial=await post('read',{...ref,executionId:'initial-submission',requestId:'read-initial',view:'selected-turn'});
       expect(initial.status,JSON.stringify(initial.value)).toBe(200);
       expect(initial.value.items.map((item:any)=>item.role)).toEqual(['user','assistant']);
       expect(initial.value.items[0].text).toBe('old question');
       expect(initial.value.items[1].text).toContain('AFTER-SELECTION');
       expect(initial.value).toMatchObject({sourceVersionId:captured.value.sourceVersionId,selectedTurn:{complete:true},hasMore:false});
       expect(JSON.stringify(initial.value)).not.toContain('FUTURE');
+      const receipts=()=>f.engine.sessionGraph.disclosures(run.runId,graph.objectId);
+      expect((await receipts()).items[0]).toMatchObject({operation:'initial',delivery:'prepared',
+        sourceVersionId:captured.value.sourceVersionId,cutoffEventId:captured.value.cutoffEventId,
+        ranges:initial.value.items.map((item:any)=>({eventId:item.eventId,start:item.offset,end:item.offset+item.text.length}))});
+      expect(JSON.stringify(await receipts())).not.toContain('AFTER-SELECTION');
+      expect((await post('settle-read',{...ref,requestId:'read-initial',delivery:'returned'})).status).toBe(200);
+      expect((await receipts()).items[0]?.delivery).toBe('returned');
+      expect((await f.engine.sessionGraph.load(run.runId,graph.objectId)).revision).toBe(graph.revision);
       expect((await post('read',{...ref,executionId:'invalid-initial',view:'selected-turn',query:'anything'})).status).toBe(409);
-      const search=await post('read',{...ref,executionId:'turn-one',query:'FUTURE'});
+      const search=await post('read',{...ref,executionId:'turn-one',requestId:'search-missing',query:'FUTURE'});
       expect(search.value.items).toEqual([]);
+      expect((await receipts()).items.find(item=>item.requestId==='search-missing')).toMatchObject({operation:'search',status:'empty',ranges:[]});
+      expect((await post('settle-read',{...ref,requestId:'search-missing',delivery:'failed'})).status).toBe(200);
+      expect((await post('settle-read',{...ref,requestId:'search-missing',delivery:'returned'})).status).toBe(409);
       expect((await post('end-execution',{targetNativeSessionId:'target-native',executionId:'turn-one'},false)).status).toBe(401);
       expect((await post('end-execution',{targetNativeSessionId:'target-native',executionId:'turn-one'})).value).toEqual({ended:true});
       expect((await post('end-execution',{targetNativeSessionId:'target-native',executionId:'turn-one'})).status).toBe(200);
@@ -97,6 +123,12 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       const revision=f.engine.extensions!.get(scope,ref.referenceId).object.revision;
       await post('bind',{...ref,targetMessageId:'target-user'});
       expect(f.engine.extensions!.get(scope,ref.referenceId).object.revision).toBe(revision);
+      const beforeRemove=await f.engine.sessionGraph.load(run.runId,graph.objectId);
+      const removed=await f.engine.sessionGraph.remove(run.runId,{objectId:graph.objectId,expectedRevision:beforeRemove.revision,
+        operationId:'remove-context-edge',edgeIds:[edge.id]});
+      expect(removed.graph.edges).toEqual([]);
+      expect(removed.graph.removedRelationIds).toContain(ref.referenceId);
+      expect((await post('describe',ref)).status).toBe(409);
       expect((await post('bind',{...ref,targetMessageId:null})).value.state).toBe('revoked');
       expect((await post('bind',{...ref,targetMessageId:null})).status).toBe(200);
       expect((await post('read',{...ref,executionId:'next-turn'})).status).toBe(409);

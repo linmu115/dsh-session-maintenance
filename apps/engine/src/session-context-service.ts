@@ -1,10 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { ExtensionDataError, SESSION_CONTEXT_NAMESPACE, sessionContextCaptureSchema, sessionContextReadSchema,
   sessionContextRecordSchema, type SessionContextCapture, type SessionContextRecord, type SessionContextRead,
   type SessionContextDirectory, type LogicalSessionId, type SessionVersionId, type NativeSessionId, type RunId, type JsonValue, type AdapterId } from "@linmu/dsh-session-contracts";
 import { JsonProjectionDirectory, projectionRootFor } from "@linmu/dsh-session-projection-lifecycle";
 import type { SessionMaintenanceEngine } from "./engine.js";
-import { ContextReadBudgets, readContextPage } from "./session-context-reader.js";
+import { ContextReadBudgets, readContextPage, contextContinuationPosition } from "./session-context-reader.js";
 
 const unavailable = (message: string) => new ExtensionDataError("CONTEXT_UNAVAILABLE",message,409);
 export class SessionContextService {
@@ -54,6 +54,7 @@ export class SessionContextService {
       if (old.sourceSessionId!==source.logicalSessionId || old.sourceAnchorId!==input.anchorId || old.selectedText!==input.selectedText)
         throw unavailable("同一引用操作的来源发生变化");
       if(old.state==="revoked")throw unavailable("这个引用操作已撤销，请重新选择来源");
+      await this.engine.sessionGraph.syncReference(input.runId, old);
       return old;
     } catch (error) { if (!(error instanceof ExtensionDataError) || error.code!=="EXTENSION_NOT_FOUND") throw error; }
     const snapshot=await this.engine.canonicalEngine.store.getSession(source.logicalSessionId as LogicalSessionId);
@@ -84,6 +85,7 @@ export class SessionContextService {
         {logicalSessionId:record.sourceSessionId,messageId:record.cutoffEventId,sourceVersion:record.sourceVersionId},
         {logicalSessionId:record.targetSessionId}]}});
     if(result.status==="conflict")throw unavailable("引用保存冲突，请重试");
+    await this.engine.sessionGraph.syncReference(input.runId, record);
     return record;
   }
   async record(runId: string, targetNativeSessionId: string, referenceId: string, allowRevoked = false) {
@@ -94,13 +96,16 @@ export class SessionContextService {
   }
   async bind(runId: string, targetNativeSessionId: string, referenceId: string, targetMessageId: string | null) {
     const a=await this.record(runId,targetNativeSessionId,referenceId,targetMessageId===null);
-    if(a.record.state==="revoked"&&targetMessageId===null)return a.record;
-    if(a.record.state==="sent"&&targetMessageId===a.record.targetMessageId)return a.record;
+    if ((a.record.state==="revoked"&&targetMessageId===null) || (a.record.state==="sent"&&targetMessageId===a.record.targetMessageId)) {
+      await this.engine.sessionGraph.syncReference(runId, a.record);
+      return a.record;
+    }
     if (a.record.targetMessageId && targetMessageId && a.record.targetMessageId!==targetMessageId) throw unavailable("引用已经绑定另一次提交");
     const record={...a.record,state:targetMessageId?"sent" as const:"revoked" as const,targetMessageId};
     const result=a.extensions.write({scope:a.scope,writerId:a.writerId,objectId:referenceId,expectedRevision:a.object.revision,deleted:false,
       content:{...a.object.content,body:record as unknown as JsonValue}});
     if(result.status==="conflict")throw unavailable("引用状态保存冲突，请重试");
+    await this.engine.sessionGraph.syncReference(runId, record);
     return record;
   }
   private async source(record: SessionContextRecord, adapterId: AdapterId) {
@@ -124,6 +129,18 @@ export class SessionContextService {
     await this.source(a.record,a.run.adapterId);
     return a.record;
   }
+  async describe(runId: string, targetNativeSessionId: string, referenceId: string) {
+    const record = await this.inspect(runId, targetNativeSessionId, referenceId);
+    const source = await this.engine.sessionGraph.resolve(runId, { logicalSessionId: record.sourceSessionId });
+    return { record, sourceNativeSessionId: source.nativeSessionId };
+  }
+  async settleRead(runId: string, targetNativeSessionId: string, referenceId: string, requestId: string, delivery: 'returned' | 'failed') {
+    const a = await this.record(runId, targetNativeSessionId, referenceId, true);
+    const receipt = await this.engine.sessionGraph.settleDisclosure(runId, a.record, requestId,
+      a.record.state === 'revoked' ? 'failed' : delivery);
+    if (a.record.state === 'revoked' && delivery === 'returned') throw unavailable('引用在读取期间已撤销');
+    return receipt;
+  }
   async read(request: SessionContextRead) {
     const q=sessionContextReadSchema.parse(request),a=await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
     this.budgets.cleanup();
@@ -137,10 +154,10 @@ export class SessionContextService {
       const adapter=this.engine.resolveProjectionAdapter(a.run.adapterId)?.sessionContext;
       if(!adapter)throw unavailable("缺少读取此引用所需的版本 Adapter");
       let page;
+      const fixed = events.slice(0,index+1), entries = adapter.entries(fixed);
       try {
         if (q.view && (q.cursor || q.query)) throw new Error("首轮上下文不能同时指定游标或搜索词");
-        const fixed = events.slice(0,index+1);
-        page=readContextPage(a.record,adapter.entries(fixed),reservation.bytes,q.cursor,q.query,
+        page=readContextPage(a.record,entries,reservation.bytes,q.cursor,q.query,
           q.view === "selected-turn" ? adapter.selectedTurnStart(fixed) : undefined,
           q.view === "selected-turn" ? adapter.selectedReply(fixed) : undefined);
       }
@@ -151,6 +168,17 @@ export class SessionContextService {
       page.remainingBytes=Math.max(0,q.totalBytes);const bytes=Buffer.byteLength(JSON.stringify(page));
       settled=true;page.remainingBytes=reservation.settle(bytes);
       page.budgetExhausted=page.remainingBytes<1024;
+      await this.engine.sessionGraph.appendDisclosure(q.runId, a.record, {
+        requestId: q.requestId ?? randomUUID(), executionId: q.executionId,
+        operation: q.view === 'selected-turn' ? 'initial' : q.query ? 'search' : 'read', delivery: 'prepared',
+        ranges: page.items.map(item => ({eventId:item.eventId,start:item.offset,end:item.offset+item.text.length,complete:item.complete})),
+        nextCursor:page.nextCursor,next:contextContinuationPosition(entries,page.nextCursor),hasMore:page.hasMore,
+        truncated:page.hasMore || page.items.some(item=>!item.complete) || Boolean(page.selectedTurn?.omittedIntermediateItems),
+        returnedBytes:bytes, remainingBytes:page.remainingBytes,
+        ...(page.selectedTurn ? {selectedTurnComplete:page.selectedTurn.complete} : {}),
+        status:page.budgetExhausted?'budget-exhausted':page.items.length?'ok':'empty',
+      });
+      await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
       return page;
     } finally {if(!settled)try{reservation.settle(0);}catch{/* A completed execution already discarded this reservation. */}}
   }

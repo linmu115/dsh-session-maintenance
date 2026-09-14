@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DatabaseSync } from 'node:sqlite';
 import { MIGRATION_023 } from '../../../packages/session-store/src/migrations/023-context-executions.js';
-import { ContextReadBudgets, readContextPage } from '../src/session-context-reader.js';
+import { ContextReadBudgets, readContextPage, contextContinuationPosition } from '../src/session-context-reader.js';
 import type { SessionContextRecord } from '@linmu/dsh-session-contracts';
 
 const ref: SessionContextRecord = { schemaVersion:1,referenceId:'ref-a',sourceSessionId:'source',sourceVersionId:'v1',
@@ -9,6 +9,23 @@ const ref: SessionContextRecord = { schemaVersion:1,referenceId:'ref-a',sourceSe
   state:'sent',targetMessageId:'user',createdAt:'2026-09-13T00:00:00Z' };
 
 describe('bounded fixed upstream pages', () => {
+  it('records the stable next event and offset for initial, search and long reply pages',()=>{
+    const entries=[{eventId:'old',role:'user',text:'old searchable'},
+      {eventId:'question',role:'user',text:'current question'},
+      {eventId:'end',role:'assistant',text:'中文😀 searchable '.repeat(3000)}];
+    for(const [page,query] of [[readContextPage(ref,entries,2048),undefined],
+      [readContextPage(ref,entries,2048,undefined,'searchable'),'searchable'],
+      [readContextPage(ref,entries,2048,undefined,undefined,'question','end'),undefined]] as const){
+      const next=contextContinuationPosition(entries,page.nextCursor)!;
+      expect(next.eventId).toBe('end');expect(next.offset).toBeGreaterThan(0);
+      const continued=readContextPage(ref,entries,2048,page.nextCursor!,query).items[0]!;
+      expect(continued.eventId).toBe(next.eventId);
+      if(query)expect(continued.offset).toBeGreaterThanOrEqual(next.offset); // search resumes scanning, then returns a match
+      else expect(continued.offset).toBe(next.offset);
+    }
+    expect(contextContinuationPosition(entries,null)).toBeNull();
+    expect(()=>contextContinuationPosition(entries,Buffer.from(JSON.stringify(['test',99,0])).toString('base64url'))).toThrow('位置');
+  });
   it('puts the question and selected answer ahead of large intermediate tool traces',()=>{
     const entries=[{eventId:'older',role:'user',text:'OLDER'},
       {eventId:'question',role:'user',text:'梯度检查点如何节省显存？'},

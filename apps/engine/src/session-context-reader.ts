@@ -44,6 +44,17 @@ export class ContextReadBudgets {
 const size = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
 const key = (r: SessionContextRecord, query?: string) => createHash("sha256").update(JSON.stringify([r.referenceId,r.sourceVersionId,r.cutoffEventId,query ?? null])).digest("hex").slice(0,24);
 
+/** Persist an event position, not an index tied to the transport cursor. Only use with our returned page. */
+export function contextContinuationPosition(entries: readonly SessionContextEntry[], cursor: string | null) {
+  if (!cursor) return null;
+  const value: unknown = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+  if (!Array.isArray(value) || !Number.isSafeInteger(value[1]) || !Number.isSafeInteger(value[2]))
+    throw new Error('引用继续位置不可解析');
+  const entry = entries[value[1]];
+  if (!entry || value[2] < 0 || value[2] > entry.text.length) throw new Error('引用继续位置不可解析');
+  return { eventId: entry.eventId, offset: value[2] as number };
+}
+
 /** Pure pagination; every character of a long message remains reachable by a cursor. */
 export function readContextPage(record: SessionContextRecord, entries: readonly SessionContextEntry[], maxBytes: number,
   cursor?: string, query?: string, selectedTurnStartEventId?: string, selectedReplyEventId?: string): SessionContextPage {

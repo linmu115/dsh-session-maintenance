@@ -5,6 +5,16 @@ import { Context } from '@deepseek-ai/cordis';
 import { WebServer } from '@deepseek-ai/dsh-host-webserver';
 import { knowledgeHandler, MaintenanceKnowledge, registerMaintenanceKnowledge } from '../src/session-knowledge.js';
 
+it('lists authoritative source markers through the current graph host and rejects retired global operations',async()=>{
+  const sourceMarkers=vi.fn(async()=>({items:[],nextCursor:null}));
+  const current=vi.fn(async()=>({origin:'http://unused',token:'synthetic'}));
+  const service=new MaintenanceKnowledge({current},'run',{maintenanceGraph:{sourceMarkers}} as never);
+  expect(await service.dispatch('source-markers',{nativeSessionId:'source',after:'page'})).toEqual({items:[],nextCursor:null});
+  expect(sourceMarkers).toHaveBeenCalledWith('source','page');expect(current).not.toHaveBeenCalled();
+  await expect(service.dispatch('source-markers',{})).rejects.toThrow('身份');
+  for(const operation of ['network','impact'])await expect(service.dispatch(operation,{})).rejects.toThrow('不支持');
+});
+
 it('dispatches descendant API paths through the official RC2 host router',async()=>{
   const ctx=new Context();
   await ctx.plugin(WebServer,{host:'127.0.0.1',port:0});

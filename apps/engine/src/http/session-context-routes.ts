@@ -20,9 +20,13 @@ export async function routeSessionContext(request: IncomingMessage,response: Ser
   else if(operation==="bind") {
     const q=sessionContextScopeSchema.extend({referenceId:z.string().min(1).max(256),targetMessageId:z.string().min(1).max(256).nullable()}).parse(body);
     result=await engine.runWrite("context-bind",()=>engine.sessionContext.bind(q.runId,q.targetNativeSessionId,q.referenceId,q.targetMessageId));
-  }else if(operation==="inspect") {
+  }else if(operation==="settle-read") {
+    const q=sessionContextScopeSchema.extend({referenceId:z.string().min(1).max(256),requestId:z.string().min(1).max(256),delivery:z.enum(['returned','failed'])}).parse(body);
+    result=await engine.runWrite('context-read-receipt',()=>engine.sessionContext.settleRead(q.runId,q.targetNativeSessionId,q.referenceId,q.requestId,q.delivery));
+  }else if(operation==="inspect" || operation==="describe") {
     const q=sessionContextScopeSchema.extend({referenceId:z.string().min(1).max(256)}).parse(body);
-    result=await engine.sessionContext.inspect(q.runId,q.targetNativeSessionId,q.referenceId);
+    result=operation==='describe' ? await engine.sessionContext.describe(q.runId,q.targetNativeSessionId,q.referenceId)
+      : await engine.sessionContext.inspect(q.runId,q.targetNativeSessionId,q.referenceId);
   }else return false;
   response.statusCode=200;response.setHeader("content-type","application/json; charset=utf-8");response.end(JSON.stringify(result));return true;
 }

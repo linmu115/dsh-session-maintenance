@@ -1,3 +1,10 @@
+# 0.2.26-rc2.12 — 2026-09-15
+
+- Pair with Engine 0.1.33-rc2.16, ThoughtDAG 0.4.14-rc2.6, Annotation Core 0.3.12-rc2.8 and Sticker Board 0.7.3-rc2.14 on DSH 0.1.5-rc.2.
+- Add schema 2 session-owned graphs, authoritative edge removal, placeholder binding, fixed source metadata and bounded disclosure receipts independent of layout revisions.
+- Expose fixed-reference restoration and source markers; preserve independent Annotation reads when ThoughtDAG is disabled.
+- Remove the global knowledge network and impact interfaces while retaining scoped extension object maintenance and explicit legacy graph migration.
+
 # 0.2.26-rc2.10 — 2026-09-14
 
 - Pair with Engine 0.1.33-rc2.14 (schema 23), Annotation Core 0.3.12-rc2.7, ThoughtDAG 0.4.14-rc2.5, Sticker Board 0.7.3-rc2.12 and Obsidian Companion 0.6.4-rc2.5 on DSH 0.1.5-rc.2.

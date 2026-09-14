@@ -18,6 +18,7 @@ export const sessionContextRecordSchema = z.strictObject({
 });
 export const sessionContextReadSchema = sessionContextScopeSchema.extend({
   referenceId: id, executionId: id, cursor: z.string().max(2048).optional(),
+  requestId: id.optional(),
   query: z.string().min(1).max(200).optional(),
   view: z.literal("selected-turn").optional(),
   maxBytes: z.number().int().min(1024).max(16000).default(8000),
@@ -26,6 +27,7 @@ export const sessionContextReadSchema = sessionContextScopeSchema.extend({
 export type SessionContextCapture = z.infer<typeof sessionContextCaptureSchema>;
 export type SessionContextRecord = z.infer<typeof sessionContextRecordSchema>;
 export type SessionContextRead = z.input<typeof sessionContextReadSchema>;
+export interface SessionContextDescription { sourceNativeSessionId: string; record: SessionContextRecord }
 export interface SessionContextCutoff { eventId: string; digest: string }
 export interface SessionContextEntry { eventId: string; role: string; text: string }
 /** Format knowledge stays in the version Adapter. No on-disk materialization. */
