@@ -21,7 +21,7 @@ function unique(ids: string[]): void {
 }
 export const thoughtDagAdapter: ExtensionDataAdapter = {
   capabilities,
-  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2"], schemaVersions: [1],
+  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3"], schemaVersions: [1],
   validate(content) {
     if (typeof content.body === "object" && content.body !== null && !Array.isArray(content.body) && "managedSchema" in content.body)
       managedGraphSchema.parse(content.body);
@@ -55,7 +55,7 @@ export const obsidianLinksAdapter: ExtensionDataAdapter = {
   preview(body) { const managed=knowledgeLinkSchema.safeParse(body);if(managed.success)return {kind:'rows',total:1,rows:[{label:managed.data.note.notePath,text:managed.data.logicalSessionId}]};const link=knowledgeLink.parse(body);return {kind:"rows",total:link.links.length,rows:link.links.slice(0,100).map(l=>({label:l.target,text:l.relation==="backlink"?"双链":"引用"}))}; },
 };
 export const stickerAdapter: ExtensionDataAdapter = {
-  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9'], schemaVersions: [1],
+  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10'], schemaVersions: [1],
   validate(content) { stickerObjectSchema.parse(content.body); },
   summarize(body) { const value=stickerObjectSchema.parse(body);return value.kind==='session'?'独立会话入口':value.kind==='migration'?`迁移 · ${value.phase}`:'普通贴纸'; },
   preview(body) { const value=stickerObjectSchema.parse(body);return {kind:'rows',total:1,rows:[{label:value.kind==='session'?'目标会话':value.kind==='migration'?'迁移目标':'所属会话',text:value.logicalSessionId}]}; },
