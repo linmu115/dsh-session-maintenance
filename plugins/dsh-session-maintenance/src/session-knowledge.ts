@@ -17,21 +17,31 @@ export class MaintenanceKnowledge {
     const result=await response.json() as {error?:{message?:string;code?:string}};
     if(!response.ok)throw Object.assign(new Error(result.error?.message??'知识操作未完成'),{code:result.error?.code,status:response.status});return result;
   }
-  async createSession(operationId:string) {
-    id(operationId);const pending=this.creates.get(operationId);if(pending)return pending;
+  async createSession(operationId:string,workspaceId:string) {
+    id(operationId);id(workspaceId);
+    const workspace=this.ctx.workspaceRegistry.get(workspaceId as never);
+    if(!workspace)throw new Error('工作区已不存在，请重新选择');
+    const key=JSON.stringify([operationId,workspaceId]);
+    const pending=this.creates.get(key);if(pending)return pending;
     if(this.creates.size>=64)throw new Error('创建操作过多，请稍后重试');
-    const sessionId='knowledge-'+createHash('sha256').update(operationId).digest('hex').slice(0,32);
+    const sessionId='knowledge-'+createHash('sha256').update(key).digest('hex').slice(0,32);
     const task=(async()=>{
       try{return await this.ctx.maintenanceGraph.resolve({nativeSessionId:sessionId});}
       catch(e){if((e as {code?:string}).code!=='GRAPH_SESSION_NOT_FOUND')throw e;}
-      const controller=this.ctx.get('sessionController') as unknown as {create(input:{sessionId:string}):Promise<unknown>}|undefined;
+      const controller=this.ctx.get('sessionController') as unknown as {create(input:{sessionId:string;workspaceId:string}):Promise<unknown>}|undefined;
       if(!controller)throw new Error('DSH 会话控制器尚未就绪');
-      if(!this.ctx.sessions.get(sessionId as never))await controller.create({sessionId});
+      // Retry through the official controller, which also repairs an interrupted workspace attachment.
+      await controller.create({sessionId,workspaceId});
       return this.ctx.maintenanceGraph.created(sessionId);
-    })();this.creates.set(operationId,task);try{return await task;}finally{this.creates.delete(operationId);}
+    })();this.creates.set(key,task);try{return await task;}finally{this.creates.delete(key);}
   }
   async dispatch(operation:string,input:Record<string,unknown>) {
-    if(operation==='create-session')return this.createSession(id(input.operationId));
+    if(operation==='create-session')return this.createSession(id(input.operationId),id(input.workspaceId));
+    if(operation==='create-workspaces') {
+      const after=input.after===undefined?'':id(input.after);
+      const rows=this.ctx.workspaceRegistry.list().map(w=>({id:String(w.id),title:w.title||w.path})).filter(w=>w.id>after).sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0);
+      return {items:rows.slice(0,50),nextCursor:rows.length>50?rows[49]!.id:null};
+    }
     if(operation==='directory')return this.ctx.maintenanceGraph.directory(input.workspaceId===undefined?undefined:id(input.workspaceId),input.after===undefined?undefined:id(input.after));
     if(operation==='resolve')return this.ctx.maintenanceGraph.resolve(input.logicalSessionId?{logicalSessionId:id(input.logicalSessionId)}:{nativeSessionId:id(input.nativeSessionId)});
     if(operation==='preview')return this.ctx.maintenanceGraph.preview(id(input.logicalSessionId),input.cursor===undefined?undefined:String(input.cursor),input.sourceVersionId?{sourceVersionId:id(input.sourceVersionId),sourceAnchorId:id(input.sourceAnchorId)}:undefined);

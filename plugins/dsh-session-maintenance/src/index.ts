@@ -1,4 +1,4 @@
-import { bindRc2ProjectionContext } from './rc2-persistence.js';
+import { bindRc2ProjectionContext, rc2RuntimeHeader } from './rc2-persistence.js';
 import { MaintenanceSessionContext,registerSessionContext } from './session-context.js';
 import { MaintenanceGraph, registerMaintenanceGraph } from './session-graph.js';
 import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-knowledge.js';
@@ -96,7 +96,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     registerMaintenanceGraph(ctx as unknown as Context, new MaintenanceGraph(connection, launchProfile.runId, async id => {
       const session = ctx.sessions.get(id as never);
       if (!session) throw new Error("新建会话不在当前 DSH 运行环境中");
-      await runtime.retainExplicitSession(id, session.header as unknown as JsonValue,
+      await runtime.retainExplicitSession(id, rc2RuntimeHeader(session.header) as unknown as JsonValue,
         { inheritedEventCount: Number(session.inheritedEventCount) });
       await runtime.flush(id);
     }));
@@ -139,7 +139,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       runtime.observe(
         String(session.id),
         event as unknown as JsonValue,
-        session.header as unknown as JsonValue,
+        rc2RuntimeHeader(session.header) as unknown as JsonValue,
         (fromOffset, toOffsetExclusive) => session.snapshotEvents(
           fromOffset as never,
           toOffsetExclusive as never,

@@ -1,8 +1,20 @@
 import { describe, expect, it, vi } from 'vitest';
-import { rc2ProjectionContext, bindRc2ProjectionContext } from '../src/rc2-persistence.js';
+import { rc2ProjectionContext, bindRc2ProjectionContext, rc2RuntimeHeader } from '../src/rc2-persistence.js';
+import { validateV3 } from '../../../packages/adapter-dsh-0-1-5/src/official.js';
 import { installRc2LazyProjectionPersistence } from '../src/rc2-lazy-persistence.js';
 
 const header = { version: 3, id: 'cold-session', createdAt: 1, isSeeded: false, delegationDepth: 0 };
+
+it('normalizes a live ordinary header before strict V3 registration and durable roundtrip', () => {
+  const { delegationDepth: _depth, ...live } = header;
+  expect(() => validateV3({ header: live, events: [], inheritedEventCount: 0 } as never)).toThrow('delegationDepth');
+  const normalized = rc2RuntimeHeader(live as never);
+  expect(normalized.delegationDepth).toBe(0);
+  expect(live).not.toHaveProperty('delegationDepth');
+  expect(validateV3({ header: normalized, events: [], inheritedEventCount: 0 } as never).header).toEqual(header);
+  expect(rc2RuntimeHeader({ ...header, delegationDepth: 2 } as never).delegationDepth).toBe(2);
+  for (const depth of [-1, NaN, null, '0']) expect(() => rc2RuntimeHeader({ ...header, delegationDepth: depth } as never)).toThrow();
+});
 
 describe('RC2 projection storage boundary', () => {
   it('holds one writer, preserves header/cut options, flushes empty history, and closes before handoff', async () => {

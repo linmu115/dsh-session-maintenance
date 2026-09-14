@@ -5,6 +5,14 @@ import type { Context } from '@deepseek-ai/cordis';
 import { SessionLogOffset, type SessionHeader, type SessionEvent } from '@deepseek-ai/dsh-session';
 import type { SessionHandle } from '@deepseek-ai/dsh-session-persistence';
 import type { SessionPersistenceProjectionContext } from './projection-runtime.js';
+import { assertReleasedV3Header } from '@deepseek-ai/dsh-session-format-v2-to-v3';
+
+/** Match the official RC2 JSONL writer's default at the live-session boundary. */
+export function rc2RuntimeHeader(header: SessionHeader): SessionHeader {
+  const normalized = { ...header, delegationDepth: header.delegationDepth === undefined ? 0 : header.delegationDepth };
+  assertReleasedV3Header(normalized);
+  return normalized;
+}
 
 /** RC2 storage ownership stays inside this port until hydration has durably finished. */
 export function rc2ProjectionContext(ctx: Pick<Context, 'sessionPersistence' | 'workspaceRegistry' | 'sessionProjectionCache'>): SessionPersistenceProjectionContext {

@@ -44,10 +44,34 @@ it('retries a real session creation by stable operation without creating a secon
   const sessions=new Map(),created=vi.fn(async(id:string)=>({nativeSessionId:id,logicalSessionId:'logical',title:'new'}));
   const graph={resolve:vi.fn(async(input:{nativeSessionId:string})=>{if(!sessions.has(input.nativeSessionId))throw Object.assign(new Error('missing'),{code:'GRAPH_SESSION_NOT_FOUND'});return created(input.nativeSessionId);}),created};
   const controller={create:vi.fn(async(input:{sessionId:string})=>{sessions.set(input.sessionId,{});})};
-  const ctx={maintenanceGraph:graph,sessions:{get:(id:string)=>sessions.get(id)},get:()=>controller};
+  const ctx={maintenanceGraph:graph,sessions:{get:(id:string)=>sessions.get(id)},workspaceRegistry:{get:(id:string)=>id==='workspace'?{id}:undefined},get:()=>controller};
   const service=new MaintenanceKnowledge({current:async()=>({origin:'http://unused',token:'synthetic'})},'run',ctx as never);
-  const [first,second]=await Promise.all([service.createSession('operation'),service.createSession('operation')]);
+  const [first,second]=await Promise.all([service.createSession('operation','workspace'),service.createSession('operation','workspace')]);
   expect(first).toEqual(second);expect(controller.create).toHaveBeenCalledTimes(1);
   const restarted=new MaintenanceKnowledge({current:async()=>({origin:'http://unused',token:'synthetic'})},'run',ctx as never);
-  expect(await restarted.createSession('operation')).toEqual(first);expect(controller.create).toHaveBeenCalledTimes(1);
+  expect(await restarted.createSession('operation','workspace')).toEqual(first);expect(controller.create).toHaveBeenCalledTimes(1);
+  expect(controller.create).toHaveBeenCalledWith({sessionId:expect.any(String),workspaceId:'workspace'});
+  await expect(service.dispatch('create-session',{operationId:'invalid'})).rejects.toThrow('操作身份无效');
+  await expect(service.createSession('invalid','deleted-workspace')).rejects.toThrow('工作区已不存在');
+  expect(controller.create).toHaveBeenCalledTimes(1);
+});
+
+it('lists native workspaces including empty ones with stable paging', async()=>{
+  const rows=Array.from({length:51},(_,i)=>({id:'native-'+String(i).padStart(2,'0'),title:'Workspace '+i,path:'C:/synthetic/'+i}));
+  const ctx={workspaceRegistry:{list:()=>rows}};
+  const service=new MaintenanceKnowledge({current:async()=>({origin:'http://unused',token:'synthetic'})},'run',ctx as never);
+  const first=await service.dispatch('create-workspaces',{}) as any;
+  expect(first.items).toHaveLength(50);expect(first.nextCursor).toBe('native-49');
+  expect(await service.dispatch('create-workspaces',{after:first.nextCursor})).toEqual({items:[{id:'native-50',title:'Workspace 50'}],nextCursor:null});
+});
+
+it('reattaches the same native identity on retry after a partial controller failure', async()=>{
+  const calls:any[]=[];let attached=false;
+  const graph={resolve:vi.fn(async()=>{throw Object.assign(new Error('missing'),{code:'GRAPH_SESSION_NOT_FOUND'});}),created:vi.fn(async(id)=>({nativeSessionId:id}))};
+  const controller={create:vi.fn(async(input)=>{calls.push(input);if(calls.length===1)throw new Error('attach interrupted');attached=true;})};
+  const ctx={maintenanceGraph:graph,sessions:{get:()=>({})},workspaceRegistry:{get:()=>({id:'w'})},get:()=>controller};
+  const service=new MaintenanceKnowledge({current:async()=>({origin:'http://unused',token:'synthetic'})},'run',ctx as never);
+  await expect(service.createSession('op','w')).rejects.toThrow('attach interrupted');
+  await service.createSession('op','w');expect(calls[0]).toEqual(calls[1]);expect(attached).toBe(true);
+  await service.createSession('op','different-workspace');expect(calls[2].sessionId).not.toEqual(calls[0].sessionId);
 });
