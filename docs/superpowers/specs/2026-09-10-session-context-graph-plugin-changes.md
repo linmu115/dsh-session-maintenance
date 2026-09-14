@@ -1,8 +1,10 @@
 # 会话上下文关系图：插件、引擎改动清单
 
-日期：2026-09-10。状态：用于拆分后续实施任务；本次只交付文档。
+初稿：2026-09-10。修订：2026-09-14。状态：按用户确认的会话主干图需求更新；本次只交付文档，不实现或部署。
 
 产品行为和验收编号以[设计和功能需求](2026-09-10-session-context-graph-requirements.md)为准。本文给出职责、已核查的代码入口、建议修改内容与交付顺序，不代表已经修改代码。
+
+本次核查基线：Maintenance `42441ec`、ThoughtDAG `e2ce52b`、Sticker Board `b1ff2ea`、Annotation Core `7433774`。下文保留早期实施分工供追溯，本次变更重点为主干归属、右键交互、真实上下文边、蓝色来源标记、读取位置日志和 Adapter 联动。已取消全局网络及重答流程；额外功能取舍见[核查清单](2026-09-14-session-graph-feature-scope-audit.md)。
 
 ## 1. 先区分两个维护项目
 
@@ -37,12 +39,12 @@ flowchart LR
 
 | 项目 | 改动必要性/阶段 | 要修改或增加的功能 | 保留的职责边界 |
 |---|---|---|---|
-| `dsh-annotation-core` | 必需，P1 | 跨会话引用类型、固定上限、目标草稿与提交、可复用选择器 Interface、工具披露与注册、引用生命周期 | 统一注释能力；普通引用继续工作，不把全部上游装入现有正文准备流程 |
+| `dsh-annotation-core` | 必需，P1/P3 | 跨会话引用、目标草稿与提交、图自动创建事件、入向引用披露、撤销及工具返回位置回执 | 统一引用生命周期与预算；不把全部上游装入正文准备流程 |
 | `dsh-sidechat` | 当前选区入口必需，P1 | 浮窗增加跨会话引用，调用共享目标选择和加入引用能力，导航后绑定正确输入框 | 保留现有侧聊/原生 fork；不让新会话贴纸默认变成隐藏侧聊 |
-| `dsh-session-maintenance` 仓库 | 必需，P0/P1 | 引用身份、固定范围解析、分页和检索、全局预算、扩展对象/关系存储、插件能力和面板 | 会话真源与版本 Adapter 分工不变，格式知识不进入各插件 |
-| `dsh-session-sticker-board` | 必需，P2 | 会话贴纸新类型、新建/挂接真实会话、完整页跳转、来源与子讨论关系、对象迁移 | 普通贴纸继续可用，删除入口不删除会话 |
+| `dsh-session-maintenance` 仓库 | 必需，P0/P1/P3 | 主干图/位置日志 DTO、幂等存储、固定范围、分页/预算、撤销操作、ThoughtDAG Adapter/schema/兼容清单及数据面板同步 | 会话真源与版本 Adapter 分工不变；删除全局网络面板，保留各数据域维护 |
+| `dsh-session-sticker-board` | 必需，P2/P3 | 新建/挂接真实会话、来源高亮和蓝色跳转符号、目标主干建图、解除后标记同步、稳定消息锚点 | 普通贴纸红色符号保留，移除关系不删除真实会话或共享高亮 |
 | `obsidian-deepharness-bridge` | 必需，P2 | 笔记侧创建/挂接会话、会话级回链、完整会话跳转、统一扩展归属迁移 | Vault 正文由 Obsidian 管理，不将笔记自动全文注入 |
-| `linmu115/thoughtdag` | 必需，P3 | 新节点呈现、三类边、统一存储接入、统一引用工具、实例会话发现适配 | 不成为第二会话运行引擎，不作为 P1 的强依赖 |
+| `linmu115/thoughtdag` | 必需，P3 | 每会话主干、空卡片/已有会话右键操作、有向上下文边、进入真实会话、来源预览、轻量位置日志、全局入口删除 | 不成为第二会话运行引擎，不存聊天副本，不成为独立跨会话引用的强依赖 |
 | `dsh-maintenance-engine` 独立仓库 | 集成必要，分阶段 | 插件注册、能力依赖、schema 兼容与安装顺序、部署回执/回滚 | 管理安装包与实例接线，源会话仍归 Session Maintenance |
 | `dsh-better-sidebar` | 条件修改 | 只有现有面板挂载能力不足时，补可选的贴纸/图面板挂载 Interface | 继续是容器，不存会话引用语义 |
 | `dsh-session-context-menu` | 可选增强 | 会话列表提供“创建会话贴纸/挂接已有会话”等快捷入口 | 不是划选跨会话引用的前置依赖 |
@@ -81,6 +83,16 @@ flowchart LR
 
 P1 可使用现有 Sidechat 浮窗作为接入点；将来如果提供独立 Annotation 选区入口，复用相同 Interface。不要为了新功能强制重写已有侧边聊天。
 
+### 4.3 本次 Annotation 与图的执行协作
+
+已存在的 `src/host/upstream-tools.ts`、`src/host/upstream.ts` 和 `src/host/system-prompt.ts` 提供 `dsh_upstream_read` / `dsh_upstream_search` 及初始来源问答。继续复用这些路径，补充实际返回范围的回执，不新建 ThoughtDAG 专用的全文读取工具。
+
+- 创建跨会话引用或会话贴纸的 X → Y 关系时，通过统一后端操作确保 Y 的主干存在；引用、图关系及来源标记使用相同操作去重身份，失败留可恢复状态，不能依赖打开画布才导入。
+- 节点进入真实会话时，按其目标身份准备合法入向引用，保留已有草稿/附件；后续轮次按当前已启用关系工作，开始会话不自动发送。
+- 右键/键盘删除统一经过引用撤销接口；发送准备和工具返回前仍检查最新引用修订，不能绕过已有冲突检查。
+- 初始上下文和读取/搜索产生稳定位置、实际返回区间及预算计数，按 Maintenance 合同写入图扩展日志。模型自述、普通来源预览、取消请求不冒充已交付给 AI 的内容。
+- 源引用的固定截止位置与本轮分页位置分别表达。多父节点共同上游去重、并发预算和循环检查保持后端执行。
+
 ## 5. Session Maintenance 的具体修改
 
 基线：`5fd467922dcc8ccda0f8d740fecd3811dc6ef2fb`。这里指 `linmu115/dsh-session-maintenance` 仓库。
@@ -101,6 +113,27 @@ P1 可使用现有 Sidechat 浮窗作为接入点；将来如果提供独立 Ann
 
 若真实会话已经完成但维护真源尚未登记该尾部，必须完成既有事件提交/flush 并等待可解析回执，再固化引用上限。查询必须基于稳定身份，不从 profile 路径推测逻辑会话 ID。
 
+### 5.1 本次必须同步修改的 Maintenance 入口
+
+| 当前源码入口 | 要修改的能力 | 对应需求 |
+|---|---|---|
+| `packages/contracts/src/session-graph.ts`、`session-context.ts`、`session-knowledge.ts` | 主干归属、空节点、关系状态、固定来源和披露位置回执、分页与容量 DTO；不在各插件复制平行合同 | GR10–GR14、LG01–LG10、AD01 |
+| `apps/engine/src/extensions/adapters.ts` | ThoughtDAG schema/插件版本兼容、结构/引用/日志校验与旧图迁移；同步 Sticker 蓝色标记所需对象字段 | AD01–AD07 |
+| `apps/engine/src/session-graph-service.ts` 及 `http/session-graph-routes.ts` | 按目标会话确保唯一主干、当前图范围加载、结构修订/删除记录、日志分页；不使用全局扫描拼图 | GR03、GR10–GR14、RM01–RM07 |
+| `apps/engine/src/session-context-service.ts`、`session-context-reader.ts` | 固定范围读取、真实返回区间与继续位置、幂等回执；撤销后拒绝读取；回执写入与布局修订分离 | LG01–LG10、AC31、AC34–AC37 |
+| `apps/engine/src/session-knowledge-service.ts` | 保留会话贴纸/笔记对象与共享目录；移除只服务全局影响/批量重答的分支，先核对其它消费者 | D09、AD03 |
+| `plugins/dsh-session-maintenance/src/session-graph.ts`、`session-context.ts`、`session-knowledge.ts` | 作用域受控的主干/关系/回执接口与能力协商；复用工作区优先创建，不暴露 Engine 凭据 | GR08、AD01–AD04 |
+| `packages/adapter-dsh-0-1-5/src/session-graph.ts`、`session-context.ts` | 已完成回复 ID、版本/截止事件、长回复分段位置解析；保留已修复的真实 message ID 路径 | CUT03、LG05、AD04 |
+| `apps/dashboard/src/app.tsx`、`knowledge-network.tsx` 及现有扩展数据面板 | 移除全局网络/影响入口；在 ThoughtDAG Adapter 面板展示每个主干的结构、位置记录和维护状态 | AD03、AC38 |
+
+结构写入、关系撤销和标记刷新使用统一操作身份与可恢复提交，不允许前端分别写三套互相冲突的记录。引用已撤销但图保存失败时，先以撤销状态阻止读取，再恢复图呈现；不为保住旧布局重新启用引用。
+
+### 5.2 兼容与迁移必须先于部署
+
+当前 ThoughtDAG `managedSchema: 1` 没有主干归属或披露日志字段。实现时明确升级合同/schema，不把新数据硬塞进旧校验器。当前 Adapter 已列出 ThoughtDAG 至 `0.4.14-rc2.5`；下一发布版本号在构建时确定，必须同时修改兼容清单和能力测试，不能仅更新插件版本造成“已安装但不兼容”。
+
+旧图主干可唯一判定时核对后迁移；多目标图或旧知识线留待归属/拆分，不自动授予上下文权限，不删除测试以外的真实对象。日志不进入原生格式，也不为迁移增加会话/Vault 快照。部署顺序为共享合同与 Engine/Adapter → Maintenance 宿主 → Annotation/Sticker/ThoughtDAG 匹配消费者 → 合成组合验证 → 副本验收。
+
 ## 6. Sticker Board 与 Obsidian Bridge
 
 核查基线：Sticker Board `bc45d92`；Bridge `56a55ec`。
@@ -111,6 +144,10 @@ P1 可使用现有 Sidechat 浮窗作为接入点；将来如果提供独立 Ann
 - `src/client/sticker-store.ts`、`sticker-workspace.ts`：支持会话类型、复用对象和扩展存储接入，按需加载；现有通过 Bridge 读写贴纸的路径不能直接与新真源并行双写。
 - `src/client/sticker-sidebar.tsx`、`src/client/index.tsx`：新建/挂接、完整页跳转、来源入口和类型呈现。
 - `src/host/reference-delete-actions.ts`：明确删除对象、移除卡片和解除关联的不同范围；保留不删除会话的规则。
+
+本次已核查 `src/client/overlay.tsx`、`index.tsx`、`knowledge-panel.tsx`、`knowledge.ts`、`styles.css`。会话贴纸需复用普通 Sticker Board 的来源高亮/定位机制，增加独立蓝色引用符号及目标跳转，不把普通贴纸的红色符号全部换色。`resolveSessionStickerAnchorId` 的稳定消息 ID 修复继续保留；高亮字符位置与上游截止位置各司其职。
+
+`knowledge-panel.tsx` 保持“先选择工作区、实际创建前预检来源”的可靠流程，关系成功后调用共享主干建图能力并登记来源标记。刷新后重新按来源/目标/引用对象关联恢复蓝色入口。同一选区有多个目标时提供目标列表；解除一个连接只更新该关系的标记，不能把其它有效贴纸或高亮全部删除。
 
 ### 6.2 Obsidian Bridge
 
@@ -124,16 +161,19 @@ P1 可使用现有 Sidechat 浮窗作为接入点；将来如果提供独立 Ann
 
 ## 7. ThoughtDAG fork 的修改范围
 
-目标仓库：[linmu115/thoughtdag](https://github.com/linmu115/thoughtdag)。本轮没有新建本地克隆，也没有把上游文件名视为已确定实施入口；正式开工先固定 fork 的基线提交。
+目标仓库：[linmu115/thoughtdag](https://github.com/linmu115/thoughtdag)。当前本地目录为 `D:/AI/DeepSeekHarness-Plugin/repositories/thoughtdag`，核查提交 `e2ce52b`，分支 `codex/rc2-maintenance-graph`。下面均是待实施变更。
 
-1. **节点类型和打开动作**：增加会话贴纸/真实会话入口，点击进入 DSH 完整会话；展开节点才按需获取局部回复。
-2. **会话身份**：引用逻辑 ID，并通过当前实例映射到原生会话；不同画布复用同一身份。
-3. **发现与读取**：通过受支持的 DSH/Session Maintenance Interface 获取历史，遵守持久原生目录配置。
-4. **上下文连线**：区分分支来源、可用上游引用和普通知识关联；复用对应领域的关系 ID 与创建/解除接口，画布只保存呈现状态。移除线条呈现和解除关系分别处理，不能共用“连上线就全文注入”的行为。
-5. **执行接入**：使用目标 DSH Agent 进行真实轮次执行；接入 Annotation 统一引用披露和读取工具，不独立拼接所有上游。
-6. **保存与同步**：改造画布加载/保存/变更 Interface，由扩展 Adapter 保存图对象与修订；不能仅扫描聊天日志推断完整布局。
-7. **错误与恢复**：来源缺失、引用失效、插件停用、schema 不兼容有明确状态；恢复插件后读取已保存数据。
-8. **后续网络**：预留跨画布统一引用，不在初次适配时实现全局自动推演或递归重放。
+| 当前源码入口 | 修改内容 |
+|---|---|
+| `src/maintenance/ManagedGraphApp.tsx` | 增加空白/节点/边右键菜单及键盘等效操作；会话主干选择；空卡片延迟绑定；工作区优先创建；在节点开始真实会话；来源预览弹层；删除常驻局部问答、全局网络入口和混杂的知识线提示 |
+| `src/maintenance/model.ts` | 主干身份、空节点/待绑定边、权威关系与日志引用；替换 `connectKnowledge` 的装饰线语义；替换 `removePresentation` 删除路径，所有删除统一停用连接 |
+| `src/maintenance/client.ts`、`dsh/lib/managed-graph.js` | 调用共享主干/关系/撤销/回执能力；目录与来源预览继续分页，客户端不能选择任意 run/profile 或自行拼上游 |
+| `dsh/lib/client.js` | 节点打开/引用/会话贴纸与真实 DSH 页连接；保留草稿、蓝色符号跳转支持；移除全局准备重答入口对应动作 |
+| `src/maintenance/KnowledgeNetwork.tsx` | 从 DSH 集成中移除全局目录图、入向/出向总览、影响查看及批量准备重答组件及专用调用 |
+| `src/maintenance/managed.css` | 右键菜单、来源弹层、待绑定/解除/部分读取状态使用 DSH 风格，缩放/拖动/排版保留 |
+| `dsh/MANAGED.md`、相关模型/宿主测试、`dsh/scripts/verify-ui.mjs` | 实现时同步更新使用说明和旧按钮/删除语义断言，覆盖从真实选区到主干、撤销、日志回读的流程 |
+
+菜单添加与后端关系变更必须一起完成：现有拖线只建立知识关联、Delete/Backspace 只移除呈现，不能在只增加右键菜单后宣称已经实现上下文传导。非目标功能和未启用的上游独立应用范围见核查清单，不按名字批量删 `knowledge` 服务或 `SessionAtlas` 源码。
 
 ## 8. 安装部署与可拔插性
 
@@ -156,6 +196,20 @@ P1 可使用现有 Sidechat 浮窗作为接入点；将来如果提供独立 Ann
 | W07 | ThoughtDAG fork 的节点、连线、存储和实例历史适配 | AC18、AC19、GR01–GR09 |
 | W08 | 组合部署、禁用/恢复与空间增长验收 | AC17–AC22 |
 
+### 本次修订的实施顺序
+
+| 任务 | 交付 | 对应验收 |
+|---|---|---|
+| W09 | 主干/关系/轻量回执合同、存储和 Adapter/schema 兼容；旧图迁移边界 | AC26、AC27、AC39、AC40 |
+| W10 | 统一创建/撤销、刷新不复活、并发读取复核和来源标记状态 | AC29–AC31 |
+| W11 | Annotation/Sticker 自动确保目标主干，来源高亮与蓝色跳转符号 | AC26、AC28 |
+| W12 | 右键空白/节点/边、占位节点、工作区创建、节点进入会话、来源预览；移除知识线/仅隐藏删除的旧行为 | AC23–AC25、AC30、AC32、AC33 |
+| W13 | 初始上下文/工具返回位置日志、分页/去重/容量、关闭前端后的记录恢复 | AC34–AC37 |
+| W14 | 删除 ThoughtDAG 与 Dashboard 全局网络、影响/重答专属入口；保留共享服务及域面板 | AC38 |
+| W15 | 各仓库文档/回归与匹配版本构建，正式副本部署后用户验收 | AC01–AC40，重点 AD01–AD07 |
+
+W09 是写入新图结构的前置条件，W10/W11/W13 是宣称“连线可传导、删除可停用、图有日志”的前置条件。未确认的附加精简建议不混入实施必做项。
+
 每个未来实现任务按所属仓库规则形成聚焦测试、Markdown 变更报告和提交。只在合成会话与受控测试目录验证；副本部署通过正式安装和生命周期 Interface。真实副本交互验收由用户执行，不代称通过。
 
 本次文档检查只核对需求、文件入口、引用链接、差异范围与格式，不运行无关构建或真实会话测试。
@@ -164,6 +218,6 @@ P1 可使用现有 Sidechat 浮窗作为接入点；将来如果提供独立 Ann
 
 本次需求文档集中提交在 Session Maintenance 仓库，便于统一管理核心/扩展协议。其它插件的实施任务应引用本规格，在各自仓库维护自己的实现报告，不复制一份长期漂移的总规格。
 
-当前开发根目录：`D:\AI\DeepSeekHarness-Plugin`。主要插件位于 `repositories`，独立部署引擎位于 `dsh-maintenance-engine`；本次文档工作区为 `repositories/.worktrees/session-context-graph-design`。
+当前开发根目录：`D:\AI\DeepSeekHarness-Plugin`。主要插件位于 `repositories`，独立部署引擎位于 `dsh-maintenance-engine`；本次文档工作区为 `worktrees/session-context-graph-20260913/dsh-session-maintenance`。早期 `repositories/.worktrees/session-context-graph-design` 只作为历史设计工作区保留。
 
 本轮不修改任何插件源码、运行配置、安装包或真实会话数据；没有把文档提交视为功能完成。
