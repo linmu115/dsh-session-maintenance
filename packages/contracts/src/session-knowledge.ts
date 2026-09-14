@@ -31,6 +31,7 @@ export const knowledgeLinkSchema = z.strictObject({
 export const stickerMigrationSchema = z.strictObject({
   kind: z.literal('migration'), migrationId: id, vaultId: id, legacySessionId: id, logicalSessionId: id,
   sourceDigest: z.string().regex(/^[a-f0-9]{64}$/), sourceRevision: id,
+  manifestDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
   phase: z.enum(['staged', 'active']), mappings: z.array(z.strictObject({ legacyId: id, objectId: id })).max(500),
   pendingBacklinkDeletes: z.array(jsonValueSchema).max(500).default([]),
 });
@@ -68,6 +69,12 @@ export type KnowledgeLink = z.infer<typeof knowledgeLinkSchema>;
 export type KnowledgeWrite = z.input<typeof knowledgeWriteSchema>;
 export type KnowledgeList = z.input<typeof knowledgeListSchema>;
 export type KnowledgeMigration = z.input<typeof knowledgeMigrationSchema>;
+export interface KnowledgeMigrationReceipt {
+  object: ExtensionObject;
+  mappings: Array<{legacyId:string;objectId:string}>;
+  /** A legacy receipt acknowledges only its prior activation, not the new payload. */
+  verification: 'manifest-verified' | 'legacy-receipt-only';
+}
 export type KnowledgePage = { items: ExtensionObject[]; nextCursor: string | null };
 export interface NetworkItem {
   key: string; kind: 'session' | 'canvas' | 'sticker' | 'note' | 'reference'; title: string;

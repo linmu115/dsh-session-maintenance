@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   ExtensionDataError, knowledgeWriteSchema, knowledgeListSchema, knowledgeMigrationSchema, stickerMigrationSchema,
-  networkQuerySchema, networkImpactSchema, type KnowledgeWrite, type KnowledgeList, type KnowledgeMigration,
+  networkQuerySchema, networkImpactSchema, type KnowledgeWrite, type KnowledgeList, type KnowledgeMigration, type KnowledgeMigrationReceipt,
   type ExtensionObject, type ExtensionWriteResult, type KnowledgePage, type NetworkPage, type NetworkImpact,
   type RunId, jsonValueSchema,
 } from '@linmu/dsh-session-contracts';
@@ -74,32 +74,47 @@ export class SessionKnowledgeService {
     return extensions.write({scope,writerId,objectId:q.objectId,expectedRevision:q.expectedRevision,deleted:q.deleted,
       content:{schemaVersion:q.namespace==='obsidian-links'?2:1,title:q.title,body:jsonValueSchema.parse(JSON.parse(JSON.stringify(q.body))),references:[...new Set(refs)].map(logicalSessionId=>({logicalSessionId}))}});
   }
-  async migration(runId:string,input:KnowledgeMigration) {
+  async migration(runId:string,input:KnowledgeMigration):Promise<KnowledgeMigrationReceipt> {
     const q=knowledgeMigrationSchema.parse(input),{scope,extensions,writerId}=await this.context(runId,'stickers');
     const identity=await this.engine.sessionGraph.resolve(runId,{nativeSessionId:q.nativeSessionId});
     const objectId='migration-'+hash(q.vaultId+'\0'+q.nativeSessionId).slice(0,40);
-    let previous:ExtensionObject|undefined;
-    try{previous=extensions.get(scope,objectId).object;}catch(e){if(!(e instanceof ExtensionDataError)||e.code!=='EXTENSION_NOT_FOUND')throw e;}
-    if(previous){const old=stickerMigrationSchema.parse(previous.content.body);if(old.sourceDigest!==q.sourceDigest||old.sourceRevision!==q.sourceRevision||old.migrationId!==q.migrationId||old.logicalSessionId!==identity.logicalSessionId)throw fail('MIGRATION_CONFLICT','旧对象与迁移回执不一致，请先解决冲突');
-      const requestedIds=q.stickers.map(item=>item.legacyId).sort();
-      if(stable(old.mappings.map(item=>item.legacyId).sort())!==stable(requestedIds))throw fail('MIGRATION_CONFLICT','迁移对象集合与暂存回执不一致，请重试完整迁移');
-      if(old.phase==='active')return {object:previous,mappings:old.mappings};}
     if(new Set(q.stickers.map(s=>s.legacyId)).size!==q.stickers.length)throw fail('MIGRATION_CONFLICT','旧对象身份重复');
     const mappings=q.stickers.map(s=>({legacyId:s.legacyId,objectId:'legacy-'+hash(q.vaultId+'\0'+identity.logicalSessionId+'\0'+s.legacyId).slice(0,40)}));
+    const expected=q.stickers.map((sticker,index)=>({objectId:mappings[index]!.objectId,writerId,deleted:false,content:{
+      schemaVersion:1,title:sticker.title||'贴纸',body:{kind:'annotation',logicalSessionId:identity.logicalSessionId,legacyStickerId:sticker.legacyId,record:sticker.record,migrationId:q.migrationId},
+      references:[{logicalSessionId:identity.logicalSessionId}],
+    }}));
+    // Keep one content digest, not a second snapshot of imported sticker bodies.
+    const manifestDigest=hash(stable({migrationId:q.migrationId,vaultId:q.vaultId,nativeSessionId:q.nativeSessionId,
+      logicalSessionId:identity.logicalSessionId,sourceRevision:q.sourceRevision,sourceDigest:q.sourceDigest,
+      objects:[...expected].sort((a,b)=>a.objectId.localeCompare(b.objectId)),pendingBacklinkDeletes:q.pendingBacklinkDeletes}));
+    let previous:ExtensionObject|undefined;
+    try{previous=extensions.get(scope,objectId).object;}catch(e){if(!(e instanceof ExtensionDataError)||e.code!=='EXTENSION_NOT_FOUND')throw e;}
+    if(previous){const old=stickerMigrationSchema.parse(previous.content.body);if(previous.deleted||old.vaultId!==q.vaultId||old.legacySessionId!==q.nativeSessionId||old.sourceDigest!==q.sourceDigest||old.sourceRevision!==q.sourceRevision||old.migrationId!==q.migrationId||old.logicalSessionId!==identity.logicalSessionId)throw fail('MIGRATION_CONFLICT','旧对象与迁移回执不一致，请先解决冲突');
+      const requestedIds=q.stickers.map(item=>item.legacyId).sort();
+      if(stable(old.mappings.map(item=>item.legacyId).sort())!==stable(requestedIds))throw fail('MIGRATION_CONFLICT','迁移对象集合与暂存回执不一致，请重试完整迁移');
+      if(stable([...old.mappings].sort((a,b)=>a.legacyId.localeCompare(b.legacyId)))!==stable([...mappings].sort((a,b)=>a.legacyId.localeCompare(b.legacyId))))throw fail('MIGRATION_CONFLICT','迁移对象身份与回执不一致');
+      if(old.manifestDigest&&old.manifestDigest!==manifestDigest)throw fail('MIGRATION_VERIFY_FAILED','迁移请求完整内容核对失败');
+      if(old.phase==='active') {
+        // Old active receipts have no immutable payload proof. Report only that
+        // prior decision; never validate new data against legitimately edited objects.
+        return {object:previous,mappings:old.mappings,verification:old.manifestDigest?'manifest-verified' as const:'legacy-receipt-only' as const};
+      }
+      if(stable(old.pendingBacklinkDeletes)!==stable(q.pendingBacklinkDeletes))throw fail('MIGRATION_VERIFY_FAILED','迁移待清理双链核对失败');
+    }
     if(q.phase==='activate'&&!previous)throw fail('MIGRATION_NOT_STAGED','必须先完成导入与回执核对');
     return extensions.transaction(()=>{
-      if(q.phase==='stage')for(let i=0;i<q.stickers.length;i++){
-        const sticker=q.stickers[i]!,result=extensions.write({scope,writerId,objectId:mappings[i]!.objectId,expectedRevision:0,deleted:false,
-          content:{schemaVersion:1,title:sticker.title||'贴纸',body:{kind:'annotation',logicalSessionId:identity.logicalSessionId,legacyStickerId:sticker.legacyId,record:sticker.record,migrationId:q.migrationId},references:[{logicalSessionId:identity.logicalSessionId}]}});
+      if(q.phase==='stage')for(const value of expected){
+        const result=extensions.write({scope,...value,expectedRevision:0});
         if(result.status==='conflict')throw fail('MIGRATION_CONFLICT','迁移目标存在不同编辑，已保留旧写入冻结状态');
       }
-      if(q.phase==='activate')for(let i=0;i<mappings.length;i++){
-        const value=extensions.get(scope,mappings[i]!.objectId).object;
-        if(stable((value.content.body as {record:unknown}).record)!==stable(q.stickers[i]!.record))throw fail('MIGRATION_VERIFY_FAILED','迁移对象核对失败');
+      for(const intended of expected){
+        const value=extensions.get(scope,intended.objectId).object;
+        if(stable({objectId:value.objectId,writerId:value.writerId,deleted:value.deleted,content:value.content})!==stable(intended))throw fail('MIGRATION_VERIFY_FAILED','迁移对象完整核对失败');
       }
-      const body={kind:'migration' as const,migrationId:q.migrationId,vaultId:q.vaultId,legacySessionId:q.nativeSessionId,logicalSessionId:identity.logicalSessionId,sourceDigest:q.sourceDigest,sourceRevision:q.sourceRevision,phase:q.phase==='stage'?'staged' as const:'active' as const,mappings,pendingBacklinkDeletes:q.pendingBacklinkDeletes};
+      const body={kind:'migration' as const,migrationId:q.migrationId,vaultId:q.vaultId,legacySessionId:q.nativeSessionId,logicalSessionId:identity.logicalSessionId,sourceDigest:q.sourceDigest,sourceRevision:q.sourceRevision,manifestDigest,phase:q.phase==='stage'?'staged' as const:'active' as const,mappings,pendingBacklinkDeletes:q.pendingBacklinkDeletes};
       const saved=extensions.write({scope,writerId,objectId,expectedRevision:previous?.revision??0,deleted:false,content:{schemaVersion:1,title:'旧贴纸迁移',body,references:[{logicalSessionId:identity.logicalSessionId}]}});
-      if(saved.status==='conflict')throw fail('MIGRATION_CONFLICT','迁移回执已改变');return {object:saved.object,mappings};
+      if(saved.status==='conflict')throw fail('MIGRATION_CONFLICT','迁移回执已改变');return {object:saved.object,mappings,verification:'manifest-verified' as const};
     });
   }
   private async legacyContext(runId:string,nativeSessionId:string) {
@@ -137,7 +152,7 @@ export class SessionKnowledgeService {
       let pending=c.body.pendingBacklinkDeletes;
       if(input.enqueueBacklinkDelete&&!pending.some(r=>(r as {stickerId:string}).stickerId===(input.enqueueBacklinkDelete as {stickerId:string}).stickerId))pending=[...pending,input.enqueueBacklinkDelete as never];
       if(input.acknowledgeStickerId)pending=pending.filter(r=>(r as {stickerId:string}).stickerId!==input.acknowledgeStickerId);
-      const saved=c.extensions.write({scope:c.scope,writerId:c.writerId,objectId:c.marker.objectId,expectedRevision:c.marker.revision,deleted:false,content:{...c.marker.content,body:{...c.body,pendingBacklinkDeletes:pending}}});if(saved.status==='conflict')throw fail('REVISION_CONFLICT','贴纸清理记录冲突');
+      const saved=c.extensions.write({scope:c.scope,writerId:c.writerId,objectId:c.marker.objectId,expectedRevision:c.marker.revision,deleted:false,content:{...c.marker.content,body:jsonValueSchema.parse({...c.body,pendingBacklinkDeletes:pending})}});if(saved.status==='conflict')throw fail('REVISION_CONFLICT','贴纸清理记录冲突');
     });
     return this.legacyState(runId,input.document.sessionId);
   }

@@ -36,11 +36,31 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   await expect(api.migration(run.runId,{...migrated,phase:'activate',stickers:[]})).rejects.toThrow('集合');
   await expect(api.migration(run.runId,{...migrated,phase:'activate',sourceRevision:'changed'})).rejects.toThrow('回执');
   await expect(api.migration(run.runId,{...migrated,phase:'activate',stickers:[{...migrated.stickers[0]!,record:{stickerId:'old-id',markdown:'changed'}}]})).rejects.toThrow('核对');
+  await expect(api.migration(run.runId,{...migrated,phase:'activate',pendingBacklinkDeletes:[{stickerId:'changed'}]})).rejects.toThrow('核对');
+  const stickerScope={...scope,namespace:'stickers'},stagedObject=f.engine.extensions!.get(stickerScope,staged.mappings[0]!.objectId).object;
+  const modifyStaged=(content:any,deleted=false)=>f.engine.extensions!.write({scope:stickerScope,objectId:stagedObject.objectId,writerId:stagedObject.writerId,expectedRevision:f.engine.extensions!.get(stickerScope,stagedObject.objectId).object.revision,content,deleted});
+  for(const changed of [
+    {...stagedObject.content,title:'changed title'},
+    {...stagedObject.content,body:{...(stagedObject.content.body as any),logicalSessionId:ids.target}},
+    {...stagedObject.content,body:{...(stagedObject.content.body as any),legacyStickerId:'changed-id'}},
+    {...stagedObject.content,body:{...(stagedObject.content.body as any),migrationId:'changed-migration'}},
+    {...stagedObject.content,references:[{logicalSessionId:ids.target!}]},
+    {...stagedObject.content,body:{kind:'session',logicalSessionId:ids.source}},
+  ]){
+    expect(modifyStaged(changed).status).toBe('saved');
+    await expect(api.migration(run.runId,{...migrated,phase:'activate'})).rejects.toThrow('完整核对');
+    modifyStaged(stagedObject.content);
+  }
+  modifyStaged(stagedObject.content,true);await expect(api.migration(run.runId,{...migrated,phase:'activate'})).rejects.toThrow('完整核对');modifyStaged(stagedObject.content);
   const activated=await api.migration(run.runId,{...migrated,phase:'activate'});expect(activated.object.content.body).toMatchObject({phase:'active'});
   const legacy=await api.legacyState(run.runId,'source');
-  const update={document:{sessionId:'source',stickers:[{stickerId:'old-id',sessionId:'source',markdown:'用户注释',quote:'重点'}]},expectedRevision:legacy.document.revision};
+  const update={document:{sessionId:'source',stickers:[{stickerId:'old-id',sessionId:'source',markdown:'合法新内容',quote:'重点'}]},expectedRevision:legacy.document.revision};
   const saved=await api.legacySave(run.runId,update);expect(saved.document.revision).not.toBe(legacy.document.revision);
   await expect(api.legacySave(run.runId,update)).rejects.toThrow('另一窗口');
+  expect((await api.migration(run.runId,{...migrated,phase:'activate'})).verification).toBe('manifest-verified');
+  expect((await api.legacyState(run.runId,'source')).document).toEqual(saved.document);
+  await expect(api.migration(run.runId,{...migrated,phase:'activate',stickers:[{...migrated.stickers[0]!,title:'changed incoming title'}]})).rejects.toThrow('完整内容核对');
+  await expect(api.migration(run.runId,{...migrated,phase:'activate',stickers:[{...migrated.stickers[0]!,record:{changed:true}}]})).rejects.toThrow('完整内容核对');
   expect(sessionCount()).toBe(count);
   const note={namespace:'obsidian-links' as const,objectId:'note-one',expectedRevision:0,title:'笔记关联',body:{kind:'note-link' as const,note:{vaultId:'vault-one',noteId:'stable-note',notePath:'旧名.md'},logicalSessionId:ids.target!,syncState:'synced' as const}};
   await api.write(run.runId,note);await api.write(run.runId,{...note,expectedRevision:1,body:{...note.body,note:{...note.body.note,notePath:'移动/新名.md'}}});
@@ -95,9 +115,23 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   expect((await dashboard.queryKnowledgeNetwork(run.runId,{query:'共享'})).items).toHaveLength(2);
   expect((await dashboard.queryKnowledgeImpact(run.runId,ids.source!)).items).toHaveLength(2);
   const two={...migrated,migrationId:'target-migration',nativeSessionId:'target',stickers:[{legacyId:'a',title:'A',record:{stickerId:'a'}},{legacyId:'b',title:'B',record:{stickerId:'b'}}]};
-  await api.migration(run.runId,two);
+  const twoStaged=await api.migration(run.runId,two);
+  // A pre-upgrade staged receipt gains the digest only after complete object verification.
+  const withoutDigest={...(twoStaged.object.content.body as any)};delete withoutDigest.manifestDigest;
+  f.engine.extensions!.write({scope:stickerScope,objectId:twoStaged.object.objectId,writerId:twoStaged.object.writerId,expectedRevision:twoStaged.object.revision,content:{...twoStaged.object.content,body:withoutDigest},deleted:false});
   await expect(api.migration(run.runId,{...two,phase:'activate',stickers:two.stickers.slice(0,1)})).rejects.toThrow('集合');
-  expect((await api.migration(run.runId,{...two,phase:'activate',stickers:[...two.stickers].reverse()})).mappings).toHaveLength(2);
+  const twoActive=await api.migration(run.runId,{...two,phase:'activate',stickers:[...two.stickers].reverse()});
+  expect(twoActive.mappings).toHaveLength(2);expect((twoActive.object.content.body as any).manifestDigest).toMatch(/^[a-f0-9]{64}$/);
+  // A pre-upgrade active receipt is reported as historical evidence only, with no writes.
+  const oldActive={...(twoActive.object.content.body as any)};delete oldActive.manifestDigest;
+  f.engine.extensions!.write({scope:stickerScope,objectId:twoActive.object.objectId,writerId:twoActive.object.writerId,expectedRevision:twoActive.object.revision,content:{...twoActive.object.content,body:oldActive},deleted:false});
+  const rowsBefore=f.engine.repository.database.prepare('SELECT * FROM extension_objects ORDER BY namespace,object_id').all();
+  expect((await api.migration(run.runId,{...two,phase:'activate',stickers:two.stickers.map(item=>({...item,record:{unverified:true}}))})).verification).toBe('legacy-receipt-only');
+  expect(f.engine.repository.database.prepare('SELECT * FROM extension_objects ORDER BY namespace,object_id').all()).toEqual(rowsBefore);
+  const oldState=await api.legacyState(run.runId,'target');
+  const oldEdited=await api.legacySave(run.runId,{document:{sessionId:'target',stickers:oldState.document.stickers.map((item:any)=>({...item,sessionId:'target',markdown:'legitimate legacy edit'}))},expectedRevision:oldState.document.revision});
+  expect((await api.migration(run.runId,{...two,phase:'activate'})).verification).toBe('legacy-receipt-only');
+  expect((await api.legacyState(run.runId,'target')).document).toEqual(oldEdited.document);
   await f.engine.sessionContext.bind(run.runId,'source',reverse.referenceId,null);
   expect((await api.network(run.runId,{kind:'reference',logicalSessionId:ids.source,direction:'incoming'})).items[0]?.reference?.state).toBe('revoked');
   expect(await hashTree(f.dshHome)).toBe(before);
