@@ -4,9 +4,8 @@ import type {RuntimeBrokerPrepareRunRequest} from '@linmu/dsh-session-contracts'
 import {createEngineFixture,hashTree} from './helpers.js';
 import {contextEvents,contextHeader} from '../../../packages/adapter-dsh-0-1-5/test/context-fixture.js';
 import {MaintenanceKnowledge} from '../../../plugins/dsh-session-maintenance/src/session-knowledge.js';
-import {MaintenanceClient} from '../../../packages/local-api-client/src/client.js';
 
-it('keeps stickers, migrations, links and bounded network metadata separate from real session history',async()=>{
+it('keeps stickers, migrations, links and target-scoped graph metadata separate from real session history',async()=>{
  const f=await createEngineFixture('session-knowledge-rc2');
  try{
   const before=await hashTree(f.dshHome),at='2026-09-14T05:00:00Z';
@@ -28,7 +27,6 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   const migrated={migrationId:'migration-one',vaultId:'vault-one',nativeSessionId:'source',sourceDigest:'a'.repeat(64),sourceRevision:'sha256:legacy',phase:'stage' as const,stickers:[{legacyId:'old-id',title:'原贴纸',record:{stickerId:'old-id',markdown:'用户注释',quote:'重点'}}]};
   const staged=await api.migration(run.runId,migrated);expect(staged.mappings).toHaveLength(1);
   expect((await api.list(run.runId,{namespace:'stickers'})).items.map(i=>i.objectId)).not.toContain(staged.mappings[0]!.objectId);
-  expect((await api.network(run.runId,{})).items.map(i=>i.objectId)).not.toContain(staged.mappings[0]!.objectId);
   await expect(api.get(run.runId,'stickers',staged.mappings[0]!.objectId)).rejects.toThrow();
   await expect(api.legacyState(run.runId,'source')).rejects.toThrow();
   expect((await api.migration(run.runId,migrated)).mappings).toEqual(staged.mappings);
@@ -67,8 +65,6 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   expect((await api.get(run.runId,'obsidian-links','note-one')).content.body).toMatchObject({note:{noteId:'stable-note',notePath:'移动/新名.md'}});
   const canvas={scope:{...scope,namespace:'thoughtdag'},objectId:'canvas-one',writerId:'dsh-thoughtdag',expectedRevision:0,deleted:false,content:{schemaVersion:1,title:'共享画布',references:[{logicalSessionId:ids.target!}],body:{managedSchema:1,nodes:[{id:'n',position:{x:0,y:0},data:{kind:'session',label:'目标',logicalSessionId:ids.target!}}],edges:[]}}};
   f.engine.extensions!.write(canvas);f.engine.extensions!.write({...canvas,objectId:'canvas-two'});
-  const network=await api.network(run.runId,{});expect(network.items.filter(i=>i.kind==='canvas')).toHaveLength(2);expect(network.items.filter(i=>i.kind==='sticker')).toHaveLength(2);expect(JSON.stringify(network)).not.toContain('用户注释');
-  expect((await api.network(run.runId,{query:'共享'})).items).toHaveLength(2);
   await api.write(run.runId,{...sticker,expectedRevision:1,deleted:true});expect(sessionCount()).toBe(count);
   expect((await api.list(run.runId,{namespace:'stickers',deleted:'deleted'})).items.map(i=>i.objectId)).toContain('sticker-one');
   await api.write(run.runId,{...sticker,expectedRevision:2});
@@ -76,44 +72,31 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   const append=async(value:any[],operationId:string)=>f.engine.appendProjectionRuntimeEvent(request.runtimeClientId,{runId:run.runId,nativeSessionId:'source' as never,operationId:operationId as never,nativeRevision:value.at(-1).seq+1,observedAt:at,payload:{logicalSessionId:ids.source!,instanceId:request.instanceId,header:{...header,id:'source'},inheritedEventCount:0,events:value}});
   expect((await append(events,'first')).status).toBe('committed');
   const ref=await f.engine.sessionContext.capture({runId:run.runId,sourceNativeSessionId:'source',targetNativeSessionId:'target',operationId:'ref',anchorId:'reply-one',selectedText:'重点'});await f.engine.sessionContext.bind(run.runId,'target',ref.referenceId,'user-one');
-  expect((await api.impact(run.runId,{logicalSessionId:ids.source})).items[0]!.status).toBe('fixed');
   await append(contextEvents().slice(7),'next');
-  expect((await api.impact(run.runId,{logicalSessionId:ids.source})).items[0]!.status).toBe('new-content');
   expect((await f.engine.sessionContext.inspect(run.runId,'target',ref.referenceId)).sourceVersionId).toBe(ref.sourceVersionId);
   await f.engine.appendProjectionRuntimeEvent(request.runtimeClientId,{runId:run.runId,nativeSessionId:'target' as never,operationId:'target-turn' as never,nativeRevision:events.at(-1)!.seq+1,observedAt:at,payload:{logicalSessionId:ids.target!,instanceId:request.instanceId,header:{...header,id:'target'},inheritedEventCount:0,events}});
   const reverse=await f.engine.sessionContext.capture({runId:run.runId,sourceNativeSessionId:'target',targetNativeSessionId:'source',operationId:'reverse',anchorId:'reply-one',selectedText:'重点'});
   await f.engine.sessionContext.bind(run.runId,'source',reverse.referenceId,'reverse-user');
-  const referenceNetwork=await api.network(run.runId,{kind:'reference',query:'重点'});
-  expect(referenceNetwork.items).toHaveLength(2);
-  expect(referenceNetwork.items.every(item=>item.reference?.state==='sent')).toBe(true);
-  expect(JSON.stringify(referenceNetwork)).not.toContain('selectedText');
-  const incoming=await api.network(run.runId,{kind:'reference',logicalSessionId:ids.target,direction:'incoming'});
-  expect(incoming.items.map(item=>item.reference?.referenceId)).toEqual([ref.referenceId]);
-  const outgoing=await api.network(run.runId,{kind:'reference',logicalSessionId:ids.target,direction:'outgoing'});
-  expect(outgoing.items.map(item=>item.reference?.referenceId)).toEqual([reverse.referenceId]);
-  await expect(api.network(run.runId,{direction:'incoming'})).rejects.toThrow();
-  await expect(api.network(run.runId,{logicalSessionId:'foreign',direction:'incoming'})).rejects.toThrow();
-  const cycle=await api.impact(run.runId,{logicalSessionId:ids.source,depth:8});expect(cycle.items).toHaveLength(2);expect(cycle.visited).toBe(2);expect(cycle.truncated).toBe(false);
+  expect((await f.engine.sessionGraph.relations(run.runId,ids.target!)).items.map(item=>item.referenceId)).toEqual([ref.referenceId]);
+  expect((await f.engine.sessionGraph.relations(run.runId,ids.source!)).items.map(item=>item.referenceId)).toEqual([reverse.referenceId]);
+  await expect(f.engine.sessionGraph.relations(run.runId,'foreign')).rejects.toThrow();
   for(let i=0;i<60;i++)await api.write(run.runId,{...sticker,title:'分页贴纸'+i,objectId:'page-'+String(i).padStart(3,'0')});
-  const first=await api.network(run.runId,{kind:'sticker'});expect(first.items).toHaveLength(50);expect(first.nextCursor).toBeTruthy();
-  const next=await api.network(run.runId,{kind:'sticker',after:first.nextCursor});expect(new Set([...first.items,...next.items].map(i=>i.key)).size).toBe(62);
+  const first=await api.list(run.runId,{namespace:'stickers'});expect(first.items).toHaveLength(30);expect(first.nextCursor).toBeTruthy();
+  const next=await api.list(run.runId,{namespace:'stickers',after:first.nextCursor!});expect(new Set([...first.items,...next.items].map(i=>i.objectId)).size).toBe(60);
   f.engine.extensions!.enable({...scope,namespace:'stickers'},false);await expect(api.write(run.runId,sticker)).rejects.toThrow();
-  expect((await api.network(run.runId,{query:'独立讨论'})).items.find(i=>i.objectId==='sticker-one')!.available).toBe(false);
   const server=await f.startServer();expect((await fetch(server.origin+'/v1/session-knowledge/network',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({runId:run.runId,input:{}})})).status).toBe(401);
   f.engine.extensions!.enable({...scope,namespace:'stickers'},true);
   const host=new MaintenanceKnowledge({current:async()=>({origin:server.origin,token:server.token})},run.runId,{} as never);
   expect((await host.request('status') as any).instanceId).toBe(request.instanceId);
-  expect((await host.request('network',{query:'共享'}) as any).items).toHaveLength(2);
-  expect((await host.request('impact',{logicalSessionId:ids.source}) as any).items).toHaveLength(2);
   expect((await host.request('write',{...sticker,objectId:'http-sticker'}) as any).status).toBe('saved');
   expect((await host.request('get',{namespace:'stickers',objectId:'http-sticker'}) as any).content.body.logicalSessionId).toBe(ids.target);
   expect((await host.request('list',{namespace:'stickers'}) as any).items.length).toBeGreaterThan(0);
   const fromHttp=await host.request('legacy-state',{nativeSessionId:'source'}) as any;
   expect((await host.request('legacy-save',{document:fromHttp.document,expectedRevision:fromHttp.document.revision}) as any).document.sessionId).toBe('source');
-  await expect(host.request('network',{runId:'different'})).rejects.toThrow('当前实例');
-  const dashboard=new MaintenanceClient({origin:server.origin,token:server.token});
-  expect((await dashboard.queryKnowledgeNetwork(run.runId,{query:'共享'})).items).toHaveLength(2);
-  expect((await dashboard.queryKnowledgeImpact(run.runId,ids.source!)).items).toHaveLength(2);
+  await expect(host.request('list',{runId:'different'})).rejects.toThrow('当前实例');
+  await expect(host.request('network',{})).rejects.toThrow('不支持');
+  await expect(host.request('impact',{})).rejects.toThrow('不支持');
+  const retired=await fetch(server.origin+'/v1/session-knowledge/network',{method:'POST',headers:{authorization:`Bearer ${server.token}`,'content-type':'application/json'},body:JSON.stringify({runId:run.runId,input:{}})});expect(retired.status).toBe(404);
   const two={...migrated,migrationId:'target-migration',nativeSessionId:'target',stickers:[{legacyId:'a',title:'A',record:{stickerId:'a'}},{legacyId:'b',title:'B',record:{stickerId:'b'}}]};
   const twoStaged=await api.migration(run.runId,two);
   // A pre-upgrade staged receipt gains the digest only after complete object verification.
@@ -133,7 +116,7 @@ it('keeps stickers, migrations, links and bounded network metadata separate from
   expect((await api.migration(run.runId,{...two,phase:'activate'})).verification).toBe('legacy-receipt-only');
   expect((await api.legacyState(run.runId,'target')).document).toEqual(oldEdited.document);
   await f.engine.sessionContext.bind(run.runId,'source',reverse.referenceId,null);
-  expect((await api.network(run.runId,{kind:'reference',logicalSessionId:ids.source,direction:'incoming'})).items[0]?.reference?.state).toBe('revoked');
+  expect((await f.engine.sessionGraph.relations(run.runId,ids.source!)).items[0]?.state).toBe('revoked');
   expect(await hashTree(f.dshHome)).toBe(before);
  }finally{await f.cleanupAll();}
 },60000);

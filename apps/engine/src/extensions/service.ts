@@ -52,6 +52,10 @@ export class ExtensionDataService {
   }
   write(input: ExtensionWrite) {
     const parsed = extensionWriteSchema.parse(input);
+    const managed = (body: unknown) => Boolean(body && typeof body === "object" && "managedSchema" in body && body.managedSchema === 2);
+    if (parsed.scope.namespace === "thoughtdag" && (managed(parsed.content.body) ||
+        managed(this.store.get(parsed.scope, parsed.objectId)?.content.body)))
+      throw new ExtensionDataError("GRAPH_DOMAIN_REQUIRED", "会话图结构、移除和读取记录必须通过统一图操作保存；当前编辑请保留。", 409);
     const { adapter, panel } = this.ready(parsed.scope);
     const current = this.store.get(parsed.scope,parsed.objectId);
     if (!adapter.capabilities.write || (parsed.deleted && !adapter.capabilities.delete) || (current?.deleted && !parsed.deleted && !adapter.capabilities.restore)) {

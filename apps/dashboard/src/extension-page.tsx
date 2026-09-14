@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button, Surface, LoadingState, EmptyState } from "@linmu/dsh-session-ui";
-import type { ExtensionPanel, ExtensionScope, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict, ExtensionCapabilities, ExtensionPreview, JsonValue } from "@linmu/dsh-session-contracts";
+import { managedGraphSchema, type ExtensionPanel, type ExtensionScope, type ExtensionList, type ExtensionPage, type ExtensionDetail, type ExtensionWrite, type ExtensionWriteResult, type ExtensionConflict, type ExtensionCapabilities, type ExtensionPreview, type JsonValue } from "@linmu/dsh-session-contracts";
 
 export interface ExtensionPageApi {
   listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]>;
@@ -52,6 +52,8 @@ function ObjectDirectory({api,panel,onOpenSession}:{api:ExtensionPageApi;panel:E
 function ObjectEditor({api,scope,capabilities,id,onChanged,onOpenSession}:{api:ExtensionPageApi;scope:ExtensionScope;capabilities:ExtensionCapabilities;id:string;onChanged:()=>void;onOpenSession:(id:string)=>void}) {
   const [detail,setDetail]=useState<ExtensionDetail>();const [title,setTitle]=useState("");const [body,setBody]=useState("");
   const [conflict,setConflict]=useState<ExtensionConflict>();const [error,setError]=useState<string>();const [busy,setBusy]=useState(false);
+  const managedGraph=scope.namespace==="thoughtdag"&&Boolean(detail?.object.content.body&&typeof detail.object.content.body==="object"&&"managedSchema" in detail.object.content.body);
+  const graphDetail=managedGraphSchema.safeParse(detail?.object.content.body);
   useEffect(()=>{const c=new AbortController();void api.getExtensionObject(scope,id,c.signal).then(d=>{if(c.signal.aborted)return;setDetail(d);setTitle(d.object.content.title);setBody(JSON.stringify(d.object.content.body,null,2));},e=>{if(!c.signal.aborted)setError(errorText(e));});return()=>c.abort();},[api,scope,id]);
   const perform=async(action:()=>Promise<unknown>)=>{setBusy(true);setError(undefined);try{await action();}catch(e){setError(errorText(e));}finally{setBusy(false);}};
   const save=async(deleted:boolean)=>{if(!detail)return;const o=detail.object;
@@ -63,11 +65,16 @@ function ObjectEditor({api,scope,capabilities,id,onChanged,onOpenSession}:{api:E
     {!detail&&!error?<LoadingState label="正在读取所选对象…"/>:null}
     {detail?<><p>{detail.summary}</p><p>版本 {detail.object.revision} · {detail.object.deleted?"已删除":"当前状态"}</p>
       {detail.preview?<ObjectPreview preview={detail.preview}/>:null}
+      {graphDetail.success?<div aria-label="主干固定来源"><p>主干会话：{graphDetail.data.ownerSessionId??"待绑定"}</p>
+        {graphDetail.data.migration?<p>{graphDetail.data.migration.reason}</p>:null}
+        <ul>{graphDetail.data.edges.filter(e=>e.data.relationId).slice(0,100).map(e=><li key={e.id}>{e.data.relationId} · {e.data.state==="sent"?"已发送":"待发送"} · 固定上限 {e.data.cutoffEventId??"请在图中核验"} · 来源版本 {e.data.sourceVersionId??"待核验"}</li>)}</ul>
+        <p>{graphDetail.data.removedRelationIds?.length??0} 条关系已移除。读取位置另存为同一主干的记录对象；记录只表示实际保存的披露回执，停用期间的读取不会补记。</p></div>:null}
       <div>{detail.object.content.references.map((r,i)=><Button key={i} onClick={()=>onOpenSession(r.logicalSessionId)}>关联会话 {r.logicalSessionId}{r.anchorId?` · ${r.anchorId}`:""}</Button>)}</div>
-      <label className="field">标题<input value={title} onChange={e=>setTitle(e.target.value)} disabled={busy||detail.object.deleted}/></label>
-      <details><summary>查看和编辑对象内容（JSON）</summary><textarea className="extension-json" aria-label="对象内容" value={body} onChange={e=>setBody(e.target.value)} disabled={busy||detail.object.deleted}/></details>
-      {!detail.object.deleted&&capabilities.write?<Button disabled={busy} onClick={()=>void perform(()=>save(false))}>保存编辑</Button>:null}
-      {capabilities.write&&(detail.object.deleted?capabilities.restore:capabilities.delete)?<Button disabled={busy} onClick={()=>void perform(()=>save(!detail.object.deleted))}>{detail.object.deleted?"恢复对象":"删除对象"}</Button>:null}
+      {managedGraph?<p>主干结构、固定上限与读取位置在此查看。请在会话主干图中管理连接与移除，系统会同步停用对应引用。</p>:null}
+      <label className="field">标题<input value={title} onChange={e=>setTitle(e.target.value)} disabled={busy||detail.object.deleted||managedGraph}/></label>
+      <details><summary>{managedGraph?"查看对象内容（JSON）":"查看和编辑对象内容（JSON）"}</summary><textarea className="extension-json" aria-label="对象内容" value={body} onChange={e=>setBody(e.target.value)} disabled={busy||detail.object.deleted||managedGraph}/></details>
+      {!managedGraph&&!detail.object.deleted&&capabilities.write?<Button disabled={busy} onClick={()=>void perform(()=>save(false))}>保存编辑</Button>:null}
+      {!managedGraph&&capabilities.write&&(detail.object.deleted?capabilities.restore:capabilities.delete)?<Button disabled={busy} onClick={()=>void perform(()=>save(!detail.object.deleted))}>{detail.object.deleted?"恢复对象":"删除对象"}</Button>:null}
       {detail.conflictIds.map(cid=><Button key={cid} disabled={busy} onClick={()=>void perform(async()=>setConflict(await api.getExtensionConflict(scope,cid)))}>查看冲突 {cid.slice(0,8)}</Button>)}
     </>:null}
     {conflict?<section aria-label="处理编辑冲突"><h4>编辑冲突：两份内容均已保留</h4><p>处理前请比较双方内容。保留当前版本会移除本条候选，采用传入编辑会以新版本保存。</p>

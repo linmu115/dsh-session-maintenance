@@ -9,6 +9,19 @@ const graph = () => ({ managedSchema: 1, nodes: [
 viewport: { x: 0, y: 0, zoom: 1 } });
 const content = (body: unknown) => ({ schemaVersion: 1, title: "Canvas", body: body as any, references: [] });
 describe("managed graph schema", () => {
+  it("accepts schema 2 with the matching release and rejects fabricated pending permissions", () => {
+    expect(thoughtDagAdapter.pluginVersions).toContain("0.4.14-rc2.6");
+    expect(thoughtDagAdapter.schemaVersions).toContain(2);
+    const body = { managedSchema: 2, ownerSessionId: null, nodes: [
+      { id: "a", position: { x: 0, y: 0 }, data: { kind: "placeholder", label: "空卡片" } },
+      { id: "b", position: { x: 1, y: 1 }, data: { kind: "placeholder", label: "接收" } },
+    ], edges: [{ id: "ab", source: "a", target: "b", data: { kind: "pending" } }] };
+    expect(() => thoughtDagAdapter.validate({ ...content(body), schemaVersion: 2 })).not.toThrow();
+    expect(() => thoughtDagAdapter.validate(content(body))).toThrow();
+    expect(() => thoughtDagAdapter.validate({ ...content({ nodes: [], edges: [] }), schemaVersion: 2 })).toThrow();
+    (body.edges[0]!.data as any).cutoffEventId = "invented";
+    expect(() => thoughtDagAdapter.validate({ ...content(body), schemaVersion: 2 })).toThrow();
+  });
   it("accepts stable presentation references and existing legacy canvases", () => {
     expect(thoughtDagAdapter.pluginVersions).toContain("0.4.14-rc2.1");
     expect(() => thoughtDagAdapter.validate(content(graph()))).not.toThrow();

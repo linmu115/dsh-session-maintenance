@@ -38,15 +38,20 @@ describe("maintenanceGraph host boundary", () => {
     });
     const graph = new MaintenanceGraph({ current: async () => ({ origin: "http://127.0.0.1:1234", token: "fixture-private" }) },
       "bound-run", async native => { expect(native).toBe("native"); order.push("registered"); });
-    expect(graph.protocolVersion).toBe(1);
+    expect(graph.protocolVersion).toBe(2);
     await graph.created("native");
     expect(order).toEqual(["registered", "request"]);
     expect(requests[0].body).toEqual({ runId: "bound-run", target: { nativeSessionId: "native" } });
     await graph.directory("workspace", "cursor");
     await graph.preview("logical", undefined, { sourceVersionId: "version", sourceAnchorId: "reply" });
-    await graph.relations("last-object");
+    await graph.relations("logical", "last-object");
+    await graph.ensure("logical");
+    await graph.load("main-graph");
+    await graph.disclosures("main-graph", "last-receipt");
+    await graph.sourceMarkers("native");
     expect(requests.every(request => request.body.runId === "bound-run" && request.authorization === "Bearer fixture-private")).toBe(true);
     expect(requests[2].body.selection).toEqual({ sourceVersionId: "version", sourceAnchorId: "reply" });
+    expect(requests[3].body).toEqual({ runId:"bound-run", logicalSessionId:"logical", after:"last-object" });
   });
   it("does not resolve an unregistered session or hide an Engine rejection", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ error: { message: "来源版本已改变", code: "GRAPH_SESSION_NOT_FOUND" } }), { status: 409 }));

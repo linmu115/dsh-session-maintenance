@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { z } from 'zod';
-import { knowledgeWriteSchema,knowledgeListSchema,knowledgeMigrationSchema,knowledgeNamespaceSchema,networkQuerySchema,networkImpactSchema,jsonValueSchema } from '@linmu/dsh-session-contracts';
+import { knowledgeWriteSchema,knowledgeListSchema,knowledgeMigrationSchema,knowledgeNamespaceSchema,jsonValueSchema } from '@linmu/dsh-session-contracts';
 import type { SessionMaintenanceEngine } from '../engine.js';
 import { readJsonBody } from './body.js';
 const id=z.string().min(1).max(256),base=z.strictObject({runId:id});
@@ -12,8 +12,6 @@ export async function routeSessionKnowledge(request:IncomingMessage,response:Ser
   else if(op==='get'){const q=base.extend({namespace:knowledgeNamespaceSchema,objectId:id}).parse(body);result=await engine.sessionKnowledge.get(q.runId,q.namespace,q.objectId);}
   else if(op==='write'){const q=base.extend({input:knowledgeWriteSchema}).parse(body);result=await engine.runWrite('knowledge-write',()=>engine.sessionKnowledge.write(q.runId,q.input));}
   else if(op==='migrate'){const q=base.extend({input:knowledgeMigrationSchema}).parse(body);result=await engine.runWrite('knowledge-migration',()=>engine.sessionKnowledge.migration(q.runId,q.input));}
-  else if(op==='network'){const q=base.extend({input:networkQuerySchema}).parse(body);result=await engine.sessionKnowledge.network(q.runId,q.input);}
-  else if(op==='impact'){const q=base.extend({input:networkImpactSchema}).parse(body);result=await engine.sessionKnowledge.impact(q.runId,q.input);}
   else if(op==='legacy-state'){const q=base.extend({nativeSessionId:id}).parse(body);result=await engine.sessionKnowledge.legacyState(q.runId,q.nativeSessionId);}
   else if(op==='legacy-save'){const q=base.extend({input:z.strictObject({document:z.object({sessionId:id,stickers:z.array(jsonValueSchema).max(500)}),expectedRevision:id,enqueueBacklinkDelete:jsonValueSchema.optional(),acknowledgeStickerId:id.optional()})}).parse(body);result=await engine.runWrite('knowledge-legacy-save',()=>engine.sessionKnowledge.legacySave(q.runId,q.input));}
   else return false;

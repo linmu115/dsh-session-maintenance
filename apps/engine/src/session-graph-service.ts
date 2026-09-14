@@ -1,11 +1,13 @@
 import { z } from "zod";
 import {
-  ExtensionDataError, graphResolveSchema, sessionContextRecordSchema,
+  ExtensionDataError, graphResolveSchema, sessionContextRecordSchema, sessionStickerSchema,
   type GraphResolve, type GraphSessionIdentity, type GraphPreviewPage, type GraphPreviewSelection,
   type GraphRelationPage, type SessionContextDirectory, type RunId, type LogicalSessionId, type NativeSessionId, type SessionVersionId, type JsonValue,
+  type GraphSave, type GraphRemove, type GraphBind, type SessionContextRecord, type GraphDisclosureInput, type GraphSourceMarkerPage,
 } from "@linmu/dsh-session-contracts";
 import { JsonProjectionDirectory, projectionRootFor } from "@linmu/dsh-session-projection-lifecycle";
 import type { SessionMaintenanceEngine } from "./engine.js";
+import { SessionGraphStore, graphObjectId } from "./session-graph-store.js";
 
 const unavailable = (message: string) => new ExtensionDataError("GRAPH_UNAVAILABLE", message, 409);
 const cursorSchema = z.strictObject({
@@ -21,6 +23,65 @@ const visible = "ps.mode NOT IN ('hidden','recovery-only') AND s.tombstoned_at I
 /** Graph navigation is independent of Annotation availability; reads create no objects. */
 export class SessionGraphService {
   constructor(private readonly engine: SessionMaintenanceEngine) {}
+  private graphStore?: SessionGraphStore;
+  private get graphs() { return this.graphStore ??= new SessionGraphStore(this.engine.repository.database); }
+  private async graphAccess(runId: string, optional = false) {
+    const run = await this.run(runId);
+    const panel = this.engine.extensions?.panels().find(p => p.scope.instanceId === run.instanceId && p.scope.profileId === run.profileId && p.scope.namespace === "thoughtdag");
+    if (!panel || panel.status !== "ready") {
+      if (optional) return null;
+      throw unavailable("当前实例未启用匹配的 ThoughtDAG 图适配器；已保存数据保留");
+    }
+    return { scope: panel.scope, writerId: panel.writerId };
+  }
+  async ensure(runId: string, logicalSessionId: string) {
+    const a = (await this.graphAccess(runId))!, target = await this.resolve(runId, { logicalSessionId });
+    return this.graphs.ensure(a.scope, a.writerId, target.logicalSessionId, target.title);
+  }
+  async load(runId: string, objectId: string) {
+    const a = (await this.graphAccess(runId))!, doc = this.graphs.load(a.scope, objectId);
+    if (doc.graph.ownerSessionId) await this.resolve(runId, { logicalSessionId: doc.graph.ownerSessionId });
+    return doc;
+  }
+  async save(runId: string, input: GraphSave) {
+    const a = (await this.graphAccess(runId))!;
+    if (input.graph.ownerSessionId) await this.resolve(runId, { logicalSessionId: input.graph.ownerSessionId });
+    for (const logicalSessionId of new Set(input.graph.nodes.flatMap(n => n.data.logicalSessionId ? [n.data.logicalSessionId] : [])))
+      await this.resolve(runId, { logicalSessionId });
+    return this.graphs.save(a.scope, a.writerId, input);
+  }
+  async bind(runId: string, input: GraphBind) {
+    const a = (await this.graphAccess(runId))!, target = await this.resolve(runId, { logicalSessionId: input.logicalSessionId });
+    return this.graphs.bind(a.scope, a.writerId, input.objectId, input.expectedRevision, target.logicalSessionId, target.title);
+  }
+  async remove(runId: string, input: GraphRemove) {
+    const a = (await this.graphAccess(runId))!;
+    await this.load(runId, input.objectId);
+    return this.graphs.remove(a.scope, a.writerId, input);
+  }
+  async syncReference(runId: string, record: SessionContextRecord) {
+    const a = await this.graphAccess(runId, true); if (!a) return null;
+    const target = await this.resolve(runId, { logicalSessionId: record.targetSessionId });
+    return this.graphs.syncReference(a.scope, a.writerId, record, record.sourceTitle, target.title);
+  }
+  async appendDisclosure(runId: string, record: SessionContextRecord, input: GraphDisclosureInput) {
+    const a = await this.graphAccess(runId, true); if (!a) return null;
+    if (!this.graphs.store.get(a.scope, graphObjectId(record.targetSessionId))) {
+      const target = await this.resolve(runId, { logicalSessionId: record.targetSessionId });
+      this.graphs.syncReference(a.scope, a.writerId, record, record.sourceTitle, target.title);
+    }
+    return this.graphs.appendDisclosure(a.scope, a.writerId, record, input);
+  }
+  async settleDisclosure(runId: string, record: SessionContextRecord, requestId: string, delivery: "returned" | "failed") {
+    const a = await this.graphAccess(runId, true); if (!a) return;
+    this.graphs.settleDisclosure(a.scope, a.writerId, record, requestId, delivery);
+  }
+  async disclosures(runId: string, objectId: string, after?: string) {
+    const a = (await this.graphAccess(runId))!, doc = await this.load(runId, objectId);
+    if (!doc.graph.ownerSessionId) return { items: [], nextCursor: null, trimmed: false, trimmedCount: 0,
+      maxEntries: this.graphs.maxEntries, maxBytes: this.graphs.maxBytes, coverage: [], coverageTruncated: false };
+    return this.graphs.disclosures(a.scope, doc.graph.ownerSessionId, after);
+  }
   private async run(runId: string) {
     const run = await this.engine.projectionRunRepository.getProjectionRun(runId as RunId);
     if (!run || run.state !== "running") throw unavailable("当前实例的会话空间尚未就绪");
@@ -131,15 +192,17 @@ export class SessionGraphService {
     if(!retained||retained.logicalSessionId!==logicalSessionId)throw unavailable("固定来源版本已清理或不可用");
     return page;
   }
-  async relations(runId: string, after = ""): Promise<GraphRelationPage> {
+  async relations(runId: string, logicalSessionId: string, after = ""): Promise<GraphRelationPage> {
+    await this.resolve(runId, { logicalSessionId });
     const run = await this.run(runId), db = this.engine.repository.database;
     const rows = db.prepare(`SELECT object_id,revision,content_json FROM extension_objects o
       WHERE o.instance_id=? AND o.profile_id=? AND o.namespace='annotation-upstream' AND o.deleted=0 AND o.object_id>?
+      AND json_extract(o.content_json,'$.body.targetSessionId')=?
       AND EXISTS (SELECT 1 FROM projection_sessions ps JOIN logical_sessions s ON s.id=ps.logical_session_id
         WHERE ps.run_id=? AND ${visible} AND ps.logical_session_id=json_extract(o.content_json,'$.body.sourceSessionId'))
       AND EXISTS (SELECT 1 FROM projection_sessions ps JOIN logical_sessions s ON s.id=ps.logical_session_id
         WHERE ps.run_id=? AND ${visible} AND ps.logical_session_id=json_extract(o.content_json,'$.body.targetSessionId'))
-      ORDER BY object_id LIMIT 31`).all(run.instanceId, run.profileId, after, runId, runId) as unknown as
+      ORDER BY object_id LIMIT 31`).all(run.instanceId, run.profileId, after, logicalSessionId, runId, runId) as unknown as
       Array<{ object_id: string; revision: number; content_json: string }>;
     const items: GraphRelationPage["items"] = rows.slice(0, 30).flatMap(row => {
       const parsed = sessionContextRecordSchema.safeParse(JSON.parse(row.content_json).body);
@@ -149,5 +212,29 @@ export class SessionGraphService {
         sourceSessionId, targetSessionId, sourceVersionId, cutoffEventId, sourceAnchorId, state, targetMessageId }];
     });
     return { items, nextCursor: rows.length > 30 ? rows[29]!.object_id : null };
+  }
+  async sourceMarkers(runId: string, nativeSessionId: string, after = ""): Promise<GraphSourceMarkerPage> {
+    const run = await this.run(runId), source = await this.resolve(runId, { nativeSessionId });
+    const rows = this.engine.repository.database.prepare(`SELECT o.object_id,o.content_json,s.display_title title,
+      (SELECT st.content_json FROM extension_objects st WHERE st.instance_id=o.instance_id AND st.profile_id=o.profile_id
+        AND st.namespace='stickers' AND st.deleted=0 AND json_extract(st.content_json,'$.body.source.referenceId')=o.object_id
+        ORDER BY st.object_id LIMIT 1) sticker_json
+      FROM extension_objects o JOIN logical_sessions s ON s.id=json_extract(o.content_json,'$.body.targetSessionId')
+      WHERE o.instance_id=? AND o.profile_id=? AND o.namespace='annotation-upstream' AND o.deleted=0 AND o.object_id>?
+      AND json_extract(o.content_json,'$.body.sourceSessionId')=? AND json_extract(o.content_json,'$.body.state') IN ('pending','sent')
+      AND s.tombstoned_at IS NULL AND EXISTS(SELECT 1 FROM projection_sessions ps WHERE ps.run_id=? AND ps.logical_session_id=s.id
+        AND ps.mode NOT IN ('hidden','recovery-only')) ORDER BY o.object_id LIMIT 31`)
+      .all(run.instanceId, run.profileId, after, source.logicalSessionId, runId) as unknown as Array<{object_id:string;content_json:string;title:string;sticker_json:string|null}>;
+    return { items: rows.slice(0, 30).flatMap(row => {
+      const parsed = sessionContextRecordSchema.safeParse(JSON.parse(row.content_json).body); if (!parsed.success) return [];
+      const r = parsed.data;
+      const sticker = row.sticker_json ? sessionStickerSchema.safeParse(JSON.parse(row.sticker_json).body) : null;
+      const locator = sticker?.success && sticker.data.logicalSessionId === r.targetSessionId &&
+        sticker.data.source?.logicalSessionId === r.sourceSessionId && sticker.data.source.sourceVersionId === r.sourceVersionId &&
+        sticker.data.source.sourceAnchorId === r.sourceAnchorId ? sticker.data.source.locator : undefined;
+      return [{ objectId: row.object_id, referenceId: r.referenceId, sourceVersionId: r.sourceVersionId, sourceAnchorId: r.sourceAnchorId,
+        messageId: locator?.messageId ?? r.sourceAnchorId, selectedText: locator?.selectedText ?? r.selectedText,
+        occurrence: locator?.occurrence ?? 0, targetLogicalSessionId: r.targetSessionId, targetTitle: row.title.slice(0,500) }];
+    }), nextCursor: rows.length > 30 ? rows[29]!.object_id : null };
   }
 }

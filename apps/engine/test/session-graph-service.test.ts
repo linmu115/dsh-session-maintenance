@@ -74,19 +74,40 @@ describe("RC2 managed graph navigation", () => {
         selection: { sourceVersionId: first.value.sourceVersionId, sourceAnchorId: "missing" } })).status).toBe(409);
       const scope = { instanceId: request.instanceId, profileId: "web", namespace: "annotation-upstream" };
       f.engine.extensions!.connect({ instanceId: scope.instanceId, profileId: scope.profileId,
-        plugins: [{ namespace: scope.namespace, pluginVersion: "0.3.12-rc2.6", writerId: "dsh-annotation-core" }] });
+        plugins: [{ namespace: scope.namespace, pluginVersion: "0.3.12-rc2.6", writerId: "dsh-annotation-core" },
+          { namespace: "thoughtdag", pluginVersion: "0.4.14-rc2.5", writerId: "dsh-thoughtdag" }] });
       const reference = await f.engine.sessionContext.capture({ runId: run.runId, sourceNativeSessionId: "source-native",
         targetNativeSessionId: "target-native", operationId: "graph-ref", anchorId: "reply-one", selectedText: "問" });
       await f.engine.sessionContext.bind(run.runId, "target-native", reference.referenceId, "actual-user");
       f.engine.extensions!.enable(scope, false);
-      const relations = await post("relations");
+      const relations = await post("relations", { logicalSessionId: mappings["target-native"].logicalSessionId });
       expect(relations.value.items).toEqual([expect.objectContaining({ referenceId: reference.referenceId,
         namespace: "annotation-upstream", sourceSessionId: sourceId, targetMessageId: "actual-user", state: "sent" })]);
       expect(JSON.stringify(relations.value)).not.toContain(answer);
+      const main = (await post("ensure", { logicalSessionId: mappings["target-native"].logicalSessionId })).value;
+      expect(main.graph.edges).toHaveLength(1);
+      expect((await post("ensure", { logicalSessionId: sourceId })).value.graph.edges).toEqual([]);
+      expect((await post("relations", { logicalSessionId: sourceId })).value.items).toEqual([]);
+      expect((await post("relations")).status).toBe(400);
+      expect((await post("source-markers", { nativeSessionId: "source-native" })).value.items).toEqual([
+        expect.objectContaining({ messageId: "reply-one", referenceId: reference.referenceId, targetLogicalSessionId: mappings["target-native"].logicalSessionId }),
+      ]);
+      const removed = await post("remove", { objectId: main.objectId, expectedRevision: main.revision,
+        edgeIds: [main.graph.edges[0].id], operationId: "remove-graph-reference" });
+      expect(removed.status, JSON.stringify(removed.value)).toBe(200);
+      expect(removed.value.graph.edges).toEqual([]);
+      expect((await post("source-markers", { nativeSessionId: "source-native" })).value.items).toEqual([]);
+      expect((await post("load", { objectId: main.objectId })).value.graph.edges).toEqual([]);
+      const graphScope = { ...scope, namespace: "thoughtdag" };
+      f.engine.extensions!.enable(graphScope, false);
+      expect(await f.engine.sessionGraph.syncReference(run.runId, reference)).toBeNull();
+      expect((await post("ensure", { logicalSessionId: mappings["target-native"].logicalSessionId })).status).toBe(409);
+      f.engine.extensions!.enable(graphScope, true);
+      expect((await post("ensure", { logicalSessionId: mappings["target-native"].logicalSessionId })).value.objectId).toBe(main.objectId);
       expect((await post("directory")).status).toBe(200);
       f.engine.repository.database.prepare("UPDATE projection_sessions SET mode='hidden' WHERE run_id=? AND native_session_id=?")
         .run(run.runId, "target-native");
-      expect((await post("relations")).value.items).toEqual([]);
+      expect((await post("relations", { logicalSessionId: mappings["target-native"].logicalSessionId })).status).toBe(409);
       expect((await post("resolve", { target: { nativeSessionId: "target-native" } })).status).toBe(409);
       expect((await append(contextEvents().slice(7), "graph-next")).status).toBe("committed");
       const retainedPage=await post("preview", { logicalSessionId: sourceId, cursor: first.value.nextCursor });
