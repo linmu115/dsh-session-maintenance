@@ -48,6 +48,8 @@ export class SessionContextService {
     const referenceId="upstream-"+createHash("sha256").update(JSON.stringify([a.scope,target.logicalSessionId,input.operationId])).digest("hex");
     try {
       const old=sessionContextRecordSchema.parse(a.extensions.get(a.scope,referenceId).object.content.body);
+      if (input.expectedSourceVersionId && old.sourceVersionId !== input.expectedSourceVersionId)
+        throw unavailable("同一引用操作的来源版本与所选材料不一致，请重新选择回复");
       if (old.sourceSessionId!==source.logicalSessionId || old.sourceAnchorId!==input.anchorId || old.selectedText!==input.selectedText)
         throw unavailable("同一引用操作的来源发生变化");
       if(old.state==="revoked")throw unavailable("这个引用操作已撤销，请重新选择来源");
@@ -56,6 +58,8 @@ export class SessionContextService {
     const snapshot=await this.engine.canonicalEngine.store.getSession(source.logicalSessionId as LogicalSessionId);
     const version=snapshot?.headVersionId?await this.engine.canonicalEngine.store.getVersion(snapshot.headVersionId):undefined;
     if (!version) throw unavailable("来源回复尚未登记到会话真源，请稍后重试");
+    if (input.expectedSourceVersionId && version.id !== input.expectedSourceVersionId)
+      throw unavailable("来源版本已改变，请重新选择回复；未创建引用");
     const adapter=this.engine.resolveProjectionAdapter(a.run.adapterId)?.sessionContext;
     if (!adapter) throw unavailable("当前 DSH 版本 Adapter 尚未支持固定上游引用");
     const payload=await new JsonProjectionDirectory(projectionRootFor(this.engine.projectionRuntimeRoot,a.run.id)).readSession(input.sourceNativeSessionId as NativeSessionId);
@@ -66,6 +70,11 @@ export class SessionContextService {
     catch(error){throw unavailable(error instanceof Error?error.message:"无法定位来源完成位置");}
     const originalCutoff=version.events.find(event=>event.id===cutoff.eventId);
     if(!originalCutoff)throw unavailable("来源格式读取改变了原始完成位置身份");
+    if (input.expectedSourceVersionId) {
+      const latest = await this.engine.canonicalEngine.store.getSession(source.logicalSessionId as LogicalSessionId);
+      if (latest?.headVersionId !== input.expectedSourceVersionId)
+        throw unavailable("来源在捕获期间已改变，请重新选择回复；未创建引用");
+    }
     const record: SessionContextRecord={schemaVersion:1,referenceId,sourceSessionId:source.logicalSessionId,sourceVersionId:version.id,
       cutoffEventId:cutoff.eventId,cutoffDigest:originalCutoff.contentDigest,targetSessionId:target.logicalSessionId,selectedText:input.selectedText,
       sourceTitle:source.title.slice(0,500),sourceAnchorId:input.anchorId,state:"pending",targetMessageId:null,createdAt:new Date().toISOString()};

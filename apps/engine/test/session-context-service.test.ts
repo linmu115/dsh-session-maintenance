@@ -59,6 +59,15 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
       const captured=await post('capture',input);expect(captured.status,JSON.stringify(captured.value)).toBe(200);
       expect((await post('capture',input)).value).toEqual(captured.value);
       expect((await append(contextEvents().slice(7).map(event=>({...event,seq:event.seq+1})),'append-second')).status).toBe('committed');
+      // A retry may reuse the exact prior capture; a new operation may not
+      // silently replace a graph material's selected immutable version.
+      expect((await post('capture',{...input,expectedSourceVersionId:captured.value.sourceVersionId})).value).toEqual(captured.value);
+      const beforeRejectedCapture=f.engine.extensions!.list(scope).items.length;
+      const stale=await post('capture',{...input,operationId:'new-graph-selection',expectedSourceVersionId:captured.value.sourceVersionId});
+      expect(stale.status).toBe(409);expect(JSON.stringify(stale.value)).toContain('来源版本已改变');
+      const changedRetry=await post('capture',{...input,expectedSourceVersionId:'another-version'});
+      expect(changedRetry.status).toBe(409);expect(JSON.stringify(changedRetry.value)).toContain('所选材料');
+      expect(f.engine.extensions!.list(scope).items.length).toBe(beforeRejectedCapture);
       const ref={targetNativeSessionId:'target-native',referenceId:captured.value.referenceId};
       const page=await post('read',{...ref,executionId:'turn-one'});
       expect(page.status,JSON.stringify(page.value)).toBe(200);

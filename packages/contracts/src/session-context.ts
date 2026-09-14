@@ -8,6 +8,7 @@ export const sessionContextScopeSchema = z.strictObject({ runId: id, targetNativ
 export const sessionContextCaptureSchema = sessionContextScopeSchema.extend({
   operationId: id, sourceNativeSessionId: id, anchorId: id,
   selectedText: z.string().min(1).max(16000),
+  expectedSourceVersionId: id.optional(),
 });
 export const sessionContextRecordSchema = z.strictObject({
   schemaVersion: z.literal(1), referenceId: id, sourceSessionId: id, sourceVersionId: id,

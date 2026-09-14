@@ -120,6 +120,12 @@ describe("pluggable extension data",()=>{
     expect((await bridge.get("thoughtdag","canvas")).summary).toBe("2 个节点 · 1 条连线");
     expect((await client.listExtensionObjects(scope)).items).toHaveLength(1);
     expect((await bridge.list("thoughtdag")).items[0]).not.toHaveProperty("content");
+    await bridge.save("thoughtdag","canvas",1,graph().content,true);
+    expect((await bridge.list("thoughtdag")).items).toHaveLength(0);
+    expect((await bridge.list("thoughtdag",undefined,"deleted")).items[0]).toMatchObject({objectId:"canvas",deleted:true});
+    expect((await bridge.list("thoughtdag",undefined,"all")).items).toHaveLength(1);
+    await bridge.save("thoughtdag","canvas",2,graph().content,false);
+    expect((await bridge.list("thoughtdag")).items[0]).toMatchObject({objectId:"canvas",deleted:false,revision:3});
     await expect(bridge.get("unconfigured","x")).rejects.toThrow("not configured");
     await client.enableExtension(scope,false);await expect(bridge.save("thoughtdag","canvas",1,graph().content)).rejects.toThrow("local edits must be retained");
     expect(await Promise.all([hashTree(f.codexHome),hashTree(f.dshHome)])).toEqual(before);

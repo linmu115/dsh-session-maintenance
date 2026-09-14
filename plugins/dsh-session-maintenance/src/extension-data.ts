@@ -28,8 +28,8 @@ export class MaintenanceExtensionBridge {
   async get(namespace: string, objectId: string): Promise<ExtensionDetail> {
     this.configured(namespace);return this.request(`object?${new URLSearchParams({...this.scope,namespace,objectId})}`);
   }
-  async list(namespace: string, after?: string): Promise<ExtensionPage> {
-    this.configured(namespace);return this.request(`objects?${new URLSearchParams({...this.scope,namespace,limit:"30",...(after?{after}:{})})}`);
+  async list(namespace: string, after?: string, deleted: "active" | "deleted" | "all" = "active"): Promise<ExtensionPage> {
+    this.configured(namespace);return this.request(`objects?${new URLSearchParams({...this.scope,namespace,limit:"30",deleted,...(after?{after}:{})})}`);
   }
   async save(namespace:string,objectId:string,expectedRevision:number,content:ExtensionContent,deleted=false):Promise<ExtensionWriteResult> {
     const plugin=this.configured(namespace);
