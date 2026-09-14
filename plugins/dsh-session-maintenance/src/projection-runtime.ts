@@ -1080,6 +1080,12 @@ export class RuntimeBrokerPluginClient {
     this.schedule(nativeSessionId);
   }
 
+  /** A user explicitly retained this real session as a graph node, even before its first question. */
+  async retainExplicitSession(nativeSessionId: string, header: JsonValue, adapterMetadata?: JsonValue): Promise<void> {
+    if (this.registrationId === null || this.draining) throw new Error("Runtime Broker is not accepting explicit sessions");
+    await this.metadata(nativeSessionId, header, adapterMetadata);
+  }
+
   async flush(nativeSessionId: string): Promise<void> {
     this.schedule(nativeSessionId);
     let tail = this.tails.get(nativeSessionId);

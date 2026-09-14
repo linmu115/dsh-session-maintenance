@@ -1,5 +1,6 @@
 import type { ExtensionDataService } from "./extensions/service.js";
 import { SessionContextService } from "./session-context-service.js";
+import { SessionGraphService } from "./session-graph-service.js";
 import {
   SessionMaintenanceError,
   normalizedSessionSchema,
@@ -202,6 +203,7 @@ function prefix(left: readonly string[], right: readonly string[]): boolean {
 
 export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly sessionContext = new SessionContextService(this);
+  readonly sessionGraph = new SessionGraphService(this);
   readonly instances: readonly RegisteredInstance[];
   readonly adapters: readonly SessionReadAdapter[];
   readonly repository: SqliteSessionRepository;

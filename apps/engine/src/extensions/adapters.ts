@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ExtensionDataError, sessionContextRecordSchema, SESSION_CONTEXT_NAMESPACE, type ExtensionDataAdapter } from "@linmu/dsh-session-contracts";
+import { ExtensionDataError, sessionContextRecordSchema, SESSION_CONTEXT_NAMESPACE, managedGraphSchema, type ExtensionDataAdapter } from "@linmu/dsh-session-contracts";
 
 const id = z.string().min(1);
 const capabilities = { read:true,write:true,delete:true,restore:true,panel:true,context:false } as const;
@@ -21,8 +21,10 @@ function unique(ids: string[]): void {
 }
 export const thoughtDagAdapter: ExtensionDataAdapter = {
   capabilities,
-  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11"], schemaVersions: [1],
+  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1"], schemaVersions: [1],
   validate(content) {
+    if (typeof content.body === "object" && content.body !== null && !Array.isArray(content.body) && "managedSchema" in content.body)
+      managedGraphSchema.parse(content.body);
     const result = canvas.parse(content.body); unique(result.nodes.map(n=>n.id)); unique(result.edges.map(e=>e.id));
     const ids = new Set(result.nodes.map(n=>n.id));
     if (result.edges.some(e=>!ids.has(e.source)||!ids.has(e.target))) throw new ExtensionDataError("EXTENSION_INVALID_OBJECT", "画布连线引用了不存在的节点。",422);
@@ -30,7 +32,7 @@ export const thoughtDagAdapter: ExtensionDataAdapter = {
   summarize(body) { const value = canvas.parse(body); return `${value.nodes.length} 个节点 · ${value.edges.length} 条连线`; },
   preview(body) {
     const value=canvas.parse(body),nodes=value.nodes.slice(0,100),ids=new Set(nodes.map(n=>n.id));
-    return {kind:"graph",total:value.nodes.length,nodes:nodes.map(n=>({id:n.id,label:typeof n.data.question==="string"?n.data.question.slice(0,60):n.id,x:n.position.x,y:n.position.y})),
+    return {kind:"graph",total:value.nodes.length,nodes:nodes.map(n=>({id:n.id,label:typeof n.data.label==="string"?n.data.label.slice(0,60):typeof n.data.question==="string"?n.data.question.slice(0,60):n.id,x:n.position.x,y:n.position.y})),
       edges:value.edges.filter(e=>ids.has(e.source)&&ids.has(e.target)).slice(0,300).map(e=>({source:e.source,target:e.target}))};
   },
 };
