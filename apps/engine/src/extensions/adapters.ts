@@ -21,7 +21,7 @@ function unique(ids: string[]): void {
 }
 export const thoughtDagAdapter: ExtensionDataAdapter = {
   capabilities,
-  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3"], schemaVersions: [1],
+  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4"], schemaVersions: [1],
   validate(content) {
     if (typeof content.body === "object" && content.body !== null && !Array.isArray(content.body) && "managedSchema" in content.body)
       managedGraphSchema.parse(content.body);
