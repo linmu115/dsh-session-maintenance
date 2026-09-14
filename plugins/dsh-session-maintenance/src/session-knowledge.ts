@@ -57,6 +57,7 @@ export function knowledgeHandler(knowledge:Pick<MaintenanceKnowledge,'dispatch'>
 export function registerMaintenanceKnowledge(ctx:Context,knowledge:MaintenanceKnowledge){
   ctx.provide('maintenanceKnowledge',knowledge);
   const server=ctx.get('webServer') as unknown as {register(input:{kind:'prefix';path:string;handler:ReturnType<typeof knowledgeHandler>}):()=>void};
-  ctx.effect(()=>server.register({kind:'prefix',path:'/maintenance-knowledge/api/',handler:knowledgeHandler(knowledge)}),'maintenance knowledge');
+  // RC2 matches descendants by appending "/" to the registered prefix.
+  ctx.effect(()=>server.register({kind:'prefix',path:'/maintenance-knowledge/api',handler:knowledgeHandler(knowledge)}),'maintenance knowledge');
 }
 declare module '@deepseek-ai/cordis' {interface Context{maintenanceKnowledge:MaintenanceKnowledge}}

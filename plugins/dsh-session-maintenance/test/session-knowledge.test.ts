@@ -1,7 +1,30 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { expect, it, vi } from 'vitest';
-import { knowledgeHandler, MaintenanceKnowledge } from '../src/session-knowledge.js';
+import { Context } from '@deepseek-ai/cordis';
+import { WebServer } from '@deepseek-ai/dsh-host-webserver';
+import { knowledgeHandler, MaintenanceKnowledge, registerMaintenanceKnowledge } from '../src/session-knowledge.js';
+
+it('dispatches descendant API paths through the official RC2 host router',async()=>{
+  const ctx=new Context();
+  await ctx.plugin(WebServer,{host:'127.0.0.1',port:0});
+  const dispatch=vi.fn(async()=>({instanceId:'synthetic-instance'}));
+  const knowledge={dispatch} as unknown as MaintenanceKnowledge;
+  registerMaintenanceKnowledge(ctx,knowledge);
+  const fallback=vi.fn((_request,response)=>{response.writeHead(405);response.end();});
+  ctx.webServer.registerFallback(fallback);
+  const origin='http://127.0.0.1:'+ctx.webServer.port;
+  const post=(path:string)=>fetch(origin+path,{method:'POST',headers:{origin,'content-type':'application/json'},body:'{}'});
+  try {
+    const response=await post('/maintenance-knowledge/api/status');
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({instanceId:'synthetic-instance'});
+    expect(dispatch).toHaveBeenCalledWith('status',{});
+    expect(fallback).not.toHaveBeenCalled();
+    expect((await post('/maintenance-knowledge/api-other/status')).status).toBe(405);
+    expect(dispatch).toHaveBeenCalledTimes(1);
+  } finally { await ctx.fiber.dispose(); }
+});
 
 it('accepts only same-origin bounded requests through the current host',async()=>{
   const dispatch=vi.fn(async()=>({items:[]}));
