@@ -69,7 +69,7 @@ describe("instance onboarding", () => {
     const plugin = JSON.parse(await readFile(path, "utf8"));
     await json(path, { ...plugin, version });
     expect((await f.discover()).targets[0]!.pluginReady).toBe(true);
-    await json(path, { ...plugin, version: "0.2.26-rc2.16" });
+    await json(path, { ...plugin, version: "0.2.26-rc2.999" });
     expect((await f.discover()).targets[0]!.pluginReady).toBe(false);
   });
 
@@ -111,14 +111,14 @@ describe("instance onboarding", () => {
     expect((await f.service.action(target.target.id, "connect")).targets[0]!.status).toBe("connected");
     const request = { schemaVersion: 1, phase: "prepare", instanceId: "instance-a", profileId: "web", runtimeVersion: "0.1.5-rc.2", web: true } as const;
     expect(await resolveRuntimeIntegration(f.stateRoot, request)).toMatchObject({ adapterId: "dsh-0.1.5", runtimeCapabilities: [...REQUIRED_CAPABILITIES], coreBinding: { path: coreBinding } });
-    await json(attestationPath, { ...receipt, engineVersion: "0.1.33-rc2.20" });
+    await json(attestationPath, { ...receipt, engineVersion: "0.1.33-rc2.999" });
     expect((await f.discover()).targets[0]!.target.status).toBe("unsupported");
     await expect(resolveRuntimeIntegration(f.stateRoot, request)).rejects.toMatchObject({ code: "INTEGRATION_RECHECK_REQUIRED" });
     await json(attestationPath, receipt);
     await writeFile(f.engineEntry, "changed synthetic engine");
     expect((await f.discover()).targets[0]!.target.status).toBe("unsupported");
     await expect(resolveRuntimeIntegration(f.stateRoot, request)).rejects.toMatchObject({ code: "INTEGRATION_RECHECK_REQUIRED" });
-    await json(pluginPath, { ...plugin, version: "0.2.26-rc2.16" });
+    await json(pluginPath, { ...plugin, version: "0.2.26-rc2.999" });
     expect((await f.discover()).targets[0]!.pluginReady).toBe(false);
   });
 

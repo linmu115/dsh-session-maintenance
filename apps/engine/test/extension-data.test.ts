@@ -25,6 +25,20 @@ async function fixture(){
   return {get db(){return db;},make,reopen(){db.close();db=openMaintenanceDatabase(join(f.root,"extension.sqlite"));return make();}};
 }
 describe("pluggable extension data",()=>{
+  it("connects all six namespaces in the readable-session-title cohort",async()=>{
+    const f=await fixture(),service=f.make();
+    const currentPlugins=[
+      ...["annotation-upstream","annotation-records","annotation-context"].map(namespace=>({namespace,pluginVersion:"0.3.12-rc2.12",writerId:"dsh-annotation-core"})),
+      {namespace:"stickers",pluginVersion:"0.7.3-rc2.18",writerId:"dsh-session-sticker-board"},
+      {namespace:"obsidian-links",pluginVersion:"0.6.4-rc2.6",writerId:"obsidian-deepharness-bridge"},
+      {namespace:"thoughtdag",pluginVersion:"0.4.14-rc2.9",writerId:"dsh-thoughtdag"},
+    ];
+    service.connect({...connect,plugins:currentPlugins});
+    for(const plugin of currentPlugins)expect(service.panels().find(panel=>panel.scope.namespace===plugin.namespace)?.status).toBe("ready");
+    expect(service.panels()).toHaveLength(6);
+    service.connect({...connect,plugins:currentPlugins.map(plugin=>({...plugin,pluginVersion:"99.0.0"}))});
+    expect(service.panels().every(panel=>panel.status==="incompatible")).toBe(true);
+  });
   it("round trips two actual plugin shapes and cross-session references without touching session tables",async()=>{
     const f=await fixture(),service=f.make();service.connect(connect);
     const tables=["logical_sessions","session_versions","canonical_events"];

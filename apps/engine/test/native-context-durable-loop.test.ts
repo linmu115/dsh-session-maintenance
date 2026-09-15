@@ -44,8 +44,8 @@ describe("actual Core AgentLoop producer through durable Maintenance receipts", 
       const firstReplacement = Math.min(...fixture.receipt.surfaceEventSeqs);
       expect((await append(fixture.payload.events.slice(0, firstReplacement), "native-loop-prefix")).status).toBe("committed");
       f.engine.extensions!.connect({ instanceId: request.instanceId, profileId: "web", plugins: [
-        { namespace: "annotation-upstream", pluginVersion: "0.3.12-rc2.11", writerId: "dsh-annotation-core" },
-        { namespace: "annotation-context", pluginVersion: "0.3.12-rc2.11", writerId: "dsh-annotation-core" },
+        { namespace: "annotation-upstream", pluginVersion: "0.3.12-rc2.12", writerId: "dsh-annotation-core" },
+        { namespace: "annotation-context", pluginVersion: "0.3.12-rc2.12", writerId: "dsh-annotation-core" },
       ] });
       const scope = { runId: run.runId, targetNativeSessionId: nativeSessionId, executionId: "synthetic-native-loop", actor: "host" as const };
       const materials = await f.engine.nativeContext.registerMaterials({ ...scope, materials: fixture.materials });

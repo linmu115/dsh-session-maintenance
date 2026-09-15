@@ -33,7 +33,7 @@ export async function nativeContextFixture() {
   const extensionScope = { instanceId: request.instanceId, profileId: "web", namespace: "annotation-context" };
   f.engine.extensions!.connect({ instanceId: extensionScope.instanceId, profileId: extensionScope.profileId, plugins: [
     { namespace: "annotation-upstream", pluginVersion: "0.3.12-rc2.10", writerId: "dsh-annotation-core" },
-    { namespace: "annotation-context", pluginVersion: "0.3.12-rc2.11", writerId: "dsh-annotation-core" },
+    { namespace: "annotation-context", pluginVersion: "0.3.12-rc2.12", writerId: "dsh-annotation-core" },
     { namespace: "thoughtdag", pluginVersion: "0.4.14-rc2.8", writerId: "thoughtdag" },
   ] });
   const ref = await f.engine.sessionContext.capture({ runId: run.runId, sourceNativeSessionId: "source-native", targetNativeSessionId: "target-native", operationId: "fixed-reference", anchorId: "reply-4", selectedText: "ANSWER-4" });

@@ -2,7 +2,7 @@
 
 本地会话维护引擎：统一管理 DeepSeek Harness 会话的稳定身份、不可变版本、恢复点和可复用的原生历史，并为跨会话引用、会话贴纸、Obsidian 关联和 ThoughtDAG 提供结构化数据真源。Codex 原始会话仍由 Codex 管理，Maintenance 只读导入，不改写其日志。
 
-当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.20 / Maintenance 插件 0.2.26-rc2.16**。本次变更见[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)，已安装到运行副本的版本与验证结果见[副本安装验收](docs/changes/2026-09-15-native-context-copy-deployment.md)。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
+当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.21 / Maintenance 插件 0.2.26-rc2.17**。本次变更见[会话名称选择器兼容组合](docs/changes/2026-09-15-picker-title-cohort.md)。此前的[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)继续保留；当前组合的实际部署结果单独记录。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
 
 全部配套项目的当前分支、源码版本和使用说明见 [GitHub 源码与 README 索引](docs/reports/2026-09-15-github-source-index.md)。
 
@@ -43,14 +43,14 @@ Obsidian 的“关联笔记”用于双向导航；要向模型提供笔记内�
 
 | 组件 | 版本 | 责任 |
 | --- | --- | --- |
-| Maintenance Engine / DSH 插件 | 0.1.33-rc2.20 / 0.2.26-rc2.16 | 会话与扩展真源、原生空间、提交回执、看板 |
-| Annotation Core | 0.3.12-rc2.11 | 引用集、发送准备、按需读取及预算 |
-| Session Sticker Board | 0.7.3-rc2.17 | 独立会话贴纸、来源高亮、蓝色引用号 |
+| Maintenance Engine / DSH 插件 | 0.1.33-rc2.21 / 0.2.26-rc2.17 | 会话与扩展真源、原生空间、提交回执、看板 |
+| Annotation Core | 0.3.12-rc2.12 | 引用集、发送准备、按需读取及预算 |
+| Session Sticker Board | 0.7.3-rc2.18 | 独立会话贴纸、来源高亮、蓝色引用号 |
 | ThoughtDAG | 0.4.14-rc2.9 | 每会话主干图、节点和连线交互 |
-| Sidechat | 0.4.7-rc2.11 | 选区注释与侧边交互 |
-| Obsidian Bridge Lifecycle | 0.3.3-rc2.15 | 引用交接与生命周期 |
-| Obsidian Reference Adapter | 0.3.4-rc2.15 | Obsidian 来源接入 |
-| Obsidian Session Reference Suite | 0.3.4-rc2.17 | 匹配的成员组合与加载拓扑 |
+| Sidechat | 0.4.7-rc2.12 | 选区注释与侧边交互 |
+| Obsidian Bridge Lifecycle | 0.3.3-rc2.16 | 引用交接与生命周期 |
+| Obsidian Reference Adapter | 0.3.4-rc2.16 | Obsidian 来源接入 |
+| Obsidian Session Reference Suite | 0.3.4-rc2.18 | 匹配的成员组合与加载拓扑 |
 | Obsidian Vault 插件 | 0.6.4-rc2.6 | 笔记侧选择、标记、关联与内嵌会话 |
 
 Suite 和成员需要保持规定的父子加载关系。第三方原版 ThoughtDAG、旧 RC1 插件和当前定制 RC2 包不能仅按名称互换。Codex 执行与预算支持由可选的 [dsh-codex-runtime](https://github.com/linmu115/dsh-codex-runtime/tree/codex/rc2-session-context-graph) 提供。
