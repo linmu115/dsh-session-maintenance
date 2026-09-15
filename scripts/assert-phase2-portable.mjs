@@ -3,8 +3,9 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
-import { RC2_CORE_HOST_MATERIALIZATION } from "../packages/dsh-core-extension/dist/materialization.js";
 import { readTarGz, sha256 } from "./phase2-pack-lib.mjs";
+import { completeComponentInventory, readDsh015HostProvenance, validDsh015HostProvenance } from "./phase2-release-contract.mjs";
+import { missingPackagedDocumentLinks } from "./phase2-readme.mjs";
 
 const outFlag = process.argv.indexOf("--out");
 const out = resolve(outFlag >= 0 ? process.argv[outFlag + 1] : ".artifacts/phase2");
@@ -36,7 +37,7 @@ for (const component of manifest.components ?? []) {
     failures.push("release component identity does not match its source: " + component.sourcePath);
   }
 }
-if (manifest.components?.length !== 7) failures.push("release component inventory is incomplete");
+if (!completeComponentInventory(manifest.components)) failures.push("release component inventory is incomplete");
 if (manifest.protocolVersions?.adapterApi !== 1 || manifest.protocolVersions?.projection !== 1 ||
     manifest.protocolVersions?.externalLifecycle !== 1) failures.push("release protocol versions are incompatible");
 const archives = new Map();
@@ -55,14 +56,14 @@ if (plugin !== undefined) {
       failures.push(`plugin dependency is not self-contained: ${name}=${version}`);
     }
   }
-  const rc2Host = plugin.get("package/lib/rc2-host.js");
-  if (rc2Host === undefined || sha256(Buffer.from(rc2Host.toString("utf8").replaceAll("\r\n", "\n"))) !== RC2_CORE_HOST_MATERIALIZATION.artifactHash) {
-    failures.push("plugin rc.2 Core host materialization hash drifted");
+  if (!validDsh015HostProvenance(manifest.coreHostMaterialization, await readDsh015HostProvenance(resolve(".")), plugin)) {
+    failures.push("plugin dsh-0.1.5 Core host source/build/package provenance drifted");
   }
+  failures.push(...missingPackagedDocumentLinks(plugin));
 }
 if (engine !== undefined) {
   const buildInfo = JSON.parse(engine.get("dsh-session-maintenance/BUILD-INFO.json")?.toString("utf8") ?? "null");
-  for (const key of ["schemaVersion", "version", "engineVersion", "sourceCommit", "sourceDirty", "metadataSchemaVersion", "protocolVersions", "components", "lockfile"]) {
+  for (const key of ["schemaVersion", "version", "engineVersion", "sourceCommit", "sourceDirty", "metadataSchemaVersion", "protocolVersions", "components", "lockfile", "coreHostMaterialization"]) {
     if (JSON.stringify(buildInfo?.[key]) !== JSON.stringify(manifest[key])) failures.push("packaged build identity does not match manifest: " + key);
   }
   const index = engine.get("dsh-session-maintenance/dashboard/index.html")?.toString("utf8") ?? "";
@@ -71,6 +72,7 @@ if (engine !== undefined) {
   if (engineBundle === undefined) failures.push("Engine bundle is missing");
   else {
     const workerEntries = [
+      "dsh-session-maintenance/engine/adapters/dsh-0-1-5-rpc-worker.mjs",
       "dsh-session-maintenance/engine/adapters/dsh-alpha2-rpc-worker.mjs",
       "dsh-session-maintenance/engine/adapters/dsh-rc1-rpc-worker.mjs",
       "dsh-session-maintenance/engine/adapters/dsh-rc2-rpc-worker.mjs",

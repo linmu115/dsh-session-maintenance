@@ -7,6 +7,8 @@ import { build } from "esbuild";
 import { dshRc2PackageMetadata } from "./dsh-rc2-bundle-plugin.mjs";
 
 import { deterministicTarGz, readTarGz, sha256, stableJson } from "./phase2-pack-lib.mjs";
+import { PHASE2_COMPONENT_PATHS, readDsh015HostProvenance } from "./phase2-release-contract.mjs";
+import { packagePluginDocumentation } from "./phase2-readme.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -50,6 +52,7 @@ function portableInputs(metafile) {
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 if (!skipBuild) runPnpm("build");
+const sourceCommit = await git("rev-parse", "HEAD");
 
 const staging = join(out, ".staging");
 const plugin = join(staging, "plugin");
@@ -89,7 +92,7 @@ const pluginClient = await build({
 });
 await copyFile(join(root, "packages", "dsh-core-extension", "dist", "dsh-015-host.js"), join(plugin, "lib", "dsh-015-host.js"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "cordis.patch.yml"), join(plugin, "cordis.patch.yml"));
-await copyFile(join(root, "plugins", "dsh-session-maintenance", "README.md"), join(plugin, "README.md"));
+const documentationFiles = await packagePluginDocumentation(root, plugin, sourceCommit);
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "CHANGELOG.md"), join(plugin, "CHANGELOG.md"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "LICENSE"), join(plugin, "LICENSE"));
 await cp(join(root, "plugins", "dsh-session-maintenance", "dsh-management"), join(plugin, "dsh-management"), { recursive: true });
@@ -97,7 +100,7 @@ await writeFile(join(plugin, "lib", "index.d.ts"), "export declare const name = 
 await writeFile(join(plugin, "lib", "client", "index.d.ts"), "export declare function apply(ctx: unknown): void;\n");
 const packagedPluginManifest = {
   ...sourcePluginManifest,
-  files: ["lib", "dsh-management", "cordis.patch.yml", "CHANGELOG.md", "README.md", "LICENSE"],
+  files: ["lib", "docs", "dsh-management", "cordis.patch.yml", "CHANGELOG.md", "README.md", "LICENSE"],
   dependencies: {},
 };
 delete packagedPluginManifest.devDependencies;
@@ -187,13 +190,8 @@ await writeFile(join(engine, "INSTALL-INPUTS.json"), `${stableJson({
   connectionEnvironmentId: "primary",
 })}\n`);
 
-const sourceCommit = await git("rev-parse", "HEAD");
 const sourceDirty = (await git("status", "--porcelain")) !== "";
-const componentPaths = [
-  "apps/engine", "apps/dashboard", "plugins/dsh-session-maintenance", "packages/contracts",
-  "packages/adapter-dsh-0-1-5", "packages/adapter-dsh-alpha2", "packages/adapter-dsh-rc1", "packages/adapter-dsh-rc2",
-];
-const components = await Promise.all(componentPaths.map(async (path) => {
+const components = await Promise.all(PHASE2_COMPONENT_PATHS.map(async (path) => {
   const value = JSON.parse(await readFile(join(root, path, "package.json"), "utf8"));
   return { name: value.name, version: value.version, sourcePath: path };
 }));
@@ -210,6 +208,7 @@ const buildInfo = {
   metadataSchemaVersion: Number(schemaMatch[1]),
   protocolVersions: { adapterApi: 1, projection: 1, externalLifecycle: 1 },
   components,
+  coreHostMaterialization: await readDsh015HostProvenance(root),
   lockfile: { name: "pnpm-lock.yaml", sha256: lockfileSha256 },
 };
 await writeFile(join(engine, "BUILD-INFO.json"), `${stableJson(buildInfo)}\n`);
@@ -218,7 +217,7 @@ if (pluginArchive !== undefined) {
   const entries = readTarGz(pluginBytes);
   const supplied = JSON.parse(entries.get("package/package.json").toString("utf8"));
   if (supplied.name !== sourcePluginManifest.name || supplied.version !== version) throw new Error("Supplied integration package identity differs");
-  for (const name of ["lib/index.js", "lib/client/index.js", "lib/dsh-015-host.js", "cordis.patch.yml"]) {
+  for (const name of ["lib/index.js", "lib/client/index.js", "lib/dsh-015-host.js", "cordis.patch.yml", ...documentationFiles]) {
     if (!entries.get(`package/${name}`)?.equals(await readFile(join(plugin, name)))) throw new Error(`Supplied integration package differs: ${name}`);
   }
 }
