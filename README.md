@@ -2,7 +2,7 @@
 
 本地会话维护引擎：统一管理 DeepSeek Harness 会话的稳定身份、不可变版本、恢复点和可复用的原生历史，并为跨会话引用、会话贴纸、Obsidian 关联和 ThoughtDAG 提供结构化数据真源。Codex 原始会话仍由 Codex 管理，Maintenance 只读导入，不改写其日志。
 
-当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.20 / Maintenance 插件 0.2.26-rc2.16**。本次变更与验证范围见[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
+当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.20 / Maintenance 插件 0.2.26-rc2.16**。本次变更见[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)，已安装到运行副本的版本与验证结果见[副本安装验收](docs/changes/2026-09-15-native-context-copy-deployment.md)。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
 
 全部配套项目的当前分支、源码版本和使用说明见 [GitHub 源码与 README 索引](docs/reports/2026-09-15-github-source-index.md)。
 
