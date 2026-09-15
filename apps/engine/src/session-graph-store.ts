@@ -16,6 +16,21 @@ export const graphObjectId = (owner: string) => `main-${hash(owner)}`;
 const logObjectId = (owner: string) => `disclosures-${hash(owner)}`;
 const document = (object: ExtensionObject, graph = managedGraphSchema.parse(object.content.body)): GraphDocument =>
   ({ objectId: object.objectId, revision: object.revision, title: object.title, graph });
+type GraphPosition = ManagedGraph["nodes"][number]["position"];
+const COLUMN_STEP = 320, ROW_STEP = 260;
+const nextPosition = (graph: ManagedGraph): GraphPosition => {
+  const last = graph.nodes.reduce<ManagedGraph["nodes"][number] | undefined>(
+    (lowest, node) => !lowest || node.position.y > lowest.position.y ? node : lowest, undefined);
+  return last ? { x: last.position.x, y: last.position.y + ROW_STEP } : { x: 450, y: 250 };
+};
+const adjacentPosition = (graph: ManagedGraph, anchor: GraphPosition, direction: -1 | 1): GraphPosition => {
+  // Reserve a horizontal lane only when the same-level slot is occupied. Never move saved cards.
+  for (let lane = 0; ; lane++) {
+    const offset = Math.ceil(lane / 2) * (lane % 2 ? 1 : -1) * COLUMN_STEP;
+    const position = { x: anchor.x + offset, y: anchor.y + direction * ROW_STEP };
+    if (!graph.nodes.some(node => Math.abs(node.position.x - position.x) < 300 && Math.abs(node.position.y - position.y) < 200)) return position;
+  }
+};
 
 /** Domain writes use one repository transaction, including authoritative revocation.
  * This store never creates native sessions or retains a source version. */
@@ -136,7 +151,7 @@ export class SessionGraphStore {
       if (this.store.get(scope, targetId)) return { ...this.load(scope, targetId), reused: true, draftObjectId: objectId };
       const graph = { ...draft.graph, ownerSessionId: owner };
       if (!graph.nodes.some(node => node.data.logicalSessionId === owner)) graph.nodes.push({ id: `session-${hash(owner)}`,
-        position: { x: 450, y: 250 }, data: { kind: "session", logicalSessionId: owner, label: title } });
+        position: nextPosition(graph), data: { kind: "session", logicalSessionId: owner, label: title } });
       this.validateReferences(scope, graph);
       return { ...this.write(scope, writerId, targetId, 0, graph, title), draftObjectId: objectId };
     });
@@ -151,15 +166,16 @@ export class SessionGraphStore {
         removed.add(record.referenceId); graph.removedRelationIds = [...removed];
         graph.edges = graph.edges.filter(edge => edge.data.relationId !== record.referenceId);
       } else if (!removed.has(record.referenceId)) {
-        const node = (session: string, label: string) => {
-          let value = graph.nodes.find(n => n.data.logicalSessionId === session);
-          if (!value) { value = { id: `session-${hash(session)}`, position: { x: 100, y: 100 + graph.nodes.length * 120 },
-            data: { kind: "session", logicalSessionId: session, label } }; graph.nodes.push(value); }
-          return value.id;
+        const addNode = (session: string, label: string, position: GraphPosition) => {
+          const value = { id: `session-${hash(session)}`, position, data: { kind: "session" as const, logicalSessionId: session, label } };
+          graph.nodes.push(value); return value;
         };
-        const source = node(record.sourceSessionId, sourceTitle), target = node(record.targetSessionId, targetTitle);
+        let source = graph.nodes.find(node => node.data.logicalSessionId === record.sourceSessionId);
+        const target = graph.nodes.find(node => node.data.logicalSessionId === record.targetSessionId) ??
+          addNode(record.targetSessionId, targetTitle, source ? adjacentPosition(graph, source.position, 1) : nextPosition(graph));
+        source ??= addNode(record.sourceSessionId, sourceTitle, adjacentPosition(graph, target.position, -1));
         if (!graph.edges.some(edge => edge.data.relationId === record.referenceId)) graph.edges.push({
-          id: `reference-${hash(record.referenceId)}`, source, target,
+          id: `reference-${hash(record.referenceId)}`, source: source.id, target: target.id,
           data: { kind: "upstream", namespace: "annotation-upstream", relationId: record.referenceId } });
       }
       return this.write(scope, writerId, doc.objectId, doc.revision, graph, doc.title);

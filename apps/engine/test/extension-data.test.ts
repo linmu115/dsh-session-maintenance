@@ -12,6 +12,7 @@ import { createEngineFixture, hashTree } from "./helpers.js";
 const scope:ExtensionScope={instanceId:"copy",profileId:"web",namespace:"thoughtdag"};
 const plugins=[{namespace:"thoughtdag",pluginVersion:"0.4.11",writerId:"dsh-thoughtdag"},{namespace:"annotation",pluginVersion:"0.3.6",writerId:"dsh-annotation-core"}];
 const connect={instanceId:scope.instanceId,profileId:scope.profileId,plugins};
+// Legacy upstream canvas fixtures remain round-trippable, but do not carry managed graph authority.
 const graph=(id="canvas",revision=0,title="画布"):ExtensionWrite=>({scope,objectId:id,writerId:"dsh-thoughtdag",expectedRevision:revision,deleted:false,
   content:{schemaVersion:1,title,references:[{logicalSessionId:"session-a",anchorId:"anchor-a"},{logicalSessionId:"session-b"}],
     body:{nodes:[{id:"a",position:{x:0,y:0},data:{question:"one"}},{id:"b",position:{x:20,y:40},data:{question:"two"}}],edges:[{id:"ab",source:"a",target:"b"}]}}});
@@ -101,13 +102,25 @@ describe("pluggable extension data",()=>{
   });
   it("rejects incompatible versions, malformed graphs, oversized edits and bounds unresolved candidates",async()=>{
     const f=await fixture(),s=f.make();s.connect({...connect,plugins:[{...plugins[0]!,pluginVersion:"99.0.0"}]});expect(()=>s.write(graph())).toThrow("尚未启用");
-    s.connect(connect);expect(()=>s.write({...graph(),content:{...graph().content,schemaVersion:2}})).toThrow("格式");
+    s.connect(connect);expect(()=>s.write({...graph(),content:{...graph().content,schemaVersion:3}})).toThrow("格式");
     expect(()=>s.write({...graph(),content:{...graph().content,body:{nodes:[],edges:[{id:"a",source:"missing",target:"missing"}]}}})).toThrow("不存在");
     s.write(graph());
     expect(()=>s.write({...graph(),content:{...graph().content,body:{nodes:[],edges:[],large:"x".repeat(600000)}}})).toThrow("512 KiB");
     for(let i=0;i<16;i++)expect(s.write(graph("canvas",0,`candidate-${i}`)).status).toBe("conflict");
     expect(()=>s.write(graph("canvas",0,"overflow"))).toThrow("已有的冲突");
     expect(f.db.prepare("SELECT COUNT(*) n FROM extension_conflicts").get()?.n).toBe(16);
+  });
+  it("preserves legacy canvases for review and requires the graph domain for schema 2 writes",async()=>{
+    const f=await fixture(),s=f.make();s.connect(connect);s.write(graph());
+    expect(s.get(scope,"canvas").summary).toBe("旧图待核验 · 2 个节点 · 1 条连线");
+    expect(()=>s.write({...graph("canvas",1),content:{...graph().content,schemaVersion:2}})).toThrow("managedSchema");
+    const managed:ExtensionWrite={...graph("canvas",1),content:{schemaVersion:2,title:"待绑定主干",references:[],
+      body:{managedSchema:2,ownerSessionId:null,nodes:[{id:"blank",position:{x:0,y:0},data:{kind:"placeholder",label:"空卡片"}}],edges:[]}}};
+    expect(()=>builtInExtensionAdapters[0].validate(managed.content)).not.toThrow();
+    expect(()=>s.write(managed)).toThrow("统一图操作");
+    expect(s.get(scope,"canvas").object.content).toEqual(graph().content);
+    expect(s.get(scope,"canvas").object.revision).toBe(1);
+    expect(f.db.prepare("SELECT COUNT(*) n FROM extension_objects").get()?.n).toBe(1);
   });
   it("serves authenticated SDK/DSH bridge requests through the real Engine without writing source homes",async()=>{
     const f=await createEngineFixture("extension-http");cleanups.push(f.cleanupAll);
@@ -117,7 +130,7 @@ describe("pluggable extension data",()=>{
     const bridge=new MaintenanceExtensionBridge({current:async()=>({origin:server.origin,token:server.token})},scope,plugins);
     await bridge.connect();expect(await client.listExtensionPanels()).toHaveLength(2);
     await bridge.save("thoughtdag","canvas",0,graph().content);
-    expect((await bridge.get("thoughtdag","canvas")).summary).toBe("2 个节点 · 1 条连线");
+    expect((await bridge.get("thoughtdag","canvas")).summary).toBe("旧图待核验 · 2 个节点 · 1 条连线");
     expect((await client.listExtensionObjects(scope)).items).toHaveLength(1);
     expect((await bridge.list("thoughtdag")).items[0]).not.toHaveProperty("content");
     await bridge.save("thoughtdag","canvas",1,graph().content,true);

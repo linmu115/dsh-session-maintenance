@@ -26,6 +26,66 @@ const read = (requestId: string): GraphDisclosureInput => ({ requestId, executio
   returnedBytes: 1250, status: "ok" });
 
 describe("session main graph domain", () => {
+  it("creates top-to-bottom reference cards without moving existing parents or the owner on repeat sync", () => {
+    const { db, graphs, reference } = fixture();
+    try {
+      const ref = reference(), first = graphs.syncReference(scope, writer, ref, "X", "Y")!;
+      const owner = first.graph.nodes.find(node => node.data.logicalSessionId === "Y")!;
+      const source = first.graph.nodes.find(node => node.data.logicalSessionId === "X")!;
+      expect(source.position.x).toBe(owner.position.x);
+      expect(owner.position.y - source.position.y).toBeGreaterThanOrEqual(200);
+      expect(graphs.syncReference(scope, writer, ref, "X", "Y")!.graph.nodes).toEqual(first.graph.nodes);
+      let current = first;
+      for (const id of ["A", "B", "C", "D"])
+        current = graphs.syncReference(scope, writer, reference(`ref-${id}`, id), id, "Y")!;
+      expect(current.graph.nodes.slice(0, first.graph.nodes.length)).toEqual(first.graph.nodes);
+      const parents = current.graph.nodes.filter(node => node.data.logicalSessionId !== "Y");
+      expect(parents.every(node => node.position.y < owner.position.y)).toBe(true);
+      expect(new Set(parents.map(node => node.position.y)).size).toBe(1);
+      for (const [index, node] of parents.entries()) for (const other of parents.slice(index + 1))
+        expect(Math.abs(node.position.x - other.position.x)).toBeGreaterThanOrEqual(300);
+    } finally { db.close(); }
+  });
+  it("preserves old manual layouts and places only new sources in a vacant upper slot", () => {
+    const { db, graphs, reference } = fixture();
+    try {
+      const ref = reference(), first = graphs.syncReference(scope, writer, ref, "X", "Y")!;
+      const manual = graphs.save(scope, writer, { objectId: first.objectId, expectedRevision: first.revision,
+        graph: { ...first.graph, nodes: first.graph.nodes.map(node => ({ ...node, position:
+          node.data.logicalSessionId === "Y" ? { x: 111, y: 999 } : { x: 1800, y: 80 } })) } });
+      const withObstacle = graphs.save(scope, writer, { objectId: manual.objectId, expectedRevision: manual.revision,
+        graph: { ...manual.graph, nodes: [...manual.graph.nodes,
+          { id: "manual-placeholder", position: { x: 151, y: 749 }, data: { kind: "placeholder", label: "原有卡片" } }] } });
+      expect(graphs.syncReference(scope, writer, ref, "X", "Y")!.graph.nodes).toEqual(withObstacle.graph.nodes);
+      const added = graphs.syncReference(scope, writer, reference("ref-new", "A"), "A", "Y")!;
+      expect(added.graph.nodes.slice(0, withObstacle.graph.nodes.length)).toEqual(withObstacle.graph.nodes);
+      const source = added.graph.nodes.find(node => node.data.logicalSessionId === "A")!;
+      expect(source.position.y).toBeLessThan(999);
+      expect(Math.abs(source.position.x - 151)).toBeGreaterThanOrEqual(300);
+      expect(graphs.load(scope, added.objectId).graph.nodes).toEqual(added.graph.nodes);
+    } finally { db.close(); }
+  });
+  it("places a restored receiver below its existing source and a newly bound owner below draft cards", () => {
+    const { db, graphs, reference } = fixture();
+    try {
+      const ref = reference(), first = graphs.syncReference(scope, writer, ref, "X", "Y")!;
+      const owner = first.graph.nodes.find(node => node.data.logicalSessionId === "Y")!;
+      const removed = graphs.remove(scope, writer, { objectId: first.objectId, expectedRevision: first.revision,
+        nodeIds: [owner.id], operationId: "remove-receiver" });
+      const restored = graphs.syncReference(scope, writer, reference("ref-new"), "X", "Y")!;
+      expect(restored.graph.nodes[0]).toEqual(removed.graph.nodes[0]);
+      const source = restored.graph.nodes.find(node => node.data.logicalSessionId === "X")!;
+      const target = restored.graph.nodes.find(node => node.data.logicalSessionId === "Y")!;
+      expect(target.position.x).toBe(source.position.x);
+      expect(target.position.y).toBeGreaterThan(source.position.y);
+      const draft = graphs.save(scope, writer, { expectedRevision: 0, graph: { managedSchema: 2, ownerSessionId: null,
+        nodes: [{ id: "blank", position: { x: 77, y: 888 }, data: { kind: "placeholder", label: "草稿" } }], edges: [] } });
+      const bound = graphs.bind(scope, writer, draft.objectId, draft.revision, "Z", "Z");
+      expect(bound.graph.nodes[0]).toEqual(draft.graph.nodes[0]);
+      expect(bound.graph.nodes[1]!.position.x).toBe(77);
+      expect(bound.graph.nodes[1]!.position.y).toBeGreaterThan(888);
+    } finally { db.close(); }
+  });
   it("ensures one target graph, keeps an upstream's own graph independent and defers native binding", () => {
     const { db, graphs, reference } = fixture();
     try {

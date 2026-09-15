@@ -21,7 +21,7 @@ function unique(ids: string[]): void {
 }
 export const thoughtDagAdapter: ExtensionDataAdapter = {
   capabilities,
-  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5", "0.4.14-rc2.6"], schemaVersions: [1, 2],
+  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5", "0.4.14-rc2.6", "0.4.14-rc2.7"], schemaVersions: [1, 2],
   validate(content) {
     if (content.schemaVersion === 2 && typeof content.body === "object" && content.body !== null && "kind" in content.body && content.body.kind === "disclosure-log") {
       const log = graphDisclosureLogSchema.parse(content.body); unique(log.items.map(item => item.receiptId));
