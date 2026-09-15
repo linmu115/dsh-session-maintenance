@@ -6,6 +6,7 @@ import { ANNOTATION_RECORDS_NAMESPACE, type AnnotationMirrorSync, type Extension
 import type { SessionMaintenanceEngine } from "../engine.js";
 import { ExtensionDirectoryService } from "./directory.js";
 import { synchronizeAnnotationMirrors } from "./annotation-sync.js";
+import { presentGraphList } from "../session-graph-titles.js";
 
 /** Independent from the platform/version adapter registry. No automatic context injection. */
 export class ExtensionDataService {
@@ -42,7 +43,7 @@ export class ExtensionDataService {
     this.store.connect(parsed); return this.panels();
   }
   enable(scope: ExtensionScope, enabled: boolean) { this.store.enable(extensionScopeSchema.parse(scope),enabled); return this.panels(); }
-  list(query: ExtensionList) { return this.store.list(query); }
+  list(query: ExtensionList) { return presentGraphList(this.store.database, query, this.store.list(query)); }
   businessPanels(query: ExtensionBusinessPanelQuery = {}) { return this.directoryService.businessPanels(query); }
   directory(query: ExtensionDirectoryQuery) { return this.directoryService.list(query); }
   rebuildOwnerIndex(scope: { instanceId: string; profileId: string }, namespaces: readonly string[]) { this.directoryService.rebuild(scope, namespaces, true); }

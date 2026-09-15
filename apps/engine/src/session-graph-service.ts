@@ -8,6 +8,7 @@ import {
 import { JsonProjectionDirectory, projectionRootFor } from "@linmu/dsh-session-projection-lifecycle";
 import type { SessionMaintenanceEngine } from "./engine.js";
 import { SessionGraphStore, graphObjectId } from "./session-graph-store.js";
+import { presentGraphTitles } from "./session-graph-titles.js";
 
 const unavailable = (message: string) => new ExtensionDataError("GRAPH_UNAVAILABLE", message, 409);
 const cursorSchema = z.strictObject({
@@ -39,29 +40,29 @@ export class SessionGraphService {
   }
   async ensure(runId: string, logicalSessionId: string) {
     const a = (await this.graphAccess(runId))!, target = await this.resolve(runId, { logicalSessionId });
-    return this.graphs.ensure(a.scope, a.writerId, target.logicalSessionId, target.title);
+    return presentGraphTitles(this.engine.repository.database, this.graphs.ensure(a.scope, a.writerId, target.logicalSessionId, target.title));
   }
   async load(runId: string, objectId: string) {
     const a = (await this.graphAccess(runId))!, doc = this.graphs.load(a.scope, objectId, true);
     if (doc.graph.ownerSessionId) await this.resolve(runId, { logicalSessionId: doc.graph.ownerSessionId }, Boolean(doc.graph.archivedAt));
-    return doc;
+    return presentGraphTitles(this.engine.repository.database, doc);
   }
   async save(runId: string, input: GraphSave, onCommit?: () => void) {
     const a = (await this.graphAccess(runId))!;
     if (input.graph.ownerSessionId) await this.resolve(runId, { logicalSessionId: input.graph.ownerSessionId });
     for (const logicalSessionId of new Set(input.graph.nodes.flatMap(n => n.data.logicalSessionId ? [n.data.logicalSessionId] : [])))
       await this.resolve(runId, { logicalSessionId });
-    return this.graphs.store.transaction(()=>{const result=this.graphs.save(a.scope,a.writerId,input);onCommit?.();return result;});
+    return presentGraphTitles(this.engine.repository.database, this.graphs.store.transaction(()=>{const result=this.graphs.save(a.scope,a.writerId,input);onCommit?.();return result;}));
   }
   async bind(runId: string, input: GraphBind) {
     const a = (await this.graphAccess(runId))!, target = await this.resolve(runId, { logicalSessionId: input.logicalSessionId });
-    return this.graphs.bind(a.scope, a.writerId, input.objectId, input.expectedRevision, target.logicalSessionId, target.title);
+    return presentGraphTitles(this.engine.repository.database, this.graphs.bind(a.scope, a.writerId, input.objectId, input.expectedRevision, target.logicalSessionId, target.title));
   }
   async remove(runId: string, input: GraphRemove, onCommit?: () => void) {
     const a = (await this.graphAccess(runId))!;
     const doc = await this.load(runId, input.objectId);
     if (doc.graph.archivedAt) throw unavailable("主干图已归档，恢复会话后才能编辑");
-    return this.graphs.store.transaction(()=>{const result=this.graphs.remove(a.scope,a.writerId,input);onCommit?.();return result;});
+    return presentGraphTitles(this.engine.repository.database, this.graphs.store.transaction(()=>{const result=this.graphs.remove(a.scope,a.writerId,input);onCommit?.();return result;}));
   }
   async syncReference(runId: string, record: SessionContextRecord) {
     return this.commitReference(runId,record);
