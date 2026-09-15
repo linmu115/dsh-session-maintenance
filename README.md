@@ -2,7 +2,7 @@
 
 本地会话维护引擎：统一管理 DeepSeek Harness 会话的稳定身份、不可变版本、恢复点和可复用的原生历史，并为跨会话引用、会话贴纸、Obsidian 关联和 ThoughtDAG 提供结构化数据真源。Codex 原始会话仍由 Codex 管理，Maintenance 只读导入，不改写其日志。
 
-当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.22 / Maintenance 插件 0.2.26-rc2.18**。本次变更见[会话标题持久化与重启恢复](docs/changes/2026-09-15-durable-session-titles.md)。此前的[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)继续保留；当前组合的实际部署结果单独记录。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
+当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.22 / Maintenance 插件 0.2.26-rc2.18**。本次变更见[会话标题持久化与重启恢复](docs/changes/2026-09-15-durable-session-titles.md)，运行副本的重启验收见[标题修复交付记录](docs/reports/2026-09-15-session-picker-title-release.md)。此前的[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)继续保留。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
 
 全部配套项目的当前分支、源码版本和使用说明见 [GitHub 源码与 README 索引](docs/reports/2026-09-15-github-source-index.md)。
 
@@ -24,7 +24,7 @@
 
 1. 安装匹配的 Engine、Maintenance 插件与所需扩展。在 Launcher 的目标 Profile 中选择会话来源 `Session Maintenance`，端点 `auto`；DSH 0.1.5-rc.2 对应 Adapter 为 `dsh-0.1.5`。
 2. 从 Launcher 启动 Profile。启动准备和宿主回执验证完成后，历史按原生方式读取。本轮新增内容提交到 Maintenance，取得持久化回执后才视为提交成功。
-3. 在已完成的回复中选文，使用跨会话引用入口，先选工作区、再选目标会话，目标输入框显示引用气泡。创建独立会话贴纸时，也先选择新会话所属工作区。
+3. 在已完成的回复中选文，使用跨会话引用入口，先选工作区、再按会话名称选择目标，目标输入框显示引用气泡。选择器优先使用 DSH 的持久标题，启动后保留原生日志中的名称；没有可用名称时显示“未命名会话”。标题解析使用目录元数据，不为列出名称加载会话正文。创建独立会话贴纸时，也先选择新会话所属工作区。
 4. 在目标会话页切换“思维图”。空白处右键添加空卡片或已有会话；节点右键进入会话、查看来源或移除卡片；边上右键移除连接。空卡片在真正开始会话时才创建 DSH 会话，开始操作准备上下文并跳转，不自动发送。
 5. 来源选文的蓝色引用号可跳转到贴纸会话，右键可删除指定引用。同一选文的其他引用及普通红色贴纸保留。移除卡片或边会解除对应后续上下文关系，不删除真实会话。
 6. 从 Launcher 或 DSH“设置 → 会话维护”打开看板，在扩展数据中选择实例与配置、Obsidian 系列或 ThoughtDAG，再展开工作区和会话。选择条目读取详情；主干图的披露记录需进一步展开。可用操作取决于对应成员的安装、启用和兼容状态。
@@ -69,6 +69,8 @@ Suite 和成员需要保持规定的父子加载关系。第三方原版 Thought
 原生空间按实例、Profile、分支和格式隔离，由 Maintenance 托管在 `projection-runtime/native-spaces/<space-key>/sessions`，通过宿主持久化配置接给当前 Profile。它不属于插件安装目录；第三方插件应遵守当前实例的持久化接口，不能写死 `$DSH_HOME/sessions`。
 
 **导入来源**与**启动原生空间同步**是两个步骤：启动只将已纳入 Maintenance 的规范内容同步成 DSH 格式，不能据此认定 Codex 新正文已全部导入。运行期间插件直接向 Engine 提交，不逐条经过 Launcher；首次续写只读 Codex 来源时保留来源与派生关系。见[持久原生空间](docs/changes/2026-09-10-persistent-native-session-space.md)、[RC2 原生来源保留](docs/changes/2026-09-12-rc2-native-source-preservation.md)和 [Adapter 架构](docs/adapters/architecture.md)。
+
+**引用镜像不会将它转成派生会话。** 当启动准备按已配置的 Codex 项目映射同步正文时，原 Codex 更新推进同一镜像的真源版本；接收方的既有引用仍固定在捕获时的版本及所选回复结束位置。只有向该镜像的 DSH 投影首次实际追加内容，才创建由 Maintenance 维护的派生会话。原镜像后续同步不会覆盖派生内容。详见[镜像、固定引用与派生的区别](docs/reports/2026-09-15-session-picker-title-release.md#codex-镜像与引用)。
 
 ## 构建与安装
 
