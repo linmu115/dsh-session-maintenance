@@ -6,6 +6,10 @@ import type { DiscoveredIntegration, DiscoveredIntegrations } from "./launcher-d
 import { configureLauncherHook, desiredLauncherHook, launcherHookPath, launcherHooksEqual, installIntegrationPlugin, type IntegrationInstallOptions } from "./launcher-install.js";
 import { readJsonIfPresent, writeJsonAtomically } from "./bindings.js";
 import { unlink } from "node:fs/promises";
+import { join } from "node:path";
+import { z } from "zod";
+
+const displayCatalogSchema = z.object({ instances: z.array(z.object({ id: z.string(), name: z.string() })) });
 
 export interface IntegrationServiceOptions {
   readonly stateRoot: string;
@@ -22,9 +26,45 @@ export interface IntegrationServiceOptions {
 export class InstanceIntegrationService {
   private readonly installing = new Set<string>();
   private readonly generations = new Map<string, number>();
+  private displayNames: { expiresAt: number; value: Promise<ReadonlyMap<string, string>> } | undefined;
   constructor(private readonly options: IntegrationServiceOptions) {}
 
+  /** Presentation only: read the bound Launcher catalog, without attestation or runtime discovery. */
+  async instanceDisplayName(instanceId: string, profileId: string): Promise<string | undefined> {
+    if (!this.displayNames || this.displayNames.expiresAt <= Date.now()) {
+      this.displayNames = { expiresAt: Date.now() + 5000, value: this.readDisplayNames().catch(() => new Map<string, string>()) };
+    }
+    return (await this.displayNames.value).get(JSON.stringify([instanceId, profileId]));
+  }
+
+  private async readDisplayNames(): Promise<ReadonlyMap<string, string>> {
+    const bindings = (await readIntegrationBindings(this.options.stateRoot)).filter(binding =>
+      binding.kind === "dsh" && binding.launcherDataRoot !== null && binding.profileId !== null);
+    const catalogs = new Map(await Promise.all([...new Set(bindings.map(binding => binding.launcherDataRoot!))].map(async root => {
+      const names = new Map<string, string>();
+      try {
+        const catalog = displayCatalogSchema.safeParse(await readJsonIfPresent(join(root, "config.json")));
+        if (catalog.success && new Set(catalog.data.instances.map(instance => instance.id)).size === catalog.data.instances.length) {
+          for (const instance of catalog.data.instances) {
+            const name = instance.name.trim();
+            if (name && name.length <= 500 && !/[\u0000-\u001f\u007f]/u.test(name)) names.set(instance.id, name);
+          }
+        }
+      } catch { /* A missing display label must not hide otherwise readable extension data. */ }
+      return [root, names] as const;
+    })));
+    const candidates = new Map<string, Set<string>>();
+    for (const binding of bindings) {
+      const name = catalogs.get(binding.launcherDataRoot!)?.get(binding.instanceId);
+      if (name === undefined) continue;
+      const key = JSON.stringify([binding.instanceId, binding.profileId]);
+      const names = candidates.get(key) ?? new Set<string>(); names.add(name); candidates.set(key, names);
+    }
+    return new Map([...candidates].flatMap(([key, names]) => names.size === 1 ? [[key, [...names][0]!] as const] : []));
+  }
+
   async list(): Promise<IntegrationDirectory> {
+    this.displayNames = undefined;
     const [discovery, bindings] = await Promise.all([this.options.discover(), readIntegrationBindings(this.options.stateRoot)]);
     const targets = await Promise.all(discovery.targets.map(async item => {
       const target: IntegrationTarget = { ...item.target, capabilities: item.target.capabilities.map(capability => ({ ...capability })), issues: [...item.target.issues] };
@@ -50,6 +90,7 @@ export class InstanceIntegrationService {
   }
 
   async action(targetId: string, action: IntegrationAction): Promise<IntegrationDirectory> {
+    this.displayNames = undefined;
     if (action === "disconnect") {
       this.generations.set(targetId, (this.generations.get(targetId) ?? 0) + 1);
       await this.options.writes.run("integration-disconnect", async () => {

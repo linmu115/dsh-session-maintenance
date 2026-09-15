@@ -15,7 +15,9 @@ export async function routeExtensionRequest(request: IncomingMessage, response: 
   if (request.method === "GET") {
     if (url.pathname === "/v1/extensions/business-panels") {
       const panels = service.businessPanels(extensionBusinessPanelQuerySchema.parse(query));
-      send(panels.map(panel => ({ ...panel, instanceLabel: engine.instances.find(instance => instance.id === panel.scope.instanceId)?.displayName ?? panel.instanceLabel }))); return true;
+      send(await Promise.all(panels.map(async panel => ({ ...panel, instanceLabel:
+        await engine.integrations?.instanceDisplayName(panel.scope.instanceId, panel.scope.profileId)
+        ?? engine.instances.find(instance => instance.id === panel.scope.instanceId)?.displayName ?? panel.instanceLabel })))); return true;
     }
     if (url.pathname === "/v1/extensions/directory") { send(service.directory(extensionDirectoryQuerySchema.parse(query))); return true; }
     if (url.pathname === "/v1/extensions/panels") { send(service.panels()); return true; }
