@@ -77,6 +77,32 @@ describe("bounded canonical reader", () => {
     expect([...raw.text]).toHaveLength(128); expect(raw.nextOffset).toBe(128); expect(raw.totalChars).toBeGreaterThan(10_000);
   });
 
+  it("keeps user, injected annotations, runtime and answer in one turn while preserving pasted tags and attachment-only users", async () => {
+    const injected = "<dsh-annotations>PRIVATE_ANNOTATION_MATERIAL</dsh-annotations>";
+    const pasted = "用户粘贴 <dsh-annotations>ordinary user text</dsh-annotations>";
+    const rows = [event(0, "user-message", message("user", pasted), "user/message"),
+      event(1, "user-message", message("user", injected, { kind: "dsh-annotation", schemaVersion: 1, count: 1,
+        setId: "set", targetUserMessageId: "direct-user", digest: "digest" }), "user/message"),
+      event(2, "user-message", message("user", "PRIVATE_RUNTIME_BODY", { kind: "plugin", plugin: "@deepseek-ai/dsh-system-prompt", form: "snapshot" }), "user/message"),
+      event(3, "assistant-message", { message: message("assistant", "完整回答") }, "assistant/message")];
+    const f = await fixture(rows), page = await f.client.getSessionReader("reader-session");
+    expect(page.turns).toHaveLength(1);
+    expect(page.turns[0]?.messages.map(value => value.text)).toEqual([pasted, "完整回答"]);
+    expect(page.turns[0]?.processKinds).toEqual([{ kind: "plugin-context", label: "引用上下文", count: 1 }, { kind: "runtime-context", label: "运行上下文", count: 1 }]);
+    expect(JSON.stringify(page)).not.toMatch(/PRIVATE_ANNOTATION_MATERIAL|PRIVATE_RUNTIME_BODY/);
+    const process = await f.client.getSessionReaderProcess("reader-session", { snapshot: page.snapshot, turnId: page.turns[0]!.id });
+    expect(process.items.map(value => [value.kind, value.eventIds])).toEqual([["plugin-context", ["event-1"]], ["runtime-context", ["event-2"]]]);
+    expect(JSON.stringify(process)).not.toContain("PRIVATE_ANNOTATION_MATERIAL");
+    expect((await f.client.getSessionReaderEvent("reader-session", "event-1", { snapshot: page.snapshot })).text).toBe(injected);
+    await f.canonical.putCanonicalEvent(event(4, "user-message", { id: "attachment-only", role: "user", source: { kind: "user" },
+      content: [{ type: "image", attachment: { attachmentId: "synthetic-image", mediaType: "image/png" } }] }, "user/message"));
+    const withAttachment = await f.client.getSessionReader("reader-session");
+    expect(withAttachment.turns).toHaveLength(2);
+    expect(withAttachment.turns[1]?.messages[0]).toMatchObject({ eventId: "event-4", role: "user" });
+    expect(withAttachment.turns[1]?.messages[0]?.text).toContain("synthetic-image");
+    expect((await f.client.getCanonicalSession("reader-session")).events.find(value => value.id === "event-1")).toMatchObject({ kind: "user-message", role: "user" });
+  });
+
   it.each([false, true])("attaches pending preparation to the following user without moving completed tool work (tools=%s)", async (withTools) => {
     const rows = [event(0, "user-message", message("user", "first question"), "user/message"),
       event(1, "assistant-message", { message: message("assistant", "first answer") }, "assistant/message")];

@@ -66,6 +66,18 @@ describe("DSH reader presentation metadata", () => {
     expect(readDshReaderPresentation(input)).toEqual({ kind: "plugin-context", label: "插件上下文" });
   });
 
+  it("recognizes the Core annotation source envelope without inspecting injected or pasted text", () => {
+    const source = { kind: "dsh-annotation", schemaVersion: 1, count: 1, setId: "set", targetUserMessageId: "user", digest: "digest" };
+    expect(readDshReaderPresentation(event({ role: "user", source }))).toEqual({ kind: "plugin-context", label: "引用上下文" });
+    for (const changed of [{ ...source, schemaVersion: 2 }, { ...source, count: -1 }, { ...source, targetUserMessageId: null },
+      { kind: "user" }, { kind: "dsh-annotation" }]) {
+      expect(readDshReaderPresentation(event({ role: "user", source: changed, content: [{ type: "text", text: "<dsh-annotations>pasted</dsh-annotations>" }] })))
+        .toEqual({ kind: "user", label: "用户" });
+    }
+    expect(readDshReaderPresentation(event({ role: "user", source: { kind: "user" }, content: [{ type: "image", attachment: { attachmentId: "image" } }] })))
+      .toEqual({ kind: "user", label: "用户" });
+  });
+
   it("reads exact native tool call and result identities from their distinct fields", () => {
     const call = event({ turn: 1, step: 1, callId: "call-1", name: "read_file", arguments: body },
       { kind: "tool-call", role: "assistant", extensions: { dshEventType: "tool/call" } });

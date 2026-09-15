@@ -6,6 +6,8 @@ export interface ReaderStoredMetadata {
   id: string; sequence: number; kind: CanonicalEventV1["kind"]; role: CanonicalEventV1["role"];
   platform: string; native_type: string | null; message_role: string | null; source_kind: string | null;
   source_plugin: string | null; source_form: string | null; call_id: string | null; tool_name: string | null;
+  source_schema_version: number | null; source_count: number | null;
+  source_set_id: string | null; source_target_user_id: string | null; source_digest: string | null;
   result_source_kind: string | null; result_call_id: string | null; has_text: number;
 }
 export const READER_METADATA_COLUMNS = `id, sequence, kind,
@@ -15,6 +17,11 @@ export const READER_METADATA_COLUMNS = `id, sequence, kind,
  substr(json_extract(event_json,'$.content.source.kind'),1,128) AS source_kind,
  substr(json_extract(event_json,'$.content.source.plugin'),1,512) AS source_plugin,
  substr(json_extract(event_json,'$.content.source.form'),1,128) AS source_form,
+ CASE WHEN json_type(event_json,'$.content.source.schemaVersion')='integer' THEN json_extract(event_json,'$.content.source.schemaVersion') END AS source_schema_version,
+ CASE WHEN json_type(event_json,'$.content.source.count')='integer' THEN json_extract(event_json,'$.content.source.count') END AS source_count,
+ CASE WHEN json_type(event_json,'$.content.source.setId')='text' AND length(json_extract(event_json,'$.content.source.setId'))<=512 THEN json_extract(event_json,'$.content.source.setId') END AS source_set_id,
+ CASE WHEN json_type(event_json,'$.content.source.targetUserMessageId')='text' AND length(json_extract(event_json,'$.content.source.targetUserMessageId'))<=512 THEN json_extract(event_json,'$.content.source.targetUserMessageId') END AS source_target_user_id,
+ CASE WHEN json_type(event_json,'$.content.source.digest')='text' AND length(json_extract(event_json,'$.content.source.digest'))<=512 THEN json_extract(event_json,'$.content.source.digest') END AS source_digest,
  CASE WHEN length(json_extract(event_json,'$.content.callId'))<=512 THEN json_extract(event_json,'$.content.callId') END AS call_id,
  substr(json_extract(event_json,'$.content.name'),1,160) AS tool_name,
  substr(json_extract(event_json,'$.content.message.source.kind'),1,128) AS result_source_kind,
@@ -27,7 +34,9 @@ export const READER_METADATA_COLUMNS = `id, sequence, kind,
  END AS has_text`;
 
 export function readStoredReaderPresentation(row: ReaderStoredMetadata, sessionId: string) {
-  const source = { kind: row.source_kind, plugin: row.source_plugin, ...(row.source_form === null ? {} : { form: row.source_form }) };
+  const source = { kind: row.source_kind, plugin: row.source_plugin, ...(row.source_form === null ? {} : { form: row.source_form }),
+    schemaVersion: row.source_schema_version, count: row.source_count, setId: row.source_set_id,
+    targetUserMessageId: row.source_target_user_id, digest: row.source_digest };
   return readDshReaderPresentation({ schemaVersion: 1, id: row.id, logicalSessionId: sessionId, sequence: row.sequence, kind: row.kind, role: row.role,
     content: { role: row.message_role, source, callId: row.call_id, name: row.tool_name,
       message: { source: { kind: row.result_source_kind, callId: row.result_call_id } } },
