@@ -4,6 +4,8 @@
 
 产品行为和验收编号以[设计和功能需求](2026-09-10-session-context-graph-requirements.md)为准。本文保留职责、源码入口及实施顺序；实际完成状态以联合发布报告为准，不把历史建议或未确认精简项视作已执行。
 
+2026-09-15 新确认但待实现的“原生 Agent 主干与上下文管理”见[补充规格](2026-09-15-native-agent-context-management.md)和本文第 11 节；用户请求索引、模型写工具、窗口与真实释放均不属于之前已经完成的发布，托管引擎排除在此阶段之外。
+
 本次核查基线：Maintenance `42441ec`、ThoughtDAG `e2ce52b`、Sticker Board `b1ff2ea`、Annotation Core `7433774`。下文保留早期实施分工供追溯，本次变更重点为主干归属、右键交互、真实上下文边、蓝色来源标记、读取位置日志和 Adapter 联动。已取消全局网络及重答流程；额外功能取舍见[核查清单](2026-09-14-session-graph-feature-scope-audit.md)。
 
 ## 1. 先区分两个维护项目
@@ -224,3 +226,32 @@ W09 是写入新图结构的前置条件，W10/W11/W13 是宣称“连线可传�
 当前开发根目录：`D:\AI\DeepSeekHarness-Plugin`。主要插件位于 `repositories`，独立部署引擎位于 `dsh-maintenance-engine`；本次文档工作区为 `worktrees/session-context-graph-20260913/dsh-session-maintenance`。早期 `repositories/.worktrees/session-context-graph-design` 只作为历史设计工作区保留。
 
 最初需求确认阶段仅提交文档。2026-09-15 后续实施已包含蓝色标记删除、会话归档联动和已有图节点引用恢复（W16–W18）；实现、合成测试与副本部署分别记录，不把源码提交视为运行验收完成。
+
+## 11. 新增阶段：原生 Agent 自主管理上下文（待实现）
+
+产品规则和验收为[补充规格](2026-09-15-native-agent-context-management.md)的 NC01–NC08、NCA01–NCA24。沿用已有目录和领域服务，不能把 Host-only 的任意图写入接口直接当成模型工具。
+
+| 项目 / 已有入口 | 本阶段修改 | 验收重点 |
+| --- | --- | --- |
+| Maintenance `packages/contracts/src` | 统一请求索引、活动窗口、保留句柄、原生操作回执与能力协议；不在消费者复制合同 | NCA01–NCA06、NCA14、NCA24 |
+| DSH 版本 Adapter `reader-presentation.ts`、`reader-storage.ts`、`session-context.ts` | 复用可信来源分类；请求/执行/回复稳定关联；原始材料到原生 surface 的身份解析；固定版本及截止核验 | NCA01–NCA05、NCA09 |
+| Maintenance Engine `session-context-service.ts`、`session-graph-service.ts`、请求阅读查询及扩展 Adapter | 固定范围请求目录，窗口和保留记录，模型自身主干写入作用域，共享材料持有者，恢复和分页 | NCA05–NCA06、NCA11–NCA15、NCA18、NCA21–NCA22 |
+| Maintenance 宿主插件 `session-context.ts`、`session-graph.ts` 及新的原生上下文执行模块 | 利用 DSH 原生 append/surface replacement 和 pre-step；来源核验、操作幂等与实际生效回执；Module 只负责运行编排，格式规则仍归版本 Adapter | NCA07–NCA09、NCA14、NCA17、NCA23–NCA24 |
+| Annotation Core `reference-tools.ts`、`upstream-tools.ts`、`upstream-budget.ts`、`pre-step.ts`、公共 Host 合同 | 请求/图/状态工具，读工具按窗口定位，释放与暂停/恢复，保留标记、有限图编辑；原生工具规范和当前执行身份约束 | NCA06–NCA18、NCA24 |
+| ThoughtDAG `src/maintenance`、`dsh/lib/managed-graph.js` | 请求目录入口，固定/活动/保留三层状态、暂停及释放结果；同步模型修改且保留用户布局 | NCA06、NCA10–NCA11、NCA15–NCA16、NCA18 |
+| Sticker Board 现有引用标记与撤销订阅 | 复用统一解除事件；暂停/释放不被当成永久删除，解除才同步对应蓝标 | NCA10–NCA11 |
+| Maintenance Dashboard 业务扩展目录与阅读器 | 请求索引与所属会话连接；按 Adapter/工作区/会话显示，窗口属于引用域，披露记录附属图 | NCA02、NCA18–NCA21 |
+| Sidechat、Obsidian Bridge 及其它消费者 | 仅在共享协议/能力变更确需时适配；不各自复制窗口管理逻辑 | NCA10–NCA11、NCA20 |
+| 原生 DSH 工具/会话公开扩展接口 | 优先复用 `defineTool`、`tools.register()`、`agent/pre-step`、`surfaceOp` 和 token meter；不预设 fork 官方引擎 | NCA07–NCA09、NCA17、NCA24 |
+| 托管 Runtime / 托管工具导出 | 本阶段排除，不修改 Codex 托管引擎；新原生释放能力不得通过现有桥接误标为已支持 | NCA23 |
+
+| 任务 | 顺序与交付 | 验收 |
+| --- | --- | --- |
+| W19 | 共享合同、请求索引与来源/版本/截止解析 | NCA01–NCA05 |
+| W20 | 活动窗口、保留集合、预算、来源状态与操作恢复 | NCA06、NCA10、NCA14–NCA19 |
+| W21 | 原生材料替代、下一请求前应用与实际占用核验 | NCA07–NCA09、NCA14、NCA17、NCA23 |
+| W22 | 模型原生工具、自身主干写入、连接/解除与请求索引读取 | NCA10–NCA13、NCA24 |
+| W23 | ThoughtDAG/Sticker/Adapter/看板联合更新及用户保留标记 | NCA11、NCA15–NCA16、NCA18–NCA22 |
+| W24 | 合成原生组合验收、README/报告、匹配版本与副本发布 | NCA01–NCA24 |
+
+W21 的通过标准是后续原生模型请求中实际不再包含被释放正文，同时原始会话保持可追溯。仅修改图状态或显示折叠不算实现。每个代码实施任务继续遵循所属仓库的聚焦测试、变更报告和提交要求；本次文档确认不执行 W19–W24。
