@@ -2,6 +2,8 @@
 
 本批将 ThoughtDAG 精确兼容白名单扩展到 `0.4.14-rc2.10`，配套 Engine `0.1.33-rc2.23` 和 Maintenance 插件 `0.2.26-rc2.19`。同时更新 Launcher 插件发现和 Engine 运行证明的版本清单，使副本在升级后仍能按既有证明流程接入。
 
+该版本已安装并重新启动运行副本，见[连续切换、使用说明与副本验收](../reports/2026-09-15-thoughtdag-fluid-ui-release.md)。
+
 ThoughtDAG 本批改动集中于会话页与思维图的边框对齐、视图切换动效和画布交互细节。Maintenance 不改变对象结构、会话归属、固定版本与截止位置、上下文预算或存储方式；数据库保持 schema 24。现有会话标题持久化修复继续保留。
 
 部署范围为 19 个 DSH 插件中只替换 ThoughtDAG 和 Maintenance 两个包，其他 17 个包复用上一批精确归档。6 个扩展命名空间与 writerId 保持；仅 thoughtdag 的接入版本更新至 .10。既有图结构不执行数据迁移。
