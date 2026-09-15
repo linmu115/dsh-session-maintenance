@@ -2,7 +2,7 @@
 
 本地会话维护引擎：统一管理 DeepSeek Harness 会话的稳定身份、不可变版本、恢复点和可复用的原生历史，并为跨会话引用、会话贴纸、Obsidian 关联和 ThoughtDAG 提供结构化数据真源。Codex 原始会话仍由 Codex 管理，Maintenance 只读导入，不改写其日志。
 
-当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.24 / Maintenance 插件 0.2.26-rc2.20**。本次兼容 [ThoughtDAG 会话边框对齐与切换动效](docs/changes/2026-09-15-thoughtdag-ui-alignment.md)。此前的标题修复见[会话标题持久化与重启恢复](docs/changes/2026-09-15-durable-session-titles.md)，运行副本的重启验收见[标题修复交付记录](docs/reports/2026-09-15-session-picker-title-release.md)。此前的[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)继续保留。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
+当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.24 / Maintenance 插件 0.2.26-rc2.20**。本次兼容 [ThoughtDAG 拖动卡片闪烁修复](docs/changes/2026-09-15-thoughtdag-drag-flicker.md)，副本安装和运行校验已通过；此前的[会话边框对齐与切换动效](docs/changes/2026-09-15-thoughtdag-ui-alignment.md)继续保留。此前的标题修复见[会话标题持久化与重启恢复](docs/changes/2026-09-15-durable-session-titles.md)，运行副本的重启验收见[标题修复交付记录](docs/reports/2026-09-15-session-picker-title-release.md)。此前的[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)继续保留。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
 
 全部配套项目的当前分支、源码版本和使用说明见 [GitHub 源码与 README 索引](docs/reports/2026-09-15-github-source-index.md)。
 
