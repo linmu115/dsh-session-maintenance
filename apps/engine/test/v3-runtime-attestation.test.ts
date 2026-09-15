@@ -18,12 +18,12 @@ it("pins RC2 scope, closure, capabilities and exact artifact bytes before granti
   await save({...receipt,engineVersion:"0.1.33-rc2.3"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   const currentVersion=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8")).version;
   await save({...receipt,engineVersion:currentVersion});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
-  await save({...receipt,engineVersion:"0.1.33-rc2.0"});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_REQUIRED"});
+  for(const engineVersion of ["0.1.33-rc2.0","0.1.33-rc2.20",`${currentVersion}+unverified`]){await save({...receipt,engineVersion});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_REQUIRED"});}
   await save(receipt);
   await expect(verifyDsh015RuntimeAttestation({...input,instanceId:"other"})).rejects.toMatchObject({code:"V3_ATTESTATION_IDENTITY_MISMATCH"});
   const foreign=join(root,"foreign-manifest");await writeFile(foreign,"{}");await expect(verifyDsh015RuntimeAttestation({...input,resolvedManifests:[foreign]})).rejects.toMatchObject({code:"V3_PACKAGE_CLOSURE_MISMATCH"});
   await save({...receipt,runtimeCapabilities:[]});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_CAPABILITY_MISSING"});
   await save({...receipt,files:files.slice(0,-1)});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_INCOMPLETE"});
-  await save(receipt);await writeFile(files[2]!.path,"changed");await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ARTIFACT_CHANGED"});
+  await save({...receipt,engineVersion:currentVersion});await writeFile(files[2]!.path,"changed");await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ARTIFACT_CHANGED"});
  }finally{await rm(root,{recursive:true,force:true})}
 });

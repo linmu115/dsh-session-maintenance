@@ -13,6 +13,9 @@ import { resolveRuntimeIntegration } from "../src/integrations/runtime-binding.j
 import { WorkspaceSyncPolicyService } from "../src/integrations/sync-policy.js";
 import { MaintenanceExternalLifecycleProvider } from "../src/external-lifecycle-provider.js";
 import { runOfficialCli } from "../src/integrations/launcher-install.js";
+import { inspectLauncherCapabilities } from "../src/integrations/launcher-capabilities.js";
+import { DSH015_ATTESTATION_FILE } from "../src/integrations/runtime-attestation.js";
+import { REQUIRED_CAPABILITIES } from "@linmu/dsh-session-adapter-0-1-5";
 
 const cleanups: Array<() => Promise<void>> = [];
 const launcherSha = createHash("sha256").update(await readFile(process.execPath)).digest("hex");
@@ -59,6 +62,66 @@ async function fixture(withPlugin = true) {
 }
 
 describe("instance onboarding", () => {
+  it("accepts the current plugin declaration through the general release gate and rejects unlisted versions", async () => {
+    const f = await fixture();
+    const version = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
+    const path = join(f.profileRoot, "node_modules", "dsh-session-maintenance", "package.json");
+    const plugin = JSON.parse(await readFile(path, "utf8"));
+    await json(path, { ...plugin, version });
+    expect((await f.discover()).targets[0]!.pluginReady).toBe(true);
+    await json(path, { ...plugin, version: "0.2.26-rc2.16" });
+    expect((await f.discover()).targets[0]!.pluginReady).toBe(false);
+  });
+
+  it("connects the declared current Engine/plugin release through real discovery and attestation checks", async () => {
+    const f = await fixture();
+    const engineVersion = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
+    const pluginVersion = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
+    f.catalog.versions[0]!.version = "0.1.5-rc.2";
+    f.catalog.instances.splice(1);
+    await json(join(f.dataRoot, "config.json"), f.catalog);
+    const cliRoot = join(f.versionRoot, "node_modules", "@deepseek-ai", "dsh");
+    await json(join(cliRoot, "package.json"), { name: "@deepseek-ai/dsh", version: "0.1.5-rc.2" });
+    const manifests = new Map<string, string>();
+    for (const name of ["dsh-session", "dsh-session-persistence", "dsh-session-persistence-jsonl", "dsh-session-format-catalog", "dsh-web-app"]) {
+      const directory = join(f.profileRoot, "node_modules", "@deepseek-ai", name);
+      const path = join(directory, "package.json");
+      await json(path, { name: `@deepseek-ai/${name}`, version: "0.1.5-rc.2", main: "index.js", dsh: { bundle: { patch: "./cordis.patch.yml" } } });
+      await writeFile(join(directory, "index.js"), "// synthetic module");
+      if (name === "dsh-web-app") await writeFile(join(directory, "cordis.patch.yml"), "- insert:\n    - id: webserver\n      name: '@deepseek-ai/dsh-webserver'\n");
+      manifests.set(name, path);
+    }
+    const pluginPath = join(f.profileRoot, "node_modules", "dsh-session-maintenance", "package.json");
+    const plugin = JSON.parse(await readFile(pluginPath, "utf8"));
+    await json(pluginPath, { ...plugin, version: pluginVersion });
+    const syntheticNode = join(f.sandbox.root, "synthetic-node"), coreBinding = join(f.sandbox.root, "synthetic-core-binding.json");
+    await writeFile(syntheticNode, "synthetic node artifact"); await json(coreBinding, { synthetic: true });
+    const paths = { cli: join(cliRoot, "lib", "bin.js"), node: syntheticNode, session: manifests.get("dsh-session")!,
+      sessionPersistence: manifests.get("dsh-session-persistence")!, jsonl: manifests.get("dsh-session-persistence-jsonl")!,
+      formatCatalog: manifests.get("dsh-session-format-catalog")!, maintenancePlugin: pluginPath, engine: f.engineEntry, coreBindingReceipt: coreBinding };
+    const files = await Promise.all(Object.entries(paths).map(async ([role, path]) => ({ role, path, sha256: createHash("sha256").update(await readFile(path)).digest("hex") })));
+    const launcher = await inspectLauncherCapabilities(f.dataRoot); expect(launcher.issue).toBeNull();
+    const receipt = { schemaVersion: 1, instanceId: "instance-a", profileId: "web", homeRoot: f.homeRoot, adapterId: "dsh-0.1.5", formatId: "dsh-0.1.5-v3-jsonl-zstd-v1",
+      runtimeVersion: "0.1.5-rc.2", engineVersion, launcherCapabilityDigest: launcher.digest, runtimeCapabilities: [...REQUIRED_CAPABILITIES], files };
+    const attestationPath = join(f.profileRoot, DSH015_ATTESTATION_FILE);
+    await json(attestationPath, receipt);
+    const target = (await f.discover()).targets[0]!;
+    expect(target.target).toMatchObject({ status: "available", adapterId: "dsh-0.1.5", issues: [] });
+    expect(target.pluginReady).toBe(true); expect(target.coreBinding?.path).toBe(coreBinding);
+    expect((await f.service.action(target.target.id, "connect")).targets[0]!.status).toBe("connected");
+    const request = { schemaVersion: 1, phase: "prepare", instanceId: "instance-a", profileId: "web", runtimeVersion: "0.1.5-rc.2", web: true } as const;
+    expect(await resolveRuntimeIntegration(f.stateRoot, request)).toMatchObject({ adapterId: "dsh-0.1.5", runtimeCapabilities: [...REQUIRED_CAPABILITIES], coreBinding: { path: coreBinding } });
+    await json(attestationPath, { ...receipt, engineVersion: "0.1.33-rc2.20" });
+    expect((await f.discover()).targets[0]!.target.status).toBe("unsupported");
+    await expect(resolveRuntimeIntegration(f.stateRoot, request)).rejects.toMatchObject({ code: "INTEGRATION_RECHECK_REQUIRED" });
+    await json(attestationPath, receipt);
+    await writeFile(f.engineEntry, "changed synthetic engine");
+    expect((await f.discover()).targets[0]!.target.status).toBe("unsupported");
+    await expect(resolveRuntimeIntegration(f.stateRoot, request)).rejects.toMatchObject({ code: "INTEGRATION_RECHECK_REQUIRED" });
+    await json(pluginPath, { ...plugin, version: "0.2.26-rc2.16" });
+    expect((await f.discover()).targets[0]!.pluginReady).toBe(false);
+  });
+
   it("accepts the attested RC2 baseline and upstream plugin without admitting the earlier candidate", async () => {
     const f = await fixture();
     f.catalog.versions[0]!.version = "0.1.5-rc.2";
