@@ -11,7 +11,7 @@ export interface ExtensionBusinessApi {
 }
 const errorText = (error: unknown) => error instanceof Error ? error.message : "扩展目录暂时无法读取";
 const statusLabels = { ready: "已接入", partial: "部分能力不可用", disabled: "已停用，数据保留", "missing-adapter": "缺少适配器，数据保留", incompatible: "版本不兼容，数据保留" };
-const kindLabels: Record<string, string> = { "reference-record": "引用", "message-reference": "会话引用", "obsidian-reference": "Obsidian 引用", "session-context": "跨会话引用", "upstream-reference": "跨会话引用", "session": "会话贴纸", "session-sticker": "会话贴纸", "annotation": "普通贴纸", "annotation-sticker": "普通贴纸", "note-link": "笔记关联", "graph": "主干图", "main-graph": "主干图", "disclosure-log": "披露记录", migration: "迁移记录", "migration-receipt": "迁移记录" };
+const kindLabels: Record<string, string> = { "native-context": "上下文使用状态", "reference-record": "引用", "message-reference": "会话引用", "obsidian-reference": "Obsidian 引用", "session-context": "跨会话引用", "upstream-reference": "跨会话引用", "session": "会话贴纸", "session-sticker": "会话贴纸", "annotation": "普通贴纸", "annotation-sticker": "普通贴纸", "note-link": "笔记关联", "graph": "主干图", "main-graph": "主干图", "disclosure-log": "披露记录", migration: "迁移记录", "migration-receipt": "迁移记录" };
 const scopeKey = (scope: {instanceId: string; profileId: string}) => JSON.stringify([scope.instanceId, scope.profileId]);
 const objectKey = (object: ExtensionDirectoryObject) => JSON.stringify([object.scope, object.objectId]);
 

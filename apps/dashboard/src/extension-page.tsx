@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { Button, Surface, LoadingState, EmptyState } from "@linmu/dsh-session-ui";
 import { managedGraphSchema, type ExtensionPanel, type ExtensionScope, type ExtensionList, type ExtensionPage, type ExtensionDetail, type ExtensionWrite, type ExtensionWriteResult, type ExtensionConflict, type ExtensionCapabilities, type ExtensionPreview, type JsonValue } from "@linmu/dsh-session-contracts";
 import { ExtensionBusinessDirectory, type ExtensionBusinessApi } from "./extension-business-directory.js";
+import { nativeContextStateSchema } from "@linmu/dsh-session-contracts";
+import { NativeContextDetail } from "./native-context-detail.js";
 
 export interface ExtensionPageApi {
   listExtensionBusinessPanels?: ExtensionBusinessApi["listExtensionBusinessPanels"];
@@ -58,11 +60,13 @@ function ObjectDirectory({api,panel,onOpenSession}:{api:ExtensionPageApi;panel:E
   </Surface>;
 }
 function ObjectEditor({api,scope,capabilities,id,readOnly=false,onChanged,onOpenSession}:{api:ExtensionPageApi;scope:ExtensionScope;capabilities:ExtensionCapabilities;id:string;readOnly?:boolean;onChanged:()=>void;onOpenSession:(id:string)=>void}) {
+  readOnly = readOnly || scope.namespace === "annotation-context";
   const [detail,setDetail]=useState<ExtensionDetail>();const [title,setTitle]=useState("");const [body,setBody]=useState("");
   const [conflict,setConflict]=useState<ExtensionConflict>();const [error,setError]=useState<string>();const [busy,setBusy]=useState(false);
   const [showRaw,setShowRaw]=useState(false);
   const managedGraph=scope.namespace==="thoughtdag"&&Boolean(detail?.object.content.body&&typeof detail.object.content.body==="object"&&"managedSchema" in detail.object.content.body);
   const graphDetail=managedGraphSchema.safeParse(detail?.object.content.body);
+  const contextDetail=scope.namespace==="annotation-context" ? nativeContextStateSchema.safeParse(detail?.object.content.body) : undefined;
   useEffect(()=>{const c=new AbortController();void api.getExtensionObject(scope,id,c.signal).then(d=>{if(c.signal.aborted)return;setDetail(d);setTitle(d.object.content.title);setBody(JSON.stringify(d.object.content.body,null,2));},e=>{if(!c.signal.aborted)setError(errorText(e));});return()=>c.abort();},[api,scope,id]);
   const perform=async(action:()=>Promise<unknown>)=>{setBusy(true);setError(undefined);try{await action();}catch(e){setError(errorText(e));}finally{setBusy(false);}};
   const save=async(deleted:boolean)=>{if(!detail)return;const o=detail.object;
@@ -74,6 +78,7 @@ function ObjectEditor({api,scope,capabilities,id,readOnly=false,onChanged,onOpen
     {!detail&&!error?<LoadingState label="正在读取所选对象…"/>:null}
     {detail?<><p>{detail.summary}</p><p>版本 {detail.object.revision} · {graphDetail.success&&graphDetail.data.archivedAt?"已随主干会话归档":detail.object.deleted?"已删除":"当前状态"}</p>
       {detail.preview?<ObjectPreview preview={detail.preview}/>:null}
+      {contextDetail?.success ? <NativeContextDetail state={contextDetail.data} onOpenSession={onOpenSession}/> : null}
       {graphDetail.success?<div aria-label="主干固定来源"><p>主干会话：{graphDetail.data.ownerSessionId??"待绑定"}</p>
         {graphDetail.data.archivedAt?<p>此图随所属会话归档。恢复会话后可继续整理图谱；已解除的引用关系不会自动恢复。</p>:null}
         {graphDetail.data.migration?<p>{graphDetail.data.migration.reason}</p>:null}

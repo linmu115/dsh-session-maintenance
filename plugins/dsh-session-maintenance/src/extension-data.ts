@@ -1,5 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type { ExtensionConnect, ExtensionScope, ExtensionContent, ExtensionWriteResult, ExtensionDetail, ExtensionPage } from "@linmu/dsh-session-contracts";
+import type { ExtensionConnect, ExtensionScope, ExtensionContent, ExtensionWriteResult, ExtensionDetail, ExtensionPage, ExtensionPanel } from "@linmu/dsh-session-contracts";
 import type { EngineConnectionProvider } from "./engine-proxy.js";
 
 export type ConfiguredExtension = ExtensionConnect["plugins"][number];
@@ -24,7 +24,9 @@ export class MaintenanceExtensionBridge {
     if(!plugin)throw new Error("Extension is not configured on this DSH instance/profile");
     return plugin;
   }
-  async connect(signal?: AbortSignal): Promise<void> { await this.request("connect",{...this.scope,plugins:this.plugins},signal); }
+  async connect(signal?: AbortSignal): Promise<void> { await this.connectPanels(signal); }
+  connectPanels(signal?: AbortSignal): Promise<ExtensionPanel[]> { return this.request("connect",{...this.scope,plugins:this.plugins},signal); }
+  panels(signal?: AbortSignal): Promise<ExtensionPanel[]> { return this.request('panels', undefined, signal); }
   async get(namespace: string, objectId: string): Promise<ExtensionDetail> {
     this.configured(namespace);return this.request(`object?${new URLSearchParams({...this.scope,namespace,objectId})}`);
   }

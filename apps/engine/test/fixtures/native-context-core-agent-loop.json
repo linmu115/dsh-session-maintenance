@@ -1,0 +1,1323 @@
+{
+  "payload": {
+    "header": {
+      "version": 3,
+      "id": "native-loop-test",
+      "createdAt": 1789453671683,
+      "isSeeded": false,
+      "delegationDepth": 0
+    },
+    "events": [
+      {
+        "type": "agent/inbox/spliced",
+        "seq": 0,
+        "time": 1789453671692,
+        "data": {
+          "target": "next-step",
+          "start": 0,
+          "inserted": [
+            {
+              "source": {
+                "kind": "dsh-annotation",
+                "schemaVersion": 1,
+                "setId": "set",
+                "targetUserMessageId": "6460d554-cc11-4e41-ae73-03db6c258dd5",
+                "count": 1,
+                "digest": "sha256:61d3f2db406804c9f40e8edb28d559d5858268bb3a89938c88897bbfb237215b"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "<dsh-annotations version=\"1\" set-id=\"set\">\n{\"items\":[{\"initialContext\":{\"cutoffEventId\":\"answer\",\"hasMore\":false,\"items\":[{\"complete\":true,\"eventId\":\"question\",\"offset\":0,\"role\":\"user\",\"text\":\"source question\"},{\"complete\":true,\"eventId\":\"answer\",\"offset\":0,\"role\":\"assistant\",\"text\":\"distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body \"}],\"kind\":\"selected-turn\",\"nextCursor\":null,\"sourceVersionId\":\"v1\",\"turnComplete\":true},\"locator\":{\"sessionId\":\"source\"},\"number\":1,\"referenceId\":\"reference\",\"selectedText\":\"focus phrase\",\"sourceType\":\"dsh-message\",\"userComment\":\"preserve this user request\"}]}\n</dsh-annotations>\n<dsh-reference-documents>\n{\"documents\":[]}\n</dsh-reference-documents>"
+                }
+              ],
+              "role": "user",
+              "id": "ba733796-e90e-4666-bdab-4fdf874a97ce"
+            }
+          ]
+        }
+      },
+      {
+        "type": "agent/inbox/spliced",
+        "seq": 1,
+        "time": 1789453671692,
+        "data": {
+          "target": "next-turn",
+          "start": 0,
+          "inserted": [
+            {
+              "source": {
+                "kind": "user"
+              },
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Release the used answer body and keep my request."
+                }
+              ],
+              "role": "user",
+              "id": "6460d554-cc11-4e41-ae73-03db6c258dd5"
+            }
+          ]
+        }
+      },
+      {
+        "type": "turn/start",
+        "seq": 2,
+        "time": 1789453671693,
+        "data": {
+          "turn": 1
+        }
+      },
+      {
+        "type": "agent/inbox/spliced",
+        "seq": 3,
+        "time": 1789453671693,
+        "data": {
+          "target": "next-step",
+          "start": 0,
+          "removedCount": 1,
+          "inserted": []
+        }
+      },
+      {
+        "type": "agent/inbox/spliced",
+        "seq": 4,
+        "time": 1789453671693,
+        "data": {
+          "target": "next-turn",
+          "start": 0,
+          "removedCount": 1,
+          "inserted": []
+        }
+      },
+      {
+        "type": "step/start",
+        "seq": 5,
+        "time": 1789453671694,
+        "data": {
+          "turn": 1,
+          "step": 1
+        }
+      },
+      {
+        "type": "system/message",
+        "seq": 6,
+        "time": 1789453671695,
+        "data": {
+          "turn": 1,
+          "step": 1,
+          "message": {
+            "role": "system",
+            "content": [
+              {
+                "type": "text",
+                "text": "You are an AI agent powered by DeepSeek Harness."
+              }
+            ],
+            "source": {
+              "kind": "plugin",
+              "plugin": "@deepseek-ai/dsh-system-prompt"
+            },
+            "id": "6222cd14-892b-467b-8aa5-7437116fb7b6"
+          }
+        },
+        "surfaceOp": "append"
+      },
+      {
+        "type": "user/message",
+        "seq": 7,
+        "time": 1789453671695,
+        "data": {
+          "source": {
+            "kind": "dsh-annotation",
+            "schemaVersion": 1,
+            "setId": "set",
+            "targetUserMessageId": "6460d554-cc11-4e41-ae73-03db6c258dd5",
+            "count": 1,
+            "digest": "sha256:61d3f2db406804c9f40e8edb28d559d5858268bb3a89938c88897bbfb237215b"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "<dsh-annotations version=\"1\" set-id=\"set\">\n{\"items\":[{\"initialContext\":{\"cutoffEventId\":\"answer\",\"hasMore\":false,\"items\":[{\"complete\":true,\"eventId\":\"question\",\"offset\":0,\"role\":\"user\",\"text\":\"source question\"},{\"complete\":true,\"eventId\":\"answer\",\"offset\":0,\"role\":\"assistant\",\"text\":\"distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body distinctive upstream body \"}],\"kind\":\"selected-turn\",\"nextCursor\":null,\"sourceVersionId\":\"v1\",\"turnComplete\":true},\"locator\":{\"sessionId\":\"source\"},\"number\":1,\"referenceId\":\"reference\",\"selectedText\":\"focus phrase\",\"sourceType\":\"dsh-message\",\"userComment\":\"preserve this user request\"}]}\n</dsh-annotations>\n<dsh-reference-documents>\n{\"documents\":[]}\n</dsh-reference-documents>"
+            }
+          ],
+          "role": "user",
+          "id": "ba733796-e90e-4666-bdab-4fdf874a97ce"
+        },
+        "surfaceOp": "append"
+      },
+      {
+        "type": "user/message",
+        "seq": 8,
+        "time": 1789453671696,
+        "data": {
+          "source": {
+            "kind": "user"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Release the used answer body and keep my request."
+            }
+          ],
+          "role": "user",
+          "id": "6460d554-cc11-4e41-ae73-03db6c258dd5"
+        },
+        "surfaceOp": "append"
+      },
+      {
+        "type": "request/header",
+        "seq": 9,
+        "time": 1789453671696,
+        "data": {
+          "header": {
+            "config": {
+              "provider": "native-test",
+              "model": "script"
+            },
+            "tools": [
+              {
+                "name": "dsh_context_discover",
+                "description": "Discover source candidates inside allowed workspaces. Metadata discovery is not a grant to read content; connect only a verified completed source to this conversation.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "description": "notes lists only existing links of this conversation; no note body is authorized by discovery.",
+                      "enum": [
+                        "sessions",
+                        "notes"
+                      ]
+                    },
+                    "workspaceId": {
+                      "type": "string"
+                    },
+                    "sourceNativeSessionId": {
+                      "type": "string"
+                    },
+                    "after": {
+                      "type": "string"
+                    },
+                    "query": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "dsh_context_pin",
+                "description": "Pin or unpin the model's own retained materials. A model cannot remove user pins or make a revoked source readable.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "materialIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision",
+                    "materialIds",
+                    "pinned"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_context_release",
+                "description": "Release used material from the next native model input; keep its graph connection and source locator. Select referenceId OR materialIds. Do not use permanent disconnect merely to save context. Returns pending until a native surface receipt confirms application.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "materialIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_context_source_set",
+                "description": "Pause or resume an authorized source. Pausing stops future reads. Pass release=true explicitly to also release retained material; resuming never reloads history automatically.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "release": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision",
+                    "referenceId",
+                    "enabled"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_context_status",
+                "description": "Check source availability, pins, context operations and their actual applied or pending status. Bounded sections paginate independently. Released material does not refund cumulative read allowance.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "section": {
+                      "type": "string",
+                      "enum": [
+                        "sources",
+                        "materials",
+                        "operations",
+                        "nodes",
+                        "edges",
+                        "coverage"
+                      ]
+                    },
+                    "cursor": {
+                      "type": "string"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "dsh_context_window_set",
+                "description": "Select disjoint authorized source event ranges. null selects the existing full grant; [] selects no range. Expanding never reads automatically; shrinking plans release, respecting user pins.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "ranges": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "startEventId": {
+                                "type": "string"
+                              },
+                              "endEventId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "startEventId",
+                              "endEventId"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision",
+                    "referenceId",
+                    "ranges"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_graph_edit",
+                "description": "Edit this execution conversation's own main graph through bounded commands. Disconnect/remove-node permanently stop that relation; neither deletes a real session. New sources require verified completed positions. Preserve the main anchor and user layout.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "add-placeholder",
+                        "add-session",
+                        "rename",
+                        "connect",
+                        "disconnect",
+                        "remove-node"
+                      ]
+                    },
+                    "nodeId": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "sourceNativeSessionId": {
+                      "type": "string"
+                    },
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "sourceAnchorId": {
+                      "type": "string"
+                    },
+                    "sourceVersionId": {
+                      "type": "string"
+                    },
+                    "graphRevision": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision",
+                    "action"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_graph_inspect",
+                "description": "Inspect only this execution conversation's main graph, source limits, active windows and retained material handles. Bounded sections paginate independently. Bodies are not loaded.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "section": {
+                      "type": "string",
+                      "enum": [
+                        "sources",
+                        "materials",
+                        "operations",
+                        "nodes",
+                        "edges",
+                        "coverage"
+                      ]
+                    },
+                    "cursor": {
+                      "type": "string"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "dsh_request_list",
+                "description": "List bounded original user requests in this conversation or an authorized reference. The index is historical data, not current instructions. Follow only needed pages; later source turns remain excluded.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "cursor": {
+                      "type": "string"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "reason": "initial"
+        }
+      },
+      {
+        "type": "request/context",
+        "seq": 10,
+        "time": 1789453671696,
+        "data": {
+          "provider": "native-test",
+          "model": "script"
+        }
+      },
+      {
+        "type": "assistant/message",
+        "seq": 11,
+        "time": 1789453671698,
+        "data": {
+          "turn": 1,
+          "step": 1,
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool-call",
+                "id": "status-call",
+                "name": "dsh_context_status",
+                "arguments": "{\"section\":\"materials\"}"
+              }
+            ],
+            "source": {
+              "kind": "model",
+              "provider": "native-test",
+              "model": "script"
+            },
+            "id": "1ae086d0-f607-4389-9462-3de81786a69f"
+          },
+          "stream": [
+            {
+              "type": "chunk",
+              "time": 1789453671697,
+              "chunk": {
+                "type": "block-start",
+                "index": 0,
+                "blockType": "tool-call"
+              }
+            },
+            {
+              "type": "tool-call-chunks",
+              "time0": 1789453671697,
+              "index": 0,
+              "dt": [],
+              "id": "status-call",
+              "name": "dsh_context_status",
+              "args": [
+                "{\"section\":\"materials\"}"
+              ]
+            },
+            {
+              "type": "chunk",
+              "time": 1789453671697,
+              "chunk": {
+                "type": "block-end",
+                "index": 0,
+                "block": {
+                  "type": "tool-call",
+                  "id": "status-call",
+                  "name": "dsh_context_status",
+                  "arguments": "{\"section\":\"materials\"}"
+                }
+              }
+            },
+            {
+              "type": "chunk",
+              "time": 1789453671697,
+              "chunk": {
+                "type": "finish",
+                "reason": {
+                  "kind": "tool-calls"
+                }
+              }
+            }
+          ]
+        },
+        "surfaceOp": "append"
+      },
+      {
+        "type": "tool/call",
+        "seq": 12,
+        "time": 1789453671698,
+        "data": {
+          "turn": 1,
+          "step": 1,
+          "callId": "status-call",
+          "name": "dsh_context_status",
+          "arguments": "{\"section\":\"materials\"}"
+        }
+      },
+      {
+        "type": "tool/result",
+        "seq": 13,
+        "time": 1789453671702,
+        "data": {
+          "turn": 1,
+          "step": 1,
+          "message": {
+            "source": {
+              "kind": "tool",
+              "callId": "status-call"
+            },
+            "content": [
+              {
+                "type": "tool-result",
+                "toolCallId": "status-call",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\"protocolVersion\":1,\"ownerSessionId\":\"native-loop-test\",\"revision\":1,\"section\":\"materials\",\"counts\":{\"sources\":0,\"materials\":3,\"operations\":0,\"nodes\":0,\"edges\":0,\"coverage\":0},\"snapshot\":\"sha256:d257e5cd633c1a9539eda6241f5dcaa0ac5620e70c6264328a166114a84853d1\",\"measurement\":\"UTF-8 bytes, not exact tokens\",\"coverageTruncated\":false,\"items\":[{\"materialId\":\"ncm:885a91f231f6133e120e7db4e23110eee716a8fd626bdb36ad062dfb0ebd7817\",\"eventSeq\":7,\"kind\":\"initial\",\"referenceIds\":[\"reference\"],\"ranges\":[],\"bytes\":12,\"contentHash\":\"sha256:18fdac571448062f45ca9d1f33374d2ebba6ff551abb0ce0015f15c408c3dc77\",\"sourceEventSeqs\":[7],\"referenceCount\":1,\"releasedReferenceCount\":0,\"rangeCount\":0,\"rangesPreviewOnly\":false},{\"materialId\":\"ncm:92fa588389bfe72e8a452a790870d2830836a1d9f389646ebbd9b6eefe41f3cf\",\"eventSeq\":7,\"kind\":\"initial\",\"referenceIds\":[\"reference\"],\"ranges\":[{\"referenceId\":\"reference\",\"eventId\":\"question\",\"start\":0,\"end\":15}],\"bytes\":88,\"contentHash\":\"sha256:59025eda6d6cccb5c14aba80dce3ef0124ad8d0145281d4ec792d2c0fffa94d2\",\"sourceEventSeqs\":[7],\"referenceCount\":1,\"releasedReferenceCount\":0,\"rangeCount\":1,\"rangesPreviewOnly\":false},{\"materialId\":\"ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6\",\"eventSeq\":7,\"kind\":\"initial\",\"referenceIds\":[\"reference\"],\"ranges\":[{\"referenceId\":\"reference\",\"eventId\":\"answer\",\"start\":0,\"end\":2600}],\"bytes\":2676,\"contentHash\":\"sha256:c2cac38788d10d6883c41df7637ff52fcc6fdd5ba8db33a42ea0b91af192c38d\",\"sourceEventSeqs\":[7],\"referenceCount\":1,\"releasedReferenceCount\":0,\"rangeCount\":1,\"rangesPreviewOnly\":false}],\"hasMore\":false,\"nextCursor\":null,\"registration\":{\"unregisteredMaterials\":0,\"state\":\"ready\"},\"readBudgetMeasurement\":\"Metadata charged conservatively at its reserved page byte limit; release does not refund it.\",\"nativeInputBytes\":4290,\"inputMeasurement\":\"Serialized native message UTF-8 bytes including retained wrappers; excludes tool schemas and provider tokenization\"}"
+                  }
+                ],
+                "isError": false
+              }
+            ],
+            "role": "user",
+            "id": "00a0d5b6-ea5b-4813-96fc-bca44853fbcd"
+          }
+        },
+        "sourceEventSeqs": [
+          12
+        ],
+        "surfaceOp": "append"
+      },
+      {
+        "type": "step/end",
+        "seq": 14,
+        "time": 1789453671702,
+        "data": {
+          "turn": 1,
+          "step": 1
+        }
+      },
+      {
+        "type": "step/start",
+        "seq": 15,
+        "time": 1789453671703,
+        "data": {
+          "turn": 1,
+          "step": 2
+        }
+      },
+      {
+        "type": "assistant/message",
+        "seq": 16,
+        "time": 1789453671703,
+        "data": {
+          "turn": 1,
+          "step": 2,
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "tool-call",
+                "id": "release-call",
+                "name": "dsh_context_release",
+                "arguments": "{\"operationId\":\"loop-release\",\"expectedRevision\":1,\"materialIds\":[\"ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6\"]}"
+              }
+            ],
+            "source": {
+              "kind": "model",
+              "provider": "native-test",
+              "model": "script"
+            },
+            "id": "ea2455e1-9681-4b22-95d4-d8ee7b277b03"
+          },
+          "stream": [
+            {
+              "type": "chunk",
+              "time": 1789453671703,
+              "chunk": {
+                "type": "block-start",
+                "index": 0,
+                "blockType": "tool-call"
+              }
+            },
+            {
+              "type": "tool-call-chunks",
+              "time0": 1789453671703,
+              "index": 0,
+              "dt": [],
+              "id": "release-call",
+              "name": "dsh_context_release",
+              "args": [
+                "{\"operationId\":\"loop-release\",\"expectedRevision\":1,\"materialIds\":[\"ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6\"]}"
+              ]
+            },
+            {
+              "type": "chunk",
+              "time": 1789453671703,
+              "chunk": {
+                "type": "block-end",
+                "index": 0,
+                "block": {
+                  "type": "tool-call",
+                  "id": "release-call",
+                  "name": "dsh_context_release",
+                  "arguments": "{\"operationId\":\"loop-release\",\"expectedRevision\":1,\"materialIds\":[\"ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6\"]}"
+                }
+              }
+            },
+            {
+              "type": "chunk",
+              "time": 1789453671703,
+              "chunk": {
+                "type": "finish",
+                "reason": {
+                  "kind": "tool-calls"
+                }
+              }
+            }
+          ]
+        },
+        "surfaceOp": "append"
+      },
+      {
+        "type": "tool/call",
+        "seq": 17,
+        "time": 1789453671704,
+        "data": {
+          "turn": 1,
+          "step": 2,
+          "callId": "release-call",
+          "name": "dsh_context_release",
+          "arguments": "{\"operationId\":\"loop-release\",\"expectedRevision\":1,\"materialIds\":[\"ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6\"]}"
+        }
+      },
+      {
+        "type": "tool/result",
+        "seq": 18,
+        "time": 1789453671704,
+        "data": {
+          "turn": 1,
+          "step": 2,
+          "message": {
+            "source": {
+              "kind": "tool",
+              "callId": "release-call"
+            },
+            "content": [
+              {
+                "type": "tool-result",
+                "toolCallId": "release-call",
+                "content": [
+                  {
+                    "type": "text",
+                    "text": "{\"operation\":{\"operationId\":\"loop-release\",\"materialIds\":[\"ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6\"],\"state\":\"pending-next-step\"},\"revision\":1,\"message\":\"Use dsh_context_status to inspect sources, retained materials and final surface receipts.\"}"
+                  }
+                ],
+                "isError": false
+              }
+            ],
+            "role": "user",
+            "id": "f65c2b16-d58d-4221-a53d-99c9ba4fb42c"
+          }
+        },
+        "sourceEventSeqs": [
+          17
+        ],
+        "surfaceOp": "append"
+      },
+      {
+        "type": "step/end",
+        "seq": 19,
+        "time": 1789453671704,
+        "data": {
+          "turn": 1,
+          "step": 2
+        }
+      },
+      {
+        "type": "user/message",
+        "seq": 20,
+        "time": 1789453671706,
+        "data": {
+          "source": {
+            "kind": "dsh-native-context-release",
+            "protocolVersion": 1,
+            "plugin": "dsh-annotation-core",
+            "operationIds": [
+              "loop-release"
+            ],
+            "materialIds": [
+              "ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6"
+            ],
+            "originalEventSeq": 7,
+            "setId": "set",
+            "targetUserMessageId": "6460d554-cc11-4e41-ae73-03db6c258dd5"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "<dsh-annotations version=\"1\" set-id=\"set\">\n{\"items\":[{\"initialContext\":{\"cutoffEventId\":\"answer\",\"hasMore\":false,\"items\":[{\"complete\":true,\"eventId\":\"question\",\"offset\":0,\"role\":\"user\",\"text\":\"source question\"},{\"complete\":true,\"eventId\":\"answer\",\"offset\":0,\"released\":true,\"role\":\"assistant\",\"text\":\"[Released context ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6; source position is retained. Read again only when needed.]\"}],\"kind\":\"selected-turn\",\"nextCursor\":null,\"sourceVersionId\":\"v1\",\"turnComplete\":true},\"locator\":{\"sessionId\":\"source\"},\"number\":1,\"referenceId\":\"reference\",\"selectedText\":\"focus phrase\",\"sourceType\":\"dsh-message\",\"userComment\":\"preserve this user request\"}]}\n</dsh-annotations>\n<dsh-reference-documents>\n{\"documents\":[]}\n</dsh-reference-documents>"
+            }
+          ],
+          "role": "user",
+          "id": "ba733796-e90e-4666-bdab-4fdf874a97ce"
+        },
+        "sourceEventSeqs": [
+          7
+        ],
+        "surfaceOp": {
+          "op": "replace",
+          "startSeq": 7,
+          "endSeq": 7
+        }
+      },
+      {
+        "type": "step/start",
+        "seq": 21,
+        "time": 1789453671706,
+        "data": {
+          "turn": 1,
+          "step": 3
+        }
+      },
+      {
+        "type": "request/header",
+        "seq": 22,
+        "time": 1789453671707,
+        "data": {
+          "header": {
+            "config": {
+              "provider": "native-test",
+              "model": "script"
+            },
+            "tools": [
+              {
+                "name": "dsh_context_discover",
+                "description": "Discover source candidates inside allowed workspaces. Metadata discovery is not a grant to read content; connect only a verified completed source to this conversation.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "description": "notes lists only existing links of this conversation; no note body is authorized by discovery.",
+                      "enum": [
+                        "sessions",
+                        "notes"
+                      ]
+                    },
+                    "workspaceId": {
+                      "type": "string"
+                    },
+                    "sourceNativeSessionId": {
+                      "type": "string"
+                    },
+                    "after": {
+                      "type": "string"
+                    },
+                    "query": {
+                      "type": "string"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "dsh_context_pin",
+                "description": "Pin or unpin the model's own retained materials. A model cannot remove user pins or make a revoked source readable.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "materialIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "pinned": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision",
+                    "materialIds",
+                    "pinned"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_context_release",
+                "description": "Release used material from the next native model input; keep its graph connection and source locator. Select referenceId OR materialIds. Do not use permanent disconnect merely to save context. Returns pending until a native surface receipt confirms application.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "materialIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_context_source_set",
+                "description": "Pause or resume an authorized source. Pausing stops future reads. Pass release=true explicitly to also release retained material; resuming never reloads history automatically.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "enabled": {
+                      "type": "boolean"
+                    },
+                    "release": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision",
+                    "referenceId",
+                    "enabled"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_context_status",
+                "description": "Check source availability, pins, context operations and their actual applied or pending status. Bounded sections paginate independently. Released material does not refund cumulative read allowance.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "section": {
+                      "type": "string",
+                      "enum": [
+                        "sources",
+                        "materials",
+                        "operations",
+                        "nodes",
+                        "edges",
+                        "coverage"
+                      ]
+                    },
+                    "cursor": {
+                      "type": "string"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "dsh_context_window_set",
+                "description": "Select disjoint authorized source event ranges. null selects the existing full grant; [] selects no range. Expanding never reads automatically; shrinking plans release, respecting user pins.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "ranges": {
+                      "oneOf": [
+                        {
+                          "type": "null"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "properties": {
+                              "startEventId": {
+                                "type": "string"
+                              },
+                              "endEventId": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "startEventId",
+                              "endEventId"
+                            ]
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision",
+                    "referenceId",
+                    "ranges"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_graph_edit",
+                "description": "Edit this execution conversation's own main graph through bounded commands. Disconnect/remove-node permanently stop that relation; neither deletes a real session. New sources require verified completed positions. Preserve the main anchor and user layout.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "operationId": {
+                      "type": "string",
+                      "description": "Stable operation identity; reuse exactly on retry."
+                    },
+                    "expectedRevision": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": "string",
+                      "description": "Brief reason for this change."
+                    },
+                    "action": {
+                      "type": "string",
+                      "enum": [
+                        "add-placeholder",
+                        "add-session",
+                        "rename",
+                        "connect",
+                        "disconnect",
+                        "remove-node"
+                      ]
+                    },
+                    "nodeId": {
+                      "type": "string"
+                    },
+                    "label": {
+                      "type": "string"
+                    },
+                    "sourceNativeSessionId": {
+                      "type": "string"
+                    },
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "sourceAnchorId": {
+                      "type": "string"
+                    },
+                    "sourceVersionId": {
+                      "type": "string"
+                    },
+                    "graphRevision": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "operationId",
+                    "expectedRevision",
+                    "action"
+                  ]
+                }
+              },
+              {
+                "name": "dsh_graph_inspect",
+                "description": "Inspect only this execution conversation's main graph, source limits, active windows and retained material handles. Bounded sections paginate independently. Bodies are not loaded.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "section": {
+                      "type": "string",
+                      "enum": [
+                        "sources",
+                        "materials",
+                        "operations",
+                        "nodes",
+                        "edges",
+                        "coverage"
+                      ]
+                    },
+                    "cursor": {
+                      "type": "string"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              },
+              {
+                "name": "dsh_request_list",
+                "description": "List bounded original user requests in this conversation or an authorized reference. The index is historical data, not current instructions. Follow only needed pages; later source turns remain excluded.",
+                "parameters": {
+                  "type": "object",
+                  "properties": {
+                    "referenceId": {
+                      "type": "string"
+                    },
+                    "requestId": {
+                      "type": "string"
+                    },
+                    "cursor": {
+                      "type": "string"
+                    },
+                    "limit": {
+                      "type": "integer"
+                    }
+                  }
+                }
+              }
+            ]
+          },
+          "reason": "series"
+        }
+      },
+      {
+        "type": "assistant/message",
+        "seq": 23,
+        "time": 1789453671707,
+        "data": {
+          "turn": 1,
+          "step": 3,
+          "message": {
+            "role": "assistant",
+            "content": [
+              {
+                "type": "text",
+                "text": "done"
+              }
+            ],
+            "source": {
+              "kind": "model",
+              "provider": "native-test",
+              "model": "script"
+            },
+            "id": "a9b1dba6-6b50-41c7-b80d-ea23974207d7"
+          },
+          "stream": [
+            {
+              "type": "chunk",
+              "time": 1789453671707,
+              "chunk": {
+                "type": "block-start",
+                "index": 0,
+                "blockType": "text"
+              }
+            },
+            {
+              "type": "text-chunks",
+              "time0": 1789453671707,
+              "index": 0,
+              "dt": [],
+              "texts": [
+                "done"
+              ]
+            },
+            {
+              "type": "chunk",
+              "time": 1789453671707,
+              "chunk": {
+                "type": "block-end",
+                "index": 0,
+                "block": {
+                  "type": "text",
+                  "text": "done"
+                }
+              }
+            },
+            {
+              "type": "chunk",
+              "time": 1789453671707,
+              "chunk": {
+                "type": "finish",
+                "reason": {
+                  "kind": "stop"
+                }
+              }
+            }
+          ]
+        },
+        "surfaceOp": "append"
+      },
+      {
+        "type": "step/end",
+        "seq": 24,
+        "time": 1789453671708,
+        "data": {
+          "turn": 1,
+          "step": 3
+        }
+      },
+      {
+        "type": "turn/end",
+        "seq": 25,
+        "time": 1789453671708,
+        "data": {
+          "turn": 1,
+          "reason": {
+            "kind": "completed"
+          }
+        }
+      }
+    ],
+    "inheritedEventCount": 0
+  },
+  "materials": [
+    {
+      "materialId": "ncm:885a91f231f6133e120e7db4e23110eee716a8fd626bdb36ad062dfb0ebd7817",
+      "eventSeq": 7,
+      "kind": "initial",
+      "referenceIds": [
+        "reference"
+      ],
+      "ranges": [],
+      "bytes": 12,
+      "contentHash": "sha256:18fdac571448062f45ca9d1f33374d2ebba6ff551abb0ce0015f15c408c3dc77",
+      "sourceEventSeqs": [
+        7
+      ]
+    },
+    {
+      "materialId": "ncm:92fa588389bfe72e8a452a790870d2830836a1d9f389646ebbd9b6eefe41f3cf",
+      "eventSeq": 7,
+      "kind": "initial",
+      "referenceIds": [
+        "reference"
+      ],
+      "ranges": [
+        {
+          "referenceId": "reference",
+          "eventId": "question",
+          "start": 0,
+          "end": 15
+        }
+      ],
+      "bytes": 88,
+      "contentHash": "sha256:59025eda6d6cccb5c14aba80dce3ef0124ad8d0145281d4ec792d2c0fffa94d2",
+      "sourceEventSeqs": [
+        7
+      ]
+    },
+    {
+      "materialId": "ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6",
+      "eventSeq": 7,
+      "kind": "initial",
+      "referenceIds": [
+        "reference"
+      ],
+      "ranges": [
+        {
+          "referenceId": "reference",
+          "eventId": "answer",
+          "start": 0,
+          "end": 2600
+        }
+      ],
+      "bytes": 2676,
+      "contentHash": "sha256:c2cac38788d10d6883c41df7637ff52fcc6fdd5ba8db33a42ea0b91af192c38d",
+      "sourceEventSeqs": [
+        7
+      ]
+    }
+  ],
+  "receipt": {
+    "executionId": "turn:2:1789453671693",
+    "operationId": "loop-release",
+    "state": "applied",
+    "surfaceEventSeqs": [
+      20
+    ],
+    "sourceEventSeqs": [
+      7
+    ],
+    "releasedBytes": 2344
+  },
+  "operation": {
+    "operationId": "loop-release",
+    "materialIds": [
+      "ncm:5f10fd9f8bf0ca9653917da893ce2ef78a30bec1e7e320932bef62ac4c4d35e6"
+    ],
+    "state": "applied"
+  }
+}

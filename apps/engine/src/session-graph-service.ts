@@ -46,32 +46,37 @@ export class SessionGraphService {
     if (doc.graph.ownerSessionId) await this.resolve(runId, { logicalSessionId: doc.graph.ownerSessionId }, Boolean(doc.graph.archivedAt));
     return doc;
   }
-  async save(runId: string, input: GraphSave) {
+  async save(runId: string, input: GraphSave, onCommit?: () => void) {
     const a = (await this.graphAccess(runId))!;
     if (input.graph.ownerSessionId) await this.resolve(runId, { logicalSessionId: input.graph.ownerSessionId });
     for (const logicalSessionId of new Set(input.graph.nodes.flatMap(n => n.data.logicalSessionId ? [n.data.logicalSessionId] : [])))
       await this.resolve(runId, { logicalSessionId });
-    return this.graphs.save(a.scope, a.writerId, input);
+    return this.graphs.store.transaction(()=>{const result=this.graphs.save(a.scope,a.writerId,input);onCommit?.();return result;});
   }
   async bind(runId: string, input: GraphBind) {
     const a = (await this.graphAccess(runId))!, target = await this.resolve(runId, { logicalSessionId: input.logicalSessionId });
     return this.graphs.bind(a.scope, a.writerId, input.objectId, input.expectedRevision, target.logicalSessionId, target.title);
   }
-  async remove(runId: string, input: GraphRemove) {
+  async remove(runId: string, input: GraphRemove, onCommit?: () => void) {
     const a = (await this.graphAccess(runId))!;
     const doc = await this.load(runId, input.objectId);
     if (doc.graph.archivedAt) throw unavailable("主干图已归档，恢复会话后才能编辑");
-    return this.graphs.remove(a.scope, a.writerId, input);
+    return this.graphs.store.transaction(()=>{const result=this.graphs.remove(a.scope,a.writerId,input);onCommit?.();return result;});
   }
   async syncReference(runId: string, record: SessionContextRecord) {
+    return this.commitReference(runId,record);
+  }
+  /** Resolve asynchronous scope checks before one synchronous domain transaction. */
+  async commitReference(runId: string, record: SessionContextRecord, beforeSync?: () => void, afterSync?: () => void) {
     if (record.state === "revoked") {
       const run = await this.run(runId);
-      this.graphs.revokeReference({ instanceId: run.instanceId, profileId: run.profileId, namespace: "annotation-upstream" }, record.referenceId);
+      this.graphs.store.transaction(()=>{beforeSync?.();this.graphs.revokeReference({ instanceId: run.instanceId, profileId: run.profileId, namespace: "annotation-upstream" }, record.referenceId);afterSync?.();});
       return null;
     }
-    const a = await this.graphAccess(runId, true); if (!a) return null;
+    const a = await this.graphAccess(runId, true);
+    if (!a) {this.graphs.store.transaction(()=>{beforeSync?.();afterSync?.();});return null;}
     const target = await this.resolve(runId, { logicalSessionId: record.targetSessionId });
-    return this.graphs.syncReference(a.scope, a.writerId, record, record.sourceTitle, target.title);
+    return this.graphs.store.transaction(()=>{beforeSync?.();const result=this.graphs.syncReference(a.scope,a.writerId,record,record.sourceTitle,target.title);afterSync?.();return result;});
   }
   async appendDisclosure(runId: string, record: SessionContextRecord, input: GraphDisclosureInput) {
     const a = await this.graphAccess(runId, true); if (!a) return null;

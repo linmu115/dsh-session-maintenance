@@ -3,6 +3,19 @@ import { describe, expect, it } from "vitest";
 import { DashboardClient, MaintenanceClient } from "../src/index.js";
 
 describe("MaintenanceClient", () => {
+  it("reads stable user request pages through the authenticated canonical endpoint", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    const controller = new AbortController();
+    const client = await DashboardClient.connect({ origin: "http://127.0.0.1:43123", fetchImpl: async (input, init) => {
+      calls.push({ url: String(input), ...(init ? { init } : {}) });
+      return Response.json(String(input).endsWith("/v1/ui/session") ? { session: { csrfToken: "csrf-fixture", expiresAt: "2026-09-16T12:00:00Z" } } : { schemaVersion: 1, items: [], nextCursor: null });
+    } });
+    await client.getUserRequestIndex("session/with space", { requestId: "request-stable", cursor: "bound+cursor", limit: 10 }, controller.signal);
+    const request = calls.at(-1)!; const url = new URL(request.url);
+    expect(url.pathname).toBe("/v1/canonical/sessions/session%2Fwith%20space/requests");
+    expect(url.searchParams.get("requestId")).toBe("request-stable"); expect(url.searchParams.get("cursor")).toBe("bound+cursor");
+    expect(request.init?.signal).toBe(controller.signal); expect(request.init?.credentials).toBe("same-origin"); expect(new Headers(request.init?.headers).has("authorization")).toBe(false);
+  });
   it.each([
     [401, "UNAUTHORIZED", "请从 DSH 的会话维护设置重新打开完整看板"],
     [403, "UI_SESSION_FORBIDDEN", "请从 DSH 的会话维护设置重新打开完整看板"],

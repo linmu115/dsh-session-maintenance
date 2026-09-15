@@ -42,7 +42,7 @@ export class ContextReadBudgets {
   }
 }
 const size = (v: unknown) => Buffer.byteLength(JSON.stringify(v));
-const key = (r: SessionContextRecord, query?: string) => createHash("sha256").update(JSON.stringify([r.referenceId,r.sourceVersionId,r.cutoffEventId,query ?? null])).digest("hex").slice(0,24);
+const key = (r: SessionContextRecord, query?: string, scope?: string) => createHash("sha256").update(JSON.stringify([r.referenceId,r.sourceVersionId,r.cutoffEventId,query ?? null,...(scope ? [scope] : [])])).digest("hex").slice(0,24);
 
 /** Persist an event position, not an index tied to the transport cursor. Only use with our returned page. */
 export function contextContinuationPosition(entries: readonly SessionContextEntry[], cursor: string | null) {
@@ -57,7 +57,7 @@ export function contextContinuationPosition(entries: readonly SessionContextEntr
 
 /** Pure pagination; every character of a long message remains reachable by a cursor. */
 export function readContextPage(record: SessionContextRecord, entries: readonly SessionContextEntry[], maxBytes: number,
-  cursor?: string, query?: string, selectedTurnStartEventId?: string, selectedReplyEventId?: string): SessionContextPage {
+  cursor?: string, query?: string, selectedTurnStartEventId?: string, selectedReplyEventId?: string, scope?: string): SessionContextPage {
   let index = entries.length - 1, offset = 0;
   let turnStart: number | undefined;
   let replyIndex: number | undefined;
@@ -71,7 +71,7 @@ export function readContextPage(record: SessionContextRecord, entries: readonly 
       if (replyIndex < turnStart) throw new Error("来源问答的回复位置不可用");
     }
   }
-  const fingerprint = key(record, query);
+  const fingerprint = key(record, query, scope);
   if (cursor) {
     const parsed = JSON.parse(Buffer.from(cursor, "base64url").toString("utf8")) as unknown;
     if (!Array.isArray(parsed) || ![3,5,6].includes(parsed.length) || parsed[0] !== fingerprint
@@ -117,7 +117,7 @@ export function readContextPage(record: SessionContextRecord, entries: readonly 
     const begin = query ? start : offset;
     let low = 0, high = Math.min(entry.text.length - begin, query ? 600 : entry.text.length);
     const item: SessionContextPage['items'][number] = { eventId:entry.eventId,role:entry.role,text:"",offset:begin,complete:false,
-      ...(query ? { readCursor: Buffer.from(JSON.stringify([key(record),index,Math.max(0,start-150)])).toString('base64url') } : {}) };
+      ...(query ? { readCursor: Buffer.from(JSON.stringify([key(record,undefined,scope),index,Math.max(0,start-150)])).toString('base64url') } : {}) };
     while (low < high) {
       const n = Math.ceil((low + high) / 2);
       if (measure({...item,text:entry.text.slice(begin,begin+n)}) <= contentLimit - used) low=n; else high=n-1;

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { ANNOTATION_RECORDS_NAMESPACE, annotationMirrorRecordSchema } from "@linmu/dsh-session-contracts";
+import { ANNOTATION_RECORDS_NAMESPACE, annotationMirrorRecordSchema, NATIVE_CONTEXT_NAMESPACE, nativeContextStateSchema } from "@linmu/dsh-session-contracts";
 import { ExtensionDataError, sessionContextRecordSchema, SESSION_CONTEXT_NAMESPACE, managedGraphSchema, legacyManagedGraphSchema, graphDisclosureLogSchema, stickerObjectSchema, knowledgeLinkSchema, type ExtensionDataAdapter } from "@linmu/dsh-session-contracts";
 
 const id = z.string().min(1);
@@ -32,7 +32,7 @@ export const thoughtDagAdapter: ExtensionDataAdapter = {
     return graph.success ? { ownerSessionId: graph.data.ownerSessionId, kind: "graph", readOnly: true, reason: graph.data.ownerSessionId ? null : "待绑定主干会话" }
       : { ownerSessionId: null, kind: "legacy-graph", readOnly: true, reason: "旧图需要核验归属；不会把关联会话当作所有者" };
   },
-  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5", "0.4.14-rc2.6", "0.4.14-rc2.7", "0.4.14-rc2.8"], schemaVersions: [1, 2],
+  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5", "0.4.14-rc2.6", "0.4.14-rc2.7", "0.4.14-rc2.8","0.4.14-rc2.9"], schemaVersions: [1, 2],
   validate(content) {
     if (content.schemaVersion === 2 && typeof content.body === "object" && content.body !== null && "kind" in content.body && content.body.kind === "disclosure-log") {
       const log = graphDisclosureLogSchema.parse(content.body); unique(log.items.map(item => item.receiptId));
@@ -97,7 +97,7 @@ export const stickerAdapter: ExtensionDataAdapter = {
     return { ownerSessionId: value.logicalSessionId, kind: value.kind === "migration" ? "migration-receipt" : value.kind === "session" ? "session-sticker" : "annotation-sticker",
       readOnly: value.kind === "migration" };
   },
-  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10', '0.7.3-rc2.11', '0.7.3-rc2.12', '0.7.3-rc2.13', '0.7.3-rc2.14', '0.7.3-rc2.15', '0.7.3-rc2.16'], schemaVersions: [1],
+  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10', '0.7.3-rc2.11', '0.7.3-rc2.12', '0.7.3-rc2.13', '0.7.3-rc2.14', '0.7.3-rc2.15', '0.7.3-rc2.16', '0.7.3-rc2.17'], schemaVersions: [1],
   validate(content) { stickerObjectSchema.parse(content.body); },
   summarize(body) { const value=stickerObjectSchema.parse(body);return value.kind==='session'?'独立会话入口':value.kind==='migration'?`迁移 · ${value.phase}`:'普通贴纸'; },
   preview(body) { const value=stickerObjectSchema.parse(body);return {kind:'rows',total:1,rows:[{label:value.kind==='session'?'目标会话':value.kind==='migration'?'迁移目标':'所属会话',text:value.logicalSessionId}]}; },
@@ -105,14 +105,14 @@ export const stickerAdapter: ExtensionDataAdapter = {
 export const upstreamAdapter: ExtensionDataAdapter = {
   panelAdapter: obsidianPanel,
   ownership(content) { const record = sessionContextRecordSchema.parse(content.body); return { ownerSessionId: record.targetSessionId, kind: "upstream-reference", readOnly: true }; },
-  capabilities,namespace:SESSION_CONTEXT_NAMESPACE,label:"跨会话上游引用",pluginVersions:["0.3.12-rc2.1","0.3.12-rc2.2","0.3.12-rc2.3","0.3.12-rc2.4","0.3.12-rc2.5","0.3.12-rc2.6","0.3.12-rc2.7","0.3.12-rc2.8","0.3.12-rc2.9","0.3.12-rc2.10"],schemaVersions:[1],
+  capabilities,namespace:SESSION_CONTEXT_NAMESPACE,label:"跨会话上游引用",pluginVersions:["0.3.12-rc2.1","0.3.12-rc2.2","0.3.12-rc2.3","0.3.12-rc2.4","0.3.12-rc2.5","0.3.12-rc2.6","0.3.12-rc2.7","0.3.12-rc2.8","0.3.12-rc2.9","0.3.12-rc2.10","0.3.12-rc2.11"],schemaVersions:[1],
   validate(content){sessionContextRecordSchema.parse(content.body);},
   summarize(body){const r=sessionContextRecordSchema.parse(body);return `${r.sourceTitle} · ${{pending:'待发送',sent:'已发送',revoked:'已解除'}[r.state]}`;},
   preview(body){const r=sessionContextRecordSchema.parse(body);return {kind:"rows",total:1,rows:[{label:r.sourceTitle,text:r.selectedText.slice(0,2000)}]};},
 };
 export const annotationRecordsAdapter: ExtensionDataAdapter = {
   namespace: ANNOTATION_RECORDS_NAMESPACE, label: "引用条目", panelAdapter: obsidianPanel,
-  pluginVersions: ["0.3.12-rc2.9", "0.3.12-rc2.10"], schemaVersions: [1],
+  pluginVersions: ["0.3.12-rc2.9", "0.3.12-rc2.10","0.3.12-rc2.11"], schemaVersions: [1],
   capabilities: { ...capabilities, write: false, delete: false, restore: false },
   validate(content) { annotationMirrorRecordSchema.parse(content.body); },
   ownership(content) { const record = annotationMirrorRecordSchema.parse(content.body); return { ownerSessionId: record.targetSessionId,
@@ -128,4 +128,16 @@ export const annotationRecordsAdapter: ExtensionDataAdapter = {
     return { kind: "rows", total: rows.length, rows };
   },
 };
-export const builtInExtensionAdapters = [thoughtDagAdapter, annotationAdapter, obsidianLinksAdapter, upstreamAdapter, stickerAdapter, annotationRecordsAdapter] as const;
+export const nativeContextAdapter: ExtensionDataAdapter = {
+  namespace: NATIVE_CONTEXT_NAMESPACE, label: "上下文管理", panelAdapter: obsidianPanel,
+  pluginVersions: ["0.3.12-rc2.11"], schemaVersions: [1],
+  capabilities: { ...capabilities, write: false, delete: false, restore: false },
+  validate(content) { const state=nativeContextStateSchema.parse(content.body);unique(state.sources.map(s=>s.referenceId));
+    unique(state.materials.map(m=>m.materialId));unique(state.operations.map(op=>op.operationId)); },
+  ownership(content) { const state=nativeContextStateSchema.parse(content.body);return {ownerSessionId:state.ownerSessionId,kind:"native-context",readOnly:true}; },
+  summarize(body) { const state=nativeContextStateSchema.parse(body);return `${state.sources.length} 个来源 · ${state.materials.filter(m=>m.state==='retained').length} 项保留材料 · ${state.operations.filter(op=>op.state==='pending-next-step').length} 项待生效`; },
+  preview(body) { const state=nativeContextStateSchema.parse(body);return {kind:"rows",total:state.sources.length,rows:state.sources.slice(0,100).map(source=>({
+    label:source.title,text:`${source.enabled?'启用':'暂停'} · 固定上限 ${source.cutoffEventId} · ${source.window===null?'授权范围内按需读取':`${source.window.length} 个披露区间`}`
+  }))}; },
+};
+export const builtInExtensionAdapters = [thoughtDagAdapter, annotationAdapter, obsidianLinksAdapter, upstreamAdapter, stickerAdapter, annotationRecordsAdapter, nativeContextAdapter] as const;

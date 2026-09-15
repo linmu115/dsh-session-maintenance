@@ -1,6 +1,7 @@
 import { bindRc2ProjectionContext, rc2RuntimeHeader } from './rc2-persistence.js';
 import { MaintenanceSessionContext,registerSessionContext } from './session-context.js';
 import { MaintenanceGraph, registerMaintenanceGraph } from './session-graph.js';
+import { MaintenanceNativeContext, registerMaintenanceNativeContext, nativeContextReady } from './native-context.js';
 import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-knowledge.js';
 import { registerWorkspaceArchiveBridge } from './workspace-archive-bridge.js';
 import { registerAnnotationMirror, type AnnotationMirrorContext } from './annotation-mirror.js';
@@ -110,11 +111,18 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     if (config.extensionPlugins !== undefined) {
       const extensions = new MaintenanceExtensionBridge(connection,{instanceId:config.dshInstanceId,profileId:config.profileId},config.extensionPlugins);
       try {
-        await extensions.connect();
+        const panels = await extensions.connectPanels();
         await registerMaintenanceExtensionData(ctx as unknown as Context,extensions);
         registerMaintenanceKnowledge(ctx as unknown as Context,new MaintenanceKnowledge(connection,launchProfile.runId,ctx as unknown as Context));
         if(config.extensionPlugins.some(p=>p.namespace==="annotation-upstream")) {
           registerSessionContext(ctx as unknown as Context,new MaintenanceSessionContext(connection,launchProfile.runId,id=>runtime.flush(id)));
+        }
+        const nativePlugin = config.extensionPlugins.find(p=>p.namespace==="annotation-context");
+        if(nativePlugin && nativeContextReady(panels, config.dshInstanceId, config.profileId, nativePlugin.pluginVersion)) {
+          registerMaintenanceNativeContext(ctx as unknown as Context,new MaintenanceNativeContext(connection,launchProfile.runId,id=>runtime.flush(id), async signal => {
+            if (!nativeContextReady(await extensions.panels(signal), config.dshInstanceId, config.profileId, nativePlugin.pluginVersion))
+              throw new Error('原生上下文 Adapter 已停用或不兼容；保存的数据仍然保留');
+          }));
         }
       } catch {
         // Optional extension initialization must never skip native event/drain hooks.

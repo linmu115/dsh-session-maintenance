@@ -1,6 +1,7 @@
 import { canonicalEventProjectionPolicy, readCanonicalConversationTopologyV1, type SessionContextAdapter, type CanonicalEventV1, type JsonValue } from "@linmu/dsh-session-contracts";
 import { digest, isRecord, record } from "./common.js";
 import { v3ProjectedNativeRevision } from "./materialize.js";
+import { readDshReaderPresentation } from "./reader-presentation.js";
 
 function referenceText(content: JsonValue): string {
   if (typeof content === 'string') return content;
@@ -85,6 +86,7 @@ export const v3SessionContext: SessionContextAdapter = {
     return events.filter(e => canonicalEventProjectionPolicy(e.kind).modelExposure === "model-visible"
       && e.kind !== "system-message").flatMap(event => {
       const raw = isRecord(event.rawPayload) ? event.rawPayload : undefined;
+      if (["runtime-context","skill-catalog","plugin-context"].includes(readDshReaderPresentation(event).kind)) return [];
       // Model compaction replacements are not chronological transcript material.
       if (raw?.surfaceOp && raw.surfaceOp !== "append") return [];
       const c = isRecord(event.content) ? event.content : undefined;

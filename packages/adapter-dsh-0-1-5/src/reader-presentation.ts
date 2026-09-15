@@ -38,6 +38,9 @@ export function readDshReaderPresentation(event: CanonicalEventV1): DshReaderPre
     if (source.kind === "skill-catalog" && source.form === "catalog") {
       return { kind: "skill-catalog", label: "技能目录" };
     }
+    if (source.kind === "dsh-native-context-release" && source.plugin === "dsh-annotation-core") {
+      return { kind: "plugin-context", label: "上下文释放记录" };
+    }
     if (source.kind === "dsh-annotation" && source.schemaVersion === 1
       && typeof source.count === "number" && Number.isSafeInteger(source.count) && source.count >= 0
       && identity(source.setId) !== undefined && identity(source.targetUserMessageId) !== undefined && identity(source.digest) !== undefined) {

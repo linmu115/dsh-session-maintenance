@@ -66,3 +66,5 @@ export { REQUIRED_CAPABILITIES, REQUIRED_PACKAGES } from "./probe.js";
 export { expectedV3ArtifactPath as v3NativeArtifactPath } from "./layout.js";
 export { validateV3 as validateV3Artifact } from "./official.js";
 export * from "./reader-storage.js";
+export * from "./request-index.js";
+export * from "./native-context-evidence.js";

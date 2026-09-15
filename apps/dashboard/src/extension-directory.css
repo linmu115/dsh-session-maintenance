@@ -50,3 +50,14 @@
 .extension-attached-records .extension-tree-objects { padding-left: 0; }
 @media (max-width: 950px) { .extension-directory-layout { grid-template-columns: minmax(0, 1fr); } .extension-directory-detail { min-height: 200px; } }
 @media (max-width: 540px) { .extension-directory-toolbar label { width: 100%; } .extension-directory-toolbar select { min-width: 0; flex: 1; } .extension-adapter-summary { align-items: flex-start; } .extension-directory-detail { padding: 14px; } }
+.native-context-detail { display: grid; gap: 1rem; }
+.native-context-source { border: 1px solid var(--dsm-border); border-radius: var(--dsm-radius); background: var(--dsm-soft-surface); }
+.native-context-source > summary { cursor: pointer; padding: .8rem 1rem; }
+.native-context-layers { display: grid; gap: 1rem; padding: 0 1rem 1rem; }
+.native-context-layers > section { border-top: 1px solid var(--dsm-border); padding-top: .5rem; }
+.native-context-layers h4 { margin: .5rem 0; }
+.native-context-layers code { overflow-wrap: anywhere; }
+.native-context-layers dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .4rem .8rem; }
+.native-context-layers dd { margin: 0; }
+.native-context-layers li { margin-bottom: .8rem; }
+.native-context-session-link { border: 0; background: transparent; color: var(--dsm-primary); padding: 0; text-decoration: underline; cursor: pointer; }

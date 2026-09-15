@@ -45,7 +45,7 @@ export class SessionContextService {
     const items = rows as unknown as SessionContextDirectory["items"];
     return { items:items.slice(0,50),nextCursor:items.length>50?items[49]!.id:null };
   }
-  async capture(request: SessionContextCapture): Promise<SessionContextRecord> {
+  async capture(request: SessionContextCapture, onCommit?: (record: SessionContextRecord) => void): Promise<SessionContextRecord> {
     const input=sessionContextCaptureSchema.parse(request), a=await this.access(input.runId);
     const source=this.identity(input.runId,input.sourceNativeSessionId), target=this.identity(input.runId,input.targetNativeSessionId);
     if (source.logicalSessionId===target.logicalSessionId) throw unavailable("跨会话引用请选择另一个会话");
@@ -57,7 +57,7 @@ export class SessionContextService {
       if (old.sourceSessionId!==source.logicalSessionId || old.sourceAnchorId!==input.anchorId || old.selectedText!==input.selectedText)
         throw unavailable("同一引用操作的来源发生变化");
       if(old.state==="revoked")throw unavailable("这个引用操作已撤销，请重新选择来源");
-      await this.engine.sessionGraph.syncReference(input.runId, old);
+      await this.engine.sessionGraph.commitReference(input.runId,old,undefined,()=>onCommit?.(old));
       return old;
     } catch (error) { if (!(error instanceof ExtensionDataError) || error.code!=="EXTENSION_NOT_FOUND") throw error; }
     const snapshot=await this.engine.canonicalEngine.store.getSession(source.logicalSessionId as LogicalSessionId);
@@ -81,15 +81,22 @@ export class SessionContextService {
         throw unavailable("来源在捕获期间已改变，请重新选择回复；未创建引用");
     }
     this.identity(input.runId, input.sourceNativeSessionId); this.identity(input.runId, input.targetNativeSessionId);
+    // Follow structured references only. Discovery never recursively loads source text.
+    const reachable=this.engine.repository.database.prepare(`WITH RECURSIVE reachable(id) AS (
+      VALUES (?) UNION SELECT json_extract(o.content_json,'$.body.targetSessionId') FROM extension_objects o JOIN reachable r
+      ON json_extract(o.content_json,'$.body.sourceSessionId')=r.id WHERE o.instance_id=? AND o.profile_id=?
+      AND o.namespace='annotation-upstream' AND o.deleted=0 AND json_extract(o.content_json,'$.body.state') IN ('pending','sent') LIMIT 1025
+    ) SELECT id FROM reachable`).all(target.logicalSessionId,a.scope.instanceId,a.scope.profileId);
+    if(reachable.some(row=>row.id===source.logicalSessionId))throw unavailable("此连接会形成上下文循环，请选择其它上游来源");
+    if(reachable.length>1024)throw unavailable("关联网络超过本次循环核验范围，请先整理现有连接");
     const record: SessionContextRecord={schemaVersion:1,referenceId,sourceSessionId:source.logicalSessionId,sourceVersionId:version.id,
       cutoffEventId:cutoff.eventId,cutoffDigest:originalCutoff.contentDigest,targetSessionId:target.logicalSessionId,selectedText:input.selectedText,
       sourceTitle:source.title.slice(0,500),sourceAnchorId:input.anchorId,state:"pending",targetMessageId:null,createdAt:new Date().toISOString()};
-    const result=a.extensions.write({scope:a.scope,writerId:a.writerId,objectId:referenceId,expectedRevision:0,deleted:false,
+    await this.engine.sessionGraph.commitReference(input.runId,record,()=>{const result=a.extensions.write({scope:a.scope,writerId:a.writerId,objectId:referenceId,expectedRevision:0,deleted:false,
       content:{schemaVersion:1,title:record.sourceTitle,body:record as unknown as JsonValue,references:[
         {logicalSessionId:record.sourceSessionId,messageId:record.cutoffEventId,sourceVersion:record.sourceVersionId},
         {logicalSessionId:record.targetSessionId}]}});
-    if(result.status==="conflict")throw unavailable("引用保存冲突，请重试");
-    await this.engine.sessionGraph.syncReference(input.runId, record);
+    if(result.status==="conflict")throw unavailable("引用保存冲突，请重试");},()=>onCommit?.(record));
     return record;
   }
   async record(runId: string, targetNativeSessionId: string, referenceId: string, allowRevoked = false) {
@@ -126,7 +133,7 @@ export class SessionContextService {
     await this.engine.sessionGraph.syncReference(runId, record);
     return record;
   }
-  private async source(record: SessionContextRecord, adapterId: AdapterId) {
+  async source(record: SessionContextRecord, adapterId: AdapterId) {
     try {
       const source=await this.engine.canonicalEngine.store.getSession(record.sourceSessionId as LogicalSessionId);
       if(!source||source.session.tombstonedAt||source.session.archivedAt)throw unavailable("来源会话已归档或删除");
@@ -159,11 +166,13 @@ export class SessionContextService {
     if (a.record.state === 'revoked' && delivery === 'returned') throw unavailable('引用在读取期间已撤销');
     return receipt;
   }
-  async read(request: SessionContextRead) {
+  async read(request: SessionContextRead, options: { preview?: boolean } = {}) {
     const q=sessionContextReadSchema.parse(request),a=await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
+    const policy=await this.engine.nativeContext.assertReferenceReadable(q.runId,q.targetNativeSessionId,q.referenceId);
     this.budgets.cleanup();
     let reservation:ReturnType<ContextReadBudgets['reserve']>;
-    try{reservation=this.budgets.reserve(JSON.stringify([a.run.id,a.record.targetSessionId,q.executionId]),q.totalBytes,q.maxBytes,a.run.id);}
+    try{reservation=options.preview ? {bytes:q.maxBytes,settle:used=>Math.max(0,q.maxBytes-used)}
+      :this.budgets.reserve(JSON.stringify([a.run.id,a.record.targetSessionId,q.executionId]),q.totalBytes,q.maxBytes,a.run.id);}
     catch(error){throw unavailable(error instanceof Error?error.message:'本轮引用读取不可用');}
     if(reservation.bytes<1024){reservation.settle(0);throw unavailable("本轮引用读取预算已用完，请依据已读取材料回答");}
     let settled=false;
@@ -172,21 +181,32 @@ export class SessionContextService {
       const adapter=this.engine.resolveProjectionAdapter(a.run.adapterId)?.sessionContext;
       if(!adapter)throw unavailable("缺少读取此引用所需的版本 Adapter");
       let page;
-      const fixed = events.slice(0,index+1), entries = adapter.entries(fixed);
+      const fixed = events.slice(0,index+1);
+      let entries = (await this.engine.nativeContext.allowedEntries(q.runId,q.targetNativeSessionId,q.referenceId,adapter.entries(fixed),fixed.map(event=>event.id))).entries;
+      if(q.userRequestId){
+        const located=await this.engine.userRequests.locate({runId:q.runId,targetNativeSessionId:q.targetNativeSessionId,
+          executionId:q.executionId,referenceId:q.referenceId,requestId:q.userRequestId});
+        const start=fixed.findIndex(event=>event.id===located.location.startEventId),end=fixed.findIndex(event=>event.id===located.location.endEventId);
+        if(start<0||end<start)throw unavailable("请求对应问答尚无可读取的完整范围");
+        const ids=new Set(fixed.slice(start,end+1).map(event=>event.id));entries=entries.filter(entry=>ids.has(entry.eventId));
+      }
+      const cursorScope=policy.revision || q.userRequestId ? JSON.stringify([policy.revision,q.userRequestId??null]) : undefined;
       try {
         if (q.view && (q.cursor || q.query)) throw new Error("首轮上下文不能同时指定游标或搜索词");
         page=readContextPage(a.record,entries,reservation.bytes,q.cursor,q.query,
-          q.view === "selected-turn" ? adapter.selectedTurnStart(fixed) : undefined,
-          q.view === "selected-turn" ? adapter.selectedReply(fixed) : undefined);
+          q.view === "selected-turn" ? adapter.selectedTurnStart(fixed) : q.userRequestId&&!q.cursor&&!q.query ? entries[0]?.eventId : undefined,
+          q.view === "selected-turn" ? adapter.selectedReply(fixed) : undefined,cursorScope);
       }
       catch(error){throw unavailable(error instanceof Error?error.message:"引用读取失败");}
       // A revoke may have been serialized while the immutable source was being read.
       await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
+      const latestPolicy=await this.engine.nativeContext.assertReferenceReadable(q.runId,q.targetNativeSessionId,q.referenceId);
+      if(latestPolicy.revision!==policy.revision)throw unavailable("披露窗口在读取期间发生变化，请重新读取");
       // Reserve enough space for remainingBytes digits; the complete serialized return is charged.
       page.remainingBytes=Math.max(0,q.totalBytes);const bytes=Buffer.byteLength(JSON.stringify(page));
       settled=true;page.remainingBytes=reservation.settle(bytes);
-      page.budgetExhausted=page.remainingBytes<1024;
-      await this.engine.sessionGraph.appendDisclosure(q.runId, a.record, {
+      page.budgetExhausted=!options.preview && page.remainingBytes<1024;
+      if(!options.preview)await this.engine.sessionGraph.appendDisclosure(q.runId, a.record, {
         requestId: q.requestId ?? randomUUID(), executionId: q.executionId,
         operation: q.view === 'selected-turn' ? 'initial' : q.query ? 'search' : 'read', delivery: 'prepared',
         ranges: page.items.map(item => ({eventId:item.eventId,start:item.offset,end:item.offset+item.text.length,complete:item.complete})),
@@ -197,6 +217,8 @@ export class SessionContextService {
         status:page.budgetExhausted?'budget-exhausted':page.items.length?'ok':'empty',
       });
       await this.record(q.runId,q.targetNativeSessionId,q.referenceId);
+      const finalPolicy=await this.engine.nativeContext.assertReferenceReadable(q.runId,q.targetNativeSessionId,q.referenceId);
+      if(finalPolicy.revision!==policy.revision)throw unavailable("披露窗口在返回前发生变化，请重新读取");
       return page;
     } finally {if(!settled)try{reservation.settle(0);}catch{/* A completed execution already discarded this reservation. */}}
   }

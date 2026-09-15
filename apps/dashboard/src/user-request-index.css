@@ -1,0 +1,9 @@
+.user-request-index { margin: 1rem 0; border: 1px solid var(--dsm-border); border-radius: var(--dsm-radius); background: var(--dsm-soft-surface); }
+.user-request-index-content { padding: .4rem 1rem 1rem; }
+.user-request-list { display: grid; gap: .8rem; list-style: none; margin: 1rem 0; padding: 0; }
+.user-request-entry { padding: 1rem; border: 1px solid var(--dsm-border); border-radius: var(--dsm-radius); background: var(--dsm-surface); }
+.user-request-entry header { display: flex; align-items: center; gap: .5rem; flex-wrap: wrap; }
+.user-request-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.user-request-entry dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .5rem 1rem; }
+.user-request-entry dd { margin: 0; overflow-wrap: anywhere; }
+.user-request-entry summary { cursor: pointer; color: var(--dsm-muted); }

@@ -1,5 +1,6 @@
 import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict } from "@linmu/dsh-session-contracts";
 import type { ExtensionBusinessPanel, ExtensionBusinessPanelQuery, ExtensionDirectoryQuery, ExtensionDirectoryPage, AnnotationMirrorSync, AnnotationMirrorSyncResult } from "@linmu/dsh-session-contracts";
+import type { UserRequestPage, UserRequestList } from "@linmu/dsh-session-contracts";
 import { sessionContextRecordSchema, type SessionContextCapture, type SessionContextRead, type SessionContextDirectory,
   type SessionContextPage } from "@linmu/dsh-session-contracts";
 import { z, type ZodType } from "zod";
@@ -237,6 +238,11 @@ class ApiClient {
       canonicalDashboardSessionResponseSchema,
       signal,
     )).session as unknown as CanonicalDashboardSessionDetail;
+  }
+
+  async getUserRequestIndex(id: string, query: Pick<UserRequestList, "cursor" | "requestId" | "limit" | "maxBytes"> = {}, signal?: AbortSignal): Promise<UserRequestPage> {
+    const parameters = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]): [string, string] => [key, String(value)]));
+    return this.request(`/v1/canonical/sessions/${encodeURIComponent(id)}/requests?${parameters}`, {}, z.custom<UserRequestPage>(), signal);
   }
 
   async getSessionReader(id: string, query: SessionReaderQuery = {}, signal?: AbortSignal): Promise<SessionReaderPage> {

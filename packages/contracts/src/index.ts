@@ -32,5 +32,8 @@ export * from "./extension-directory.js";
 export * from "./session-graph.js";
 export * from "./session-knowledge.js";
 export * from "./session-context.js";
+export * from "./native-context.js";
+export * from "./user-request-index.js";
+export * from "./native-context-evidence.js";
 
 export * from "./native-source-export.js";

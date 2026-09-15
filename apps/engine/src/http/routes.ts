@@ -2,6 +2,7 @@ import { ExtensionDataError } from "@linmu/dsh-session-contracts";
 import { routeExtensionRequest } from "./extension-routes.js";
 import { routeSessionReader } from "./session-reader-routes.js";
 import { routeSessionContext } from "./session-context-routes.js";
+import { routeNativeContext } from "./native-context-routes.js";
 import { routeSessionGraph } from "./session-graph-routes.js";
 import { routeSessionKnowledge } from "./session-knowledge-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
@@ -275,6 +276,7 @@ export async function routeRequest(
     if (await routeIntegrationRequest(request, response, url, context.engine)) return;
     if (await routeExtensionRequest(request, response, url, context.engine)) return;
     if (await routeSessionReader(request, response, url, context.engine)) return;
+    if (await routeNativeContext(request, response, url, context.engine, !bearer)) return;
     if (await routeSessionContext(request, response, url, context.engine)) return;
     if (await routeSessionGraph(request, response, url, context.engine)) return;
     if (await routeSessionKnowledge(request, response, url, context.engine)) return;
