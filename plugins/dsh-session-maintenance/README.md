@@ -1,43 +1,36 @@
-# DSH Session Maintenance
+# DSH Session Maintenance 插件
 
-这是 DeepSeek Harness 的稳定会话入口。Maintenance 保存与 DSH 版本无关的规范会话和逻辑工作区；Launcher 启动时由对应 adapter 提供原生会话。当前 RC2 候选使用持久 native space，由 Broker 管理所有权及关闭排空；正常关闭保留已确认的原生空间。
+将 DeepSeek Harness 接入 Maintenance 会话真源，提供本地原生历史、增量提交、会话维护入口和扩展数据桥。当前版本 **0.2.26-rc2.14**，配套 **Engine 0.1.33-rc2.18 / DSH 0.1.5-rc.2**。这是当前源码及副本组合，不代表已发布同版本公共安装包。
 
-## 0.1.5-rc.2 候选接入
+## 接入与使用
 
-版本 0.2.25-rc2.2 配合 Engine 0.1.32-rc2.1。Launcher 先准备 `persistent-native-v1`，登记实际 Node/CLI/宿主包与插件构件，再传入 `DSH_SESSION_MAINTENANCE_CORE_RECEIPT` 及 `_SHA256`。回执绑定当前 instance/profile/run；不能用仅版本号相同的另一份 Session 实例替代。原始历史、附件和跨版本转换另有证据链，不以成功加载插件代替数据验收。
+1. 按[仓库构建与部署说明](../../README.md#构建与安装)准备匹配的 Engine、插件、Launcher Provider 及宿主构件。
+2. 在 Launcher 的目标 Profile 中选择会话来源 `Session Maintenance`、端点 `auto`，0.1.5-rc.2 对应 Adapter 为 `dsh-0.1.5`。旧 `dsh-rc2` 不是此版本的别名。
+3. 从 Launcher 启动。Broker 准备 `persistent-native-v1` 会话空间，传入绑定 instance/profile/run 的宿主回执；验证通过后，DSH 直接读取已准备的原生历史。
+4. 从 DSH“设置 → 会话维护”或 Launcher 打开看板，查看逻辑工作区、正文、版本、Checkpoint、删除与恢复、运行状态及扩展数据。
 
-## 当前能力
+当前 Profile 使用可复用的完整原生历史，其物理目录由 Maintenance 管理并通过 DSH 持久化配置传入，不放在插件包里。启动按身份及摘要同步变更，先处理未提交尾部；普通打开不再临时取正文补写文件。正常退出保留原生空间，内存仍按需读取，历史可用性与旧 200 条正文预载限制无关。
 
-- Maintenance 是 DSH 会话真源；Codex 仍维护自己的独立真源，Maintenance 只增量观察，不改写 Codex 日志。
-- 只读打开 Codex 镜像不会产生分支；第一次从 DSH 续写时只派生一个 Maintenance 会话。
-- Alpha2 与 RC2 Profile 使用同一逻辑工作区和会话目录，原生 session ID 仅作为当前投影映射。
-- Annotation、Sticker 与 Obsidian 链接保存 `logicalSessionId` / `logicalAnchorId`，并保留旧 native ID 作为历史别名。
-- 删除由 Maintenance WebUI 或授权的 SCM 右键入口请求，统一在 Engine 真源执行；
-  沿用删除前 Checkpoint、墓碑与恢复策略。普通实例归档仍不视为全局删除。
-- P1-P8 状态入口覆盖租约、物化、持久化接管、增量提交、延迟派生、跨版本校验、引用回环和退出恢复。
+## 数据与运行规则
 
-## Launcher 配置
+- Maintenance 保存 DSH 规范会话和逻辑身份；Codex 来源只读。只读查看不派生会话，首次续写才建立派生关系。
+- 新内容通过运行接口提交，取得持久 Maintenance 回执才确认；正常关闭等待排空，异常退出保留恢复线索。
+- Annotation、Sticker、Obsidian、ThoughtDAG 以逻辑会话和锚点连接，旧原生 ID 可作为历史别名。
+- 会话版本 Adapter 解释原生格式，扩展 Adapter 解释图、引用、贴纸及链接，分别管理。
+- 未安装或不兼容的扩展显示相应状态；停用不删除已保存对象。
 
-0.2.16 修复 RC1 空会话头的惰性持久化，并增加按当前投影运行定位的直接删除入口。
-需配合 Engine 0.1.14 重载；不要求重建 Canonical/Codex 镜像或更改模型配置。
-详细断点及验收见仓库 `docs/changes/RC1-SCM-IDENTITY-AND-EMPTY-SESSION.md`。
+## 图、贴纸与引用
 
-在目标 Profile 中选择：
+安装匹配的扩展后，在完成回复中选文，可以跨会话引用或创建独立会话贴纸；新会话先选工作区。目标会话拥有主干图，来源作为上游节点。右键菜单管理卡片、连接、查看来源和进入真实会话，不维护全部会话的总图，也不在画布中额外运行一个 Agent。
 
-- 会话来源：`Session Maintenance`
-- Maintenance 端点：`auto`
-- Alpha2 固定 Adapter：`dsh-alpha2`
-- RC1 固定 Adapter：`dsh-rc1`
-- RC2 固定 Adapter：`dsh-rc2`
+引用固定到所选回复结束，初始准备该问答轮次，AI 之后按工具和预算读取更早内容；图保留轻量结构和披露范围日志。蓝色引用号右键删除、移除图节点或边，都会停止对应后续上下文关系并同步图，保留真实会话。
 
-Profile 不保存真实会话目录。启动时 Launcher 发现或唤醒 Engine，并通过一次性进程环境传递运行参数；正常关闭会等待 pending write 排空，异常退出保留恢复清单。
+归档会话会撤销以它为来源或目标的活动引用，清除相连待绑定边，归档自身主干。恢复只恢复因所属会话归档的主干，已撤销关系不会自动恢复；归档不等于删除正文。已发送图引用缺少本实例提交记录时，从真源恢复目标范围内的合法读取授权，不伪造回执或重复发送。
 
-## WebUI
+看板通过对应 Adapter 查看上游引用、Obsidian 关联、贴纸与 ThoughtDAG 对象，以及归档/删除状态。配套版本与完整流程见[根 README](../../README.md)，验证见[引用生命周期交付](../../docs/reports/2026-09-15-graph-reference-lifecycle-release.md)。
 
-从 Launcher 或 DSH“设置 → 会话维护”打开独立 WebUI。左侧显示逻辑工作区树，右侧静态读取规范事件，并提供谱系、Checkpoint、最近删除、恢复、运行中心和 Adapter 状态。DSH 不运行时仍可查阅会话。
+## 升级与卸载
 
-## 版本策略
+RC2 核验包括真实宿主构件、插件组合和当前运行回执，不能只以版本号相同视为兼容。更改运行组合后重新准备并核验，正常停止实例后再替换安装文件。
 
-插件 peer 范围保持开放，不因实验版 semver 阻止组合。具体 DSH 格式由公开 Adapter SDK 处理；当前内置 Adapter 为官方 `0.1.2-alpha.2`、`0.1.2-rc.1` 与 `0.1.1-rc.2`，其中 `dsh-rc1` 只声明精确的 `0.1.2-rc.1`。第三方适配指南见 Generation 的 `documentation/adapters/`。
-
-更新前请建立 Checkpoint。回滚时可恢复上一 Generation，并把 Engine 配置中的数据库指针切回封存的 `metadata.sqlite`。卸载 DSH 入口不会删除 Maintenance 数据库或 Codex 真源。
+卸载入口不会删除 Maintenance 数据或 Codex 真源。见[升级](../../docs/deployment/UPGRADE.md)、[恢复](../../docs/deployment/RECOVERY.md)及对应版本交付记录。

@@ -1,45 +1,69 @@
 # DSH Session Maintenance
 
-一个以 Canonical 会话、不可变版本图和可恢复运行投影管理 Codex 与官方 DeepSeek Harness 会话的本地维护引擎。保留版本比较、Checkpoint、逻辑删除与恢复、稳定引用，以及明确发起的 Codex 延续任务。
+本地会话维护引擎：统一管理 DeepSeek Harness 会话的稳定身份、不可变版本、恢复点和可复用的原生历史，并为跨会话引用、会话贴纸、Obsidian 关联和 ThoughtDAG 提供结构化数据真源。Codex 原始会话仍由 Codex 管理，Maintenance 只读导入，不改写其日志。
 
-当前源码发行组合为 Engine **0.1.26**（Dashboard **0.1.2**、Codex Read Adapter **0.1.1**）、Maintenance 插件 **0.2.21**，配套 Launcher **0.2.3** 与 Session Context Menu（SCM）**0.3.2**，本批部署目标为 DSH **0.1.2-rc.1 / web**。原 `4b49927` 的身份与空会话修复以及后续已提交重构保留在提交祖先中。
+当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.18 / Maintenance 插件 0.2.26-rc2.14**。这组代码已安装到独立运行副本；自动验证与人工验收边界见[副本交付记录](docs/reports/2026-09-15-graph-reference-lifecycle-release.md)。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
 
-0.1.26 修复 [引擎启动恢复与生命周期诊断](docs/changes/2026-09-09-engine-startup-recovery.md)：Launcher 可安全接管已确认死亡的旧 Engine，及时反馈启动失败，并记录退出阶段。
+全部配套项目的当前分支、源码版本和使用说明见 [GitHub 源码与 README 索引](docs/reports/2026-09-15-github-source-index.md)。
 
-0.1.25 修复 [Codex 会话正文显示为空](docs/changes/2026-09-08-codex-dashboard-readable-text-fix.md)：看板查询识别已保存的 Codex 对象正文，保留 B 主题；已有历史内容直接可读，无需重新导入或改写版本。未知内容继续保留原始记录入口。
+## 当前功能
 
-0.1.24 随包交付 [B「清晰工作台」主题](docs/changes/2026-09-08-workbench-theme-b.md)：默认浅色、窄功能导航、工作区与静态会话分栏，并统一同步、恢复点、存储及设置的样式。右上角可选择深色或跟随系统，选择仅保存于当前浏览器。窄屏支持展开工作区和横向查看存储表格。本次不修改 Engine 数据逻辑、项目映射范围或 DSH 插件。
+- **会话历史**：按逻辑工作区浏览正文、比较版本、创建 Checkpoint、逻辑删除和恢复。DSH 未运行时也可使用 Maintenance 看板。
+- **持久原生空间**：Launcher 启动时先处理未提交尾部，再按身份及内容摘要同步真源差异。DSH 直接打开已准备的原生文件，正常退出保留该空间；历史可用性不受旧的 200 条正文预载限制影响，内存仍按需加载。
+- **独立扩展数据**：上游引用、Obsidian 关联、贴纸与 ThoughtDAG 使用统一存储中的独立对象类型和版本，由对应扩展 Adapter 解释。停用插件保留数据，图布局和笔记链接不混入原生聊天事件。
+- **每会话主干图**：卡片绑定真实会话，连线表示有方向的上下文关系。图由手动创建、跨会话引用或会话贴纸产生，不维护全部会话的全局总图。
+- **有界上下文披露**：引用固定到来源回复完整结束，选区标记重点。初始准备该回复所在问答轮次，AI 后续通过工具读取或搜索更早内容，受容量预算、固定上限和防循环规则约束。
+- **删除与归档同步**：解除引用会停止后续传递并更新图。归档会话会撤销以它为来源或目标的活动引用、清除相连待绑定边，并归档自身主干；恢复会话不会自动复活已撤销的引用。
 
-0.1.21 修复 [DSH 新工作区无法发送首条消息](docs/changes/2026-09-07-new-dsh-workspace-registration.md)：普通新工作区会登记为 Maintenance 本地项目，首条消息与后续内容正常保存，并独立于 Codex 项目映射名单保留。
+图只保存节点、边、来源身份、固定截止位置及有限的披露范围日志，不按每轮复制全部上游历史或生成完整上下文备份。笔记正文仍由 Obsidian Vault 管理。详见[设计与功能需求](docs/superpowers/specs/2026-09-10-session-context-graph-requirements.md)及[插件改动清单](docs/superpowers/specs/2026-09-10-session-context-graph-plugin-changes.md)。
 
-0.1.22 补齐 [Codex 真源已更新时的旧运行恢复](docs/changes/2026-09-07-recovery-pinned-codex-base.md)：按该运行固定的不可变版本校验 Codex 镜像投影，保留最新真源进度和严格内容校验。
+## 使用流程
 
-0.1.23 将遗漏登记恢复限定到本次运行自己的会话条目，避免共享缓存中后来新增的已提交会话被误当成旧运行的遗漏登记。
+1. 安装匹配的 Engine、Maintenance 插件与所需扩展。在 Launcher 的目标 Profile 中选择会话来源 `Session Maintenance`，端点 `auto`；DSH 0.1.5-rc.2 对应 Adapter 为 `dsh-0.1.5`。
+2. 从 Launcher 启动 Profile。启动准备和宿主回执验证完成后，历史按原生方式读取。本轮新增内容提交到 Maintenance，取得持久化回执后才视为提交成功。
+3. 在已完成的回复中选文，使用跨会话引用入口，先选工作区、再选目标会话，目标输入框显示引用气泡。创建独立会话贴纸时，也先选择新会话所属工作区。
+4. 在目标会话页切换“思维图”。空白处右键添加空卡片或已有会话；节点右键进入会话、查看来源或移除卡片；边上右键移除连接。空卡片在真正开始会话时才创建 DSH 会话，开始操作准备上下文并跳转，不自动发送。
+5. 来源选文的蓝色引用号可跳转到贴纸会话，右键可删除指定引用。同一选文的其他引用及普通红色贴纸保留。移除卡片或边会解除对应后续上下文关系，不删除真实会话。
+6. 从 Launcher 或 DSH“设置 → 会话维护”打开看板，在扩展数据入口查看对象、关系及归档/删除状态。可用面板和操作取决于实例安装情况与扩展兼容状态。
 
-0.1.19 增加 [Codex 项目映射](docs/changes/2026-09-06-codex-project-mapping-engine.md)：在看板“同步”页勾选 Codex 项目会话文件夹，点击“保存为最新映射名单”，下次实例启动时切换范围。名单包含未来新增本地会话；空名单表示不映射任何项目。当前名单中的变化持续导入，范围外 Maintenance 会话在启动时移入可恢复删除状态，Codex 来源保持只读。项目归属依据显式项目 ID，与工作目录、原生回写工作区名单分别管理。
+Obsidian 的“关联笔记”用于双向导航；要向模型提供笔记内容，使用“引用到会话”。Obsidian 引用由指定内嵌会话领取，独立 DSH 窗口不会抢领。见 [Reference Suite](https://github.com/linmu115/dsh-obsidian-session-reference-suite/tree/codex/rc2-session-context-graph) 和 [Vault 插件](https://github.com/linmu115/obsidian-deepharness-bridge/tree/codex/dsh-0-1-5-rc2)。
 
-本批包含静态会话阅读看板、实例接入管理、工作区同步名单及恢复/存储界面整理，验证边界见[看板候选记录](docs/validation/2026-09-06-dashboard-integrations.md)。0.1.18 补齐真实部署发现的[配置型 bundle 误判](docs/changes/integration-bundle-entry-20260906.md)和[既有依赖缓存兼容](docs/changes/integration-existing-store-20260906.md)。实际安装状态以带源码提交和产物摘要的部署记录为准，用户启动与界面验收单独记录。Codex 原生回写和五天正文版本自动删除仍未启用。早期[0.1.15 发布记录](docs/validation/2026-09-06-maintenance-0.1.15-live-release.md)与[审查存档](docs/validation/2026-09-05-maintenance-architecture-review.md)保留当时的事实快照。
+## 当前配套版本
 
-## 当前架构
+以下是当前副本使用的组合，不表示可任意替换同名上游版本。
+
+| 组件 | 版本 | 责任 |
+| --- | --- | --- |
+| Maintenance Engine / DSH 插件 | 0.1.33-rc2.18 / 0.2.26-rc2.14 | 会话与扩展真源、原生空间、提交回执、看板 |
+| Annotation Core | 0.3.12-rc2.9 | 引用集、发送准备、按需读取及预算 |
+| Session Sticker Board | 0.7.3-rc2.15 | 独立会话贴纸、来源高亮、蓝色引用号 |
+| ThoughtDAG | 0.4.14-rc2.8 | 每会话主干图、节点和连线交互 |
+| Sidechat | 0.4.7-rc2.9 | 选区注释与侧边交互 |
+| Obsidian Bridge Lifecycle | 0.3.3-rc2.13 | 引用交接与生命周期 |
+| Obsidian Reference Adapter | 0.3.4-rc2.13 | Obsidian 来源接入 |
+| Obsidian Session Reference Suite | 0.3.4-rc2.15 | 匹配的成员组合与加载拓扑 |
+| Obsidian Vault 插件 | 0.6.4-rc2.6 | 笔记侧选择、标记、关联与内嵌会话 |
+
+Suite 和成员需要保持规定的父子加载关系。第三方原版 ThoughtDAG、旧 RC1 插件和当前定制 RC2 包不能仅按名称互换。Codex 执行与预算支持由可选的 [dsh-codex-runtime](https://github.com/linmu115/dsh-codex-runtime/tree/codex/rc2-session-context-graph) 提供。
+
+## 数据与组件边界
 
 | 组件 | 责任 |
 | --- | --- |
-| Engine | Canonical 身份、导入与提交、版本/Checkpoint、删除回执、运行租约、WAL、恢复和本地 API；SQLite 与正文对象属于其存储层 |
-| WebUI / Dashboard | 通过 Engine API 展示目录、版本、比较、维护操作及状态；可独立构建，不直接读写会话库 |
-| DSH 插件 | 接入官方会话生命周期，按需载入投影，捕获追加并确认提交，提供菜单与设置入口 |
-| DSH Adapter | 探测指定原生格式、生成投影、规范化追加、验证摘要及解析稳定引用；不决定全局身份或删除规则 |
-| Maintenance Provider | 本仓库的宿主接入层，将启动/停止通知转换为 Engine Runtime Broker 操作 |
-| Launcher Hook | Launcher 仓库中的通用宿主能力，负责调用时机、协议、超时和失败回收；不读取 Codex 或会话 SQL |
+| Engine | 规范身份、导入与提交、版本、删除与归档、运行租约、恢复、本地 API 和扩展存储 |
+| Dashboard | 通过 Engine API 展示目录、维护操作及扩展面板，不直接读写会话库 |
+| DSH 插件 | 接入官方生命周期、恢复目录元数据、捕获新增事件、确认提交和关闭排空 |
+| DSH 版本 Adapter | 解读原生格式、编码原生文件、规范化追加、解析稳定锚点 |
+| 扩展 Adapter | 解释引用、贴纸、链接和图对象，声明兼容性及展示方式 |
+| Maintenance Provider / Launcher Hook | 管理 prepare、attach、drain、close、recover，传递运行配置及回执 |
 
-Codex 原始会话是只读来源。**导入**把源内容纳入 Maintenance；**启动投影**把已经纳入的 Canonical 内容转换为本次 DSH 运行需要的格式。当前 `prepare` 前还同步 Codex 标题目录，但不完整导入源正文。投影准备成功不能解释为 Codex 新消息已经全部导入。运行期间插件直接向 Engine 回写，消息不逐条经过 Launcher；首次续写只读来源时保留来源与派生关系。
+原生空间按实例、Profile、分支和格式隔离，由 Maintenance 托管在 `projection-runtime/native-spaces/<space-key>/sessions`，通过宿主持久化配置接给当前 Profile。它不属于插件安装目录；第三方插件应遵守当前实例的持久化接口，不能写死 `$DSH_HOME/sessions`。
 
-接入细节见 [Adapter 架构](docs/adapters/architecture.md)、[支持与验证矩阵](docs/adapters/compatibility-matrix.md)和 [Launcher Hook 接入](docs/deployment/launcher-hook.md)。不启用 EAC、旧 `dsh-codex-session-sync` 或 Native Mirror 运行链。
+**导入来源**与**启动原生空间同步**是两个步骤：启动只将已纳入 Maintenance 的规范内容同步成 DSH 格式，不能据此认定 Codex 新正文已全部导入。运行期间插件直接向 Engine 提交，不逐条经过 Launcher；首次续写只读 Codex 来源时保留来源与派生关系。见[持久原生空间](docs/changes/2026-09-10-persistent-native-session-space.md)、[RC2 原生来源保留](docs/changes/2026-09-12-rc2-native-source-preservation.md)和 [Adapter 架构](docs/adapters/architecture.md)。
 
-## 支持与发布
+## 构建与安装
 
-开发环境声明为 Node.js >=22.19.0、pnpm 11.19.0；已有本地部署证据来自 Windows。源码内置 alpha2、RC1、RC2 三类 DSH Adapter，不等于任意 Harness 版本或任意插件组合已通过验证。RC1 限定 `0.1.2-rc.1`；alpha2/RC2 的宽探测范围仅提供试验入口，具体证据见矩阵。
-
-Engine+Dashboard 与 DSH 插件是两个独立产物；Adapter/SDK 和 Launcher 宿主有各自版本与验证责任。SCM 来自配套仓库。组合发布必须记录这些版本、源码提交与产物摘要。旧脚本名 `phase2` 不表示现在只运行 RC2 Gateway。
+工作区 bootstrap 最低要求 Node.js >=22.19.0；当前 Maintenance 插件要求 Node.js >=24.7.0，构建和运行整套 RC2 组合应使用后者。包管理器为 pnpm 11.19.0。Engine + Dashboard 与 DSH 插件分别打包，保留的 `phase2` 脚本名不代表当前仅运行早期 RC2 Gateway。
 
 ```powershell
 pnpm bootstrap
@@ -48,11 +72,13 @@ pnpm package:phase2
 pnpm verify:phase2-package
 ```
 
-安装、升级、卸载和恢复见 [INSTALL](docs/deployment/INSTALL.md)、[UPGRADE](docs/deployment/UPGRADE.md)、[UNINSTALL](docs/deployment/UNINSTALL.md)与 [RECOVERY](docs/deployment/RECOVERY.md)。[Generation 打包说明](docs/deployment/canonical-projection-generation.md)单独说明旧组合脚本的适用范围。
+目标 RC2 运行还需要匹配的 Launcher Provider、完整宿主构件及当前实例回执，不能只复制插件目录代替整组接入。步骤见 [INSTALL](docs/deployment/INSTALL.md)、[UPGRADE](docs/deployment/UPGRADE.md)、[RECOVERY](docs/deployment/RECOVERY.md)、[Launcher Hook](docs/deployment/launcher-hook.md)和[当前 RC2 接入记录](docs/changes/2026-09-12-final-rc2-plugin-binding.md)。历史部署文档保留当时版本，当前组合以本页及对应交付记录为准。
+
+源码保留 alpha2、RC1、早期 RC2 Adapter，适用范围见[历史兼容矩阵](docs/adapters/compatibility-matrix.md)；它们不是 `dsh-0.1.5` 的别名。不启用 EAC、旧 `dsh-codex-session-sync` 或 Native Mirror 运行链。
 
 ## CLI 与看板
 
-下列命令使用调用者选定的独立状态目录；不应把测试目录替换为真实 home 做试验。
+以下命令使用自行选定的独立状态目录：
 
 ```powershell
 pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint --state-root "<维护状态目录>" init --json
@@ -60,16 +86,16 @@ pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint --sta
 pnpm --filter @linmu/dsh-session-maintenance-engine exec dsh-session-maint --state-root "<维护状态目录>" serve --host 127.0.0.1 --port 0 --json
 ```
 
-Engine 0.1.15 默认相对安装位置查找 Dashboard 构建；也可传 `--dashboard-root <目录>`。显式目录无效会报错，不含 UI 的安装仍可只启动 API。旧构建需要显式目录或正常升级后才获得自动发现能力。
+Engine 默认从安装位置查找 Dashboard，也可传 `--dashboard-root <目录>`。CLI 优先使用 `--state-root`，其次为 `DSH_SESSION_MAINTENANCE_STATE_ROOT`，否则使用当前目录下 `.dsh-session-maintenance`。便携包默认使用 `%LOCALAPPDATA%\DSH-Session-Maintenance`，支持 `DSM_STATE_ROOT`。不同启动方式应连接同一套选定数据。
 
-CLI 优先使用显式 `--state-root`，其次读取 `DSH_SESSION_MAINTENANCE_STATE_ROOT`，两者均未提供时使用当前目录下 `.dsh-session-maintenance`。便携包启动脚本默认使用 `%LOCALAPPDATA%\DSH-Session-Maintenance`，支持 `DSM_STATE_ROOT`。不要让不同启动方式无意连接不同状态库。
+`instance add` 登记平台路径，`scan --all --json` 只读扫描来源。`codex-target add` 登记延续目标，`continuation preview` / `continuation create` 用于明确发起新的 Codex 任务。连接描述符 `connection.json` 含访问凭据，不能提交或分享。API 仅绑定本机回环地址，看板通过一次性启动码、HttpOnly cookie 和 CSRF 校验访问。
 
-可信 CLI 的 `instance add` 登记平台路径，`scan --all --json` 只读扫描登记源；它与 Canonical 启动投影是不同操作。Codex 目标通过 `codex-target add` 登记；`continuation preview` / `continuation create` 明确发起新任务，完整上下文超预算时需明确选择 `checkpoint` 或 `structured-summary`，不会静默截断。
+## 验证与设计记录
 
-连接描述符 `connection.json` 含 capability，不应提交或分享。API 仅绑定 loopback；浏览器通过一次性 launch code、HttpOnly cookie 和 CSRF 机制访问看板。标题相同不会自动合并身份。
+`pnpm check` 执行类型检查、构建和测试，使用合成会话和独立目录。交付记录区分自动测试、运行副本核查及尚未代替用户完成的真实模型与业务验收。
 
-旧 RC2 Core Gateway 的 `--dsh-gateway <instance=origin>` 仅用于对应的历史事务写入通道，默认未附着时不可用；它不是当前 RC1 Canonical 运行回写的启用开关。CLI `apply` / `restore` 当前仍返回不可用，不应照旧阶段说明直接执行。
-
-## 验证记录
-
-`pnpm check` 执行类型检查、构建和测试；`pnpm test:phase1`、`pnpm test:phase2`、`pnpm test:phase3` 保留分阶段验证入口。历史报告位于 [docs/validation](docs/validation)，其日期、候选状态和未完成的人工验收均应保留，不能据此推断今天的全部组合已经上线。
+- [主干图与上下文披露](docs/reports/2026-09-15-session-main-graph-release.md)
+- [纵向布局与 DSH 主题](docs/reports/2026-09-15-vertical-graph-theme-release.md)
+- [蓝色引用删除、归档与节点开始恢复](docs/reports/2026-09-15-graph-reference-lifecycle-release.md)
+- [可拔插扩展数据需求](docs/superpowers/specs/2026-09-10-pluggable-extension-data-requirements.md)
+- [历史验证记录](docs/validation)
