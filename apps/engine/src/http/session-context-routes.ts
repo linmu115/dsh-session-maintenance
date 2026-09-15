@@ -23,6 +23,9 @@ export async function routeSessionContext(request: IncomingMessage,response: Ser
   }else if(operation==="settle-read") {
     const q=sessionContextScopeSchema.extend({referenceId:z.string().min(1).max(256),requestId:z.string().min(1).max(256),delivery:z.enum(['returned','failed'])}).parse(body);
     result=await engine.runWrite('context-read-receipt',()=>engine.sessionContext.settleRead(q.runId,q.targetNativeSessionId,q.referenceId,q.requestId,q.delivery));
+  }else if(operation==="status") {
+    const q=sessionContextScopeSchema.extend({referenceId:z.string().min(1).max(256)}).parse(body);
+    result=await engine.sessionContext.status(q.runId,q.targetNativeSessionId,q.referenceId);
   }else if(operation==="inspect" || operation==="describe") {
     const q=sessionContextScopeSchema.extend({referenceId:z.string().min(1).max(256)}).parse(body);
     result=operation==='describe' ? await engine.sessionContext.describe(q.runId,q.targetNativeSessionId,q.referenceId)

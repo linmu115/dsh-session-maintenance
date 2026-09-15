@@ -81,6 +81,7 @@ const graphEdge = z.strictObject({ id, source: id, target: id, data: z.strictObj
 }) });
 export const managedGraphSchema = z.strictObject({
   managedSchema: z.literal(2), ownerSessionId: id.nullable(),
+  archivedAt: z.string().datetime().nullable().optional(),
   nodes: z.array(z.strictObject({ id, position: point, data: nodeData })).max(10000),
   edges: z.array(graphEdge).max(20000),
   viewport: point.extend({ zoom: z.number().finite().positive().max(100) }).optional(),

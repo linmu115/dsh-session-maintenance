@@ -64,6 +64,7 @@ import { discoverLauncherIntegrations } from "./integrations/launcher-discovery.
 import { registerCodexSource, withDefaultCodexSource } from "./integrations/codex-sources.js";
 import type { IntegrationInstallOptions } from "./integrations/launcher-install.js";
 import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
+import { SessionGraphStore } from "./session-graph-store.js";
 
 const resolveModule = createRequire(import.meta.url).resolve;
 
@@ -230,9 +231,18 @@ async function createComposition(
   coordinateAsyncMethods(adapterRegistry, ["register", "select"], writes, "adapter-registration");
   const projectionRunRepository = coordinateAsyncMethods(new SqliteProjectionRunRepository(repository.database), ["createProjectionRun", "setProjectionRunState", "setProjectionRunCheckpoint", "upsertProjectionSession", "saveOperationReceipt"], writes, "projection-state");
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
+  const graphLifecycle = new SessionGraphStore(repository.database);
+  await writes.run("graph-archive-reconcile", () => {
+    const rows = repository.database.prepare(`SELECT id,archived_at FROM logical_sessions s WHERE s.tombstoned_at IS NULL
+      AND (s.archived_at IS NOT NULL OR EXISTS(SELECT 1 FROM extension_objects o WHERE o.namespace='thoughtdag'
+        AND json_extract(o.content_json,'$.body.ownerSessionId')=s.id AND json_extract(o.content_json,'$.body.archivedAt') IS NOT NULL))`)
+      .all() as { id: string; archived_at: string | null }[];
+    for (const row of rows) graphLifecycle.reconcileSessionArchive(row.id, row.archived_at);
+  });
   const resolveSourceAdapter: SourceAdapterResolver = event => builtinAdapters.map(item => item.adapter).find(owner => event.id.startsWith(`${owner.manifest.id}:`) || (typeof event.content === "object" && event.content !== null && !Array.isArray(event.content) && typeof (event.content as Readonly<Record<string, unknown>>).sourceKind === "string" && String((event.content as Readonly<Record<string, unknown>>).sourceKind).startsWith(`${owner.manifest.id}/`)));
   const canonicalEngine = coordinateAsyncMethods(new CanonicalSessionEngine(
-    new SqliteCanonicalSessionEngineStore(repository.database, objectStore, writes),
+    new SqliteCanonicalSessionEngineStore(repository.database, objectStore, writes,
+      session => { if (!session.tombstonedAt) graphLifecycle.reconcileSessionArchive(session.id, session.archivedAt); }),
   ), ["observeCodex", "retitleCodexMirror", "appendDsh", "importDshNative", "tombstone", "restore"], writes, "canonical-commit");
   const codexProjectMapping = new CodexProjectMappingService({ database: repository.database, writes, instances,
     ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),

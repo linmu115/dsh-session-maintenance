@@ -37,6 +37,7 @@ export class MaintenanceKnowledge {
   }
   async dispatch(operation:string,input:Record<string,unknown>) {
     if(operation==='source-markers')return this.ctx.maintenanceGraph.sourceMarkers(id(input.nativeSessionId),input.after===undefined?undefined:id(input.after));
+    if(operation==='revoke-source-reference')return this.ctx.maintenanceGraph.revokeSource(id(input.nativeSessionId),id(input.referenceId));
     if(operation==='create-session')return this.createSession(id(input.operationId),id(input.workspaceId));
     if(operation==='create-workspaces') {
       const after=input.after===undefined?'':id(input.after);

@@ -18,13 +18,16 @@ const cursorSchema = z.strictObject({
 type PreviewCursor = z.infer<typeof cursorSchema>;
 const encode = (value: PreviewCursor) => Buffer.from(JSON.stringify(value)).toString("base64url");
 const pageBytes = 16000;
-const visible = "ps.mode NOT IN ('hidden','recovery-only') AND s.tombstoned_at IS NULL";
+const visible = "ps.mode NOT IN ('hidden','recovery-only') AND s.tombstoned_at IS NULL AND s.archived_at IS NULL AND s.archived=0";
 
 /** Graph navigation is independent of Annotation availability; reads create no objects. */
 export class SessionGraphService {
   constructor(private readonly engine: SessionMaintenanceEngine) {}
   private graphStore?: SessionGraphStore;
   private get graphs() { return this.graphStore ??= new SessionGraphStore(this.engine.repository.database); }
+  reconcileSessionArchive(logicalSessionId: string, archivedAt: string | null) {
+    this.graphs.reconcileSessionArchive(logicalSessionId, archivedAt);
+  }
   private async graphAccess(runId: string, optional = false) {
     const run = await this.run(runId);
     const panel = this.engine.extensions?.panels().find(p => p.scope.instanceId === run.instanceId && p.scope.profileId === run.profileId && p.scope.namespace === "thoughtdag");
@@ -39,8 +42,8 @@ export class SessionGraphService {
     return this.graphs.ensure(a.scope, a.writerId, target.logicalSessionId, target.title);
   }
   async load(runId: string, objectId: string) {
-    const a = (await this.graphAccess(runId))!, doc = this.graphs.load(a.scope, objectId);
-    if (doc.graph.ownerSessionId) await this.resolve(runId, { logicalSessionId: doc.graph.ownerSessionId });
+    const a = (await this.graphAccess(runId))!, doc = this.graphs.load(a.scope, objectId, true);
+    if (doc.graph.ownerSessionId) await this.resolve(runId, { logicalSessionId: doc.graph.ownerSessionId }, Boolean(doc.graph.archivedAt));
     return doc;
   }
   async save(runId: string, input: GraphSave) {
@@ -56,10 +59,16 @@ export class SessionGraphService {
   }
   async remove(runId: string, input: GraphRemove) {
     const a = (await this.graphAccess(runId))!;
-    await this.load(runId, input.objectId);
+    const doc = await this.load(runId, input.objectId);
+    if (doc.graph.archivedAt) throw unavailable("主干图已归档，恢复会话后才能编辑");
     return this.graphs.remove(a.scope, a.writerId, input);
   }
   async syncReference(runId: string, record: SessionContextRecord) {
+    if (record.state === "revoked") {
+      const run = await this.run(runId);
+      this.graphs.revokeReference({ instanceId: run.instanceId, profileId: run.profileId, namespace: "annotation-upstream" }, record.referenceId);
+      return null;
+    }
     const a = await this.graphAccess(runId, true); if (!a) return null;
     const target = await this.resolve(runId, { logicalSessionId: record.targetSessionId });
     return this.graphs.syncReference(a.scope, a.writerId, record, record.sourceTitle, target.title);
@@ -88,15 +97,15 @@ export class SessionGraphService {
     if (!run || run.state !== "running") throw unavailable("当前实例的会话空间尚未就绪");
     return run;
   }
-  async resolve(runId: string, input: GraphResolve): Promise<GraphSessionIdentity> {
+  async resolve(runId: string, input: GraphResolve, allowArchived = false): Promise<GraphSessionIdentity> {
     await this.run(runId);
     const q = graphResolveSchema.parse(input);
     const rows = this.engine.repository.database.prepare(`SELECT ps.logical_session_id logicalSessionId,
       ps.native_session_id nativeSessionId,s.display_title title FROM projection_sessions ps
-      JOIN logical_sessions s ON s.id=ps.logical_session_id WHERE ps.run_id=? AND ${visible}
+      JOIN logical_sessions s ON s.id=ps.logical_session_id WHERE ps.run_id=? AND ${allowArchived ? "ps.mode NOT IN ('hidden','recovery-only') AND s.tombstoned_at IS NULL" : visible}
       AND ${"logicalSessionId" in q ? "ps.logical_session_id" : "ps.native_session_id"}=? LIMIT 2`)
       .all(runId, "logicalSessionId" in q ? q.logicalSessionId : q.nativeSessionId) as unknown as GraphSessionIdentity[];
-    if (rows.length === 0) throw new ExtensionDataError("GRAPH_SESSION_NOT_FOUND", "会话未接入当前实例或已删除", 409);
+    if (rows.length === 0) throw new ExtensionDataError("GRAPH_SESSION_NOT_FOUND", "会话未接入当前实例、已归档或已删除", 409);
     if (rows.length !== 1) throw new ExtensionDataError("GRAPH_IDENTITY_AMBIGUOUS", "当前实例中的会话身份不唯一", 409);
     return { ...rows[0]!, title: rows[0]!.title.slice(0, 500) };
   }
@@ -223,7 +232,7 @@ export class SessionGraphService {
       FROM extension_objects o JOIN logical_sessions s ON s.id=json_extract(o.content_json,'$.body.targetSessionId')
       WHERE o.instance_id=? AND o.profile_id=? AND o.namespace='annotation-upstream' AND o.deleted=0 AND o.object_id>?
       AND json_extract(o.content_json,'$.body.sourceSessionId')=? AND json_extract(o.content_json,'$.body.state') IN ('pending','sent')
-      AND s.tombstoned_at IS NULL AND EXISTS(SELECT 1 FROM projection_sessions ps WHERE ps.run_id=? AND ps.logical_session_id=s.id
+      AND s.tombstoned_at IS NULL AND s.archived_at IS NULL AND s.archived=0 AND EXISTS(SELECT 1 FROM projection_sessions ps WHERE ps.run_id=? AND ps.logical_session_id=s.id
         AND ps.mode NOT IN ('hidden','recovery-only')) ORDER BY o.object_id LIMIT 31`)
       .all(run.instanceId, run.profileId, after, source.logicalSessionId, runId) as unknown as Array<{object_id:string;content_json:string;title:string;sticker_json:string|null}>;
     return { items: rows.slice(0, 30).flatMap(row => {
@@ -237,5 +246,23 @@ export class SessionGraphService {
         messageId: locator?.messageId ?? r.sourceAnchorId, selectedText: locator?.selectedText ?? r.selectedText,
         occurrence: locator?.occurrence ?? 0, targetLogicalSessionId: r.targetSessionId, targetTitle: row.title.slice(0,500) }];
     }), nextCursor: rows.length > 30 ? rows[29]!.object_id : null };
+  }
+  async revokeSource(runId: string, nativeSessionId: string, referenceId: string) {
+    const run = await this.run(runId), source = await this.resolve(runId, { nativeSessionId });
+    const scope = { instanceId: run.instanceId, profileId: run.profileId, namespace: "annotation-upstream" };
+    const reference = this.graphs.reference(scope, referenceId);
+    if (reference.record.sourceSessionId !== source.logicalSessionId) throw unavailable("该引用不属于当前来源会话");
+    return this.graphs.revokeReference(scope, referenceId);
+  }
+  async setSessionArchived(runId: string, nativeSessionId: string, archived: boolean) {
+    const identity = await this.resolve(runId, { nativeSessionId }, true);
+    const current = this.engine.repository.database.prepare("SELECT archived_at FROM logical_sessions WHERE id=?")
+      .get(identity.logicalSessionId) as { archived_at: string | null };
+    if ((current.archived_at !== null) === archived) {
+      this.reconcileSessionArchive(identity.logicalSessionId, current.archived_at);
+      return { logicalSessionId: identity.logicalSessionId, archived };
+    }
+    await this.engine.sessionCommands.updateSession(identity.logicalSessionId, { archived });
+    return { logicalSessionId: identity.logicalSessionId, archived };
   }
 }

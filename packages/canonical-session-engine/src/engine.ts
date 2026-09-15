@@ -116,6 +116,10 @@ export class CanonicalSessionEngine {
   async appendDsh(input: DshAppendInput): Promise<CanonicalEngineReceipt> {
     return appendDsh(this.store, input);
   }
+  async sessionArchiveState(logicalSessionId: LogicalSessionId) {
+    const snapshot = await this.store.getSession(logicalSessionId);
+    return snapshot ? { archivedAt: snapshot.session.archivedAt } : undefined;
+  }
 
   async importDshNative(input: DshNativeImportInput): Promise<CanonicalEngineReceipt> {
     return importDshNative(this.store, input);

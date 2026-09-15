@@ -51,7 +51,8 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
   readonly canonical: SqliteCanonicalRepository;
   readonly workspaces: SqliteLogicalWorkspaceRepository;
 
-  constructor(database: DatabaseSync, objectStore: ContentObjectStore, writes?: MaintenanceWriteScope) {
+  constructor(database: DatabaseSync, objectStore: ContentObjectStore, writes?: MaintenanceWriteScope,
+    private readonly onSessionArchiveChange?: (session: CanonicalSessionRecord) => void) {
     this.database = database;
     this.objectStore = objectStore;
     this.canonical = new SqliteCanonicalRepository(database);
@@ -171,6 +172,8 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     const nested = this.database.isTransaction;
     this.database.exec(nested ? "SAVEPOINT canonical_commit" : "BEGIN IMMEDIATE");
     try {
+      const previousArchive = this.onSessionArchiveChange ? this.database.prepare("SELECT archived_at FROM logical_sessions WHERE id=?")
+        .get(input.session.id) as { archived_at: string | null } | undefined : undefined;
       if (input.version === null) {
         const current = this.database.prepare(
           "SELECT display_title, labels_json, archived_at FROM logical_sessions WHERE id = ?",
@@ -190,6 +193,7 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
       if (input.derivation !== null) this.putDerivation(input.derivation);
       if (input.tombstone !== null) await this.canonical.saveTombstone(input.tombstone);
       if (input.projectionReceipt !== null) this.putProjectionReceipt(input.projectionReceipt);
+      if (previousArchive?.archived_at !== input.session.archivedAt) this.onSessionArchiveChange?.(input.session);
       this.database.exec(nested ? "RELEASE canonical_commit" : "COMMIT");
       return input.receipt;
     } catch (error) {

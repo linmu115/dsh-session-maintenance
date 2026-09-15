@@ -39,7 +39,7 @@ function ObjectDirectory({api,panel,onOpenSession}:{api:ExtensionPageApi;panel:E
   useEffect(()=>{const c=new AbortController();setPage(undefined);setError(undefined);
     void api.listExtensionObjects({...panel.scope,limit:30,deleted,...(cursor?{after:cursor}:{})},c.signal).then(p=>{if(!c.signal.aborted)setPage(p);},e=>{if(!c.signal.aborted)setError(errorText(e));});return()=>c.abort();
   },[api,panel.scope,cursor,deleted,revision]);
-  return <Surface><h3>{panel.label} · 对象目录</h3><label>显示 <select value={deleted} onChange={e=>{setDeleted(e.target.value as "active"|"deleted");setCursor(undefined);setSelected(undefined);}}><option value="active">当前对象</option><option value="deleted">已删除</option></select></label>
+  return <Surface><h3>{panel.label} · 对象目录</h3><label>显示 <select value={deleted} onChange={e=>{setDeleted(e.target.value as "active"|"deleted");setCursor(undefined);setSelected(undefined);}}><option value="active">当前对象</option><option value="deleted">{panel.scope.namespace === "thoughtdag" ? "已归档或删除" : "已删除"}</option></select></label>
     {error?<p role="alert">{error}</p>:!page?<LoadingState label="正在读取对象元数据…"/>:null}
     {page?.items.length===0?<p>此页没有对象。</p>:null}
     <ul>{page?.items.map(o=><li key={o.objectId}><strong>{o.title||o.objectId}</strong> · 版本 {o.revision} · {o.conflicts} 个冲突 <small>{o.updatedAt}</small>
@@ -63,9 +63,10 @@ function ObjectEditor({api,scope,capabilities,id,onChanged,onOpenSession}:{api:E
   };
   return <section className="extension-editor"><h4>对象详情</h4>{error?<p role="alert">{error}</p>:null}
     {!detail&&!error?<LoadingState label="正在读取所选对象…"/>:null}
-    {detail?<><p>{detail.summary}</p><p>版本 {detail.object.revision} · {detail.object.deleted?"已删除":"当前状态"}</p>
+    {detail?<><p>{detail.summary}</p><p>版本 {detail.object.revision} · {graphDetail.success&&graphDetail.data.archivedAt?"已随主干会话归档":detail.object.deleted?"已删除":"当前状态"}</p>
       {detail.preview?<ObjectPreview preview={detail.preview}/>:null}
       {graphDetail.success?<div aria-label="主干固定来源"><p>主干会话：{graphDetail.data.ownerSessionId??"待绑定"}</p>
+        {graphDetail.data.archivedAt?<p>此图随所属会话归档。恢复会话后可继续整理图谱；已解除的引用关系不会自动恢复。</p>:null}
         {graphDetail.data.migration?<p>{graphDetail.data.migration.reason}</p>:null}
         <ul>{graphDetail.data.edges.filter(e=>e.data.relationId).slice(0,100).map(e=><li key={e.id}>{e.data.relationId} · {e.data.state==="sent"?"已发送":"待发送"} · 固定上限 {e.data.cutoffEventId??"请在图中核验"} · 来源版本 {e.data.sourceVersionId??"待核验"}</li>)}</ul>
         <p>{graphDetail.data.removedRelationIds?.length??0} 条关系已移除。读取位置另存为同一主干的记录对象；记录只表示实际保存的披露回执，停用期间的读取不会补记。</p></div>:null}

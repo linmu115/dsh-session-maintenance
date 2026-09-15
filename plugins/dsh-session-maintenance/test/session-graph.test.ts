@@ -49,9 +49,13 @@ describe("maintenanceGraph host boundary", () => {
     await graph.load("main-graph");
     await graph.disclosures("main-graph", "last-receipt");
     await graph.sourceMarkers("native");
+    await graph.revokeSource("native", "source-ref");
+    await graph.setSessionArchived("native", true);
     expect(requests.every(request => request.body.runId === "bound-run" && request.authorization === "Bearer fixture-private")).toBe(true);
     expect(requests[2].body.selection).toEqual({ sourceVersionId: "version", sourceAnchorId: "reply" });
     expect(requests[3].body).toEqual({ runId:"bound-run", logicalSessionId:"logical", after:"last-object" });
+    expect(requests.at(-2).body).toEqual({ runId: "bound-run", nativeSessionId: "native", referenceId: "source-ref" });
+    expect(requests.at(-1).body).toEqual({ runId: "bound-run", nativeSessionId: "native", archived: true });
   });
   it("does not resolve an unregistered session or hide an Engine rejection", async () => {
     const fetch = vi.fn(async () => new Response(JSON.stringify({ error: { message: "来源版本已改变", code: "GRAPH_SESSION_NOT_FOUND" } }), { status: 409 }));

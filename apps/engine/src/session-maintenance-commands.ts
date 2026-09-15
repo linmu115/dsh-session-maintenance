@@ -40,6 +40,7 @@ export class SessionMaintenanceCommands {
     private readonly statusLog: StatusLog,
     private readonly runs: ProjectionRunRepository,
     private readonly clock: () => string,
+    private readonly onArchiveChange?: (logicalSessionId: string, archivedAt: string | null) => void,
   ) {
     if (queries.database !== database) throw new Error("Maintenance commands and queries must share one transaction connection");
   }
@@ -110,6 +111,10 @@ export class SessionMaintenanceCommands {
       if (exists === undefined) return undefined;
       if (patch.title !== undefined || patch.tags !== undefined || patch.archived !== undefined) {
         advanceCanonicalSessionMetadata(database, { logicalSessionId, patch, appliedAt: at });
+      }
+      if (patch.archived !== undefined) {
+        const state = database.prepare("SELECT archived_at FROM logical_sessions WHERE id=?").get(logicalSessionId) as { archived_at: string | null };
+        this.onArchiveChange?.(logicalSessionId, state.archived_at);
       }
       if (patch.workspaceId !== undefined || patch.displayOrder !== undefined || patch.pinned !== undefined || patch.archived !== undefined) {
         const current = this.queries.workspaceMembership(logicalSessionId);

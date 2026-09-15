@@ -21,9 +21,12 @@ export class SessionContextService {
     if (panel.status !== "ready") throw unavailable("当前实例的跨会话引用已停用");
     return { run, scope:panel.scope, writerId:panel.writerId, extensions:this.engine.extensions! };
   }
-  private identity(runId: string, nativeSessionId: string) {
+  private identity(runId: string, nativeSessionId: string, allowArchived = false) {
     const value = this.engine.sessionQueries.resolveProjectionSessionIdentity(runId,nativeSessionId);
     if (!value || value.status !== "active") throw unavailable("会话未接入当前实例，或已删除");
+    const state = this.engine.repository.database.prepare("SELECT archived_at,archived FROM logical_sessions WHERE id=?")
+      .get(value.logicalSessionId) as { archived_at: string | null; archived: number };
+    if (!allowArchived && (state.archived_at !== null || state.archived === 1)) throw unavailable("会话已归档，不能继续传递上下文");
     const mapping=this.engine.repository.database.prepare("SELECT mode FROM projection_sessions WHERE run_id=? AND native_session_id=?").get(runId,nativeSessionId) as {mode:string}|undefined;
     if(!mapping||["hidden","recovery-only"].includes(mapping.mode))throw unavailable("会话没有在当前实例中启用");
     return value;
@@ -33,7 +36,7 @@ export class SessionContextService {
     const db = this.engine.repository.database;
     const join = `FROM projection_sessions ps JOIN logical_sessions s ON s.id=ps.logical_session_id
       LEFT JOIN project_memberships m ON m.logical_session_id=s.id LEFT JOIN logical_projects w ON w.id=m.project_id AND w.deleted_at IS NULL
-      WHERE ps.run_id=? AND ps.mode NOT IN ('hidden','recovery-only') AND s.tombstoned_at IS NULL`;
+      WHERE ps.run_id=? AND ps.mode NOT IN ('hidden','recovery-only') AND s.tombstoned_at IS NULL AND s.archived_at IS NULL AND s.archived=0`;
     const rows = workspaceId === undefined
       ? db.prepare(`SELECT DISTINCT COALESCE(w.id,'@ungrouped') id,COALESCE(w.name,'未分组') title ${join}
           AND COALESCE(w.id,'@ungrouped')>? ORDER BY id LIMIT 51`).all(runId,after)
@@ -77,6 +80,7 @@ export class SessionContextService {
       if (latest?.headVersionId !== input.expectedSourceVersionId)
         throw unavailable("来源在捕获期间已改变，请重新选择回复；未创建引用");
     }
+    this.identity(input.runId, input.sourceNativeSessionId); this.identity(input.runId, input.targetNativeSessionId);
     const record: SessionContextRecord={schemaVersion:1,referenceId,sourceSessionId:source.logicalSessionId,sourceVersionId:version.id,
       cutoffEventId:cutoff.eventId,cutoffDigest:originalCutoff.contentDigest,targetSessionId:target.logicalSessionId,selectedText:input.selectedText,
       sourceTitle:source.title.slice(0,500),sourceAnchorId:input.anchorId,state:"pending",targetMessageId:null,createdAt:new Date().toISOString()};
@@ -92,7 +96,21 @@ export class SessionContextService {
     const a=await this.access(runId), target=this.identity(runId,targetNativeSessionId);
     const object=a.extensions.get(a.scope,referenceId).object,record=sessionContextRecordSchema.parse(object.content.body);
     if(object.deleted||(!allowRevoked&&record.state==="revoked")||record.targetSessionId!==target.logicalSessionId)throw unavailable("此引用在目标会话中不可用");
+    if (!allowRevoked) this.requireActiveSource(record.sourceSessionId);
     return {...a,object,record};
+  }
+  private requireActiveSource(logicalSessionId: string) {
+    const source = this.engine.repository.database.prepare("SELECT archived_at,archived,tombstoned_at FROM logical_sessions WHERE id=?")
+      .get(logicalSessionId) as { archived_at: string | null; archived: number; tombstoned_at: string | null } | undefined;
+    if (!source || source.tombstoned_at || source.archived_at || source.archived === 1) throw unavailable("来源会话已归档或删除，引用已停止传递上下文");
+  }
+  async status(runId: string, targetNativeSessionId: string, referenceId: string) {
+    const a = await this.access(runId), target = this.identity(runId, targetNativeSessionId, true);
+    const object = a.extensions.get(a.scope, referenceId).object, record = sessionContextRecordSchema.parse(object.content.body);
+    if (record.targetSessionId !== target.logicalSessionId) throw unavailable("此引用不属于当前目标会话");
+    const inactive = this.engine.repository.database.prepare(`SELECT 1 FROM logical_sessions WHERE id IN (?,?)
+      AND (archived_at IS NOT NULL OR archived=1 OR tombstoned_at IS NOT NULL)`).get(record.sourceSessionId, record.targetSessionId);
+    return { referenceId, state: object.deleted || inactive ? "revoked" as const : record.state };
   }
   async bind(runId: string, targetNativeSessionId: string, referenceId: string, targetMessageId: string | null) {
     const a=await this.record(runId,targetNativeSessionId,referenceId,targetMessageId===null);
@@ -111,7 +129,7 @@ export class SessionContextService {
   private async source(record: SessionContextRecord, adapterId: AdapterId) {
     try {
       const source=await this.engine.canonicalEngine.store.getSession(record.sourceSessionId as LogicalSessionId);
-      if(!source||source.session.tombstonedAt)throw unavailable("来源会话已删除");
+      if(!source||source.session.tombstonedAt||source.session.archivedAt)throw unavailable("来源会话已归档或删除");
       const version=await this.engine.canonicalEngine.store.getVersion(record.sourceVersionId as SessionVersionId);
       if(!version||version.logicalSessionId!==record.sourceSessionId)throw unavailable("来源版本已清理或不可用");
       const index=version.events.findIndex(e=>e.id===record.cutoffEventId&&e.contentDigest===record.cutoffDigest);

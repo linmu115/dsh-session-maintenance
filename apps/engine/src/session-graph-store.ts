@@ -87,8 +87,13 @@ export class SessionGraphStore {
       if (!graph.ownerSessionId) throw fail("活动上下文关系必须先确定主干会话");
     }
   }
-  load(scope: ExtensionScope, objectId: string): GraphDocument {
+  load(scope: ExtensionScope, objectId: string, allowArchived = false): GraphDocument {
     const object = this.store.get(scope, objectId);
+    const managed = object?.schemaVersion === 2 ? managedGraphSchema.safeParse(object.content.body) : null;
+    if (object && managed?.success && managed.data.archivedAt) {
+      if (allowArchived) return document(object, this.normalize(scope, managed.data));
+      throw fail("主干图已随会话归档；恢复会话后可继续整理，已解除的引用不会恢复");
+    }
     if (!object || object.deleted) throw fail("图不存在或已删除");
     if (object.schemaVersion === 2) return document(object, this.normalize(scope, managedGraphSchema.parse(object.content.body)));
     const old = legacyManagedGraphSchema.parse(object.content.body);
@@ -118,9 +123,11 @@ export class SessionGraphStore {
   save(scope: ExtensionScope, writerId: string, input: GraphSave): GraphDocument {
     return this.store.transaction(() => {
       const graph = managedGraphSchema.parse(input.graph);
+      if (graph.archivedAt) throw fail("归档状态由会话维护；不能通过布局保存修改");
       let objectId = input.objectId ?? (graph.ownerSessionId ? graphObjectId(graph.ownerSessionId) : `draft-${randomUUID()}`);
       let revision = input.expectedRevision;
       let current = this.store.get(scope, objectId);
+      if (current?.deleted) throw fail("图已归档或删除；不能通过布局保存恢复");
       if (current?.schemaVersion === 1) {
         if (graph.migration?.sourceObjectId !== objectId) throw fail("旧图必须明确迁移后保存，原对象将保留");
         objectId = graph.ownerSessionId ? graphObjectId(graph.ownerSessionId) : `draft-${randomUUID()}`;
@@ -139,6 +146,78 @@ export class SessionGraphStore {
       }
       this.validateReferences(scope, graph);
       return this.write(scope, writerId, objectId, revision, graph, input.title ?? current?.title ?? "会话主干图");
+    });
+  }
+  /** Source/target revocations are independent of whether any plugin is currently enabled. */
+  revokeReference(scope: ExtensionScope, referenceId: string): SessionContextRecord {
+    return this.store.transaction(() => {
+      const reference = this.reference(scope, referenceId);
+      const record: SessionContextRecord = { ...reference.record, state: "revoked" };
+      const result = this.store.write({ scope: reference.object.scope, writerId: reference.object.writerId,
+        objectId: reference.object.objectId, expectedRevision: reference.object.revision, deleted: false,
+        content: { ...reference.object.content, body: record as unknown as JsonValue } });
+      if (result.status === "conflict") throw fail("引用状态已变化，请重试");
+      const rows = this.db.prepare(`SELECT object_id FROM extension_objects WHERE instance_id=? AND profile_id=?
+        AND namespace='thoughtdag' AND schema_version=2 AND EXISTS(SELECT 1 FROM json_each(content_json,'$.body.edges') e
+        WHERE json_extract(e.value,'$.data.relationId')=?)`).all(scope.instanceId, scope.profileId, referenceId) as { object_id: string }[];
+      for (const row of rows) {
+        const object = this.store.get({ ...scope, namespace: "thoughtdag" }, row.object_id)!;
+        const parsed = managedGraphSchema.safeParse(object.content.body);
+        if (!parsed.success) continue;
+        const graph = parsed.data;
+        graph.edges = graph.edges.filter(edge => edge.data.relationId !== referenceId);
+        graph.removedRelationIds = [...new Set([...(graph.removedRelationIds ?? []), referenceId])];
+        this.writeStoredGraph(object, graph, object.deleted);
+      }
+      return record;
+    });
+  }
+  private writeStoredGraph(object: ExtensionObject, graph: ManagedGraph, deleted: boolean) {
+    const result = this.store.write({ scope: object.scope, writerId: object.writerId, objectId: object.objectId,
+      expectedRevision: object.revision, deleted, content: { ...object.content, body: graph as unknown as JsonValue } });
+    if (result.status === "conflict") throw fail("图生命周期写入冲突，请重试");
+    return result.object;
+  }
+  /** Runs inside the canonical metadata transaction and spans every instance/profile of this logical identity. */
+  reconcileSessionArchive(logicalSessionId: string, archivedAt: string | null) {
+    return this.store.transaction(() => {
+      if (archivedAt !== null) {
+        const references = this.db.prepare(`SELECT instance_id,profile_id,object_id FROM extension_objects
+          WHERE namespace='annotation-upstream' AND deleted=0 AND json_extract(content_json,'$.body.state') IN ('pending','sent')
+          AND (json_extract(content_json,'$.body.sourceSessionId')=? OR json_extract(content_json,'$.body.targetSessionId')=?)`)
+          .all(logicalSessionId, logicalSessionId) as { instance_id: string; profile_id: string; object_id: string }[];
+        for (const ref of references) this.revokeReference({ instanceId: ref.instance_id, profileId: ref.profile_id, namespace: "annotation-upstream" }, ref.object_id);
+        // Draft edges have no reference object to revoke, but an archived card
+        // must stop participating in the canvas's future context flow as well.
+        const drafts = this.db.prepare(`SELECT instance_id,profile_id,object_id FROM extension_objects
+          WHERE namespace='thoughtdag' AND schema_version=2
+          AND EXISTS(SELECT 1 FROM json_each(content_json,'$.body.nodes') n
+            WHERE json_extract(n.value,'$.data.logicalSessionId')=?)
+          AND EXISTS(SELECT 1 FROM json_each(content_json,'$.body.edges') e
+            WHERE json_extract(e.value,'$.data.kind')='pending')`).all(logicalSessionId) as {
+            instance_id: string; profile_id: string; object_id: string;
+          }[];
+        for (const row of drafts) {
+          const object = this.store.get({ instanceId: row.instance_id, profileId: row.profile_id, namespace: "thoughtdag" }, row.object_id)!;
+          const parsed = managedGraphSchema.safeParse(object.content.body); if (!parsed.success) continue;
+          const graph = parsed.data;
+          const archivedNodes = new Set(graph.nodes.filter(node => node.data.logicalSessionId === logicalSessionId).map(node => node.id));
+          const edges = graph.edges.filter(edge => edge.data.kind !== "pending" ||
+            (!archivedNodes.has(edge.source) && !archivedNodes.has(edge.target)));
+          if (edges.length !== graph.edges.length) this.writeStoredGraph(object, { ...graph, edges }, object.deleted);
+        }
+      }
+      const rows = this.db.prepare(`SELECT instance_id,profile_id,object_id FROM extension_objects WHERE namespace='thoughtdag'
+        AND schema_version=2 AND json_extract(content_json,'$.body.ownerSessionId')=?
+        AND json_extract(content_json,'$.body.kind') IS NULL`).all(logicalSessionId) as { instance_id: string; profile_id: string; object_id: string }[];
+      for (const row of rows) {
+        const object = this.store.get({ instanceId: row.instance_id, profileId: row.profile_id, namespace: "thoughtdag" }, row.object_id)!;
+        const parsed = managedGraphSchema.safeParse(object.content.body); if (!parsed.success) continue;
+        const graph = parsed.data;
+        if (archivedAt !== null && !object.deleted) this.writeStoredGraph(object, { ...graph, archivedAt }, true);
+        else if (archivedAt === null && object.deleted && graph.archivedAt)
+          this.writeStoredGraph(object, { ...this.normalize(object.scope, graph), archivedAt: null }, false);
+      }
     });
   }
   bind(scope: ExtensionScope, writerId: string, objectId: string, expectedRevision: number, owner: string, title: string) {

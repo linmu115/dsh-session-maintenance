@@ -207,6 +207,9 @@ P1 可使用现有 Sidechat 浮窗作为接入点；将来如果提供独立 Ann
 | W13 | 初始上下文/工具返回位置日志、分页/去重/容量、关闭前端后的记录恢复 | AC34–AC37 |
 | W14 | 删除 ThoughtDAG 与 Dashboard 全局网络、影响/重答专属入口；保留共享服务及域面板 | AC38 |
 | W15 | 各仓库文档/回归与匹配版本构建，正式副本部署后用户验收 | AC01–AC40，重点 AD01–AD07 |
+| W16 | Sticker 蓝标右键精确删除、Engine 源端身份核验与原子撤销、Core 本地撤销同步 | AC41、AC45 |
+| W17 | RC2 工作区归档桥、Canonical 归档生命周期、Adapter 归档预览和恢复规则 | AC42、AC43 |
+| W18 | Core 恢复权威已发送图引用的读取能力、ThoughtDAG 开始前复核与保留编辑 | AC44、AC45 |
 
 W09 是写入新图结构的前置条件，W10/W11/W13 是宣称“连线可传导、删除可停用、图有日志”的前置条件。未确认的附加精简建议不混入实施必做项。
 
@@ -220,4 +223,4 @@ W09 是写入新图结构的前置条件，W10/W11/W13 是宣称“连线可传�
 
 当前开发根目录：`D:\AI\DeepSeekHarness-Plugin`。主要插件位于 `repositories`，独立部署引擎位于 `dsh-maintenance-engine`；本次文档工作区为 `worktrees/session-context-graph-20260913/dsh-session-maintenance`。早期 `repositories/.worktrees/session-context-graph-design` 只作为历史设计工作区保留。
 
-本轮不修改任何插件源码、运行配置、安装包或真实会话数据；没有把文档提交视为功能完成。
+最初需求确认阶段仅提交文档。2026-09-15 后续实施已包含蓝色标记删除、会话归档联动和已有图节点引用恢复（W16–W18）；实现、合成测试与副本部署分别记录，不把源码提交视为运行验收完成。

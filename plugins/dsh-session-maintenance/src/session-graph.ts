@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {
   GraphResolve, GraphSessionIdentity, GraphPreviewPage, GraphPreviewSelection, GraphRelationPage, SessionContextDirectory,
-  GraphDocument, GraphSave, GraphRemove, GraphBind, GraphDisclosurePage, GraphSourceMarkerPage,
+  GraphDocument, GraphSave, GraphRemove, GraphBind, GraphDisclosurePage, GraphSourceMarkerPage, SessionContextRecord,
 } from "@linmu/dsh-session-contracts";
 import type { EngineConnectionProvider } from "./engine-proxy.js";
 
@@ -44,6 +44,8 @@ export class MaintenanceGraph {
   relations(logicalSessionId: string, after?: string) { return this.request<GraphRelationPage>("relations", { logicalSessionId, after }); }
   disclosures(objectId: string, after?: string) { return this.request<GraphDisclosurePage>("disclosures", { objectId, after }); }
   sourceMarkers(nativeSessionId: string, after?: string) { return this.request<GraphSourceMarkerPage>("source-markers", { nativeSessionId, after }); }
+  revokeSource(nativeSessionId: string, referenceId: string) { return this.request<SessionContextRecord>("revoke-source", { nativeSessionId, referenceId }); }
+  setSessionArchived(nativeSessionId: string, archived: boolean) { return this.request<{ logicalSessionId: string; archived: boolean }>("set-session-archived", { nativeSessionId, archived }); }
 }
 export function registerMaintenanceGraph(ctx: Context, value: MaintenanceGraph) { ctx.provide("maintenanceGraph", value); }
 declare module "@deepseek-ai/cordis" { interface Context { maintenanceGraph: MaintenanceGraph } }

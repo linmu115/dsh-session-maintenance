@@ -60,6 +60,8 @@ export interface DshAppendInput {
 /** Narrow port used by projection runtimes; storage remains owned by CanonicalSessionEngine. */
 export interface DshAppendCommitter {
   appendDsh(input: DshAppendInput): Promise<CanonicalEngineReceipt>;
+  /** Current authority prevents an in-flight native tail from undoing a later archive/restore. */
+  sessionArchiveState?(logicalSessionId: LogicalSessionId): Promise<{ archivedAt: string | null } | undefined>;
 }
 
 function assertAppendTarget(

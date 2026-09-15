@@ -2,6 +2,7 @@ import { bindRc2ProjectionContext, rc2RuntimeHeader } from './rc2-persistence.js
 import { MaintenanceSessionContext,registerSessionContext } from './session-context.js';
 import { MaintenanceGraph, registerMaintenanceGraph } from './session-graph.js';
 import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-knowledge.js';
+import { registerWorkspaceArchiveBridge } from './workspace-archive-bridge.js';
 import { installRc2LazyProjectionPersistence } from './rc2-lazy-persistence.js';
 import type { Context } from "@deepseek-ai/cordis";
 import { MaintenanceExtensionBridge, registerMaintenanceExtensionData } from "./extension-data.js";
@@ -93,13 +94,18 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     });
     try { await runtime.attach(); }
     catch (error) { throw new Error("RC2 prepared runtime could not attach", { cause: error }); }
-    registerMaintenanceGraph(ctx as unknown as Context, new MaintenanceGraph(connection, launchProfile.runId, async id => {
+    const graph = new MaintenanceGraph(connection, launchProfile.runId, async id => {
       const session = ctx.sessions.get(id as never);
       if (!session) throw new Error("新建会话不在当前 DSH 运行环境中");
       await runtime.retainExplicitSession(id, rc2RuntimeHeader(session.header) as unknown as JsonValue,
         { inheritedEventCount: Number(session.inheritedEventCount) });
       await runtime.flush(id);
-    }));
+    });
+    registerMaintenanceGraph(ctx as unknown as Context, graph);
+    const archiveBridge = registerWorkspaceArchiveBridge(ctx as unknown as Context, graph, () => {
+      const message = '[dsh-session-maintenance] 会话归档暂未同步到维护引擎，将自动重试。';
+      if (ctx.logger) ctx.logger.warn(message); else console.warn(message);
+    });
     if (config.extensionPlugins !== undefined) {
       const extensions = new MaintenanceExtensionBridge(connection,{instanceId:config.dshInstanceId,profileId:config.profileId},config.extensionPlugins);
       try {
@@ -152,6 +158,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       await runtime.flush(String(session.id));
     });
     ctx.effect(() => async () => {
+      await archiveBridge.dispose();
       for (const session of observedSessions.values()) await ctx.sessions.flush(session);
       offEvent();
       offFlush();

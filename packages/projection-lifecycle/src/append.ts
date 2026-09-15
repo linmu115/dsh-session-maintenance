@@ -312,12 +312,13 @@ export async function commitProjectionAppend(input: {
       nativeSessionId: operation.nativeSessionId,
       operationId: operation.operationId,
     });
+    const archiveState = await input.canonicalEngine.sessionArchiveState?.(normalized.logicalSessionId);
     const canonical = await input.canonicalEngine.appendDsh({
       logicalSessionId: normalized.logicalSessionId,
       ...(normalized.baseVersionId === null ? {} : { baseVersionId: normalized.baseVersionId }),
       title: session.title,
       tags: session.tags,
-      archivedAt: session.archivedAt,
+      archivedAt: archiveState ? archiveState.archivedAt : session.archivedAt,
       workspaceId: session.workspaceId,
       appendedEvents: normalized.events,
       canonicalHistoryMode,

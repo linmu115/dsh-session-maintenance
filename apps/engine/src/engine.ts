@@ -311,6 +311,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.sessionQueries = new SessionMaintenanceQueries(input.repository.database);
     this.sessionCommands = new SessionMaintenanceCommands(
       input.repository.database, this.sessionQueries, this.statusLog, this.projectionRunRepository, this.clock,
+      (logicalSessionId, archivedAt) => this.sessionGraph.reconcileSessionArchive(logicalSessionId, archivedAt),
     );
     this.canonicalProjectionSource = input.canonicalProjectionSource;
     this.projectionSourceFor = input.projectionSourceFor ?? (() => this.canonicalProjectionSource);

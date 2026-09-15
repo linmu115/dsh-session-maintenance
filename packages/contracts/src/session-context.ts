@@ -27,6 +27,8 @@ export const sessionContextReadSchema = sessionContextScopeSchema.extend({
 export type SessionContextCapture = z.infer<typeof sessionContextCaptureSchema>;
 export type SessionContextRecord = z.infer<typeof sessionContextRecordSchema>;
 export type SessionContextRead = z.input<typeof sessionContextReadSchema>;
+export const sessionContextReferenceStatusSchema = sessionContextRecordSchema.pick({ referenceId: true, state: true });
+export type SessionContextReferenceStatus = z.infer<typeof sessionContextReferenceStatusSchema>;
 export interface SessionContextDescription { sourceNativeSessionId: string; record: SessionContextRecord }
 export interface SessionContextCutoff { eventId: string; digest: string }
 export interface SessionContextEntry { eventId: string; role: string; text: string }

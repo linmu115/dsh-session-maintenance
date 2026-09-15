@@ -26,6 +26,100 @@ const read = (requestId: string): GraphDisclosureInput => ({ requestId, executio
   returnedBytes: 1250, status: "ok" });
 
 describe("session main graph domain", () => {
+  it("archives an owner and revokes its source and target permissions across every instance scope without plugin availability", () => {
+    const { db, graphs, reference } = fixture();
+    try {
+      const xOwn = graphs.ensure(scope, writer, "X", "X"), outgoing = reference(), incoming = reference("to-x", "A", "X");
+      const y = graphs.syncReference(scope, writer, outgoing, "X", "Y")!;
+      graphs.syncReference(scope, writer, incoming, "A", "X");
+      const other = { ...scope, instanceId: "another-copy", profileId: "other-profile" };
+      graphs.store.write({ scope: { ...other, namespace: "annotation-upstream" }, objectId: outgoing.referenceId, writerId: "annotation",
+        expectedRevision: 0, deleted: false, content: { schemaVersion: 1, title: "Another scope", body: outgoing, references: [] } });
+      const otherGraph = graphs.syncReference(other, writer, outgoing, "X", "Y")!;
+      const unrelated = reference("unrelated", "U", "V"), unrelatedGraph = graphs.syncReference(scope, writer, unrelated, "U", "V")!;
+      const archivedAt = "2026-09-15T00:00:00.000Z";
+      graphs.reconcileSessionArchive("X", archivedAt);
+      expect(graphs.reference(scope, outgoing.referenceId).record.state).toBe("revoked");
+      expect(graphs.reference(scope, incoming.referenceId).record.state).toBe("revoked");
+      expect(graphs.reference(other, outgoing.referenceId).record.state).toBe("revoked");
+      expect(graphs.load(scope, y.objectId).graph.edges).toEqual([]);
+      expect(graphs.load(other, otherGraph.objectId).graph.edges).toEqual([]);
+      expect(graphs.load(scope, unrelatedGraph.objectId).revision).toBe(unrelatedGraph.revision);
+      const archived = graphs.store.get(scope, xOwn.objectId)!;
+      expect(archived.deleted).toBe(true);
+      expect(graphs.load(scope, xOwn.objectId, true).graph).toMatchObject({ archivedAt, edges: [] });
+      expect(() => graphs.ensure(scope, writer, "X", "X")).toThrow("归档");
+      expect(() => graphs.save(scope, writer, { objectId: xOwn.objectId, expectedRevision: archived.revision, graph: xOwn.graph })).toThrow("归档");
+      const refsRevision = graphs.reference(scope, outgoing.referenceId).object.revision;
+      graphs.reconcileSessionArchive("X", archivedAt);
+      expect(graphs.store.get(scope, xOwn.objectId)!.revision).toBe(archived.revision);
+      expect(graphs.reference(scope, outgoing.referenceId).object.revision).toBe(refsRevision);
+      graphs.reconcileSessionArchive("X", null);
+      expect(graphs.load(scope, xOwn.objectId).graph).toMatchObject({ archivedAt: null, edges: [] });
+      expect(graphs.syncReference(scope, writer, outgoing, "X", "Y")!.graph.edges).toEqual([]);
+      expect(() => graphs.save(scope, writer, { objectId: y.objectId,
+        expectedRevision: graphs.load(scope, y.objectId).revision, graph: y.graph })).toThrow("解除");
+      expect(graphs.store.connections()).toEqual([]);
+    } finally { db.close(); }
+  });
+  it("never restores a separately deleted graph or creates a missing owner graph during archive", () => {
+    const { db, graphs } = fixture();
+    try {
+      const own = graphs.ensure(scope, writer, "X", "X"), object = graphs.store.get(scope, own.objectId)!;
+      graphs.store.write({ scope, writerId: writer, objectId: object.objectId, expectedRevision: object.revision,
+        deleted: true, content: object.content });
+      graphs.reconcileSessionArchive("X", "2026-09-15T00:00:00.000Z");
+      graphs.reconcileSessionArchive("X", null);
+      expect(graphs.store.get(scope, own.objectId)!.deleted).toBe(true);
+      expect(graphs.store.get(scope, own.objectId)!.content.body).not.toHaveProperty("archivedAt");
+      graphs.reconcileSessionArchive("missing", "2026-09-15T00:00:00.000Z");
+      expect(graphs.store.list(scope).items).toEqual([]);
+      expect(graphs.store.list({ ...scope, deleted: "all" }).items).toHaveLength(1);
+    } finally { db.close(); }
+  });
+  it("disconnects draft edges touching an archived card across scopes without moving cards or unrelated draft lines", () => {
+    const { db, graphs } = fixture();
+    try {
+      const graph = { managedSchema: 2 as const, ownerSessionId: null,
+        nodes: [
+          { id: "x", position: { x: 20, y: 200 }, data: { kind: "session" as const, logicalSessionId: "X", label: "X" } },
+          { id: "a", position: { x: 20, y: 0 }, data: { kind: "placeholder" as const, label: "A" } },
+          { id: "b", position: { x: 20, y: 400 }, data: { kind: "placeholder" as const, label: "B" } },
+        ], edges: [
+          { id: "incoming", source: "a", target: "x", data: { kind: "pending" as const } },
+          { id: "outgoing", source: "x", target: "b", data: { kind: "pending" as const } },
+          { id: "unrelated", source: "a", target: "b", data: { kind: "pending" as const } },
+        ] };
+      const other = { ...scope, instanceId: "another-copy", profileId: "other-profile" };
+      const first = graphs.save(scope, writer, { expectedRevision: 0, graph });
+      const second = graphs.save(other, writer, { expectedRevision: 0, graph });
+      graphs.reconcileSessionArchive("X", "2026-09-15T00:00:00.000Z");
+      for (const [where, before] of [[scope, first], [other, second]] as const) {
+        const after = graphs.load(where, before.objectId);
+        expect(after.graph.nodes).toEqual(before.graph.nodes);
+        expect(after.graph.edges.map(edge => edge.id)).toEqual(["unrelated"]);
+        expect(after.graph.ownerSessionId).toBeNull();
+        expect(() => graphs.save(where, writer, { objectId: before.objectId, expectedRevision: before.revision, graph: before.graph })).toThrow("其他操作");
+      }
+      const revision = graphs.load(scope, first.objectId).revision;
+      graphs.reconcileSessionArchive("X", "2026-09-15T00:00:00.000Z");
+      graphs.reconcileSessionArchive("X", null);
+      expect(graphs.load(scope, first.objectId).revision).toBe(revision);
+      expect(graphs.load(scope, first.objectId).graph.edges.map(edge => edge.id)).toEqual(["unrelated"]);
+      expect(db.prepare("SELECT count(*) n FROM extension_objects WHERE namespace='annotation-upstream'").get()!.n).toBe(0);
+    } finally { db.close(); }
+  });
+  it("rolls back all reference and graph changes when an archive write fails", () => {
+    const { db, graphs, reference } = fixture();
+    try {
+      const ref = reference(), own = graphs.ensure(scope, writer, "X", "X"), target = graphs.syncReference(scope, writer, ref, "X", "Y")!;
+      db.exec("CREATE TRIGGER synthetic_fail_archive BEFORE UPDATE ON extension_objects WHEN NEW.namespace='thoughtdag' AND NEW.deleted=1 BEGIN SELECT RAISE(ABORT,'synthetic archive disk failure'); END");
+      expect(() => graphs.reconcileSessionArchive("X", "2026-09-15T00:00:00.000Z")).toThrow("synthetic archive disk failure");
+      expect(graphs.reference(scope, ref.referenceId).record.state).toBe("pending");
+      expect(graphs.load(scope, target.objectId).revision).toBe(target.revision);
+      expect(graphs.store.get(scope, own.objectId)!.deleted).toBe(false);
+    } finally { db.close(); }
+  });
   it("creates top-to-bottom reference cards without moving existing parents or the owner on repeat sync", () => {
     const { db, graphs, reference } = fixture();
     try {

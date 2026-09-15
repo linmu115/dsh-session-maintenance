@@ -28,6 +28,12 @@ export async function routeSessionGraph(request: IncomingMessage, response: Serv
     const q = scope.extend({ objectId: id, after: id.optional() }).parse(body); result = await engine.sessionGraph.disclosures(q.runId, q.objectId, q.after);
   } else if (operation === "source-markers") {
     const q = scope.extend({ nativeSessionId: id, after: id.optional() }).parse(body); result = await engine.sessionGraph.sourceMarkers(q.runId, q.nativeSessionId, q.after);
+  } else if (operation === "revoke-source") {
+    const q = scope.extend({ nativeSessionId: id, referenceId: id }).parse(body);
+    result = await engine.runWrite("graph-revoke-source", () => engine.sessionGraph.revokeSource(q.runId, q.nativeSessionId, q.referenceId));
+  } else if (operation === "set-session-archived") {
+    const q = scope.extend({ nativeSessionId: id, archived: z.boolean() }).parse(body);
+    result = await engine.runWrite("graph-session-archive", () => engine.sessionGraph.setSessionArchived(q.runId, q.nativeSessionId, q.archived));
   } else if (operation === "directory") {
     const q = scope.extend({ workspaceId: id.optional(), after: id.optional() }).parse(body);
     result = await engine.sessionGraph.directory(q.runId, q.workspaceId, q.after);
