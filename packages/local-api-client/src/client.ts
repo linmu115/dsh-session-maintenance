@@ -1,7 +1,11 @@
 import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict } from "@linmu/dsh-session-contracts";
+import type { ExtensionBusinessPanel, ExtensionBusinessPanelQuery, ExtensionDirectoryQuery, ExtensionDirectoryPage, AnnotationMirrorSync, AnnotationMirrorSyncResult } from "@linmu/dsh-session-contracts";
 import { sessionContextRecordSchema, type SessionContextCapture, type SessionContextRead, type SessionContextDirectory,
   type SessionContextPage } from "@linmu/dsh-session-contracts";
 import { z, type ZodType } from "zod";
+import { sessionReaderPageSchema, readerProcessPageSchema, readerEventPageSchema,
+  type SessionReaderPage, type SessionReaderQuery, type ReaderProcessPage, type ReaderProcessQuery,
+  type ReaderEventPage, type ReaderEventQuery } from "@linmu/dsh-session-contracts";
 
 import {
   type CodexImportRequest,
@@ -233,6 +237,20 @@ class ApiClient {
       canonicalDashboardSessionResponseSchema,
       signal,
     )).session as unknown as CanonicalDashboardSessionDetail;
+  }
+
+  async getSessionReader(id: string, query: SessionReaderQuery = {}, signal?: AbortSignal): Promise<SessionReaderPage> {
+    return await this.request(this.readerPath(id, "", query), {}, sessionReaderPageSchema, signal) as unknown as SessionReaderPage;
+  }
+  async getSessionReaderProcess(id: string, query: ReaderProcessQuery, signal?: AbortSignal): Promise<ReaderProcessPage> {
+    return await this.request(this.readerPath(id, "/process", query), {}, readerProcessPageSchema, signal) as ReaderProcessPage;
+  }
+  async getSessionReaderEvent(id: string, eventId: string, query: ReaderEventQuery, signal?: AbortSignal): Promise<ReaderEventPage> {
+    return await this.request(this.readerPath(id, `/events/${encodeURIComponent(eventId)}`, query), {}, readerEventPageSchema, signal) as ReaderEventPage;
+  }
+  private readerPath(id: string, suffix: string, query: object): string {
+    const parameters = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]): [string, string] => [key, String(value)]));
+    return `/v1/canonical/sessions/${encodeURIComponent(id)}/reader${suffix}?${parameters}`;
   }
 
   async updateCanonicalSession(id: string, patch: CanonicalSessionMaintenancePatch, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail> {
@@ -618,6 +636,17 @@ class ApiClient {
 
   async listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]> {
     return this.request("/v1/extensions/panels",{},z.custom<ExtensionPanel[]>(),signal);
+  }
+  async listExtensionBusinessPanels(query: ExtensionBusinessPanelQuery = {}, signal?: AbortSignal): Promise<ExtensionBusinessPanel[]> {
+    const parameters = new URLSearchParams(Object.entries(query).filter(([,v])=>v!==undefined).map(([k,v]): [string,string]=>[k,String(v)]));
+    return this.request(`/v1/extensions/business-panels?${parameters}`,{},z.custom<ExtensionBusinessPanel[]>(),signal);
+  }
+  async listExtensionDirectory(query: ExtensionDirectoryQuery, signal?: AbortSignal): Promise<ExtensionDirectoryPage> {
+    const parameters = new URLSearchParams(Object.entries(query).filter(([,v])=>v!==undefined).map(([k,v]): [string,string]=>[k,String(v)]));
+    return this.request(`/v1/extensions/directory?${parameters}`,{},z.custom<ExtensionDirectoryPage>(),signal);
+  }
+  async syncAnnotationMirror(input: AnnotationMirrorSync, signal?: AbortSignal): Promise<AnnotationMirrorSyncResult> {
+    return this.request("/v1/extensions/annotation-sync",this.jsonPost(input),z.custom<AnnotationMirrorSyncResult>(),signal);
   }
   async listSessionContextTargets(runId: string, workspaceId?: string, after?: string, signal?: AbortSignal) {
     return this.request('/v1/session-context/directory',this.jsonPost({runId,workspaceId,after}),z.custom<SessionContextDirectory>(),signal);

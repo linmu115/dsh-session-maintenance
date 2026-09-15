@@ -2,19 +2,28 @@ import { ExtensionDataError, extensionConnectSchema, extensionWriteSchema, exten
   type ExtensionDataAdapter, type ExtensionScope, type ExtensionConnect, type ExtensionWrite, type ExtensionPanel, type ExtensionList,
 } from "@linmu/dsh-session-contracts";
 import type { SqliteExtensionRepository } from "@linmu/dsh-session-store";
+import { ANNOTATION_RECORDS_NAMESPACE, type AnnotationMirrorSync, type ExtensionBusinessPanelQuery, type ExtensionDirectoryQuery } from "@linmu/dsh-session-contracts";
+import type { SessionMaintenanceEngine } from "../engine.js";
+import { ExtensionDirectoryService } from "./directory.js";
+import { synchronizeAnnotationMirrors } from "./annotation-sync.js";
 
 /** Independent from the platform/version adapter registry. No automatic context injection. */
 export class ExtensionDataService {
   private readonly adapters = new Map<string, ExtensionDataAdapter>();
+  private readonly directoryService: ExtensionDirectoryService;
+  private initialized = false;
   constructor(private readonly store: SqliteExtensionRepository, adapters: readonly ExtensionDataAdapter[]) {
+    this.directoryService = new ExtensionDirectoryService(store, () => this.adapters, () => this.panels());
     for (const adapter of adapters) this.register(adapter);
+    this.initialized = true;
   }
   /** Trusted Engine-side installation; unregistering never deletes stored data. */
   register(adapter: ExtensionDataAdapter): () => void {
     extensionScopeSchema.parse({instanceId:"registration",profileId:"registration",namespace:adapter.namespace});
     if (this.adapters.has(adapter.namespace)) throw new Error("Duplicate extension adapter namespace");
     this.adapters.set(adapter.namespace,adapter);
-    return () => { if (this.adapters.get(adapter.namespace)===adapter)this.adapters.delete(adapter.namespace); };
+    if (this.initialized) this.directoryService.invalidate(adapter.namespace);
+    return () => { if (this.adapters.get(adapter.namespace)===adapter) { this.adapters.delete(adapter.namespace); this.directoryService.invalidate(adapter.namespace); } };
   }
   panels(): ExtensionPanel[] {
     return this.store.connections().map(row => {
@@ -34,6 +43,12 @@ export class ExtensionDataService {
   }
   enable(scope: ExtensionScope, enabled: boolean) { this.store.enable(extensionScopeSchema.parse(scope),enabled); return this.panels(); }
   list(query: ExtensionList) { return this.store.list(query); }
+  businessPanels(query: ExtensionBusinessPanelQuery = {}) { return this.directoryService.businessPanels(query); }
+  directory(query: ExtensionDirectoryQuery) { return this.directoryService.list(query); }
+  rebuildOwnerIndex(scope: { instanceId: string; profileId: string }, namespaces: readonly string[]) { this.directoryService.rebuild(scope, namespaces, true); }
+  syncAnnotation(input: AnnotationMirrorSync, engine: SessionMaintenanceEngine) {
+    return synchronizeAnnotationMirrors(this.store, engine, input, scope => this.ready(scope).panel.writerId);
+  }
   transaction<T>(action: () => T): T { return this.store.transaction(action); }
   private ready(scope: ExtensionScope): { adapter: ExtensionDataAdapter; panel: ExtensionPanel } {
     extensionScopeSchema.parse(scope);
@@ -52,6 +67,8 @@ export class ExtensionDataService {
   }
   write(input: ExtensionWrite) {
     const parsed = extensionWriteSchema.parse(input);
+    if (parsed.scope.namespace === ANNOTATION_RECORDS_NAMESPACE)
+      throw new ExtensionDataError("ANNOTATION_SYNC_REQUIRED", "引用条目是 Core 的只读镜像，请通过受信的会话同步更新。", 409);
     const managed = (body: unknown) => Boolean(body && typeof body === "object" && "managedSchema" in body && body.managedSchema === 2);
     if (parsed.scope.namespace === "thoughtdag" && (managed(parsed.content.body) ||
         managed(this.store.get(parsed.scope, parsed.objectId)?.content.body)))

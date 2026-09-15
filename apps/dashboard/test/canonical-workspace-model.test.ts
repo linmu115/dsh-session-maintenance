@@ -66,7 +66,7 @@ describe("canonical dashboard workspace model", () => {
     const message = { ...unknown, id: "event-message", kind: "assistant-message", role: "assistant", readableText: unknown.content } as CanonicalDashboardEvent;
     expect(canonicalEventPresentation(message)).toEqual({ heldOut: false, text: "<img src=x onerror=alert(1)>" });
     const html = renderToStaticMarkup(createElement(CanonicalEventView, { event: message }));
-    expect(html).toContain("&lt;img"); // Raw inspection is escaped text, never executable markup.
+    expect(html).not.toContain("&lt;img"); // Closed raw inspection does not mount or serialize its body.
     expect(html).not.toContain("<img");
 
     const other = {

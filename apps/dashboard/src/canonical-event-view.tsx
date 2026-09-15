@@ -1,4 +1,5 @@
 import type { CanonicalDashboardEvent, JsonValue } from "@linmu/dsh-session-contracts";
+import { useState } from "react";
 import { Badge } from "@linmu/dsh-session-ui";
 import { SafeMarkdown } from "./safe-markdown.js";
 
@@ -21,11 +22,12 @@ const labels: Readonly<Record<string, string>> = {
   "obsidian-reference": "笔记引用", other: "其他记录", "opaque-unknown": "未识别记录",
 };
 export function CanonicalEventView({ event }: { readonly event: CanonicalDashboardEvent }) {
-  const presentation = canonicalEventPresentation(event);
+  const [expanded, setExpanded] = useState(false), [metadataOpen, setMetadataOpen] = useState(false);
+  const presentation = expanded ? canonicalEventPresentation(event) : { heldOut: event.kind === "opaque-unknown" || event.kind === "other", text: "" };
   const message = event.kind === "user-message" || event.kind === "assistant-message";
   const text = event.readableText ?? undefined;
-  const metadata = <details className="event-metadata"><summary>原始记录与来源</summary><p>{event.source.platform} · {event.source.instanceId} · #{event.sequence}</p><code>{event.id}</code><pre className="canonical-event-json"><code>{JSON.stringify({ content: event.content, rawPayload: event.rawPayload }, null, 2)}</code></pre></details>;
+  const metadata = <details className="event-metadata" onToggle={event => setMetadataOpen(event.currentTarget.open)}><summary>原始记录与来源</summary>{metadataOpen ? <><p>{event.source.platform} · {event.source.instanceId} · #{event.sequence}</p><code>{event.id}</code><pre className="canonical-event-json"><code>{JSON.stringify({ content: event.content, rawPayload: event.rawPayload }, null, 2)}</code></pre></> : null}</details>;
   return <article className="canonical-event" data-testid={`canonical-event-${event.id}`} data-held-out={presentation.heldOut} data-role={event.role}>
-    {message ? <><header><Badge>{event.role === "user" ? "你" : "助手"}</Badge></header>{text === undefined ? <p className="muted">{event.readableText === undefined ? "当前引擎未提供可读正文，可展开原始记录查看。" : "暂未解析出可读正文，可展开原始记录查看。"}</p> : <SafeMarkdown>{text}</SafeMarkdown>}{metadata}</> : <details className="event-supporting"><summary>{labels[event.kind] ?? "补充记录"}</summary>{presentation.heldOut ? <p>{presentation.text}</p> : text === undefined ? <pre className="canonical-event-json"><code>{presentation.text}</code></pre> : <SafeMarkdown>{text}</SafeMarkdown>}{metadata}</details>}
+    {message ? <><header><Badge>{event.role === "user" ? "你" : "助手"}</Badge></header>{text === undefined ? <p className="muted">{event.readableText === undefined ? "当前引擎未提供可读正文，可展开原始记录查看。" : "暂未解析出可读正文，可展开原始记录查看。"}</p> : <SafeMarkdown>{text}</SafeMarkdown>}{metadata}</> : <details className="event-supporting" onToggle={event => setExpanded(event.currentTarget.open)}><summary>{labels[event.kind] ?? "补充记录"}</summary>{expanded ? <>{presentation.heldOut ? <p>{presentation.text}</p> : text === undefined ? <pre className="canonical-event-json"><code>{presentation.text}</code></pre> : <SafeMarkdown>{text}</SafeMarkdown>}{metadata}</> : null}</details>}
   </article>;
 }

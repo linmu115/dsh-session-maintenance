@@ -1,8 +1,11 @@
 import { useEffect, useState } from "react";
 import { Button, Surface, LoadingState, EmptyState } from "@linmu/dsh-session-ui";
 import { managedGraphSchema, type ExtensionPanel, type ExtensionScope, type ExtensionList, type ExtensionPage, type ExtensionDetail, type ExtensionWrite, type ExtensionWriteResult, type ExtensionConflict, type ExtensionCapabilities, type ExtensionPreview, type JsonValue } from "@linmu/dsh-session-contracts";
+import { ExtensionBusinessDirectory, type ExtensionBusinessApi } from "./extension-business-directory.js";
 
 export interface ExtensionPageApi {
+  listExtensionBusinessPanels?: ExtensionBusinessApi["listExtensionBusinessPanels"];
+  listExtensionDirectory?: ExtensionBusinessApi["listExtensionDirectory"];
   listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]>;
   enableExtension(scope: ExtensionScope, enabled: boolean): Promise<ExtensionPanel[]>;
   listExtensionObjects(query: ExtensionList, signal?: AbortSignal): Promise<ExtensionPage>;
@@ -16,6 +19,11 @@ const labels = { ready:"已接入",disabled:"已停用，数据保留","missing-
 const scopeKey = (scope: ExtensionScope) => JSON.stringify(scope);
 
 export function ExtensionPageView({api,onOpenSession}:{api:ExtensionPageApi;onOpenSession:(id:string)=>void}) {
+  if (api.listExtensionBusinessPanels && api.listExtensionDirectory) return <ExtensionBusinessDirectory api={api as ExtensionBusinessApi} onOpenSession={onOpenSession}
+    renderDetail={(object, member, onChanged) => <ObjectEditor key={`${scopeKey(object.scope)}:${object.objectId}:${object.revision}`} api={api} scope={object.scope} capabilities={member.capabilities!} id={object.objectId} readOnly={object.readOnly} onChanged={onChanged} onOpenSession={onOpenSession}/>}/>;
+  return <LegacyExtensionPage api={api} onOpenSession={onOpenSession}/>;
+}
+function LegacyExtensionPage({api,onOpenSession}:{api:ExtensionPageApi;onOpenSession:(id:string)=>void}) {
   const [panels,setPanels]=useState<ExtensionPanel[]>();
   const [selected,setSelected]=useState<string>();
   const [error,setError]=useState<string>();
@@ -49,9 +57,10 @@ function ObjectDirectory({api,panel,onOpenSession}:{api:ExtensionPageApi;panel:E
     {selected&&panel.status==="ready"&&panel.capabilities?.read?<ObjectEditor key={`${selected}:${revision}`} api={api} scope={panel.scope} capabilities={panel.capabilities} id={selected} onChanged={()=>setRevision(n=>n+1)} onOpenSession={onOpenSession}/>:null}
   </Surface>;
 }
-function ObjectEditor({api,scope,capabilities,id,onChanged,onOpenSession}:{api:ExtensionPageApi;scope:ExtensionScope;capabilities:ExtensionCapabilities;id:string;onChanged:()=>void;onOpenSession:(id:string)=>void}) {
+function ObjectEditor({api,scope,capabilities,id,readOnly=false,onChanged,onOpenSession}:{api:ExtensionPageApi;scope:ExtensionScope;capabilities:ExtensionCapabilities;id:string;readOnly?:boolean;onChanged:()=>void;onOpenSession:(id:string)=>void}) {
   const [detail,setDetail]=useState<ExtensionDetail>();const [title,setTitle]=useState("");const [body,setBody]=useState("");
   const [conflict,setConflict]=useState<ExtensionConflict>();const [error,setError]=useState<string>();const [busy,setBusy]=useState(false);
+  const [showRaw,setShowRaw]=useState(false);
   const managedGraph=scope.namespace==="thoughtdag"&&Boolean(detail?.object.content.body&&typeof detail.object.content.body==="object"&&"managedSchema" in detail.object.content.body);
   const graphDetail=managedGraphSchema.safeParse(detail?.object.content.body);
   useEffect(()=>{const c=new AbortController();void api.getExtensionObject(scope,id,c.signal).then(d=>{if(c.signal.aborted)return;setDetail(d);setTitle(d.object.content.title);setBody(JSON.stringify(d.object.content.body,null,2));},e=>{if(!c.signal.aborted)setError(errorText(e));});return()=>c.abort();},[api,scope,id]);
@@ -72,16 +81,17 @@ function ObjectEditor({api,scope,capabilities,id,onChanged,onOpenSession}:{api:E
         <p>{graphDetail.data.removedRelationIds?.length??0} 条关系已移除。读取位置另存为同一主干的记录对象；记录只表示实际保存的披露回执，停用期间的读取不会补记。</p></div>:null}
       <div>{detail.object.content.references.map((r,i)=><Button key={i} onClick={()=>onOpenSession(r.logicalSessionId)}>关联会话 {r.logicalSessionId}{r.anchorId?` · ${r.anchorId}`:""}</Button>)}</div>
       {managedGraph?<p>主干结构、固定上限与读取位置在此查看。请在会话主干图中管理连接与移除，系统会同步停用对应引用。</p>:null}
-      <label className="field">标题<input value={title} onChange={e=>setTitle(e.target.value)} disabled={busy||detail.object.deleted||managedGraph}/></label>
-      <details><summary>{managedGraph?"查看对象内容（JSON）":"查看和编辑对象内容（JSON）"}</summary><textarea className="extension-json" aria-label="对象内容" value={body} onChange={e=>setBody(e.target.value)} disabled={busy||detail.object.deleted||managedGraph}/></details>
-      {!managedGraph&&!detail.object.deleted&&capabilities.write?<Button disabled={busy} onClick={()=>void perform(()=>save(false))}>保存编辑</Button>:null}
-      {!managedGraph&&capabilities.write&&(detail.object.deleted?capabilities.restore:capabilities.delete)?<Button disabled={busy} onClick={()=>void perform(()=>save(!detail.object.deleted))}>{detail.object.deleted?"恢复对象":"删除对象"}</Button>:null}
+      {readOnly && scope.namespace === "annotation-records" ? <p>此条目由引用插件同步。请在会话或 Obsidian 的引用入口修改或删除，变更后会同步到这里。</p> : null}
+      {!readOnly && !managedGraph ? <label className="field">标题<input value={title} onChange={e=>setTitle(e.target.value)} disabled={busy||detail.object.deleted}/></label> : null}
+      <details onToggle={event=>setShowRaw(event.currentTarget.open)}><summary>{managedGraph||readOnly?"查看对象内容（JSON）":"查看和编辑对象内容（JSON）"}</summary>{showRaw?<textarea className="extension-json" aria-label="对象内容" value={body} onChange={e=>setBody(e.target.value)} disabled={busy||detail.object.deleted||managedGraph||readOnly}/>:null}</details>
+      {!readOnly&&!managedGraph&&!detail.object.deleted&&capabilities.write?<Button disabled={busy} onClick={()=>void perform(()=>save(false))}>保存编辑</Button>:null}
+      {!readOnly&&!managedGraph&&capabilities.write&&(detail.object.deleted?capabilities.restore:capabilities.delete)?<Button disabled={busy} onClick={()=>void perform(()=>save(!detail.object.deleted))}>{detail.object.deleted?"恢复对象":"删除对象"}</Button>:null}
       {detail.conflictIds.map(cid=><Button key={cid} disabled={busy} onClick={()=>void perform(async()=>setConflict(await api.getExtensionConflict(scope,cid)))}>查看冲突 {cid.slice(0,8)}</Button>)}
     </>:null}
     {conflict?<section aria-label="处理编辑冲突"><h4>编辑冲突：两份内容均已保留</h4><p>处理前请比较双方内容。保留当前版本会移除本条候选，采用传入编辑会以新版本保存。</p>
       <details><summary>发生冲突时的当前内容</summary><pre>{JSON.stringify(conflict.current.content,null,2)}</pre></details>
       <details><summary>传入编辑{conflict.incoming.deleted?"（删除请求）":""}</summary><pre>{JSON.stringify(conflict.incoming.content,null,2)}</pre></details>
-      {(["current","incoming"] as const).map(choice=><Button key={choice} disabled={busy||!detail} onClick={()=>void perform(async()=>{await api.resolveExtensionConflict(scope,conflict.id,detail!.object.revision,choice);onChanged();})}>{choice==="current"?"保留当前版本":"采用传入编辑"}</Button>)}</section>:null}
+      {!readOnly&&!managedGraph?(["current","incoming"] as const).map(choice=><Button key={choice} disabled={busy||!detail} onClick={()=>void perform(async()=>{await api.resolveExtensionConflict(scope,conflict.id,detail!.object.revision,choice);onChanged();})}>{choice==="current"?"保留当前版本":"采用传入编辑"}</Button>):<p>请回到所属插件处理此条目的冲突。</p>}</section>:null}
   </section>;
 }
 

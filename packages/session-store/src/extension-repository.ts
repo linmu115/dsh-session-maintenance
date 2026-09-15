@@ -29,6 +29,8 @@ const conflicts = "(SELECT COUNT(*) FROM extension_conflicts c WHERE c.instance_
 /** Current state plus unresolved conflicts only. No render, request, or edit snapshots. */
 export class SqliteExtensionRepository {
   constructor(private readonly db: DatabaseSync, private readonly clock = () => new Date().toISOString()) {}
+  /** Used for derived directory indexes; callers must not rewrite object bodies directly. */
+  get database(): DatabaseSync { return this.db; }
   transaction<T>(action: () => T): T {
     this.db.exec("SAVEPOINT extension_write");
     try { const value = action(); this.db.exec("RELEASE extension_write"); return value; }
@@ -68,6 +70,10 @@ export class SqliteExtensionRepository {
   get(scope: ExtensionScope, objectId: string): ExtensionObject | undefined {
     const row = this.db.prepare(`SELECT o.*,${conflicts} FROM extension_objects o WHERE ${where} AND object_id=?`).get(...key(scope),objectId) as Row | undefined;
     return row ? { ...metadata(row), content: JSON.parse(row.content_json!) } : undefined;
+  }
+  getMetadata(scope: ExtensionScope, objectId: string): ExtensionMetadata | undefined {
+    const row = this.db.prepare(`SELECT ${columns},${conflicts} FROM extension_objects o WHERE ${where} AND object_id=?`).get(...key(scope),objectId) as Row | undefined;
+    return row ? metadata(row) : undefined;
   }
   getConflict(scope: ExtensionScope, id: string): ExtensionConflict | undefined {
     const row = this.db.prepare(`SELECT conflict_json FROM extension_conflicts WHERE ${where} AND id=?`).get(...key(scope),id);

@@ -10,11 +10,11 @@ export class MaintenanceExtensionBridge {
     private readonly plugins: readonly ConfiguredExtension[], private readonly fetchImpl: typeof fetch = fetch) {
     this.scope={instanceId:scope.instanceId,profileId:scope.profileId};
   }
-  private async request<T>(path: string, body?: unknown): Promise<T> {
+  private async request<T>(path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
     const connection = await this.connection.current();
     const response = await this.fetchImpl(`${connection.origin}/v1/extensions/${path}`,{
       method:body===undefined?"GET":"POST",headers:{authorization:`Bearer ${connection.token}`,"content-type":"application/json"},
-      ...(body===undefined?{}:{body:JSON.stringify(body)}),signal:AbortSignal.timeout(15000),
+      ...(body===undefined?{}:{body:JSON.stringify(body)}),signal:signal ? AbortSignal.any([signal,AbortSignal.timeout(15000)]) : AbortSignal.timeout(15000),
     });
     if (!response.ok) throw new Error(`Maintenance extension request failed (${response.status}); local edits must be retained until acknowledged`);
     return await response.json() as T;
@@ -24,7 +24,7 @@ export class MaintenanceExtensionBridge {
     if(!plugin)throw new Error("Extension is not configured on this DSH instance/profile");
     return plugin;
   }
-  async connect(): Promise<void> { await this.request("connect",{...this.scope,plugins:this.plugins}); }
+  async connect(signal?: AbortSignal): Promise<void> { await this.request("connect",{...this.scope,plugins:this.plugins},signal); }
   async get(namespace: string, objectId: string): Promise<ExtensionDetail> {
     this.configured(namespace);return this.request(`object?${new URLSearchParams({...this.scope,namespace,objectId})}`);
   }

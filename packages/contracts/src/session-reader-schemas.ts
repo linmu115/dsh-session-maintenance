@@ -1,0 +1,10 @@
+import { z } from "zod";
+import { canonicalDashboardSessionDetailSchema } from "./schemas.js";
+const kind = z.enum(["runtime-context", "skill-catalog", "plugin-context", "tool-call", "tool-result", "reasoning", "record", "assistant"]);
+const snapshot = z.string().regex(/^[a-f0-9]{64}$/);
+const next = z.string().nullable();
+export const readerMessageSchema = z.strictObject({ eventId: z.string(), role: z.enum(["user", "assistant"]), text: z.string(), totalChars: z.number().int().nonnegative(), nextOffset: z.number().int().nonnegative().nullable() });
+export const readerTurnSchema = z.strictObject({ id: z.string(), ordinal: z.number().int().positive(), messages: z.array(readerMessageSchema), processCount: z.number().int().nonnegative(), processKinds: z.array(z.strictObject({ kind, label: z.string(), count: z.number().int().positive() })) });
+export const sessionReaderPageSchema = z.strictObject({ schemaVersion: z.literal(1), detail: canonicalDashboardSessionDetailSchema.omit({ events: true }), snapshot, turns: z.array(readerTurnSchema), nextCursor: next });
+export const readerProcessPageSchema = z.strictObject({ schemaVersion: z.literal(1), snapshot, turnId: z.string(), items: z.array(z.strictObject({ id: z.string(), kind, label: z.string(), eventIds: z.array(z.string()), paired: z.boolean() })), nextCursor: next });
+export const readerEventPageSchema = z.strictObject({ schemaVersion: z.literal(1), snapshot, eventId: z.string(), format: z.enum(["text", "raw"]), text: z.string(), offset: z.number().int().nonnegative(), totalChars: z.number().int().nonnegative(), nextOffset: z.number().int().nonnegative().nullable() });

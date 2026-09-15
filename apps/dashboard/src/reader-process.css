@@ -1,0 +1,15 @@
+.reader-turn { margin-block: 1rem 1.8rem; }
+.reader-process { margin: .7rem 0; border: 1px solid var(--dsm-border); border-radius: var(--dsm-radius); background: var(--dsm-soft-surface); }
+.reader-process-toggle { display: flex; flex-wrap: wrap; width: 100%; gap: .5rem 1rem; border: 0; padding: .7rem 1rem; text-align: left; background: transparent; color: inherit; cursor: pointer; }
+.reader-process-toggle span { font-size: .83rem; opacity: .65; }
+.reader-process-toggle::before { content: "›"; color: var(--dsm-muted); transform: rotate(0deg); }
+.reader-process-toggle[aria-expanded="true"]::before { transform: rotate(90deg); }
+.reader-process-list { list-style: none; padding: 0 .8rem; }
+.reader-process-item { padding: .45rem 0; border-top: 1px solid var(--dsm-border); }
+.reader-process-item > button { padding: .4rem; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.reader-process-body { padding: .5rem; }
+.reader-page-actions { display: flex; flex-wrap: wrap; gap: .5rem; padding: .5rem 0; }
+.reader-process > .reader-page-actions { padding: .8rem; }
+.reader-raw { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 32rem; overflow: auto; padding: .8rem; font-size: .8rem; }
+.reader-event-pages { min-width: 0; overflow-wrap: anywhere; }
+.reader-message .safe-markdown { max-width: 100%; }

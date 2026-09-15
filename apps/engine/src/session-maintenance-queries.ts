@@ -1,6 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { readRc1CanonicalEventText } from "@linmu/dsh-session-adapter-rc1";
 import { readCodexCanonicalEventText } from "@linmu/dsh-adapter-codex-read";
+import { SessionReaderQueries } from "./session-reader-queries.js";
+import type { SessionReaderPage, SessionReaderQuery } from "@linmu/dsh-session-contracts";
 
 import {
   canonicalEventV1Schema,
@@ -214,6 +216,16 @@ function getProjectRoots(database: DatabaseSync, id: string | null): readonly Pr
 export class SessionMaintenanceQueries {
   constructor(readonly database: DatabaseSync) {}
 
+  readonlyReader(): SessionReaderQueries { return new SessionReaderQueries(this.database); }
+  async readSessionReader(logicalSessionId: string, query: SessionReaderQuery = {}): Promise<SessionReaderPage> {
+    const reader = this.readonlyReader(), page = reader.page(logicalSessionId, query);
+    const detail = await this.readCanonicalDashboardSession(logicalSessionId, false);
+    if (!detail) throw new Error("Reader session disappeared");
+    reader.snapshot(logicalSessionId, page.snapshot);
+    const { events: _events, ...header } = detail;
+    return { ...page, detail: header };
+  }
+
   pendingOperations(logicalSessionId: string): number {
     const database = this.database;
     const row = database.prepare(
@@ -304,6 +316,7 @@ export class SessionMaintenanceQueries {
 
   /** Returns a static canonical transcript plus its immutable derivation lineage. */
   async readCanonicalDashboardSession(logicalSessionId: string,
+    includeEvents = true,
   ): Promise<CanonicalDashboardSessionDetail | undefined> {
     const database = this.database;
     const canonical = new SqliteCanonicalRepository(database);
@@ -316,10 +329,10 @@ export class SessionMaintenanceQueries {
     }
     const membership = this.workspaceMembership(logicalSessionId);
     const projectMembership = getProjectMembership(database, logicalSessionId);
-    const events = (database.prepare(
+    const events = includeEvents ? (database.prepare(
       `SELECT event_json FROM canonical_events
        WHERE logical_session_id = ? ORDER BY sequence, id`,
-    ).all(logicalSessionId) as unknown as CanonicalEventRow[]).map((row) => canonicalEventV1Schema.parse(JSON.parse(row.event_json)));
+    ).all(logicalSessionId) as unknown as CanonicalEventRow[]).map((row) => canonicalEventV1Schema.parse(JSON.parse(row.event_json))) : [];
     const parentRow = database.prepare(
       `SELECT child_session_id, parent_session_id, base_version_id, derivation_kind,
               trigger_run_id, trigger_operation_id, created_at

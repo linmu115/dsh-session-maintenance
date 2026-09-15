@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { jsonValueSchema } from "./schemas.js";
 import type { JsonValue } from "./model.js";
+import type { ExtensionObjectOwnership } from "./extension-directory.js";
 
 const id = z.string().min(1).max(256);
 export const extensionNamespaceSchema = z.string().regex(/^[a-z][a-z0-9.-]{0,79}$/u);
@@ -59,6 +60,8 @@ export interface ExtensionCapabilities { read: boolean; write: boolean; delete: 
 /** Trusted code registration; plugin payloads never install executable adapters. */
 export interface ExtensionDataAdapter {
   namespace: string; label: string; pluginVersions: readonly string[]; schemaVersions: readonly number[];
+  panelAdapter?: { id: string; label: string };
+  ownership?(content: ExtensionContent): ExtensionObjectOwnership;
   capabilities: ExtensionCapabilities;
   validate(content: ExtensionContent): void;
   summarize(body: JsonValue): string;

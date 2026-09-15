@@ -1,6 +1,6 @@
 # DSH Session Maintenance 插件
 
-将 DeepSeek Harness 接入 Maintenance 会话真源，提供本地原生历史、增量提交、会话维护入口和扩展数据桥。当前版本 **0.2.26-rc2.14**，配套 **Engine 0.1.33-rc2.18 / DSH 0.1.5-rc.2**。这是当前源码及副本组合，不代表已发布同版本公共安装包。
+将 DeepSeek Harness 接入 Maintenance 会话真源，提供本地原生历史、增量提交、会话维护入口和扩展数据桥。当前版本 **0.2.26-rc2.15**，配套 **Engine 0.1.33-rc2.19 / DSH 0.1.5-rc.2**。这是当前源码及副本组合，不代表已发布同版本公共安装包。
 
 ## 接入与使用
 
@@ -8,6 +8,10 @@
 2. 在 Launcher 的目标 Profile 中选择会话来源 `Session Maintenance`、端点 `auto`，0.1.5-rc.2 对应 Adapter 为 `dsh-0.1.5`。旧 `dsh-rc2` 不是此版本的别名。
 3. 从 Launcher 启动。Broker 准备 `persistent-native-v1` 会话空间，传入绑定 instance/profile/run 的宿主回执；验证通过后，DSH 直接读取已准备的原生历史。
 4. 从 DSH“设置 → 会话维护”或 Launcher 打开看板，查看逻辑工作区、正文、版本、Checkpoint、删除与恢复、运行状态及扩展数据。
+
+扩展数据以 Obsidian 系列、ThoughtDAG 等业务 Adapter 分组，选择实例后按工作区和所属会话展开。配置 `extensionPlugins` 的 `annotation-records` 成员（writer 为 `dsh-annotation-core`，版本与安装的 Core 一致）会启动轻量引用镜像，自动补齐并跟随业务变更，不复制完整文档或提交日志。镜像只读，编辑删除仍从原插件入口执行。
+
+会话阅读器默认保留问答正文，把运行上下文、技能目录与工具调用合并到“本轮过程”。展开后按需读取，大记录分段加载。更多细节见[本次需求规格](../../docs/superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md)。
 
 当前 Profile 使用可复用的完整原生历史，其物理目录由 Maintenance 管理并通过 DSH 持久化配置传入，不放在插件包里。启动按身份及摘要同步变更，先处理未提交尾部；普通打开不再临时取正文补写文件。正常退出保留原生空间，内存仍按需读取，历史可用性与旧 200 条正文预载限制无关。
 

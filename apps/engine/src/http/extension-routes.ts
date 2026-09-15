@@ -1,6 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { ExtensionDataError, extensionScopeSchema, extensionConnectSchema, extensionWriteSchema, extensionListSchema } from "@linmu/dsh-session-contracts";
+import { extensionDirectoryQuerySchema, extensionBusinessPanelQuerySchema, annotationMirrorSyncSchema } from "@linmu/dsh-session-contracts";
 import type { SessionMaintenanceEngine } from "../engine.js";
 import { readJsonBody } from "./body.js";
 
@@ -12,6 +13,11 @@ export async function routeExtensionRequest(request: IncomingMessage, response: 
   const send = (value: unknown) => { response.statusCode=200; response.setHeader("content-type","application/json; charset=utf-8"); response.end(JSON.stringify(value)); };
   const query = Object.fromEntries(url.searchParams);
   if (request.method === "GET") {
+    if (url.pathname === "/v1/extensions/business-panels") {
+      const panels = service.businessPanels(extensionBusinessPanelQuerySchema.parse(query));
+      send(panels.map(panel => ({ ...panel, instanceLabel: engine.instances.find(instance => instance.id === panel.scope.instanceId)?.displayName ?? panel.instanceLabel }))); return true;
+    }
+    if (url.pathname === "/v1/extensions/directory") { send(service.directory(extensionDirectoryQuerySchema.parse(query))); return true; }
     if (url.pathname === "/v1/extensions/panels") { send(service.panels()); return true; }
     if (url.pathname === "/v1/extensions/objects") { send(service.list(extensionListSchema.parse(query))); return true; }
     if (url.pathname === "/v1/extensions/object") {
@@ -24,6 +30,10 @@ export async function routeExtensionRequest(request: IncomingMessage, response: 
     }
   }
   if (request.method !== "POST") return false;
+  if (url.pathname === "/v1/extensions/annotation-sync") {
+    const body = annotationMirrorSyncSchema.parse(await readJsonBody(request, 512 * 1024));
+    send(await engine.runWrite("annotation-mirror-sync", () => service.syncAnnotation(body, engine))); return true;
+  }
   if (url.pathname === "/v1/extensions/connect") {
     const body = extensionConnectSchema.parse(await readJsonBody(request)); send(await engine.runWrite("extension-connect",()=>service.connect(body))); return true;
   }

@@ -3,6 +3,7 @@ import { MaintenanceSessionContext,registerSessionContext } from './session-cont
 import { MaintenanceGraph, registerMaintenanceGraph } from './session-graph.js';
 import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-knowledge.js';
 import { registerWorkspaceArchiveBridge } from './workspace-archive-bridge.js';
+import { registerAnnotationMirror, type AnnotationMirrorContext } from './annotation-mirror.js';
 import { installRc2LazyProjectionPersistence } from './rc2-lazy-persistence.js';
 import type { Context } from "@deepseek-ai/cordis";
 import { MaintenanceExtensionBridge, registerMaintenanceExtensionData } from "./extension-data.js";
@@ -120,6 +121,13 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
         const message = "[dsh-session-maintenance] 扩展数据暂未接通；保留本地未提交编辑，重新连接后再保存。";
         if (ctx.logger) ctx.logger.warn(message); else console.warn(message);
       }
+      registerAnnotationMirror(ctx as unknown as AnnotationMirrorContext, {
+        plugins: config.extensionPlugins, connection, runId: launchProfile.runId, connect: signal => extensions.connect(signal),
+        reportRetry: () => {
+          const message = '[dsh-session-maintenance] 引用目录暂未同步，将保留待同步记录并自动重试。';
+          if (ctx.logger) ctx.logger.warn(message); else console.warn(message);
+        },
+      });
     }
     const lazyStatus = (stage: LazyHydrationStage, sessionId?: string, error?: unknown) => {
       const suffix = sessionId === undefined ? "" : ` session=${sessionId}`;

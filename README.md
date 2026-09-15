@@ -2,7 +2,7 @@
 
 本地会话维护引擎：统一管理 DeepSeek Harness 会话的稳定身份、不可变版本、恢复点和可复用的原生历史，并为跨会话引用、会话贴纸、Obsidian 关联和 ThoughtDAG 提供结构化数据真源。Codex 原始会话仍由 Codex 管理，Maintenance 只读导入，不改写其日志。
 
-当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.18 / Maintenance 插件 0.2.26-rc2.14**。这组代码已安装到独立运行副本；自动验证与人工验收边界见[副本交付记录](docs/reports/2026-09-15-graph-reference-lifecycle-release.md)。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
+当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.19 / Maintenance 插件 0.2.26-rc2.15**。本次变更与验证范围见[扩展归属与阅读器交付记录](docs/reports/2026-09-15-extension-ownership-reader-release.md)。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
 
 全部配套项目的当前分支、源码版本和使用说明见 [GitHub 源码与 README 索引](docs/reports/2026-09-15-github-source-index.md)。
 
@@ -11,6 +11,8 @@
 - **会话历史**：按逻辑工作区浏览正文、比较版本、创建 Checkpoint、逻辑删除和恢复。DSH 未运行时也可使用 Maintenance 看板。
 - **持久原生空间**：Launcher 启动时先处理未提交尾部，再按身份及内容摘要同步真源差异。DSH 直接打开已准备的原生文件，正常退出保留该空间；历史可用性不受旧的 200 条正文预载限制影响，内存仍按需加载。
 - **独立扩展数据**：上游引用、Obsidian 关联、贴纸与 ThoughtDAG 使用统一存储中的独立对象类型和版本，由对应扩展 Adapter 解释。停用插件保留数据，图布局和笔记链接不混入原生聊天事件。
+- **按所属会话浏览扩展**：每个业务 Adapter 一个面板，Obsidian 系列汇总引用、贴纸和笔记关联，ThoughtDAG 管理主干图。选择实例与配置后，按工作区、所属会话逐层展开；披露记录在主干图下查看。X → Y 的引用归 Y，X 是来源。
+- **清爽的会话阅读**：真实提问与最终回答直接显示；运行上下文、技能目录和工具过程集中在默认折叠的“本轮过程”中。展开后按需读取，大结果分页；用户自行输入相同英文或标签不会被当成系统内容隐藏。
 - **每会话主干图**：卡片绑定真实会话，连线表示有方向的上下文关系。图由手动创建、跨会话引用或会话贴纸产生，不维护全部会话的全局总图。
 - **有界上下文披露**：引用固定到来源回复完整结束，选区标记重点。初始准备该回复所在问答轮次，AI 后续通过工具读取或搜索更早内容，受容量预算、固定上限和防循环规则约束。
 - **删除与归档同步**：解除引用会停止后续传递并更新图。归档会话会撤销以它为来源或目标的活动引用、清除相连待绑定边，并归档自身主干；恢复会话不会自动复活已撤销的引用。
@@ -24,7 +26,10 @@
 3. 在已完成的回复中选文，使用跨会话引用入口，先选工作区、再选目标会话，目标输入框显示引用气泡。创建独立会话贴纸时，也先选择新会话所属工作区。
 4. 在目标会话页切换“思维图”。空白处右键添加空卡片或已有会话；节点右键进入会话、查看来源或移除卡片；边上右键移除连接。空卡片在真正开始会话时才创建 DSH 会话，开始操作准备上下文并跳转，不自动发送。
 5. 来源选文的蓝色引用号可跳转到贴纸会话，右键可删除指定引用。同一选文的其他引用及普通红色贴纸保留。移除卡片或边会解除对应后续上下文关系，不删除真实会话。
-6. 从 Launcher 或 DSH“设置 → 会话维护”打开看板，在扩展数据入口查看对象、关系及归档/删除状态。可用面板和操作取决于实例安装情况与扩展兼容状态。
+6. 从 Launcher 或 DSH“设置 → 会话维护”打开看板，在扩展数据中选择实例与配置、Obsidian 系列或 ThoughtDAG，再展开工作区和会话。选择条目读取详情；主干图的披露记录需进一步展开。可用操作取决于对应成员的安装、启用和兼容状态。
+7. 阅读会话时，点击“本轮过程”查看运行材料与工具目录，点击具体记录读取正文或原始数据，长内容可继续分页。引用镜像在看板只读，需要修改或删除时使用原来的会话或 Obsidian 引用入口。
+
+启用 Core 的轻量引用同步需在 Maintenance 的 `extensionPlugins` 中配置 `annotation-records`，`writerId` 为 `dsh-annotation-core`，`pluginVersion` 与已安装 Core 一致。启动会补齐当前条目，后续变更自动同步；未映射会话或暂时离线会重试。镜像只保存有限选区、评论、定位与状态，不备份整篇笔记或提交日志。工作区归属跟随当前会话目录，未知归属显示在“待绑定 / 待核验”。
 
 Obsidian 的“关联笔记”用于双向导航；要向模型提供笔记内容，使用“引用到会话”。Obsidian 引用由指定内嵌会话领取，独立 DSH 窗口不会抢领。见 [Reference Suite](https://github.com/linmu115/dsh-obsidian-session-reference-suite/tree/codex/rc2-session-context-graph) 和 [Vault 插件](https://github.com/linmu115/obsidian-deepharness-bridge/tree/codex/dsh-0-1-5-rc2)。
 
@@ -34,14 +39,14 @@ Obsidian 的“关联笔记”用于双向导航；要向模型提供笔记内�
 
 | 组件 | 版本 | 责任 |
 | --- | --- | --- |
-| Maintenance Engine / DSH 插件 | 0.1.33-rc2.18 / 0.2.26-rc2.14 | 会话与扩展真源、原生空间、提交回执、看板 |
-| Annotation Core | 0.3.12-rc2.9 | 引用集、发送准备、按需读取及预算 |
-| Session Sticker Board | 0.7.3-rc2.15 | 独立会话贴纸、来源高亮、蓝色引用号 |
+| Maintenance Engine / DSH 插件 | 0.1.33-rc2.19 / 0.2.26-rc2.15 | 会话与扩展真源、原生空间、提交回执、看板 |
+| Annotation Core | 0.3.12-rc2.10 | 引用集、发送准备、按需读取及预算 |
+| Session Sticker Board | 0.7.3-rc2.16 | 独立会话贴纸、来源高亮、蓝色引用号 |
 | ThoughtDAG | 0.4.14-rc2.8 | 每会话主干图、节点和连线交互 |
-| Sidechat | 0.4.7-rc2.9 | 选区注释与侧边交互 |
-| Obsidian Bridge Lifecycle | 0.3.3-rc2.13 | 引用交接与生命周期 |
-| Obsidian Reference Adapter | 0.3.4-rc2.13 | Obsidian 来源接入 |
-| Obsidian Session Reference Suite | 0.3.4-rc2.15 | 匹配的成员组合与加载拓扑 |
+| Sidechat | 0.4.7-rc2.10 | 选区注释与侧边交互 |
+| Obsidian Bridge Lifecycle | 0.3.3-rc2.14 | 引用交接与生命周期 |
+| Obsidian Reference Adapter | 0.3.4-rc2.14 | Obsidian 来源接入 |
+| Obsidian Session Reference Suite | 0.3.4-rc2.16 | 匹配的成员组合与加载拓扑 |
 | Obsidian Vault 插件 | 0.6.4-rc2.6 | 笔记侧选择、标记、关联与内嵌会话 |
 
 Suite 和成员需要保持规定的父子加载关系。第三方原版 ThoughtDAG、旧 RC1 插件和当前定制 RC2 包不能仅按名称互换。Codex 执行与预算支持由可选的 [dsh-codex-runtime](https://github.com/linmu115/dsh-codex-runtime/tree/codex/rc2-session-context-graph) 提供。
@@ -98,4 +103,5 @@ Engine 默认从安装位置查找 Dashboard，也可传 `--dashboard-root <目�
 - [纵向布局与 DSH 主题](docs/reports/2026-09-15-vertical-graph-theme-release.md)
 - [蓝色引用删除、归档与节点开始恢复](docs/reports/2026-09-15-graph-reference-lifecycle-release.md)
 - [可拔插扩展数据需求](docs/superpowers/specs/2026-09-10-pluggable-extension-data-requirements.md)
+- [扩展归属目录与会话阅读器规格](docs/superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md)
 - [历史验证记录](docs/validation)

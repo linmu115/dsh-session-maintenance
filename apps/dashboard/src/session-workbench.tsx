@@ -1,24 +1,30 @@
 import { useEffect, useState } from "react";
 
-import type { CanonicalDashboardSessionDetail, SyncPlan } from "@linmu/dsh-session-contracts";
+import type { CanonicalDashboardSessionDetail, SyncPlan, SessionReaderApi, SessionReaderPage } from "@linmu/dsh-session-contracts";
 import { Badge, Button, EmptyState, LoadingState, Surface } from "@linmu/dsh-session-ui";
 
 import { canonicalOriginLabel } from "./canonical-labels.js";
 import { CanonicalEventView } from "./canonical-event-view.js";
+import { ReaderTranscript } from "./reader-process.js";
 import { LineageView } from "./lineage-view.js";
 import type { OperationsApi } from "./operations-pages.js";
 
 import { versionMetadataLabel } from "./maintenance-status.js";
 
-export interface WorkbenchApi extends Pick<OperationsApi, "listCanonicalWorkspaces"> {
+export interface WorkbenchApi extends Pick<OperationsApi, "listCanonicalWorkspaces">, Partial<SessionReaderApi> {
   getCanonicalSession(id: string, signal?: AbortSignal): Promise<CanonicalDashboardSessionDetail>;
 }
 
 export interface WorkbenchInitial {
   readonly canonical: CanonicalDashboardSessionDetail;
+  readonly reader?: SessionReaderPage;
 }
 
 export async function loadWorkbenchInitial(api: WorkbenchApi, logicalSessionId: string, signal?: AbortSignal): Promise<WorkbenchInitial> {
+  if (api.getSessionReader && api.getSessionReaderProcess && api.getSessionReaderEvent) {
+    const reader = await api.getSessionReader(logicalSessionId, {}, signal);
+    return { canonical: { ...reader.detail, events: [] }, reader };
+  }
   return { canonical: await api.getCanonicalSession(logicalSessionId, signal) };
 }
 
@@ -34,7 +40,7 @@ export function planApplyState(plan: SyncPlan | undefined): { readonly allowed: 
 type LoadState =
   | { readonly kind: "loading" }
   | { readonly kind: "error"; readonly message: string }
-  | { readonly kind: "ready"; readonly value: CanonicalDashboardSessionDetail };
+  | { readonly kind: "ready"; readonly value: WorkbenchInitial };
 
 export function SessionWorkbench(props: {
   readonly api: WorkbenchApi;
@@ -48,7 +54,7 @@ export function SessionWorkbench(props: {
     const controller = new AbortController();
     setState({ kind: "loading" });
     void loadWorkbenchInitial(props.api, props.logicalSessionId, controller.signal).then(
-      ({ canonical }) => { if (!controller.signal.aborted) setState({ kind: "ready", value: canonical }); },
+      (value) => { if (!controller.signal.aborted) setState({ kind: "ready", value }); },
       (error: unknown) => {
         if (!controller.signal.aborted) setState({ kind: "error", message: error instanceof Error ? error.message : "会话暂时不可用" });
       },
@@ -58,7 +64,7 @@ export function SessionWorkbench(props: {
 
   if (state.kind === "loading") return <Surface><LoadingState label="正在读取已保存的会话…" /></Surface>;
   if (state.kind === "error") return <Surface><EmptyState kind="warning" title="会话暂时不可用" description={state.message} action={<Button onClick={() => setRetry((value) => value + 1)}>重新加载会话</Button>} /></Surface>;
-  const detail = state.value;
+  const detail = state.value.canonical;
   const metadataState = versionMetadataLabel(detail.headMetadata);
   return <div className="canonical-workbench" data-testid="canonical-session-workbench">
     <Surface>
@@ -68,7 +74,7 @@ export function SessionWorkbench(props: {
       </header>
       {metadataState.warning ? <p role="status"><Badge tone="warning">{metadataState.label}</Badge> {metadataState.detail}</p> : null}
       <section className="canonical-transcript" aria-label="静态会话内容">
-        {detail.events.length === 0 ? <EmptyState title="还没有会话内容" description="该会话尚未保存可阅读的消息。" /> : detail.events.map((event) => <CanonicalEventView key={event.id} event={event} />)}
+        {state.value.reader ? <ReaderTranscript key={`${props.logicalSessionId}:${state.value.reader.snapshot}`} api={props.api as SessionReaderApi} logicalSessionId={props.logicalSessionId} initial={state.value.reader} onReload={() => setRetry(value => value + 1)} /> : detail.events.length === 0 ? <EmptyState title="还没有会话内容" description="该会话尚未保存可阅读的消息。" /> : detail.events.map((event) => <CanonicalEventView key={event.id} event={event} />)}
       </section>
       <details className="reader-details"><summary>来源与派生会话</summary><LineageView parent={detail.parent} children={detail.children} onOpenSession={props.onOpenSession} /></details>
       <details className="reader-details"><summary>版本、来源与标识</summary><dl className="canonical-metadata">

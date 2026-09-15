@@ -37,6 +37,7 @@ export * from "./recovery-session.js";
 export * from "./runtime-tail-recovery.js";
 export * from "./native-types.js";
 export * from "./lineage.js";
+export { readDshReaderPresentation, type DshReaderPresentation } from "./reader-presentation.js";
 
 
 export const adapter = defineDshSessionAdapter({
@@ -64,3 +65,4 @@ export { REQUIRED_CAPABILITIES, REQUIRED_PACKAGES } from "./probe.js";
 
 export { expectedV3ArtifactPath as v3NativeArtifactPath } from "./layout.js";
 export { validateV3 as validateV3Artifact } from "./official.js";
+export * from "./reader-storage.js";
