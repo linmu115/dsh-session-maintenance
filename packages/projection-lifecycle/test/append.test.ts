@@ -127,7 +127,13 @@ describe("ProjectionLifecycle.append", () => {
         idFactory: (kind) => `${kind}-${String(++nextId).padStart(3, "0")}`,
       }),
       source: { load: async (run) => ({ run, workspaces: [], sessions: [session(logicalSessionId)] }) },
-      adapter,
+      adapter: {
+        ...adapter,
+        // A format Adapter can recover a native title newer than the registered canonical metadata.
+        materialize: (input, output) => adapter.materialize({ ...input, sessions: input.sessions.map(item => ({
+          ...item, session: { ...item.session, title: "Restored projection title" },
+        })) }, output),
+      },
       bridge,
       canonicalEngine: { appendDsh },
       runtimeRoot: join(root, "runtime"),
@@ -167,6 +173,7 @@ describe("ProjectionLifecycle.append", () => {
     expect(await new ProjectionWriteAheadLog(handle.projectionRoot).get(invalidRevision.operationId)).toBeUndefined();
 
     await expect(lifecycle.append(handle, operation)).rejects.toMatchObject({ code: "MAINTENANCE_APPEND_FAILED" });
+    expect(appendDsh).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Restored projection title" }));
     const wal = new ProjectionWriteAheadLog(handle.projectionRoot);
     expect(await wal.get(operation.operationId)).toMatchObject({ state: "pending", projectionApplied: true });
     const projection = new JsonProjectionDirectory(handle.projectionRoot);

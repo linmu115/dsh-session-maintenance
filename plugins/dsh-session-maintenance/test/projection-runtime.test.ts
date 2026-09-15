@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
+import type { JsonValue } from "@linmu/dsh-session-contracts";
 
 import {
   InMemoryProjectionPersistenceOverlay,
@@ -10,6 +11,58 @@ import {
   ProjectionRuntimeRegistrar,
   RuntimeBrokerPluginClient,
 } from "../src/projection-runtime.js";
+
+function titleCacheFixture(
+  cachedTitle?: { readonly ver: number; readonly seq: number; readonly val: string | null },
+  cachedCreatedAt = 7,
+) {
+  const id = "native-title-cache";
+  const runId = "run-title-cache";
+  const cwd = resolve(tmpdir());
+  const records = new Map<string, unknown>();
+  if (cachedTitle !== undefined) records.set(id, {
+    identity: { formatVersion: 3, createdAt: cachedCreatedAt, cwd, isSeeded: false, inheritedEventCount: 0 },
+    rows: { title: cachedTitle },
+  });
+  const put = vi.fn(async (key: string, value: unknown) => { records.set(key, value); });
+  const persistence = {
+    root: cwd,
+    create: vi.fn(async () => undefined),
+    append: vi.fn(async () => undefined),
+    list: async () => [{ id }],
+  };
+  const overlay = new SessionPersistenceProjection({
+    sessionPersistence: persistence,
+    workspaceRegistry: {
+      replaceHeaderIndex: vi.fn(async () => undefined),
+      list: () => [],
+      create: vi.fn(async (path: string, title?: string) => ({
+        id: "workspace-title-cache", path, title: title ?? "",
+        setTitle: vi.fn(async () => undefined),
+        attachSession: vi.fn(async () => undefined),
+      })),
+      delete: vi.fn(async () => true),
+    },
+    sessionProjectionCache: { table: { get: (key: string) => records.get(key), put } },
+  }, `projection:${runId}`);
+  return {
+    persistence,
+    put,
+    row: () => (records.get(id) as { readonly rows: Record<string, unknown> }).rows,
+    attach: (metadata: Record<string, JsonValue>, persistentNative = true) => overlay.attach({
+      type: "catalog", schemaVersion: 2, runId, hotLimit: 0,
+      ...(persistentNative ? { nativeMode: "persistent-native-v1" as const } : {}),
+      sessions: [{
+        nativeSessionId: id, updatedAt: "2026-09-15T00:00:00.000Z", hot: false, eventCount: 10,
+        payload: {
+          ...metadata,
+          header: { version: 3, id, createdAt: 7, cwd, delegationDepth: 0, isSeeded: false },
+          inheritedEventCount: 0, events: [],
+        },
+      }],
+    }),
+  };
+}
 
 describe("DSH projection runtime", () => {
   it("loads by runId and loopback endpoint and attaches the projected Alpha2 catalog", async () => {
@@ -149,7 +202,7 @@ describe("DSH projection runtime", () => {
     expect(projectionCache.get("native-hot")).toMatchObject({
       identity: { formatVersion: 3, createdAt: 2, isSeeded: false, inheritedEventCount: 0 },
       rows: {
-        title: { ver: 1, seq: 1, val: "Hot title" },
+        title: { ver: 1, seq: -1, val: "Hot title" },
         sessionListMetadata: { ver: 1, seq: 1, val: { blank: false } },
       },
     });
@@ -164,6 +217,59 @@ describe("DSH projection runtime", () => {
     expect(append).toHaveBeenLastCalledWith("native-cold", [{ seq: 0 }]);
     expect(registrar.coldSessionIds(runId)).toEqual([]);
     await rm(persistenceRoot, { recursive: true, force: true });
+  });
+
+  it("restores a proven native title over a polluted equal-cut startup cache without reading histories", async () => {
+    const fixture = titleCacheFixture({ ver: 1, seq: 9, val: "DSH session session-old" });
+    await fixture.attach({ title: "Historical registration label", titleProjection: { title: "Latest logged title", eventSeq: 4, throughSeq: 9 } });
+    expect(fixture.row()).toMatchObject({ title: { ver: 1, seq: 9, val: "Latest logged title" } });
+    expect(fixture.persistence.create).not.toHaveBeenCalled();
+    expect(fixture.persistence.append).not.toHaveBeenCalled();
+  });
+
+  it("preserves a newer legacy overlay cache cut, but not a title from another session lifecycle", async () => {
+    const newer = titleCacheFixture({ ver: 1, seq: 12, val: "Renamed after catalog snapshot" });
+    await newer.attach({ title: "Old directory title", titleProjection: { title: "Title at catalog cut", eventSeq: 4, throughSeq: 9 } }, false);
+    expect(newer.row()).toMatchObject({ title: { ver: 1, seq: 12, val: "Renamed after catalog snapshot" } });
+    const unrelated = titleCacheFixture({ ver: 1, seq: 12, val: "Another lifecycle" }, 999);
+    await unrelated.attach({ title: "Old directory title", titleProjection: { title: "Title at catalog cut", eventSeq: 4, throughSeq: 9 } }, false);
+    expect(unrelated.row()).toMatchObject({ title: { ver: 1, seq: 9, val: "Title at catalog cut" } });
+  });
+
+  it("replaces an ahead cache after persistent materialization restores a shorter native file with the same header", async () => {
+    const restored = titleCacheFixture({ ver: 1, seq: 12, val: "Title from the superseded longer file" });
+    await restored.attach({ title: "Old directory label", titleProjection: { title: "Title in the restored version", eventSeq: 4, throughSeq: 9 } });
+    expect(restored.row()).toMatchObject({ title: { ver: 1, seq: 9, val: "Title in the restored version" } });
+    expect(restored.persistence.create).not.toHaveBeenCalled();
+    expect(restored.persistence.append).not.toHaveBeenCalled();
+    const noTitle = titleCacheFixture({ ver: 1, seq: 12, val: "Title removed by the restored version" });
+    await noTitle.attach({ title: "Canonical fallback", titleProjection: { title: null, eventSeq: null, throughSeq: 9 } });
+    expect(noTitle.row()).toMatchObject({ title: { ver: 1, seq: -1, val: "Canonical fallback" } });
+  });
+
+  it("keeps fallback names as unconsumed hints and refreshes them when the Adapter proves no native title", async () => {
+    const renamed = titleCacheFixture({ ver: 1, seq: 9, val: "Old Codex directory label" });
+    await renamed.attach({ title: "Renamed Codex directory label", titleProjection: { title: null, eventSeq: null, throughSeq: 9 } });
+    expect(renamed.row()).toMatchObject({ title: { ver: 1, seq: -1, val: "Renamed Codex directory label" } });
+    const olderAdapter = titleCacheFixture({ ver: 1, seq: 4, val: "Actual persisted title" });
+    await olderAdapter.attach({ title: "Unproven fallback" });
+    expect(olderAdapter.row()).toMatchObject({ title: { ver: 1, seq: 4, val: "Actual persisted title" } });
+    const missing = titleCacheFixture();
+    await missing.attach({ title: "Fallback without history proof" });
+    expect(missing.row()).toMatchObject({ title: { ver: 1, seq: -1, val: "Fallback without history proof" } });
+  });
+
+  it.each([
+    { title: "Native title", eventSeq: 4, throughSeq: 8 },
+    { title: "Native title", eventSeq: 10, throughSeq: 9 },
+    { title: "Native title", eventSeq: null, throughSeq: 9 },
+    { title: null, eventSeq: 4, throughSeq: 9 },
+    { title: " ", eventSeq: 4, throughSeq: 9 },
+  ])("rejects an unproven title checkpoint before writing it: %j", async titleProjection => {
+    const fixture = titleCacheFixture({ ver: 1, seq: 9, val: "Prior checkpoint" });
+    await expect(fixture.attach({ title: "Fallback", titleProjection })).rejects.toThrow("does not prove the catalog event cut");
+    expect(fixture.put).not.toHaveBeenCalled();
+    expect(fixture.row()).toMatchObject({ title: { val: "Prior checkpoint" } });
   });
 
   it("registers a live-created session once, preserves event order across retry, and drains without closing the run", async () => {

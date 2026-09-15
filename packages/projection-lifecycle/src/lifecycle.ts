@@ -42,6 +42,7 @@ import { projectionCloseCheckpoint, removeProjectionRun, type ProjectionCloseRec
 import { ProjectionLease, ProjectionLeaseError } from "./lease.js";
 import {
   JsonProjectionDirectory,
+  projectedSessionTitle,
   projectionRootFor,
   type CanonicalProjectionSource,
 } from "./materialize.js";
@@ -318,10 +319,11 @@ export class ProjectionLifecycle {
           if (reference.nativeSessionId === null || reference.status !== "resolved") {
             throw new Error(`Adapter did not resolve native identity for ${item.session.id}`);
           }
+          const payload = await directory.readSession(reference.nativeSessionId);
           const nativeRevision = projectedNativeRevision(
             this.adapter,
             item,
-            await directory.readSession(reference.nativeSessionId),
+            payload,
           );
           const projection = {
             schemaVersion: 1,
@@ -338,7 +340,7 @@ export class ProjectionLifecycle {
           catalogUpdatedAt.set(reference.nativeSessionId, item.session.updatedAt);
           sessions.set(reference.nativeSessionId, {
             projection,
-            title: item.session.title,
+            title: projectedSessionTitle(payload, item.session.title),
             tags: item.session.tags,
             archivedAt: item.session.archivedAt,
             workspaceId: item.workspaceId,

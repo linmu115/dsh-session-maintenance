@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — durable native session titles
+
+The Adapter extracts the final valid `session/title` event into append metadata and records a bounded title projection from the already restored prefix. Existing registration placeholders no longer replace durable native names during materialization; sources without native titles retain canonical names. The manifest fingerprint changes while the cache key remains stable, forcing one rebuild of older retained caches even when canonical heads did not change.
+
 ## 0.1.1 — canonical V3 projection and immutable resources
 
 Portable canonical histories now use a dedicated V3 builder. Ordered source receipts retain every canonical event verbatim, including reasoning and other log-only data; only policy-approved content reaches the model. Adjacent assistant/tool fragments keep content order, separate assistant fragments get distinct native steps, and aliases preserve original identities. Binary image/file sources become typed references with exact byte inventories. Broker prepare verifies and publishes immutable attachment objects before sessions become ready; the RC2 provider binds attachment-local to that same owned space.

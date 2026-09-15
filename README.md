@@ -2,7 +2,7 @@
 
 本地会话维护引擎：统一管理 DeepSeek Harness 会话的稳定身份、不可变版本、恢复点和可复用的原生历史，并为跨会话引用、会话贴纸、Obsidian 关联和 ThoughtDAG 提供结构化数据真源。Codex 原始会话仍由 Codex 管理，Maintenance 只读导入，不改写其日志。
 
-当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.21 / Maintenance 插件 0.2.26-rc2.17**。本次变更见[会话名称选择器兼容组合](docs/changes/2026-09-15-picker-title-cohort.md)。此前的[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)继续保留；当前组合的实际部署结果单独记录。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
+当前开发分支适配 **DSH 0.1.5-rc.2**，源码版本为 **Engine 0.1.33-rc2.22 / Maintenance 插件 0.2.26-rc2.18**。本次变更见[会话标题持久化与重启恢复](docs/changes/2026-09-15-durable-session-titles.md)。此前的[原生 Agent 上下文管理](docs/changes/2026-09-15-native-context-management.md)继续保留；当前组合的实际部署结果单独记录。源码版本不代表同版本已发布到 npm 或 GitHub Releases。
 
 全部配套项目的当前分支、源码版本和使用说明见 [GitHub 源码与 README 索引](docs/reports/2026-09-15-github-source-index.md)。
 
@@ -43,7 +43,7 @@ Obsidian 的“关联笔记”用于双向导航；要向模型提供笔记内�
 
 | 组件 | 版本 | 责任 |
 | --- | --- | --- |
-| Maintenance Engine / DSH 插件 | 0.1.33-rc2.21 / 0.2.26-rc2.17 | 会话与扩展真源、原生空间、提交回执、看板 |
+| Maintenance Engine / DSH 插件 | 0.1.33-rc2.22 / 0.2.26-rc2.18 | 会话与扩展真源、原生空间、提交回执、看板 |
 | Annotation Core | 0.3.12-rc2.12 | 引用集、发送准备、按需读取及预算 |
 | Session Sticker Board | 0.7.3-rc2.18 | 独立会话贴纸、来源高亮、蓝色引用号 |
 | ThoughtDAG | 0.4.14-rc2.9 | 每会话主干图、节点和连线交互 |

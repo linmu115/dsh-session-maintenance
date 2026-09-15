@@ -658,7 +658,7 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
     let seededTitles = 0;
     let seededMetadata = 0;
     for (const item of normalizedSessions) {
-      const seeded = await this.seedProjectionCache(item);
+      const seeded = await this.seedProjectionCache(item, catalog.nativeMode === "persistent-native-v1");
       seededTitles += seeded.title;
       seededMetadata += seeded.metadata;
     }
@@ -841,6 +841,7 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
 
   private async seedProjectionCache(
     item: ProjectionRuntimeSessionMetadata,
+    completeNativeFile: boolean,
   ): Promise<{ readonly title: 0 | 1; readonly metadata: 1 }> {
     const payload = object(item.payload, "DSH projected session");
     const header = object(payload.header ?? null, "DSH projected SessionHeader");
@@ -881,10 +882,40 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
         lastPromptAt: item.eventCount === 0 || !Number.isSafeInteger(updatedAt) ? null : updatedAt,
       },
     };
-    const title = typeof payload.title === "string" && payload.title.trim().length > 0 ? payload.title.trim() : null;
-    if (title !== null) rows.title = { ver: 1, seq, val: title };
+    const fallbackTitle = typeof payload.title === "string" && payload.title.trim().length > 0 ? payload.title.trim() : null;
+    const cached = rows.title !== null && typeof rows.title === "object" && !Array.isArray(rows.title)
+      ? rows.title as { readonly ver?: unknown; readonly seq?: unknown; readonly val?: unknown }
+      : undefined;
+    const validCached = cached?.ver === 1 && typeof cached.seq === "number" && Number.isSafeInteger(cached.seq) && cached.seq >= -1
+      && (cached.val === null || (typeof cached.val === "string" && cached.val.trim().length > 0));
+    if (payload.titleProjection !== undefined) {
+      // The Adapter folds the already-restored native prefix and supplies its
+      // exact cut. A canonical display name alone is never such a checkpoint.
+      const proof = object(payload.titleProjection, "DSH native title projection");
+      const absent = proof.title === null && proof.eventSeq === null;
+      const present = typeof proof.title === "string" && proof.title.trim().length > 0
+        && typeof proof.eventSeq === "number" && Number.isSafeInteger(proof.eventSeq) && proof.eventSeq >= 0 && proof.eventSeq <= seq;
+      if (proof.throughSeq !== seq || (!absent && !present)) {
+        throw new TypeError("DSH native title projection does not prove the catalog event cut");
+      }
+      // Persistent startup has recovered pending tails and materialized the
+      // complete canonical version. An ahead cache may belong to a longer,
+      // superseded file, so its sequence cannot outrank this proven prefix.
+      // Legacy overlays may still retain a newer native checkpoint.
+      if (completeNativeFile || !validCached || (cached.seq as number) <= seq) {
+        rows.title = present
+          ? { ver: 1, seq, val: proof.title }
+          : fallbackTitle === null ? { ver: 1, seq, val: null } : { ver: 1, seq: -1, val: fallbackTitle };
+      }
+    } else if (!validCached) {
+      // Older Adapters may only expose catalog metadata. It is a listing hint,
+      // so hydration must still replay every actual title event over it.
+      if (fallbackTitle !== null) rows.title = { ver: 1, seq: -1, val: fallbackTitle };
+      else delete rows.title;
+    }
+    const titleRow = rows.title as { readonly val?: unknown } | undefined;
     await this.context.sessionProjectionCache.table.put(item.nativeSessionId, { identity, rows });
-    return { title: title === null ? 0 : 1, metadata: 1 };
+    return { title: typeof titleRow?.val === "string" ? 1 : 0, metadata: 1 };
   }
 }
 

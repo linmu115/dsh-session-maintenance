@@ -5,6 +5,7 @@ import { KNOWN_SESSION_EVENT_TYPES, validateV3Events } from "./official.js";
 import { assertInformational } from "./references-remap.js";
 import { parseV3LogicalSessionHeader, validateV3Lineage } from "./lineage.js";
 import { manifest } from "./manifest.js";
+import { v3TitleProjection } from "./session-title.js";
 export async function normalizeV3Append(operation:NativeAppendOperation, evidence?:AdapterEvidencePort):Promise<CanonicalAppendOperation> {
  const payload=record(operation.payload);if(typeof payload.logicalSessionId!=="string"||!Array.isArray(payload.events)||typeof payload.instanceId!=="string")throw new TypeError("V3 append requires logicalSessionId, instanceId and events");
  const header=parseV3LogicalSessionHeader(payload.header,operation.nativeSessionId);validateV3Lineage(header,count(payload.inheritedEventCount));
@@ -28,5 +29,6 @@ export async function normalizeV3Append(operation:NativeAppendOperation, evidenc
    source:{platform:"dsh",instanceId:payload.instanceId,sessionId:operation.nativeSessionId,eventId:String(event.seq),cursor:String(end)},
    extensions:{adapterId:manifest.id,nativeFormatId:FORMAT_ID,nativeFormatVersion:3,dshEventType:event.type,...(payload.header===undefined?{}:{nativeHeader:payload.header,inheritedEventCount:payload.inheritedEventCount??0}),...(!known?{heldOut:true}:{})}});
  }
- return {runId:operation.runId,operationId:operation.operationId,nativeSessionId:operation.nativeSessionId,logicalSessionId:payload.logicalSessionId as LogicalSessionId,baseVersionId:typeof payload.baseVersionId==="string"?payload.baseVersionId as SessionVersionId:null,events,metadata:{nativeRevision:end,nativeFormatVersion:3,nativeFormatId:FORMAT_ID,observedAt:operation.observedAt,canonicalHistoryMode:"native",...(payload.header===undefined?{}:{nativeHeader:payload.header,inheritedEventCount:payload.inheritedEventCount??0})}};
+ const title=v3TitleProjection(payload.events as unknown as readonly SessionFormatEvent[],end-1).title;
+ return {runId:operation.runId,operationId:operation.operationId,nativeSessionId:operation.nativeSessionId,logicalSessionId:payload.logicalSessionId as LogicalSessionId,baseVersionId:typeof payload.baseVersionId==="string"?payload.baseVersionId as SessionVersionId:null,events,metadata:{nativeRevision:end,nativeFormatVersion:3,nativeFormatId:FORMAT_ID,observedAt:operation.observedAt,canonicalHistoryMode:"native",...(title===null?{}:{sessionTitle:title}),...(payload.header===undefined?{}:{nativeHeader:payload.header,inheritedEventCount:payload.inheritedEventCount??0})}};
 }

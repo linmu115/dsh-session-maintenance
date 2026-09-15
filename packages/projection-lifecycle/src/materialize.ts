@@ -80,6 +80,12 @@ function objectPayload(value: JsonValue): { readonly [key: string]: JsonValue } 
   return value as { readonly [key: string]: JsonValue };
 }
 
+/** Consume only the Adapter's projected metadata; native title events are interpreted by the Adapter. */
+export function projectedSessionTitle(payload: JsonValue, fallback: string): string {
+  const title = objectPayload(payload).title;
+  return typeof title === "string" && title.trim().length > 0 ? title : fallback;
+}
+
 function catalogEntry(
   nativeSessionId: NativeSessionId,
   payload: JsonValue,

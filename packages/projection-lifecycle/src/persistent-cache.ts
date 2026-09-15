@@ -28,6 +28,7 @@ import type { StatusLog, StatusSpanHandle } from "@linmu/dsh-session-status-log"
 
 import {
   JsonProjectionDirectory,
+  projectedSessionTitle,
   type IncrementalCanonicalProjectionSource,
 } from "./materialize.js";
 
@@ -302,13 +303,14 @@ export class PersistentProjectionCache {
           const nativeSessionId = nativeIds.get(item.session.id)!;
           const nativeDigest = projectionManifest.sessionDigests[nativeSessionId];
           if (nativeDigest === undefined) throw new Error(`Projection manifest omitted ${nativeSessionId}`);
+          const payload = await directory.readSession(nativeSessionId);
           return {
             schemaVersion: 1,
             logicalSessionId: item.session.id,
             nativeSessionId,
             canonicalHeadVersionId: item.session.headVersionId,
             canonicalUpdatedAt: item.session.updatedAt,
-            title: item.session.title,
+            title: projectedSessionTitle(payload, item.session.title),
             tags: item.session.tags,
             archivedAt: item.session.archivedAt,
             workspaceId: item.workspaceId,
@@ -317,7 +319,7 @@ export class PersistentProjectionCache {
             nativeRevision: projectedNativeRevision(
               this.adapter,
               item,
-              await directory.readSession(nativeSessionId),
+              payload,
             ),
             nativeDigest,
           };
@@ -428,13 +430,14 @@ export class PersistentProjectionCache {
       }
       const nativeDigest = partialManifest.sessionDigests[nativeSessionId];
       if (nativeDigest === undefined) throw new Error(`Projection delta manifest omitted ${nativeSessionId}`);
+      const payload = await directory.readSession(nativeSessionId);
       currentByLogical.set(item.session.id, {
         schemaVersion: 1,
         logicalSessionId: item.session.id,
         nativeSessionId,
         canonicalHeadVersionId: item.session.headVersionId,
         canonicalUpdatedAt: item.session.updatedAt,
-        title: item.session.title,
+        title: projectedSessionTitle(payload, item.session.title),
         tags: item.session.tags,
         archivedAt: item.session.archivedAt,
         workspaceId: item.workspaceId,
@@ -443,7 +446,7 @@ export class PersistentProjectionCache {
         nativeRevision: projectedNativeRevision(
           this.adapter,
           item,
-          await directory.readSession(nativeSessionId),
+          payload,
         ),
         nativeDigest,
       });

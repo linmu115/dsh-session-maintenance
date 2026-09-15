@@ -6,6 +6,7 @@ import { materializePortableV3, restorePortableCanonical } from "./portable-v3.j
 import { migrateLegacy } from "./legacy-import.js";
 import { validateV3 } from "./official.js";
 import { manifest } from "./manifest.js";
+import { v3TitleProjection } from "./session-title.js";
 export { rc1NativeSessionId as v3NativeSessionId };
 export { digest } from "./common.js";
 export function catalogDigest(sessionDigests:Readonly<Record<string,string>>, workspaceIds:readonly string[]):string {return digest({sessions:Object.entries(sessionDigests).sort(([a],[b])=>a.localeCompare(b)),workspaces:[...new Set(workspaceIds)].sort()});}
@@ -53,8 +54,9 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
   const converted=firstV3===0?undefined:portable??migrateLegacy({header,events:raw,inheritedEventCount:count(cut)});
   const all=[...(converted?.artifact.events??[]),...tail.map(e=>{if(!isRecord(e.rawPayload))throw new TypeError("V3 event evidence is unavailable");return e.rawPayload as unknown as SessionFormatEvent;})];
   const artifact=validateV3({header:converted?.artifact.header??header,events:all,inheritedEventCount:converted?.artifact.inheritedEventCount??count(cut)});
+  const titleProjection=v3TitleProjection(artifact.events,artifact.events.length-1);
   const legacyAliases=[...new Set(item.events.map(e=>e.source.sessionId).filter(id=>id!==nativeId))];
-  const payload={...base,instanceId:input.run.instanceId,profileId:input.run.profileId,runId:input.run.id,nativeFormatVersion:3,nativeFormatId:FORMAT_ID,header:artifact.header,events:artifact.events,inheritedEventCount:artifact.inheritedEventCount,legacyNativeSessionIds:legacyAliases,
+  const payload={...base,title:titleProjection.title??item.session.title,titleProjection,instanceId:input.run.instanceId,profileId:input.run.profileId,runId:input.run.id,nativeFormatVersion:3,nativeFormatId:FORMAT_ID,header:artifact.header,events:artifact.events,inheritedEventCount:artifact.inheritedEventCount,legacyNativeSessionIds:legacyAliases,
    conversionLedger:{...(converted?.ledger??{}),canonicalDigest:canonicalDigest(item),canonicalEventCount:item.events.length,eventsDigest:digest(artifact.events),nativeRevision:artifact.events.length,sourceExports:exported.map(({events,...receipt})=>receipt)}};
   await output.writeSession(nativeId,payload as unknown as JsonValue);sessionDigests[nativeId]=digest(payload);
  }

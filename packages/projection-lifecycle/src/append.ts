@@ -21,7 +21,7 @@ import { ProjectionWriteAheadLog } from "./wal.js";
 
 export interface ActiveProjectionSession {
   projection: ProjectionSession;
-  readonly title: string;
+  title: string;
   readonly tags: readonly string[];
   readonly archivedAt: string | null;
   readonly workspaceId: LogicalWorkspaceId | null;
@@ -132,8 +132,9 @@ export async function commitProjectionAppend(input: {
     if (existingReceipt.runId !== operation.runId || existingReceipt.nativeSessionId !== operation.nativeSessionId) {
       throw new ProjectionAppendError("OPERATION_RECEIPT_MISMATCH", "Operation receipt belongs to another projection target");
     }
-    const needsReconciliation = session.projection.nativeRevision < existingReceipt.projectionRevision
-      || session.projection.logicalSessionId !== existingReceipt.logicalSessionId;
+    const needsReconciliation = session.projection.nativeRevision <= existingReceipt.projectionRevision
+      && (session.projection.nativeRevision < existingReceipt.projectionRevision
+        || session.projection.logicalSessionId !== existingReceipt.logicalSessionId);
     if (needsReconciliation) {
       const reconciliationSpan = await input.statusLog.start({
         runId: context.handle.run.id,
@@ -160,6 +161,18 @@ export async function commitProjectionAppend(input: {
           })
         : undefined;
       try {
+        const wal = await context.wal.get(operation.operationId);
+        if (wal === undefined || !wal.projectionApplied
+          || wal.operation.runId !== existingReceipt.runId || wal.operation.nativeSessionId !== existingReceipt.nativeSessionId
+          || wal.operation.nativeRevision !== existingReceipt.projectionRevision) {
+          throw new Error("Committed append reconciliation requires its verified durable WAL operation");
+        }
+        // Reconcile metadata from the exact committed operation, never from the caller's retry payload.
+        const normalized = await input.adapter.normalizeAppend(wal.operation, input.evidencePort);
+        const metadata = normalized.metadata !== null && typeof normalized.metadata === "object" && !Array.isArray(normalized.metadata)
+          ? normalized.metadata as Readonly<Record<string, import("@linmu/dsh-session-contracts").JsonValue>> : undefined;
+        const title = typeof metadata?.sessionTitle === "string" && metadata.sessionTitle.trim().length > 0
+          ? metadata.sessionTitle : session.title;
         if (session.projection.logicalSessionId !== existingReceipt.logicalSessionId) {
           await appendBridge(input.bridge).switchLogicalSession(
             context.handle.runtime,
@@ -182,9 +195,9 @@ export async function commitProjectionAppend(input: {
         };
         await input.runRepository.upsertProjectionSession(advanced);
         session.projection = advanced;
+        session.title = title;
         session.authorityScope = "maintenance";
-        const wal = await context.wal.get(operation.operationId);
-        if (wal !== undefined && wal.state !== "committed" && wal.projectionApplied) {
+        if (wal.state !== "committed") {
           await context.wal.markCommitted(operation.operationId, existingReceipt, input.clock());
         }
         if (derivationReconciliationSpan !== undefined) {
@@ -276,6 +289,9 @@ export async function commitProjectionAppend(input: {
     const canonicalHistoryMode = metadata?.canonicalHistoryMode === "portable"
       ? "portable" as const
       : "native" as const;
+    // Native format details stay in the Adapter; this field is its validated metadata result.
+    const title = typeof metadata?.sessionTitle === "string" && metadata.sessionTitle.trim().length > 0
+      ? metadata.sessionTitle : session.title;
     const evidenceCount = Array.isArray(metadata?.evidenceRefs)
       ? metadata.evidenceRefs.length
       : 0;
@@ -316,7 +332,7 @@ export async function commitProjectionAppend(input: {
     const canonical = await input.canonicalEngine.appendDsh({
       logicalSessionId: normalized.logicalSessionId,
       ...(normalized.baseVersionId === null ? {} : { baseVersionId: normalized.baseVersionId }),
-      title: session.title,
+      title,
       tags: session.tags,
       archivedAt: archiveState ? archiveState.archivedAt : session.archivedAt,
       workspaceId: session.workspaceId,
@@ -370,6 +386,7 @@ export async function commitProjectionAppend(input: {
     };
     await input.runRepository.upsertProjectionSession(advanced);
     session.projection = advanced;
+    session.title = title;
     if (deriving) session.authorityScope = "maintenance";
     await context.wal.markCommitted(operation.operationId, receipt, input.clock());
     if (derivationSpan !== undefined) {
