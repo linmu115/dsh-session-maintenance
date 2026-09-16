@@ -1,0 +1,127 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "DSH Session Maintenance · 主要使用流程",
+    "locale": "zh-CN"
+  },
+  "lanes": [
+    {
+      "id": "main",
+      "label": "正常使用"
+    },
+    {
+      "id": "exception",
+      "label": "边界与恢复"
+    }
+  ],
+  "nodes": [
+    {
+      "id": "import",
+      "lane": "main",
+      "col": 0,
+      "type": "backend",
+      "label": "选择来源",
+      "sublabel": "只读导入并定位身份",
+      "width": 170
+    },
+    {
+      "id": "prepare",
+      "lane": "main",
+      "col": 1,
+      "type": "backend",
+      "label": "准备运行空间",
+      "sublabel": "固定版本与运行绑定",
+      "width": 170
+    },
+    {
+      "id": "run",
+      "lane": "main",
+      "col": 2,
+      "type": "backend",
+      "label": "原生会话运行",
+      "sublabel": "插件报告实际追加",
+      "width": 170
+    },
+    {
+      "id": "receipt",
+      "lane": "main",
+      "col": 3,
+      "type": "backend",
+      "label": "持久化并核验",
+      "sublabel": "版本与回执可追溯",
+      "width": 170
+    },
+    {
+      "id": "read",
+      "lane": "main",
+      "col": 4,
+      "type": "backend",
+      "label": "阅读与恢复",
+      "sublabel": "问答、过程及扩展目录",
+      "width": 170
+    },
+    {
+      "id": "recover",
+      "lane": "exception",
+      "col": 2,
+      "type": "external",
+      "label": "中断或能力不匹配",
+      "sublabel": "保留回执，恢复前核对",
+      "width": 170
+    }
+  ],
+  "edges": [
+    {
+      "id": "e0",
+      "from": "import",
+      "to": "prepare"
+    },
+    {
+      "id": "e1",
+      "from": "prepare",
+      "to": "run"
+    },
+    {
+      "id": "e2",
+      "from": "run",
+      "to": "receipt"
+    },
+    {
+      "id": "e3",
+      "from": "receipt",
+      "to": "read"
+    },
+    {
+      "id": "recover-in",
+      "from": "run",
+      "to": "recover",
+      "label": "中断或能力不匹配",
+      "role": "branch",
+      "variant": "dashed"
+    },
+    {
+      "id": "recover-out",
+      "from": "recover",
+      "to": "prepare",
+      "label": "核对后重试",
+      "role": "return",
+      "variant": "dashed"
+    }
+  ],
+  "mainPath": [
+    "import",
+    "prepare",
+    "run",
+    "receipt",
+    "read"
+  ],
+  "semanticChecks": {
+    "allowedRoots": [
+      "import"
+    ],
+    "allowedTerminals": [
+      "read"
+    ]
+  }
+}

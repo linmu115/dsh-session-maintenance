@@ -1,0 +1,162 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DSH Session Maintenance · 职责与数据归属",
+    "locale": "zh-CN"
+  },
+  "components": [
+    {
+      "id": "source",
+      "type": "external",
+      "label": "Codex / DSH 来源",
+      "sublabel": "只读导入 · 原生格式",
+      "pos": [
+        60,
+        100
+      ],
+      "size": [
+        200,
+        84
+      ]
+    },
+    {
+      "id": "adapter",
+      "type": "backend",
+      "label": "平台 Adapter",
+      "sublabel": "解析身份 · 版本 · 回执",
+      "pos": [
+        400,
+        100
+      ],
+      "size": [
+        200,
+        84
+      ]
+    },
+    {
+      "id": "engine",
+      "type": "database",
+      "label": "Maintenance Engine",
+      "sublabel": "规范事件 · 版本 · 领域服务",
+      "pos": [
+        740,
+        100
+      ],
+      "size": [
+        200,
+        84
+      ]
+    },
+    {
+      "id": "launcher",
+      "type": "backend",
+      "label": "Launcher 与插件",
+      "sublabel": "运行绑定 · 生命周期",
+      "pos": [
+        400,
+        360
+      ],
+      "size": [
+        200,
+        84
+      ]
+    },
+    {
+      "id": "dashboard",
+      "type": "frontend",
+      "label": "维护看板",
+      "sublabel": "所属会话目录 · 过程阅读",
+      "pos": [
+        1080,
+        100
+      ],
+      "size": [
+        200,
+        84
+      ]
+    },
+    {
+      "id": "business",
+      "type": "external",
+      "label": "业务插件",
+      "sublabel": "Core · Obsidian · ThoughtDAG",
+      "pos": [
+        740,
+        360
+      ],
+      "size": [
+        200,
+        84
+      ]
+    }
+  ],
+  "connections": [
+    {
+      "id": "c0",
+      "from": "source",
+      "to": "adapter",
+      "label": "解析原生资料"
+    },
+    {
+      "id": "c1",
+      "from": "adapter",
+      "to": "engine",
+      "label": "规范记录与证据"
+    },
+    {
+      "id": "c2",
+      "from": "launcher",
+      "to": "engine",
+      "label": "准备 / 追加 / 恢复",
+      "fromSide": "top",
+      "toSide": "left",
+      "via": [
+        [
+          500,
+          260
+        ],
+        [
+          680,
+          260
+        ],
+        [
+          680,
+          142
+        ]
+      ],
+      "labelAt": [
+        600,
+        248
+      ]
+    },
+    {
+      "id": "c3",
+      "from": "engine",
+      "to": "dashboard",
+      "label": "分页目录与正文"
+    },
+    {
+      "id": "c4",
+      "from": "business",
+      "to": "engine",
+      "label": "领域操作与轻量对象",
+      "fromSide": "top",
+      "toSide": "bottom",
+      "labelAt": [
+        880,
+        280
+      ]
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "阅读约定",
+      "items": [
+        "箭头标明具体交接；位置不表示运行顺序。",
+        "外部依赖用项目 ID 关联；本图不保存另一项目的全文。"
+      ]
+    }
+  ]
+}

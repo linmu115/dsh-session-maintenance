@@ -113,3 +113,7 @@ Engine 默认从安装位置查找 Dashboard，也可传 `--dashboard-root <目�
 - [可拔插扩展数据需求](docs/superpowers/specs/2026-09-10-pluggable-extension-data-requirements.md)
 - [扩展归属目录与会话阅读器规格](docs/superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md)
 - [历史验证记录](docs/validation)
+
+## 项目维护地图
+
+从[项目地图](docs/project/map.md)查当前能力、设计、接口与实现；验证记录独立保存。机器检索入口为 [project.yaml](docs/project/project.yaml)。资料改变时只维护相关条目，页面按需生成。

@@ -1,0 +1,126 @@
+schema: project-map/v1
+project_id: 0d05f813-7097-47d9-9e88-3d523bb537d6
+name: DSH Session Maintenance
+kind: software
+map: map.md
+sources:
+- source_id: source-1
+  path: ../../README.md
+  format: markdown
+- source_id: source-2
+  path: ../superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md
+  format: markdown
+- source_id: source-3
+  path: ../superpowers/specs/2026-09-15-native-agent-context-management.md
+  format: markdown
+- source_id: source-4
+  path: ../superpowers/specs/2026-09-10-session-context-graph-requirements.md
+  format: markdown
+- source_id: source-5
+  path: ../changes/2026-09-15-native-context-management.md
+  format: markdown
+- source_id: source-6
+  path: ../reports/2026-09-15-extension-ownership-reader-release.md
+  format: markdown
+bindings:
+- id: REQ-product
+  kind: requirement
+  title: 维护哪些会话能力
+  source_id: source-1
+  heading: 当前功能
+  status: current
+  summary: 当前 RC2 会话导入、版本、持久运行、扩展目录与原生上下文能力。
+- id: REQ-ownership
+  kind: requirement
+  title: 扩展条目归哪个会话
+  source_id: source-2
+  heading: 业务 Adapter 与所属会话
+  status: current
+  summary: 按工作区、接收会话和业务条目浏览；引用来源不是所有者。
+- id: REQ-reader
+  kind: requirement
+  title: 长会话怎样阅读
+  source_id: source-2
+  heading: 会话阅读器
+  status: current
+  summary: 问答直接展示，本轮过程折叠、分级按需加载，保留可信来源角色。
+- id: REQ-context
+  kind: requirement
+  title: 原生上下文管理的授权边界
+  source_id: source-3
+  heading: 1. 已确认的产品决定
+  status: current
+  summary: 固定授权、活动窗口与实际保留材料分开；不修改历史真源。
+- id: REQ-source
+  kind: requirement
+  title: 引用固定来源和完成位置
+  source_id: source-4
+  heading: 3. 功能需求：跨会话引用
+  status: current
+  summary: 用户确定源版本和已完成回复截止，后续源更新不自动扩大范围。
+- id: MOD-boundaries
+  kind: module
+  title: Engine、插件、Adapter 与 Launcher 的分工
+  source_id: source-1
+  heading: 数据与组件边界
+  status: current
+  summary: Engine 维护事实；平台解析进 Adapter；插件负责宿主接入。
+- id: IMP-usage
+  kind: implementation
+  title: 现在怎样导入、运行与阅读
+  source_id: source-1
+  heading: 使用流程
+  status: current
+  summary: 当前工作区使用路径；是否已部署需另查运行副本回执。
+- id: IMP-versions
+  kind: implementation
+  title: 当前配套版本
+  source_id: source-1
+  heading: 当前配套版本
+  status: current
+  summary: 以当前 README 与包清单为准；旧验收版本不会随之升级。
+- id: VER-context
+  kind: verification
+  title: 原生上下文实现的历史验证
+  source_id: source-5
+  heading: 验证对应
+  status: current
+  summary: 2026-09-15 合成执行与持久回执验证；对应报告中的旧包组。
+- id: VER-reader
+  kind: verification
+  title: 目录与阅读器的历史交付验证
+  source_id: source-6
+  heading: 验证与部署
+  status: current
+  summary: 历史 129 项相关回归及副本交付记录；不代表今日复测。
+archify:
+  architecture:
+    source: diagrams/architecture.json
+    node_records:
+      source:
+      - OBJ-session
+      adapter:
+      - MOD-boundaries
+      engine:
+      - IF-extension
+      launcher:
+      - IMP-usage
+      dashboard:
+      - REQ-reader
+      business:
+      - IF-graph
+  workflow:
+    source: diagrams/workflow.json
+    node_records:
+      import:
+      - OBJ-session
+      prepare:
+      - IMP-usage
+      run:
+      - MOD-boundaries
+      receipt:
+      - IF-native-context
+      read:
+      - REQ-reader
+      recover:
+      - IMP-usage

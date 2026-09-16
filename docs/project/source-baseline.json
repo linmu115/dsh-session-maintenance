@@ -1,0 +1,60 @@
+{
+  "as_of": "2026-09-16",
+  "repositories": [
+    {
+      "repository": "dsh-session-maintenance",
+      "path": "../..",
+      "branch": "codex/rc2-session-context-graph",
+      "commit": "5f3c066ffaba8751e377442da044c90a38cf22a5"
+    }
+  ],
+  "selected_sources": [
+    {
+      "path": "../../README.md",
+      "sha256": "cb2e41fa0255e00a7c62d58cf14545b7fd2473c13d5d21a7abaef2a1a907c4a7",
+      "bound_headings": [
+        "当前功能",
+        "数据与组件边界",
+        "使用流程",
+        "当前配套版本"
+      ]
+    },
+    {
+      "path": "../superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md",
+      "sha256": "13f0a49abc8585141d3b9a1e147d64dd04564d0a05b13edeae44e7b232f6bcee",
+      "bound_headings": [
+        "业务 Adapter 与所属会话",
+        "会话阅读器"
+      ]
+    },
+    {
+      "path": "../superpowers/specs/2026-09-15-native-agent-context-management.md",
+      "sha256": "9aaa05d99b69ca2016549dee323ca4ed00b04ad1584513951371b0b9cf14d74f",
+      "bound_headings": [
+        "1. 已确认的产品决定"
+      ]
+    },
+    {
+      "path": "../superpowers/specs/2026-09-10-session-context-graph-requirements.md",
+      "sha256": "671d89b30fe5c68fa810fcff7da6d8a266026c5fcc0a2590500c3064f36602c9",
+      "bound_headings": [
+        "3. 功能需求：跨会话引用"
+      ]
+    },
+    {
+      "path": "../changes/2026-09-15-native-context-management.md",
+      "sha256": "bf84087008a918a6728e948d5272a61417980e44f418eb72ddeed75ef989c950",
+      "bound_headings": [
+        "验证对应"
+      ]
+    },
+    {
+      "path": "../reports/2026-09-15-extension-ownership-reader-release.md",
+      "sha256": "618ee76060630e19f64bc8d76a2115d1a2ae3b6aa772ab8a4217da483fad1e3d",
+      "bound_headings": [
+        "验证与部署"
+      ]
+    }
+  ],
+  "note": "Adoption baseline before adding the map. Runtime deployment was not inspected. Refresh only affected entries when sources change."
+}
