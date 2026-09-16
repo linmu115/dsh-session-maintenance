@@ -52,7 +52,20 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
    base={...base,anchorAliases:portable.anchorAliases,portableAttachments:portable.attachments as unknown as JsonValue};raw=[];
   }
   const converted=firstV3===0?undefined:portable??migrateLegacy({header,events:raw,inheritedEventCount:count(cut)});
-  const all=[...(converted?.artifact.events??[]),...tail.map(e=>{if(!isRecord(e.rawPayload))throw new TypeError("V3 event evidence is unavailable");return e.rawPayload as unknown as SessionFormatEvent;})];
+  const nativePrefix=[...(converted?.artifact.events??[])];
+  // Catalog/cache hints are lost when DSH cold-folds a session. Carry the
+  // portable title in the generated native log, after the source projection so
+  // existing message anchors remain unchanged. A derived tail's original offset
+  // distinguishes the new title-bearing prefix from older title-less prefixes.
+  const portableOrigin=portable!==undefined||item.session.originKind==="codex-mirror"||item.session.originKind==="codex-derived";
+  const firstTailSeq=tail.length===0?undefined:record(tail[0]!.rawPayload).seq;
+  const needsTitle=portableOrigin && (tail.length===0||firstTailSeq===nativePrefix.length+1)
+   && v3TitleProjection(nativePrefix,nativePrefix.length-1).title===null;
+  if(needsTitle && typeof item.session.title==="string" && item.session.title.trim().length>0) {
+   nativePrefix.push({type:"session/title",seq:nativePrefix.length,time:nativePrefix.at(-1)?.time??createdAt,
+    data:{title:item.session.title,messageSeqs:[],source:{kind:"user"}}});
+  }
+  const all=[...nativePrefix,...tail.map(e=>{if(!isRecord(e.rawPayload))throw new TypeError("V3 event evidence is unavailable");return e.rawPayload as unknown as SessionFormatEvent;})];
   const artifact=validateV3({header:converted?.artifact.header??header,events:all,inheritedEventCount:converted?.artifact.inheritedEventCount??count(cut)});
   const titleProjection=v3TitleProjection(artifact.events,artifact.events.length-1);
   const legacyAliases=[...new Set(item.events.map(e=>e.source.sessionId).filter(id=>id!==nativeId))];
