@@ -19,3 +19,16 @@ Deployment targets only the RC2 copy's binding and the shared Maintenance Engine
 The DSH plugin remains 0.2.26-rc2.22. No session, graph, or reference content is
 deleted to repair startup. Runtime verification evidence is recorded locally in
 `D:/AI/DeepSeekHarness-Plugin/artifacts/rc2-copy-startup-20260916`.
+
+Further startup checks found a previous unfinalized runtime and seven obsolete
+Codex desktop migration aliases. The old runtime was recovered using the official
+lifecycle provider after verifying its process and listener were gone.
+
+Engine 0.1.33-rc2.28 includes the path fix and ignores a deleted project's migration
+alias only when the migrated server project is absent, no desktop project record
+remains, and no current local thread references either identity. It keeps all
+existing checks for missing active projects and ambiguous memberships. Codex
+source files are read only; no aliases are deleted from the source.
+
+Regression cases cover unused aliases, remaining desktop project records, and
+remaining desktop/server thread memberships, plus the project mapping suite.

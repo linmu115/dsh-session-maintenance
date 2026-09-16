@@ -152,8 +152,21 @@ export async function readCodexDesktopProjectDirectory(
       kind: id.startsWith("g-p-") ? "mixed" : "local", memberThreadIds: [] });
   }
   const knownServerIds = new Set(database.projects.map(project => project.id));
+  const referencedIds = new Set<string>();
+  for (const thread of database.threads) {
+    if (thread.project_id !== null) referencedIds.add(thread.project_id);
+    const explicit = desktopAssignments[thread.id];
+    if (!migration.threadAssignmentsMigrated && object(explicit) && string(explicit.projectId)) referencedIds.add(explicit.projectId);
+  }
   for (const [desktopId, serverId] of desktopToServer) {
-    if (migration.projectsMigrated && !knownServerIds.has(serverId)) issues.push(`Mapped server project is unavailable: ${desktopId}.`);
+    if (migration.projectsMigrated && !knownServerIds.has(serverId)) {
+      // Desktop retains migration aliases after deleting a project. An unused
+      // alias is historical bookkeeping, not an incomplete active directory.
+      if (!Object.hasOwn(desktopProjects, desktopId) && !referencedIds.has(desktopId) && !referencedIds.has(serverId)) {
+        desktopToServer.delete(desktopId);
+        serverToDesktop.delete(serverId);
+      } else issues.push(`Mapped server project is unavailable: ${desktopId}.`);
+    }
   }
   for (const project of database.projects) {
     if (!string(project.id) || !string(project.name)) { issues.push("Invalid server project record."); continue; }

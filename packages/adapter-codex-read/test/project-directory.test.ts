@@ -121,6 +121,29 @@ describe("explicit Codex desktop project membership", () => {
     expect(result.issues.length).toBeGreaterThan(0);
   });
 
+  it("ignores unused migration aliases of deleted projects without changing source files", async () => {
+    const f = await fixture();
+    f.state["app-server-project-id-by-legacy-project-id-by-host"] = { [f.hostKey]: { "desktop-a": "server-a", "g-p-cloud": "server-b", "deleted-project": "deleted-server" } };
+    await f.save();
+    const before = await Promise.all([readFile(f.path), readFile(f.databasePath)]);
+    const result = await f.read();
+    expect(result.safeForSelection).toBe(true);
+    expect(result.projects).toHaveLength(3);
+    expect(result.assignments["thread-a"]?.projectId).toBe("desktop-a");
+    expect(await Promise.all([readFile(f.path), readFile(f.databasePath)])).toEqual(before);
+  });
+
+  it.each(["desktop-record", "desktop-membership", "server-membership"])("rejects a missing mapped project with remaining %s", async mode => {
+    const f = await fixture();
+    f.state["app-server-project-id-by-legacy-project-id-by-host"] = { [f.hostKey]: { "deleted-project": "deleted-server" } };
+    if (mode === "desktop-record") f.state["local-projects"] = { "deleted-project": { id: "deleted-project", name: "Still present", rootPaths: [] } };
+    if (mode === "desktop-membership") f.state["thread-project-assignments"] = { "thread-a": { projectId: "deleted-project", projectKind: "local" } };
+    if (mode === "server-membership") f.sql("UPDATE threads SET project_id='deleted-server' WHERE id='thread-a'");
+    await f.save();
+    expect((await f.read()).issues).toContain("Mapped server project is unavailable: deleted-project.");
+    expect((await f.read()).safeForSelection).toBe(false);
+  });
+
   it("does not interpret unreadable directory data as an empty safe selection", async () => {
     const f = await fixture();
     await writeFile(f.path, "{broken");
