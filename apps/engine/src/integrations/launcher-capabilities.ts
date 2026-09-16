@@ -50,7 +50,10 @@ export async function inspectLauncherCapabilities(dataRoot: string): Promise<{ d
     if (expected !== active) return { digest: null, issue: "能力信息与当前 Launcher 进程不一致，请打开所选 Launcher 后重新检查。" };
     const digest = await executableDigest(expected);
     if (digest !== receipt.data.executable.sha256) return { digest: null, issue: "Launcher 程序在能力检查后已改变，请重新启动 Launcher 并修复接入。" };
+    // Use the verified filesystem identity, not the launcher's spelling of it.
+    // Windows can report a different path casing after a normal restart.
     const { processId: _processId, ...stable } = receipt.data;
+    stable.executable = { path: expected, sha256: digest };
     return { digest: createHash("sha256").update(JSON.stringify(stable)).digest("hex"), issue: null };
   } catch { return { digest: null, issue: "Launcher 的能力信息或程序不可读取，请重新检查 Launcher 安装。" }; }
 }

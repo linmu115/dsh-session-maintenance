@@ -223,6 +223,20 @@ describe("instance onboarding", () => {
     expect(JSON.parse(await readFile(join(f.dataRoot, "runtime-lifecycle.json"), "utf8"))).toEqual(hook);
   });
 
+  it.runIf(process.platform === "win32")("keeps a binding valid across Launcher path casing and separator changes", async () => {
+    const f = await fixture(); const id = (await f.discover()).targets[0]!.target.id;
+    await f.service.action(id, "connect");
+    const before = await inspectLauncherCapabilities(f.dataRoot);
+    expect(before.issue).toBeNull();
+    const receiptPath = join(f.dataRoot, "external-lifecycle-capabilities.json");
+    const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+    for (const path of [process.execPath.toUpperCase(), process.execPath.toLowerCase().replaceAll("\\", "/")]) {
+      await json(receiptPath, { ...receipt, executable: { ...receipt.executable, path } });
+      expect(await inspectLauncherCapabilities(f.dataRoot)).toEqual(before);
+      expect(await resolveRuntimeIntegration(f.stateRoot, { schemaVersion: 1, phase: "prepare", instanceId: "instance-a", profileId: "web", runtimeVersion: "0.1.2-rc.1", web: true })).toMatchObject({ adapterId: "dsh-rc1" });
+    }
+  });
+
   it("requires a verified Launcher binary and rechecks upgrades before launch", async () => {
     const f = await fixture(); const id = (await f.discover()).targets[0]!.target.id;
     await f.service.action(id, "connect");
