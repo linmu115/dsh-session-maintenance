@@ -32,3 +32,16 @@ source files are read only; no aliases are deleted from the source.
 
 Regression cases cover unused aliases, remaining desktop project records, and
 remaining desktop/server thread memberships, plus the project mapping suite.
+
+Final verification (2026-09-16): 56 tests passed; both affected TypeScript packages
+built successfully; portable release verification checked 40 artifact files.
+Engine 0.1.33-rc2.28 was installed and the copy was started through Launcher.
+The prepare hook succeeded, the new run reached `running`, the Web page returned
+HTTP 200, ThoughtDAG reported protocol 2 with storage/session capabilities, and
+all six extension namespaces were ready. The previous run was formally recovered.
+Both Engine replacements preserved canonical history exactly; subsequent normal
+startup synchronization completed. No real model request was made.
+
+The package source was committed. Unrelated in-progress `docs/project` edits were
+left untouched, so the package honestly records `sourceDirty: true`; executable
+changes for this repair are tracked in commits `013d13c` and `53964bd`.
