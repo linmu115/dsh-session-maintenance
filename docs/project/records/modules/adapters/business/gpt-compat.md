@@ -39,6 +39,6 @@ Engine 从已提交会话版本建立只读摘要索引，按实例/Profile/会�
 
 Launcher 验证插件版本、能力与构件哈希后，向插件报告原生扩展连接；该报告与其他业务插件配置合并。停用保留索引，不能靠更改 Harness ID 表示插件开启。Core 回执为原 DSH adapter/format，另有 `sessionFormat.extensions: ["gpt-compat"]`。
 
-历史误建的 `dsh-gpt-compat` 事件身份和旧 run 审计保留，兼容读取后通过 Canonical 正常物化。新引擎不注册该 Harness，旧运行须先由旧版本正常收尾。不得就地改写运行中的回执、历史事件或缓存归属。当前配套源码为 Engine 0.1.33-rc2.30 / 插件 0.2.26-rc2.24；部署结果见本轮报告。
+历史误建的 `dsh-gpt-compat` 事件身份和旧 run 审计保留，兼容读取后通过 Canonical 正常物化。新引擎不注册该 Harness，旧运行须先由旧版本正常收尾。不得就地改写运行中的回执、历史事件或缓存归属。当前配套源码为 Engine 0.1.33-rc2.30 / 插件 0.2.26-rc2.24；副本已经按该组合启动并通过实际 API、Core 绑定和历史恢复验收；当前 1 个会话索引含 5 次请求投影，详细结果见本轮报告。
 
 合同 [[IF-extension]]；此次误解和纠正见 [[HIST-gpt-extension-boundary]]。早期独立 Harness 实现与通过的工具测试属于历史尝试，不能作为当前职责设计的依据。

@@ -1,3 +1,6 @@
 # This fixture is the byte-for-byte published lifecycle wrapper used by the
 # integration adoption check. Do not normalize its verified bytes on checkout.
 apps/engine/test/fixtures/trace-external-lifecycle.mjs -text whitespace=trailing-space,space-before-tab,cr-at-eol
+
+# History ledger fingerprints use stable LF bytes.
+docs/project/history/** text eol=lf

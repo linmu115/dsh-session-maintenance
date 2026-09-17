@@ -26,3 +26,5 @@ ExtensionDataService 按 namespace 和实例/Profile 接入声明检查兼容。
 Adapter ownership 解释所属会话，目录索引可重建而不改对象 revision；工作区沿现有成员关系。一个业务面板可聚合多个 namespace，部分可用不等于全部可写。
 
 [ExtensionDataService](../../../../../../apps/engine/src/extensions/service.ts)、[目录服务](../../../../../../apps/engine/src/extensions/directory.ts)、[镜像同步](../../../../../../apps/engine/src/extensions/annotation-sync.ts)为实现。合同 [[IF-extension]]，接入目录 [[INT-business-directory]]。
+
+GPT 扩展 gpt-compat 由已提交会话版本建立只读索引，按实例/Profile 和所属会话隔离。相同版本不重复生成修订，密文保留在原始会话而不进入索引正文；见 [[INT-gpt-format]]。

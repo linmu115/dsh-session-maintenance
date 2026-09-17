@@ -20,3 +20,16 @@ Engine 与插件 TypeScript 检查通过。发布包保留一个 DSH V3 worker�
 ## 部署
 
 目标限定 0.1.5-rc.2 副本 / web。候选版本 Engine 0.1.33-rc2.30 / 插件 0.2.26-rc2.24。当前阶段源码和发布包验证完成；实际安装、绑定与启动验收结果将在下方追加。主实例和其它插件保持原构件，升级前后核对文件指纹。
+
+
+### 副本安装与运行验收
+
+已安装 Engine 0.1.33-rc2.30 / 插件 0.2.26-rc2.24，19 项构件重新生成回执，repair 返回 connected、无问题。Core 回执保持宿主 ID/format，加 extensions=[gpt-compat]。用户启动副本后，run-cadef66e-7ab5-4261-a5c8-089fa7e3b650 为 running，adapter_id=dsh-0.1.5。
+
+运行前后 50 个会话；49 个已有身份保留，1 个零轮次、无标题和待办的空白启动占位会话由同目录的新空白会话替代。原 GPT 验收会话的 50 条事件前缀逐项相等。实际 Core probe compatible、六项能力可用、issues=[]；其它插件及主实例 1097 项文件指纹一致。
+
+真实看板 API 的 Harness 列表为 dsh-0.1.5 / dsh-alpha2 / dsh-rc1 / dsh-rc2，没有 GPT Harness。扩展面板 GPT 兼容插件 ready，包含 1 个所属会话索引、0 冲突；当前数据是 5 次请求投影，检查点和两类压缩计数均为 0，未虚构压缩记录。详情返回 7 行预览，未包含 encrypted_content。
+
+页面按业务面板 API 动态呈现，无 GPT 隐藏白名单。浏览器自动化连接本轮不可用，因此完成的是实际运行接口和前端数据路径核对，没有声称截图验收。未新增消耗 API 配额的模型调用；本轮验证的是适配职责、数据保存和恢复。
+
+本机备份、完整回执与验收结果位于 GPT 项目的私有 artifacts/gpt-extension-upgrade-20260917，不提交真实会话或密钥。

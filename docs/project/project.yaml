@@ -161,6 +161,7 @@ archify:
       - INT-stickers
       - INT-obsidian
       business-adapter:
+      - INT-gpt-format
       - MOD-business
       - INT-business-directory
       extension-store:

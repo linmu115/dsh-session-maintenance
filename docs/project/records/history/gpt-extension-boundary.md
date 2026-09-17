@@ -5,7 +5,7 @@ title: 将 GPT 插件误当成 Harness 的纠正过程
 date: 2026-09-17
 status: current
 modules: [Harness 适配, 扩展数据]
-outcome: 职责已纠正；源码验证通过，副本升级结果见本轮报告
+outcome: 已纠正并部署到副本；原会话恢复与扩展索引验证通过
 summary: 曾把新增持久化事件误判为新 Harness，用户指出栏目与职责错位后，改为宿主 Adapter 加插件扩展解析和索引。
 applicability: DSH 0.1.5-rc.2，GPT 插件 0.5.0-dev.3，Maintenance Engine rc2.29 到 rc2.30。
 coverage_note: Codex 于 2026-09-17 整理；涵盖本任务的独立适配要求、此前实现发布、栏目反馈和明确纠正；仅收录公开事件定位，不复制原会话载荷。
@@ -40,6 +40,6 @@ related_records: [INT-gpt-format, IF-extension, IF-harness-adapter, IMP-current]
 
 ## 结果与边界
 
-当前接口规则见 [[IF-extension]] 与 [[IF-harness-adapter]]，实现见 [[INT-gpt-format]]。聚焦验证覆盖高级 Harness 列表中无 GPT 条目、扩展数据面板实际注册、原始事件往返、历史身份兼容读取、Core 绑定、启停和实例隔离。副本升级与运行结果写入 `docs/reports/2026-09-17-gpt-extension-boundary.md`，不能用源码测试代替部署证据。
+当前接口规则见 [[IF-extension]] 与 [[IF-harness-adapter]]，实现见 [[INT-gpt-format]]。聚焦验证覆盖高级 Harness 列表中无 GPT 条目、扩展数据面板实际注册、原始事件往返、历史身份兼容读取、Core 绑定、启停和实例隔离。副本已安装 rc2.30 / rc2.24 并启动，Harness 为 dsh-0.1.5，扩展数据出现 GPT 兼容插件，现有 1 个会话索引；50 个会话可读，旧验收事件前缀保持一致。完整副本升级与运行结果写入 `docs/reports/2026-09-17-gpt-extension-boundary.md`，不能用源码测试代替部署证据。
 
 旧提交、旧 run、来源事件身份和当时的报告保留；不修改历史使其看似从未出错。当前地图取消“新增插件事件必须创建 Harness Adapter”的规则。后续接入先判断被适配对象是宿主实例还是插件数据，并把栏目、注册表和身份断言加入验证。
