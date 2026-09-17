@@ -23,4 +23,6 @@ sources:
 
 Codex 来源由 Codex 管理，Maintenance 只读导入为镜像。仅显示或引用镜像不会派生会话；首次向其 DSH 投影实际追加，由 Engine 创建 Maintenance 所有的派生身份。来源更新推进镜像，既有引用仍固定原版本，派生内容不被覆盖。
 
+待实现的显式学习双端绑定模式 [[REQ-learning-roundtrip]] 将限定例外：两端受控追加推进同一逻辑身份，DSH 续写不派生，绑定 Codex 不另建镜像。当前默认镜像行为尚未改变，不能把此需求解释为已上线能力。
+
 唯一共享定义在 [Canonical 类型](../../../../packages/contracts/src/canonical.ts)；实现依据 [追加与派生](../../../../packages/canonical-session-engine/src/dsh-append.ts)。运行空间见 [[OBJ-runtime]]，业务对象见 [[OBJ-extension]]。
