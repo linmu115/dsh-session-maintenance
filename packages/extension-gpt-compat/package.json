@@ -1,5 +1,5 @@
 {
-  "name": "@linmu/dsh-session-adapter-gpt-compat",
+  "name": "@linmu/dsh-session-extension-gpt-compat",
   "version": "0.1.0",
   "private": true,
   "type": "module",

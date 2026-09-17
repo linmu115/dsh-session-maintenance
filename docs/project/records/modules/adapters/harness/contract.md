@@ -29,14 +29,10 @@ DSH codec 不打开 Maintenance SQLite、不读 Codex Home、不选择逻辑身�
 
 [[MOD-canonical]]、[[MOD-runtime]]、[[MOD-continuation]]、[[MOD-graph]]、[[MOD-native-context]] 只消费需要的能力，已知实现和证据见 [[INT-harness-directory]]。
 
-## 插件扩展会话格式：先构建 Adapter
+## Harness 与插件扩展分别适配
 
-插件若新增持久化事件、检查点、重放字段或改变已有事件语义，接入 Maintenance 前必须先实现独立 Harness Adapter。只使用既有业务对象 namespace 的插件仍走业务扩展合同，不因此新建会话格式。
+Harness Adapter 适配宿主实例的会话迁移、格式和生命周期。插件新增持久化事件、检查点或重放字段，不自动构成一个新 Harness；应先构建 [[IF-extension]] 的扩展数据 Adapter，再由宿主格式组合受信的扩展解析能力。
 
-- 分配独立 Adapter ID 与 NativeSessionCodec formatId，声明宿主、插件版本和可验证能力。
-- 在自己的 codec 中解析和校验事件，保留不透明字段、事件序号与引用。必要事件不得删去或标记 ignorable 以绕过验证。
-- 实现并验证物化、规范化追加、原生文件往返、持久恢复和证据读取；可复用已验证的底层机制，但不能全局替换普通 Adapter 的事件词表或依赖。
-- Engine 按实例/profile 的实际插件构成、探针及构件回执选择 Adapter；运行、恢复与 Core 绑定使用同一身份。发布包必须包含其 worker。
-- 验证插件开启/关闭、普通 Adapter 隔离、未知版本、损坏数据、跨事件引用和进程恢复。历史格式由数据所属 Adapter 处理，模型热切换不改变持久格式。
+只有宿主本身的原生格式族或生命周期发生不兼容变化，才评估新的 Harness 身份。插件 namespace、schema、版本、能力和事件所有权独立声明；不能把工具测试通过当成职责分类已经正确。
 
-当前实例见 [[INT-gpt-format]]。更改绑定身份会改变持久空间键，需要正式修复接入；不能直接覆盖运行中的回执。
+GPT 当前实现见 [[INT-gpt-format]]，原来的“插件新增事件必须创建独立 Harness Adapter”规则已撤销。误解与纠正保留在 [[HIST-gpt-extension-boundary]]。

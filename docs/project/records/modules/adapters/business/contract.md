@@ -29,3 +29,11 @@ writerId 和 expectedRevision 必须匹配，references 不是归属。停用/�
 **领域限制**：managedSchema 2 图走 [[IF-graph]]，annotation-records 走可信同步，annotation-context 走 [[IF-native-context]]；普通保存不能绕过。通用 Adapter 的 context:false 表示不自动供给模型，不否认独立原生上下文能力。
 
 接入目录 [[INT-business-directory]]；改合同同步 DTO、schema、ownership、兼容声明及具体消费者。
+
+## 插件的原生扩展事件
+
+兼容其它插件的会话数据，应先构建扩展数据 Adapter。声明 namespace、pluginVersions、schemaVersions、capabilities、ownership；若数据嵌入宿主日志，用 nativeEvents 声明 hostAdapterId、精确事件类型集合和校验器，并在受信组合层提供完整 codec。插件 payload 不能自行注册可执行代码。
+
+Harness 负责宿主实例迁移和 framing，扩展 Adapter 负责插件字段语义；添加 checkpoint/replay 事件不产生新的 Harness ID。只读索引可按实例/Profile/逻辑会话建立，原始事件仍保留在版本真源，索引不能成为另一套重放状态。
+
+实例见 [[INT-gpt-format]]。新增接入必须验证栏目和所有权、启停、旧事件恢复、密文往返、非法引用、并发修订及宿主身份不变。

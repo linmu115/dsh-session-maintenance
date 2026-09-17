@@ -12,7 +12,7 @@ import s from "@deepseek-ai/schemastery";
 import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
 import type { JsonValue } from "@linmu/dsh-session-contracts";
 
-import { connectionDescriptorPath, launcherProjectionProfile, launcherCoreBinding, normalizeConfig, type Config as PluginConfig } from "./config.js";
+import { connectionDescriptorPath, launcherProjectionProfile, launcherCoreBinding, normalizeConfig, withLauncherNativeExtensions, type Config as PluginConfig } from "./config.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
 import { launchDashboard } from "./dashboard-launcher.js";
 import { createProxyHandler, FileConnectionProvider, RestrictedEngineProxy } from "./engine-proxy.js";
@@ -54,7 +54,7 @@ interface HostContext extends CoreRuntimeContext {
 }
 
 export async function apply(ctx: HostContext, input: PluginConfig): Promise<void> {
-  const config = normalizeConfig({ ...input, pinnedAdapterId: input.pinnedAdapterId || null });
+  const config = normalizeConfig(withLauncherNativeExtensions({ ...input, pinnedAdapterId: input.pinnedAdapterId || null }));
   const launchProfile = launcherProjectionProfile(config);
   const coreBinding = launcherCoreBinding(config, launchProfile);
   const descriptorPath = connectionDescriptorPath(config.connectionId);

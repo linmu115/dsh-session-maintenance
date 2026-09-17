@@ -13,6 +13,7 @@ export async function routeExtensionRequest(request: IncomingMessage, response: 
   const send = (value: unknown) => { response.statusCode=200; response.setHeader("content-type","application/json; charset=utf-8"); response.end(JSON.stringify(value)); };
   const query = Object.fromEntries(url.searchParams);
   if (request.method === "GET") {
+    await engine.runWrite("native-extension-index", () => service.refreshNativeIndexes());
     if (url.pathname === "/v1/extensions/business-panels") {
       const panels = service.businessPanels(extensionBusinessPanelQuerySchema.parse(query));
       send(await Promise.all(panels.map(async panel => ({ ...panel, instanceLabel:

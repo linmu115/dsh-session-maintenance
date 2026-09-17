@@ -46,8 +46,8 @@ individual product patch release. When the native persistence schema or
 lifecycle becomes incompatible, publish a new Adapter ID and review its exact
 field mapping; do not silently reinterpret an existing cache.
 
-## Plugin-defined session formats
+## Plugin extension data and embedded events
 
-Plugins that add durable events, replay fields, checkpoints or new event semantics must first implement a separately identified Harness Adapter. Pin the host/plugin versions, capabilities and native format ID; preserve opaque payloads and sequence references; validate materialization, append, native codec, durable recovery and evidence handling. Reuse common mechanics without globally replacing another adapter's codec or marking required events ignorable. Select the adapter through verified per-profile discovery and attestation, and ship its worker. Business-only extensions retain their existing extension adapter contract.
+A Harness Adapter identifies the host session migration and lifecycle contract. A plugin adding durable events, checkpoints or replay fields must first implement an **ExtensionDataAdapter**, not a new Harness identity. Declare its namespace, supported plugin/schema versions, ownership, capabilities and native event validation. Compose trusted event codecs with the existing host framing; preserve raw payloads, offsets and references. The extension directory may maintain a read-only derived index, while the native session remains the source of replay state.
 
-The current example is [dsh-gpt-compat](../../packages/adapter-dsh-gpt-compat/README.md).
+Only an incompatible host format/lifecycle family warrants a new Harness Adapter ID. Never globally replace the ordinary decoder or mark required plugin events ignorable. The [GPT extension example](../../packages/extension-gpt-compat/README.md) retains `dsh-0.1.5` and registers `gpt-compat` under extension data. The earlier independent-Harness rule was a design misunderstanding and is superseded.

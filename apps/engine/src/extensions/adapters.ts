@@ -1,3 +1,4 @@
+import { gptCompatExtensionAdapter } from "@linmu/dsh-session-extension-gpt-compat";
 import { z } from "zod";
 import { ANNOTATION_RECORDS_NAMESPACE, annotationMirrorRecordSchema, NATIVE_CONTEXT_NAMESPACE, nativeContextStateSchema } from "@linmu/dsh-session-contracts";
 import { ExtensionDataError, sessionContextRecordSchema, SESSION_CONTEXT_NAMESPACE, managedGraphSchema, legacyManagedGraphSchema, graphDisclosureLogSchema, stickerObjectSchema, knowledgeLinkSchema, type ExtensionDataAdapter } from "@linmu/dsh-session-contracts";
@@ -140,4 +141,4 @@ export const nativeContextAdapter: ExtensionDataAdapter = {
     label:source.title,text:`${source.enabled?'启用':'暂停'} · 固定上限 ${source.cutoffEventId} · ${source.window===null?'授权范围内按需读取':`${source.window.length} 个披露区间`}`
   }))}; },
 };
-export const builtInExtensionAdapters = [thoughtDagAdapter, annotationAdapter, obsidianLinksAdapter, upstreamAdapter, stickerAdapter, annotationRecordsAdapter, nativeContextAdapter] as const;
+export const builtInExtensionAdapters = [thoughtDagAdapter, annotationAdapter, obsidianLinksAdapter, upstreamAdapter, stickerAdapter, annotationRecordsAdapter, nativeContextAdapter, gptCompatExtensionAdapter] as const;

@@ -44,7 +44,7 @@ export class UserRequestIndexService {
 
   private async current(input: ScopeInput) {
     const run = await this.engine.projectionRunRepository.getProjectionRun(input.runId as RunId);
-    if (!run || run.state !== "running" || !["dsh-0.1.5", "dsh-gpt-compat"].includes(run.adapterId))
+    if (!run || run.state !== "running" || !["dsh-0.1.5"].includes(run.adapterId))
       return fail("REQUEST_SCOPE_UNAVAILABLE", "当前运行尚未就绪或不支持原生请求索引");
     const identity = this.engine.sessionQueries.resolveProjectionSessionIdentity(input.runId, input.targetNativeSessionId);
     if (!identity || identity.status !== "active") return fail("REQUEST_SCOPE_UNAVAILABLE", "会话未接入当前运行");

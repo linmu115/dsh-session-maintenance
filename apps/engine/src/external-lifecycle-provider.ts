@@ -297,7 +297,7 @@ export class MaintenanceExternalLifecycleProvider {
     const patch = stringify([{
       id: "session-persistence-jsonl",
       config: { root: run.persistenceRoot },
-    }, ...((pinnedAdapterId === "dsh-0.1.5" || pinnedAdapterId === "dsh-gpt-compat") ? [{id:"attachment-local",config:{dshHome:dirname(run.persistenceRoot)}}] : [])]);
+    }, ...((pinnedAdapterId === "dsh-0.1.5") ? [{id:"attachment-local",config:{dshHome:dirname(run.persistenceRoot)}}] : [])]);
     const patchHandle = await open(patchPath, "w", 0o600);
     try {
       await patchHandle.writeFile(patch, "utf8");
@@ -349,6 +349,7 @@ export class MaintenanceExternalLifecycleProvider {
         env: {
           ...(integration?.coreBinding ? {DSH_SESSION_MAINTENANCE_CORE_RECEIPT:integration.coreBinding.path,DSH_SESSION_MAINTENANCE_CORE_RECEIPT_SHA256:integration.coreBinding.sha256} : {}),
           DSH_SESSION_MAINTENANCE_LAUNCH_PROFILE: JSON.stringify(metadata),
+          DSH_SESSION_MAINTENANCE_NATIVE_EXTENSIONS: JSON.stringify(integration?.packageVersions["dsh-gpt-compat"] ? [{namespace:"gpt-compat",pluginVersion:integration.packageVersions["dsh-gpt-compat"],writerId:"maintenance-gpt-compat-index"}] : []),
           DSH_SESSION_MAINTENANCE_CONNECTION_PRIMARY: join(this.stateRoot, "connection.json"),
         },
       },

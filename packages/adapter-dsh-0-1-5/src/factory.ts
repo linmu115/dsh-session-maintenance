@@ -5,7 +5,7 @@ import { recoverV3RuntimeTail } from "./runtime-tail-recovery.js";
 import { validateV3 } from "./official.js";
 import { verifyV3NativeContextMaterials, verifyV3NativeContextRelease } from "./native-context-evidence.js";
 
-/** Share V3 mechanics while registering a distinct vocabulary and owner. */
+/** Compose trusted native event extensions into a host service without global mutations. */
 export function createV3DialectAdapter(dialect: V3AdapterDialect) {
   const services = scopeV3Service({ bindNativeAppend: bindV3NativeAppend, recoverRuntimeTail: recoverV3RuntimeTail,
     validateArtifact: validateV3, verifyNativeContextMaterials: verifyV3NativeContextMaterials, verifyNativeContextRelease: verifyV3NativeContextRelease,

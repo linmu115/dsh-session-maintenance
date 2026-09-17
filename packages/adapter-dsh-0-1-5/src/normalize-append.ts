@@ -4,7 +4,7 @@ import { count, digest, record } from "./common.js";
 import { knownEventTypes, validateV3Events } from "./official.js";
 import { assertInformational } from "./references-remap.js";
 import { parseV3LogicalSessionHeader, validateV3Lineage } from "./lineage.js";
-import { currentManifest, currentFormatId } from "./dialect.js";
+import { currentManifest, currentFormatId, currentDialect } from "./dialect.js";
 import { v3TitleProjection } from "./session-title.js";
 export async function normalizeV3Append(operation:NativeAppendOperation, evidence?:AdapterEvidencePort):Promise<CanonicalAppendOperation> {
  const payload=record(operation.payload);if(typeof payload.logicalSessionId!=="string"||!Array.isArray(payload.events)||typeof payload.instanceId!=="string")throw new TypeError("V3 append requires logicalSessionId, instanceId and events");
@@ -27,7 +27,7 @@ export async function normalizeV3Append(operation:NativeAppendOperation, evidenc
   const content:JsonValue=known?event.data:{schemaVersion:1,type:"other",reason:"adapter-evidence",sourceKind:`${currentManifest().id}/${event.type}`,label:"原生信息事件",summary:event.type,evidenceRef};
   events.push({schemaVersion:1,id:`${currentManifest().id}:${operation.runId}:${operation.nativeSessionId}:${event.seq}`,logicalSessionId:payload.logicalSessionId as LogicalSessionId,sequence:event.seq,kind,role,content,contentDigest:digest(content),rawPayload:known?value:null,
    source:{platform:"dsh",instanceId:payload.instanceId,sessionId:operation.nativeSessionId,eventId:String(event.seq),cursor:String(end)},
-   extensions:{adapterId:currentManifest().id,nativeFormatId:currentFormatId(),nativeFormatVersion:3,dshEventType:event.type,...(payload.header===undefined?{}:{nativeHeader:payload.header,inheritedEventCount:payload.inheritedEventCount??0}),...(!known?{heldOut:true}:{})}});
+   extensions:{...(currentDialect()?.eventOwners?.get(event.type)?{extensionNamespace:currentDialect()!.eventOwners!.get(event.type)!}:{}),adapterId:currentManifest().id,nativeFormatId:currentFormatId(),nativeFormatVersion:3,dshEventType:event.type,...(payload.header===undefined?{}:{nativeHeader:payload.header,inheritedEventCount:payload.inheritedEventCount??0}),...(!known?{heldOut:true}:{})}});
  }
  const title=v3TitleProjection(payload.events as unknown as readonly SessionFormatEvent[],end-1).title;
  return {runId:operation.runId,operationId:operation.operationId,nativeSessionId:operation.nativeSessionId,logicalSessionId:payload.logicalSessionId as LogicalSessionId,baseVersionId:typeof payload.baseVersionId==="string"?payload.baseVersionId as SessionVersionId:null,events,metadata:{nativeRevision:end,nativeFormatVersion:3,nativeFormatId:currentFormatId(),observedAt:operation.observedAt,canonicalHistoryMode:"native",...(title===null?{}:{sessionTitle:title}),...(payload.header===undefined?{}:{nativeHeader:payload.header,inheritedEventCount:payload.inheritedEventCount??0})}};

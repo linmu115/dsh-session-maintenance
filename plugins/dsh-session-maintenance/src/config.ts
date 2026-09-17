@@ -143,3 +143,13 @@ export function launcherCoreBinding(config: Config, profile: LauncherProjectionP
   if (!receiptPath || !receiptSha256 || !/^[a-f0-9]{64}$/u.test(receiptSha256)) throw new TypeError("RC2 Core receipt registration is incomplete");
   return { instanceId: config.dshInstanceId, profileId: config.profileId, runId: profile.runId, branchId: profile.branchId, receiptPath, receiptSha256 };
 }
+
+/** Launcher report overrides only native extension namespaces; configured business plugins retain their settings. */
+export function withLauncherNativeExtensions(config: Config, env: NodeJS.ProcessEnv = process.env): Config {
+  const raw = env.DSH_SESSION_MAINTENANCE_NATIVE_EXTENSIONS;
+  if (raw === undefined) return config;
+  const native = extensionConnectSchema.shape.plugins.parse(JSON.parse(raw));
+  if (native.some(p => p.namespace !== "gpt-compat" || p.writerId !== "maintenance-gpt-compat-index") || native.length > 1)
+    throw new TypeError("Unsupported Launcher native extension report");
+  return { ...config, extensionPlugins: [...(config.extensionPlugins ?? []).filter(p => p.namespace !== "gpt-compat"), ...native] };
+}

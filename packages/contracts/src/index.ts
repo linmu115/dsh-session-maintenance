@@ -37,3 +37,4 @@ export * from "./user-request-index.js";
 export * from "./native-context-evidence.js";
 
 export * from "./native-source-export.js";
+export * from "./gpt-extension.js";

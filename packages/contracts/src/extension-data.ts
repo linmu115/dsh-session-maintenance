@@ -66,6 +66,12 @@ export interface ExtensionDataAdapter {
   validate(content: ExtensionContent): void;
   summarize(body: JsonValue): string;
   preview?(body: JsonValue): ExtensionPreview;
+  /** Plugin-owned rows embedded in a host log. This does not create a Harness identity. */
+  nativeEvents?: {
+    readonly hostAdapterId: string;
+    readonly types: ReadonlySet<string>;
+    validate(event: { readonly type: string; readonly seq: number; readonly data: JsonValue }): void;
+  };
 }
 export class ExtensionDataError extends Error {
   constructor(readonly code: string, message: string, readonly status = 409) { super(message); }

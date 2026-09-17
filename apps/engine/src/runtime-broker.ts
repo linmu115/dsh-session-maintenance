@@ -1,5 +1,4 @@
-import { createRuntimeBridge as createGptBridge, bindNativeAppend as bindGptAppend, recoverRuntimeTail as recoverGptTail, manifest as gptManifest } from "@linmu/dsh-session-adapter-gpt-compat";
-import { bindV3NativeAppend, V3RuntimeBridge, recoverV3RuntimeTail, manifest as v3Manifest } from "@linmu/dsh-session-adapter-0-1-5";
+import { createRuntimeBridge, bindNativeAppend as bindV3NativeAppend, recoverRuntimeTail as recoverV3RuntimeTail, manifest as v3Manifest } from "@linmu/dsh-session-extension-gpt-compat";
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -122,8 +121,7 @@ class BrokerRuntimeRegistrar implements Alpha2RuntimeRegistrar, Rc1RuntimeRegist
 
 function runtimeBridge(adapterId: AdapterId, registrar: BrokerRuntimeRegistrar): DshRuntimeBridgeV1 {
   if (adapterId === alpha2Manifest.id) return new Alpha2RuntimeBridge(registrar);
-  if (adapterId === gptManifest.id) return createGptBridge(registrar);
-  if (adapterId === v3Manifest.id) return new V3RuntimeBridge(registrar);
+  if (adapterId === v3Manifest.id) return createRuntimeBridge(registrar);
   if (adapterId === rc1Manifest.id) return new Rc1RuntimeBridge(registrar);
   throw new Error(`Runtime Broker event/flush protocol is not available for adapter ${adapterId}`);
 }
@@ -247,9 +245,7 @@ export class ProjectionRuntimeBroker {
     if (run.closing || run.active === null) throw new Error(`Runtime Broker run is not accepting appends: ${operation.runId}`);
     const received = await this.startSpan(run, "runtime.event.received", operation.nativeSessionId, operation.operationId);
     await this.statusLog.succeed(received, { diagnosticDetailRef: "diag:runtime-event-enqueued" });
-    const boundOperation = run.adapterId === gptManifest.id
-      ? await bindGptAppend(operation, run.prepared.run, new JsonProjectionDirectory(run.prepared.projectionRoot))
-      : run.adapterId === v3Manifest.id
+    const boundOperation = run.adapterId === v3Manifest.id
       ? await bindV3NativeAppend(operation, run.prepared.run, new JsonProjectionDirectory(run.prepared.projectionRoot))
       : operation;
     const promise = run.lifecycle.append(run.active, boundOperation);
@@ -464,7 +460,7 @@ export class ProjectionRuntimeBroker {
   ) {
     if (!recoverRuntimeTail) return lifecycle.recover(runId);
     const projectionRun = await lifecycle.runRepository?.getProjectionRun(runId);
-    const recoverRuntimeTailForAdapter = adapterId === gptManifest.id ? recoverGptTail : adapterId === v3Manifest.id ? recoverV3RuntimeTail : adapterId === rc1Manifest.id
+    const recoverRuntimeTailForAdapter = adapterId === v3Manifest.id ? recoverV3RuntimeTail : adapterId === rc1Manifest.id
       ? recoverRc1RuntimeTail
       : adapterId === alpha2Manifest.id
         ? recoverAlpha2RuntimeTail

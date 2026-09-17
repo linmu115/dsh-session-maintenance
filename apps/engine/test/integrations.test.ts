@@ -73,7 +73,7 @@ describe("instance onboarding", () => {
     expect((await f.discover()).targets[0]!.pluginReady).toBe(false);
   });
 
-  it.each([false,true])("connects the declared release with a separately attested plugin format: %s", async (gpt) => {
+  it.each([false,true])("connects the declared release with a separately attested extension and unchanged Harness: %s", async (gpt) => {
     const f = await fixture();
     const engineVersion = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
     const pluginVersion = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
@@ -107,7 +107,7 @@ describe("instance onboarding", () => {
       await json(join(f.profileRoot,"package.json"),{dsh:{profile:{bundles:["@deepseek-ai/dsh-web-app","dsh-session-maintenance","dsh-gpt-compat"]}}});
       Object.assign(paths,{sessionFormatPlugin:path});
     }
-    const adapterId=gpt?"dsh-gpt-compat":"dsh-0.1.5",formatId=gpt?"dsh-gpt-compat-v1-jsonl-zstd":"dsh-0.1.5-v3-jsonl-zstd-v1";
+    const adapterId="dsh-0.1.5",formatId="dsh-0.1.5-v3-jsonl-zstd-v1";
     const capabilities=[...REQUIRED_CAPABILITIES,...gpt?["dsh-gpt-compat/session-v1"]:[]];
     const files = await Promise.all(Object.entries(paths).map(async ([role, path]) => ({ role, path, sha256: createHash("sha256").update(await readFile(path)).digest("hex") })));
     const launcher = await inspectLauncherCapabilities(f.dataRoot); expect(launcher.issue).toBeNull();

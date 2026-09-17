@@ -87,9 +87,9 @@ importers:
       '@linmu/dsh-session-adapter-alpha2':
         specifier: workspace:*
         version: link:../../packages/adapter-dsh-alpha2
-      '@linmu/dsh-session-adapter-gpt-compat':
+      '@linmu/dsh-session-extension-gpt-compat':
         specifier: workspace:*
-        version: link:../../packages/adapter-dsh-gpt-compat
+        version: link:../../packages/extension-gpt-compat
       '@linmu/dsh-session-adapter-host':
         specifier: workspace:*
         version: link:../../packages/adapter-host
@@ -207,7 +207,7 @@ importers:
         specifier: workspace:*
         version: link:../session-adapter-sdk
 
-  packages/adapter-dsh-gpt-compat:
+  packages/extension-gpt-compat:
     dependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.2
@@ -331,9 +331,9 @@ importers:
       '@linmu/dsh-session-adapter-0-1-5':
         specifier: workspace:*
         version: link:../adapter-dsh-0-1-5
-      '@linmu/dsh-session-adapter-gpt-compat':
+      '@linmu/dsh-session-extension-gpt-compat':
         specifier: workspace:*
-        version: link:../adapter-dsh-gpt-compat
+        version: link:../extension-gpt-compat
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts

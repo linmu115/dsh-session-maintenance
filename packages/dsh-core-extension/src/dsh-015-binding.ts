@@ -6,7 +6,7 @@ import { basename,dirname,isAbsolute,join,relative,resolve,sep } from "node:path
 import { fileURLToPath,pathToFileURL } from "node:url";
 import { canonicalJson } from "@linmu/dsh-session-domain";
 import { v3NativeSessionCodec,v3NativeArtifactPath,validateV3Artifact } from "@linmu/dsh-session-adapter-0-1-5";
-import { adapter as gptAdapter, validateArtifact as validateGptArtifact, FORMAT_ID as GPT_FORMAT_ID, manifest as gptManifest } from "@linmu/dsh-session-adapter-gpt-compat";
+import { adapter as gptAdapter, validateArtifact as validateGptArtifact } from "@linmu/dsh-session-extension-gpt-compat";
 import { Dsh015CoreHost,type Dsh015MetadataHost,type Dsh015SessionHandle,type Dsh015SessionPersistence } from "./dsh-015-host.js";
 import { assessDsh015CoreContract,dsh015CoreContractFingerprint,type Dsh015CoreContractObservation } from "./dsh-015-contract.js";
 import { probeBuiltDsh015CoreHost } from "./dsh-015-materialization.js";
@@ -17,7 +17,7 @@ const object=(value:unknown):ObjectRecord=>{if(value===null||typeof value!=="obj
 const sha=(value:string|Uint8Array)=>createHash("sha256").update(value).digest("hex");
 export interface Dsh015CoreBindingReceipt {
  readonly schemaVersion:1;
- readonly sessionFormat?:{readonly adapterId:string;readonly formatId:string};
+ readonly sessionFormat?:{readonly adapterId:string;readonly formatId:string;readonly extensions?:readonly string[]};
  readonly node:{readonly path:string;readonly sha256:string};
  readonly observation:Dsh015CoreContractObservation;
  readonly expectedContractFingerprint:string;
@@ -34,11 +34,15 @@ export interface Dsh015CoreBindingInput {
  readonly receiptPath:string;
  readonly receiptSha256:string;
 }
-/** Select only a supported, receipt-pinned adapter/format pair. Legacy receipts remain ordinary V3. */
+/** The receipt pins the host format and its independent native event extensions. */
 export function resolveDsh015SessionFormat(format?:Dsh015CoreBindingReceipt["sessionFormat"]){
- if(format===undefined||(format.adapterId==="dsh-0.1.5"&&format.formatId===v3NativeSessionCodec.formatId))return {adapterId:"dsh-0.1.5",formatId:v3NativeSessionCodec.formatId,codec:v3NativeSessionCodec,validate:validateV3Artifact};
- if(format.adapterId===gptManifest.id&&format.formatId===GPT_FORMAT_ID)return {adapterId:gptManifest.id,formatId:GPT_FORMAT_ID,codec:gptAdapter.nativeSessionCodec!,validate:validateGptArtifact};
- throw new TypeError("Unsupported RC2 receipt session adapter/format pair");
+ if(format!==undefined&&(format.adapterId!=="dsh-0.1.5"||format.formatId!==v3NativeSessionCodec.formatId))
+  throw new TypeError("Unsupported RC2 Harness adapter/format pair; plugin data requires an extension");
+ const extensions=format?.extensions??[];
+ if(new Set(extensions).size!==extensions.length||extensions.some(id=>id!=="gpt-compat"))throw new TypeError("Unsupported RC2 native extension");
+ const extended=extensions.includes("gpt-compat");
+ return {adapterId:"dsh-0.1.5",formatId:v3NativeSessionCodec.formatId,
+  codec:extended?gptAdapter.nativeSessionCodec!:v3NativeSessionCodec,validate:extended?validateGptArtifact:validateV3Artifact};
 }
 const modules={session:"@deepseek-ai/dsh-session",sessionPersistence:"@deepseek-ai/dsh-session-persistence",jsonlPersistence:"@deepseek-ai/dsh-session-persistence-jsonl",workspace:"@deepseek-ai/dsh-workspace",projectionCache:"@deepseek-ai/dsh-session-projection-cache",sessionQuery:"@deepseek-ai/dsh-session-query",formatCatalog:"@deepseek-ai/dsh-session-format-catalog"} as const;
 function requireMethods(value:unknown,names:readonly string[]):void{const target=object(value);for(const name of names)if(typeof target[name]!=="function")throw new TypeError(`RC2 required method missing: ${name}`);}

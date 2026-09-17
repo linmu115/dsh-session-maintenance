@@ -25,7 +25,7 @@ sources:
 - 历史/来源：[[MOD-canonical]] 和 [[MOD-harness-codex]]，不可变版本、检查点、工作区、只读 Codex 镜像。
 - 运行/恢复：[[MOD-runtime]] 和 [[MOD-host]]，持久空间、租约、WAL 与回执。
 - 新 Codex 续接：[[MOD-continuation]]，固定来源预览、可追踪作业与恢复。
-- 业务对象：[[MOD-extension-store]] / [[MOD-business]]，七个 namespace、两类业务面板、归属索引与轻量镜像。
+- 业务对象：[[MOD-extension-store]] / [[MOD-business]]，八个 namespace、三类业务面板、归属索引与轻量镜像。
 - 主干/上下文：[[MOD-graph]] / [[MOD-native-context]]，固定许可、撤销、日志、窗口和持久释放。
 - 阅读：[[MOD-reader]] / [[MOD-dashboard]]，分页问答、过程和请求目录。
 
@@ -33,4 +33,4 @@ sources:
 
 真实模型长时交互、全部旧图迁移、真实用户并发和当前部署未重验。历史产品证据 [[VER-context]]、[[VER-reader]]；地图验证 [[VER-adoption]]。
 
-本次新增 [[INT-gpt-format]]：GPT 插件格式拥有独立 Adapter、codec、worker、启动选择、持久恢复及 Core 绑定。引擎版本 0.1.33-rc2.29。普通路径的聚焦回归通过；源码接入与当前副本部署分开记录。
+本次纠正 [[INT-gpt-format]]：GPT 属于扩展数据，独立注册解析器和业务面板；宿主保留 dsh-0.1.5 身份。源码版本 Engine 0.1.33-rc2.30 / 插件 0.2.26-rc2.24。过程见 [[HIST-gpt-extension-boundary]]，实际部署证据另见本轮报告。

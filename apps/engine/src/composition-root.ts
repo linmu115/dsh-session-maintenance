@@ -1,5 +1,4 @@
-import { adapter as gptAdapter } from "@linmu/dsh-session-adapter-gpt-compat";
-import { adapter as v3Adapter } from "@linmu/dsh-session-adapter-0-1-5";
+import { adapter as v3Adapter } from "@linmu/dsh-session-extension-gpt-compat";
 import { SqliteExtensionRepository } from "@linmu/dsh-session-store";
 import { ExtensionDataService } from "./extensions/service.js";
 import { builtInExtensionAdapters } from "./extensions/adapters.js";
@@ -197,8 +196,7 @@ async function createComposition(
     ...(options.clock === undefined ? {} : { now: options.clock }),
   });
   const builtinAdapters = [
-    { adapter: gptAdapter, generationId: "builtin-gpt-compat-v1", packageName: "@linmu/dsh-session-adapter-gpt-compat", workerFile: "dsh-gpt-compat-rpc-worker.mjs" },
-    { adapter: v3Adapter, generationId: "builtin-canonical-0-1-5", packageName: "@linmu/dsh-session-adapter-0-1-5", workerFile: "dsh-0-1-5-rpc-worker.mjs" },
+    { adapter: v3Adapter, generationId: "builtin-canonical-0-1-5-extensions-v1", packageName: "@linmu/dsh-session-extension-gpt-compat", workerFile: "dsh-0-1-5-rpc-worker.mjs" },
     {
       adapter: alpha2Adapter,
       generationId: "builtin-canonical-alpha2",
@@ -309,7 +307,7 @@ async function createComposition(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   return new SessionMaintenanceEngine({
-    extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), options.extensionAdapters ?? builtInExtensionAdapters),
+    extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), options.extensionAdapters ?? builtInExtensionAdapters, (sessionId, versionId) => canonicalProjectionSource.loadVersionEvents(sessionId, versionId)),
     codexProjectMapping,
     codexProjectObserver,
     beforeProjectionPrepare: async () => {

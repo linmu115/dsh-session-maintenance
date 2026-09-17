@@ -3,12 +3,14 @@ import type { AdapterManifestV1, DshEnvironmentDescriptor, AdapterProbeResult } 
 import type { SessionFormatCatalog } from "@deepseek-ai/dsh-session-format";
 import { manifest } from "./manifest.js";
 
-/** A separately registered format owner. Calls retain their own dialect across awaits. */
+/** A host codec composition. Extension event ownership never changes the Harness identity. */
 export interface V3AdapterDialect {
   readonly manifest: AdapterManifestV1;
   readonly formatId: string;
   readonly catalog: SessionFormatCatalog;
   readonly knownEventTypes: ReadonlySet<string>;
+  readonly eventOwners?: ReadonlyMap<string, string>;
+  readonly legacyOwners?: readonly { readonly adapterId: string; readonly formatId: string }[];
   readonly probe: (environment: DshEnvironmentDescriptor) => AdapterProbeResult;
 }
 const scope = new AsyncLocalStorage<V3AdapterDialect>();

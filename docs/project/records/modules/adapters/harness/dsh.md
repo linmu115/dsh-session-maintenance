@@ -24,4 +24,4 @@ Codex portable 路径与 DSH source-owner export 分开，MCSF 统一语义，�
 
 当前 [精确兼容证据](../../../../../../packages/adapter-dsh-0-1-5/COMPATIBILITY.md)、[V3 Adapter](../../../../../../packages/adapter-dsh-0-1-5/src/index.ts)；旧矩阵见 [[INT-harness-directory]]。宿主 persistence attach 属于 [[MOD-host]]，合同 [[IF-harness-adapter]]。
 
-插件扩展格式单独实现为 `dsh-gpt-compat`，完整范围见 [[INT-gpt-format]]；不把新词表并入普通 V3。
+GPT 插件的字段由扩展数据 Adapter 解释，见 [[INT-gpt-format]]；受信 codec 与 DSH framing 组合，宿主身份保持 dsh-0.1.5。

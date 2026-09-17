@@ -18,7 +18,6 @@ sources:
 | --- | --- | --- |
 | CodexReadAdapter / DshReadAdapter | Engine 扫描导入 | 组合根构造；只读来源 |
 | dsh-0.1.5 | Lifecycle/Broker、图截止、原生证据 | 当前 0.1.5-rc.2 精确契约 |
-| dsh-gpt-compat | Lifecycle/Broker、原生证据与 Core 格式绑定 | 插件专属事件，详见 [[INT-gpt-format]] |
 | dsh-alpha2 / dsh-rc1 / dsh-rc2 | AdapterRegistry 的候选 | 源码内置注册为 enabled，运行仍需选择/探针 |
 | CodexContinuationAdapter | ContinuationService | 独立端口，显式创建新任务 |
 | DshWriteAdapter | 有 Gateway targets 的旧写组合 | 仍有实现，不是当前原生追加路径 |
@@ -28,3 +27,5 @@ sources:
 旧矩阵的 RC2 指 0.1.1-rc.2；当前 0.1.5-rc.2 用 dsh-0.1.5。旧 Provider 仅接受 Alpha2/RC1 的文字是旧范围，当前 [Provider](../../../../../../apps/engine/src/external-lifecycle-provider.ts)与 README 优先。保留历史版本，不以同名 RC2 混用。
 
 本轮适配器、核心绑定与接入的合成测试通过；未更换运行实例。已知实现不表示所有目标都支持；新作者测试入口 [合成测试指南](../../../../../adapters/testing-guide.md)。
+
+GPT 插件属于扩展数据目录 [[INT-gpt-format]]，不作为另一种 Harness 注册。

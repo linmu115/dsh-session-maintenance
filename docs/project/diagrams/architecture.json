@@ -48,7 +48,7 @@
       "id": "adapter",
       "type": "backend",
       "label": "DSH 格式 Adapter",
-      "sublabel": "普通 V3 / GPT 插件 / 旧格式族",
+      "sublabel": "宿主 V3 / 旧格式族",
       "pos": [
         292.5,
         322.5
@@ -60,9 +60,6 @@
       "sources": [
         {
           "path": "packages/adapter-dsh-0-1-5/src/index.ts"
-        },
-        {
-          "path": "packages/adapter-dsh-gpt-compat/src/index.ts"
         }
       ]
     },
@@ -198,7 +195,7 @@
       "id": "business-adapter",
       "type": "backend",
       "label": "业务扩展 Adapter",
-      "sublabel": "七个 namespace · 归属/schema",
+      "sublabel": "八个 namespace · 归属/schema",
       "pos": [
         292.5,
         577.5
@@ -210,6 +207,9 @@
       "sources": [
         {
           "path": "apps/engine/src/extensions/adapters.ts"
+        },
+        {
+          "path": "packages/extension-gpt-compat/src/extension.ts"
         }
       ]
     },
