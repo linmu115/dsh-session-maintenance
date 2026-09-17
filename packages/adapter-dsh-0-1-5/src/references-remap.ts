@@ -1,5 +1,7 @@
 import type { SessionFormatEvent, SessionFormatJsonValue, SessionFormatJsonObject } from "@deepseek-ai/dsh-session-format";
 import { count, record } from "./common.js";
+import { canonicalEventV1Schema, canonicalEventProjectionPolicy } from "@linmu/dsh-session-contracts";
+import { isDeepStrictEqual } from "node:util";
 /** Audited same-artifact coordinate vocabulary; captured foreign generations remain unchanged.
  * Based on dsh fb2c4b9 session-format-v2-to-v3/src/references.ts and V3 payload vocabulary. */
 export function remap(event: SessionFormatEvent, seq: number, mapping: readonly (number | undefined)[]): SessionFormatEvent {
@@ -14,6 +16,18 @@ export function remap(event: SessionFormatEvent, seq: number, mapping: readonly 
  return {...event,seq,data,...(event.sourceEventSeqs===undefined?{}:{sourceEventSeqs:list(event.sourceEventSeqs)}),...(event.surfaceOp===undefined||event.surfaceOp==="append"?{}:{surfaceOp:range(event.surfaceOp)})};
 }
 export function assertInformational(event: SessionFormatEvent): void {
+ // A DSH fork can inherit our portable projection receipts. Their coordinates
+ // belong to the archived canonical source, not the active native generation.
+ if(event.type==="maintenance/canonical-event" || event.type==="maintenance/other") {
+  if(event.ignorable!==true || event.surfaceOp!==undefined || event.sourceEventSeqs!==undefined)
+   throw new TypeError("Portable receipt must be inert informational history");
+  const data=record(event.data);
+  if(data.converter!=="dsh-0.1.5/canonical-v3-1")throw new TypeError("Unknown portable receipt converter");
+  const canonical=canonicalEventV1Schema.parse(data.canonicalEvent), policy=canonicalEventProjectionPolicy(canonical.kind);
+  if((canonical.kind==="other")!==(event.type==="maintenance/other") || !isDeepStrictEqual(data.canonicalContent,canonical.content)
+    || Object.entries(policy).some(([key,value])=>data[key]!==value))throw new TypeError("Portable receipt content or policy mismatch");
+  return;
+ }
  if(event.type!=="dsh-runtime/detail" || event.surfaceOp!==undefined || event.sourceEventSeqs!==undefined) throw new TypeError(`Unclassified information event ${event.type}`);
  const check=(v:SessionFormatJsonValue):void=>{ if(Array.isArray(v)){v.forEach(check);return;} if(v!==null&&typeof v==="object") for(const [k,x] of Object.entries(v)){ if(/(?:seq|offset|range|cursor)$/iu.test(k)) throw new TypeError(`Informational payload requires an explicit reference converter: ${k}`);check(x); } };
  check(event.data);

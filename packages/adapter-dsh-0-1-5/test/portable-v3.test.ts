@@ -8,11 +8,30 @@ import { preparePortableResources, validatePortableAttachments, portableResource
 import { materializeV3 } from "../src/materialize.js";
 import { visibleContext } from "../src/official.js";
 import { v3NativeSessionCodec } from "../src/native-session-codec.js";
+import { normalizeV3Append } from "../src/normalize-append.js";
+import { restoreV3Metadata } from "../src/native-metadata.js";
+import { assertInformational } from "../src/references-remap.js";
 const header={version:3,id:"portable-fixture",createdAt:1,delegationDepth:0,isSeeded:false};
 const png="iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=";
 function row(kind:string,sequence:number,content:unknown,step=0):any {return {schemaVersion:1,id:`original-${sequence}`,logicalSessionId:"synthetic",sequence,kind,role:kind==="user-message"?"user":"assistant",content,contentDigest:`original-digest-${sequence}`,source:{platform:"codex",instanceId:"codex-test",sessionId:"source-test",eventId:`source-${sequence}`,cursor:String(sequence)},rawPayload:{original:true},extensions:{[TOPOLOGY]:{schemaVersion:1,turnId:"turn-0",turnOrdinal:0,stepId:kind==="user-message"?null:`step-${step}`,stepOrdinal:kind==="user-message"?null:step,phase:kind==="user-message"?"user":kind==="assistant-message"?"assistant":kind,inference:"derived"}}};}
 function fixture(){return [row("user-message",0,{text:"input",attachments:[{name:"pixel.png",source:`data:image/png;base64,${png}`}]}),row("reasoning",1,{text:"reason",attachments:[]}),row("tool-call",2,{callId:"exact-call",name:"example",arguments:'{"b": 1,"A":2}',protocol:"synthetic"}),row("other",3,{schemaVersion:1,type:"other",reason:"unsupported-source-event",sourceKind:"codex/example",label:"retained",summary:"record between call and result",evidenceRef:null}),row("tool-result",4,{callId:"exact-call",name:"example",outputText:"unchanged\r\nresult",protocol:"synthetic"}),row("assistant-message",5,{id:"exact-assistant",text:"final",attachments:[]},1)];}
 describe("dedicated canonical V3 projection",()=>{
+ it('preserves inherited portable receipts through fork append and evidence restoration',async()=>{
+  const source=fixture().map(e=>e.kind==='other'?{...e,role:'unknown',rawPayload:null,extensions:{}}:e);
+  const artifact=materializePortableV3(header,source).artifact;
+  const stored=new Map<string,any>();
+  const evidence={putEvidence:async(value:any)=>{const ref=`receipt-${stored.size}`;stored.set(ref,value);return{ref};},readEvidence:async(ref:string)=>stored.get(ref)};
+  const result=await normalizeV3Append({runId:'run',operationId:'fork-append',nativeSessionId:header.id,nativeRevision:artifact.events.length,observedAt:new Date().toISOString(),
+    payload:{logicalSessionId:'synthetic',instanceId:'fixture',header:artifact.header,inheritedEventCount:0,events:artifact.events}} as any,evidence as any);
+  const restored=await restoreV3Metadata(result.events,evidence as any);
+  expect(restored.map(e=>e.rawPayload)).toEqual(artifact.events);
+  expect(result.events.filter(e=>e.kind==='other')).toHaveLength(fixture().length);
+  const receipt=artifact.events.find(e=>e.type==='maintenance/canonical-event')!;
+  expect(()=>assertInformational({...receipt,surfaceOp:'append'})).toThrow(/inert/);
+  expect(()=>assertInformational({...receipt,ignorable:false})).toThrow(/inert/);
+  expect(()=>assertInformational({...receipt,data:{...receipt.data as any,converter:'unknown'}})).toThrow(/converter/);
+  expect(()=>assertInformational({...receipt,data:{...receipt.data as any,canonicalContent:'changed'}})).toThrow(/mismatch/);
+ });
  it('verifies retained resource identities without session bodies and distinguishes missing from corrupt assets',async()=>{
   const root=await mkdtemp(join(tmpdir(),'dsh-portable-manifest-fixture-'));
   try{
