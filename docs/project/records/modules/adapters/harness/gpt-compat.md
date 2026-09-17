@@ -36,6 +36,6 @@
 
 共同 V3 物化、追加、压缩文件、原生证据和恢复机制通过每次调用的独立上下文复用；不替换全局导入。Engine 注册独立 worker，Launcher 从启用的 bundle 与构件回执选择，Broker 和 Core 绑定沿同一身份执行。
 
-普通旧回执仍属于普通 V3。GPT 格式 Core 回执需显式 sessionFormat；格式身份更改会使用不同 native-space 键。现有副本之前为联调而做的全局重新打包不是本 Adapter 的部署证据；本次完成源码、合成验证和发布接线，运行副本升级应停机、备份并重新验收绑定。
+普通旧回执仍属于普通 V3。GPT 格式 Core 回执需显式 sessionFormat；格式身份更改会使用不同 native-space 键。现有副本之前为联调而做的全局重新打包不是本 Adapter 的部署证据；配套 Engine 0.1.33-rc2.29 与插件 0.2.26-rc2.23 已生成并安装，副本已经备份和正常停止，独立回执 repair 通过；当前等待启动器启动后做运行验收。
 
 规则以 [[IF-harness-adapter]] 为准，测试与报告见 docs/reports/2026-09-17-gpt-format-adapter.md。
