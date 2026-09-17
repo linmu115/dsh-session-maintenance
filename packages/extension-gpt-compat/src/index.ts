@@ -30,3 +30,6 @@ export const recoverRuntimeTail = host.recoverRuntimeTail;
 export const validateArtifact = host.validateArtifact;
 export const verifyNativeContextMaterials = host.verifyNativeContextMaterials;
 export const verifyNativeContextRelease = host.verifyNativeContextRelease;
+
+export const prepareLearningV3 = host.prepareLearningV3;
+export const appendLearningV3 = host.appendLearningV3;

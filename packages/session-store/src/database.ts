@@ -1,3 +1,4 @@
+import { MIGRATION_025 } from "./migrations/025-learning-roundtrip.js";
 import { assertMaintenanceDatabaseOwnership } from "./write-coordinator.js";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -444,6 +445,14 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
       try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
       database.close(); throw error;
     }
+  }
+  if (currentVersion < 25) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_025);
+      database.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(25, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) { database.exec("ROLLBACK"); database.close(); throw error; }
   }
   return database;
 }

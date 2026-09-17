@@ -28,3 +28,7 @@ sources:
 已确认、待实现：完整看板增加“学习会话双向维护（实验）”独立栏目，仅管理确认双端关联的会话，提供同步到 Codex 与受控回收。范围及验收见 [[REQ-learning-roundtrip]]；不依赖改动 Codex 前端。
 
 HTTP 使用回环绑定、Bearer 或 UI cookie/CSRF/Origin 校验，浏览器不读 SQLite。入口 [页面组合](../../../../../apps/dashboard/src/app.tsx)、[阅读器](../../../../../apps/dashboard/src/session-reader.tsx)、[业务目录](../../../../../apps/dashboard/src/extension-business-directory.tsx)、[HTTP 服务](../../../../../apps/engine/src/http/server.ts)。本轮仅生成项目地图阅读页，没有修改产品 Dashboard。
+
+## 学习双向维护实验栏目
+
+源码新增独立栏目，管理显式确认的双端绑定、同步、回收和冲突提示。入口与首版重启约束见 [[IMP-learning-roundtrip]]，真实部署状态见 [[VER-learning-roundtrip]]。

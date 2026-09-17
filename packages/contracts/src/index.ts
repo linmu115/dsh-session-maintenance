@@ -38,3 +38,5 @@ export * from "./native-context-evidence.js";
 
 export * from "./native-source-export.js";
 export * from "./gpt-extension.js";
+
+export * from "./learning.js";

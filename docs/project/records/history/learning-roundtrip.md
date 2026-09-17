@@ -33,3 +33,5 @@ related_records: [REQ-learning-roundtrip, OBJ-session, MOD-dashboard, MOD-contin
 [查看依据：回收锁、阅读降级与实验栏目要求](history-event:EVT-c622621a4986bea3fb72)
 
 需求与验收记录在 [[REQ-learning-roundtrip]]。为使用户条件可靠落地，提出版本/游标、注入项排除、提交前复查及幂等回执作为待实施设计；这些细节属于工程建议，不冒充用户逐字要求。当前只完成需求记录和地图关联，不声称已经创建绑定、上线栏目或通过双向交接验收。
+
+后续用户要求开始实现，首版实现过程与验证记录在 [[HIST-learning-roundtrip-implementation]]；本记录保留当时需求收敛阶段的结论。

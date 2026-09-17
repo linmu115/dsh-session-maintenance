@@ -1,3 +1,4 @@
+import { learningBindSchema, learningBindingSchema, learningDirectorySchema, type LearningBind } from "@linmu/dsh-session-contracts";
 import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict } from "@linmu/dsh-session-contracts";
 import type { ExtensionBusinessPanel, ExtensionBusinessPanelQuery, ExtensionDirectoryQuery, ExtensionDirectoryPage, AnnotationMirrorSync, AnnotationMirrorSyncResult } from "@linmu/dsh-session-contracts";
 import type { UserRequestPage, UserRequestList } from "@linmu/dsh-session-contracts";
@@ -191,6 +192,10 @@ class ApiClient {
   async saveWorkspaceSync(input: WorkspaceSyncUpdate, signal?: AbortSignal): Promise<WorkspaceSyncConfiguration> {
     return (await this.request("/v1/workspace-sync", this.jsonPatch(workspaceSyncUpdateSchema.parse(input)), z.strictObject({ configuration: workspaceSyncConfigurationSchema }), signal)).configuration;
   }
+
+  learningDirectory(signal?: AbortSignal) { return this.request("/v1/learning", {}, learningDirectorySchema, signal); }
+  bindLearning(input: LearningBind, signal?: AbortSignal) { return this.request("/v1/learning", this.jsonPost(learningBindSchema.parse(input)), learningBindingSchema, signal); }
+  learningAction(id: string, action: "send" | "collect" | "disable" | "verifySend" | "revalidate", signal?: AbortSignal) { return this.request(`/v1/learning/${encodeURIComponent(id)}/${action}`, this.jsonPost({}), learningBindingSchema, signal); }
 
   async listSessions(query: SessionQuery = {}, signal?: AbortSignal): Promise<Page<SessionSummary>> {
     const search = new URLSearchParams();

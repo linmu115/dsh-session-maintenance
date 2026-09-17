@@ -108,6 +108,11 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     };
   }
 
+  async learningSourceOwner(instanceId: string, sessionId: string) {
+    const row = this.database.prepare("SELECT logical_session_id FROM learning_bindings WHERE codex_instance_id=? AND codex_thread_id=?").get(instanceId, sessionId) as { logical_session_id: string } | undefined;
+    return row ? this.getSession(row.logical_session_id as LogicalSessionId) : undefined;
+  }
+
   async getOperationReceipt(operationId: OperationId): Promise<CanonicalEngineReceipt | undefined> {
     const row = this.database.prepare(
       "SELECT receipt_json FROM run_operations WHERE operation_id = ?",
@@ -147,6 +152,7 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     readonly title: string;
     readonly appliedAt: string;
   }): Promise<CanonicalEngineReceipt | undefined> {
+    if (this.database.prepare("SELECT 1 FROM learning_bindings WHERE logical_session_id=?").get(input.logicalSessionId)) return undefined;
     return advanceCanonicalSessionMetadata(this.database, {
       logicalSessionId: input.logicalSessionId, patch: { title: input.title },
       appliedAt: input.appliedAt, codexCatalog: true,

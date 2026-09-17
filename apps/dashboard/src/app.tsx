@@ -1,3 +1,4 @@
+import type { LearningApi } from "./learning-page.js";
 import type { ExtensionPageApi } from "./extension-page.js";
 import { lazy, Suspense, useState, type ReactNode } from "react";
 import { BookmarkCheck, HardDrive, ListTree, RefreshCw, Settings2 } from "lucide-react";
@@ -27,8 +28,10 @@ const IntegrationPage = lazy(async () => ({ default: (await import("./integratio
 const SyncPage = lazy(async () => ({ default: (await import("./sync-page.js")).SyncPage }));
 const ExtensionPage = lazy(async () => ({ default: (await import("./extension-page.js")).ExtensionPageView }));
 
-type View = "sessions" | "sync" | "checkpoints" | "storage" | "settings" | "extensions";
-export type DashboardApi = WorkbenchApi & OperationsApi & CatalogApi & RecentlyDeletedApi & RunCenterApi & AdapterPageApi & StorageGovernanceApi & IntegrationApi & WorkspaceSyncApi & ExtensionPageApi;
+const LearningPage = lazy(async () => ({ default: (await import("./learning-page.js")).LearningPage }));
+
+type View = "learning" | "sessions" | "sync" | "checkpoints" | "storage" | "settings" | "extensions";
+export type DashboardApi = LearningApi & WorkbenchApi & OperationsApi & CatalogApi & RecentlyDeletedApi & RunCenterApi & AdapterPageApi & StorageGovernanceApi & IntegrationApi & WorkspaceSyncApi & ExtensionPageApi;
 
 /** Advanced tools mount only when opened, so reading never depends on them. */
 function Advanced(props: { readonly title: string; readonly children: ReactNode }) {
@@ -47,6 +50,7 @@ export function DashboardApp(props: { readonly api: DashboardApi; readonly initi
   return <DashboardShell title="会话维护" view={view} nav={<>
     <NavButton active={view === "sessions"} icon={ListTree} onClick={() => setView("sessions")}>会话</NavButton>
     <NavButton active={view === "sync"} icon={RefreshCw} onClick={() => setView("sync")}>同步</NavButton>
+    <NavButton active={view === "learning"} icon={RefreshCw} onClick={() => setView("learning")}>学习双向维护</NavButton>
     <NavButton active={view === "checkpoints"} icon={BookmarkCheck} onClick={() => setView("checkpoints")}>恢复点</NavButton>
     <NavButton active={view === "storage"} icon={HardDrive} onClick={() => setView("storage")}>存储空间</NavButton>
     <NavButton active={view === "extensions"} icon={ListTree} onClick={() => setView("extensions")}>扩展数据</NavButton>
@@ -56,6 +60,7 @@ export function DashboardApp(props: { readonly api: DashboardApi; readonly initi
       <SessionReader api={props.api} refreshKey={request + restoredRevision} selectedSessionId={selectedSessionId} onOpenSession={openSession} />
     </div>
     <Suspense fallback={<Surface><LoadingState label="正在读取…" /></Surface>}>
+      {view === "learning" ? <LearningPage key={request} api={props.api} /> : null}
       {view === "sync" ? <div key={`sync-${request}`} className="page-stack"><SyncPage api={props.api} /><Advanced title="导入与运行进度"><RunCenterPage api={props.api} /></Advanced><Advanced title="高级：历史同步计划"><PlansPage api={props.api} /></Advanced></div> : null}
       {view === "checkpoints" ? <div key={`restore-${request}`} className="page-stack"><div className="dsm-page-heading"><div><h2>恢复点</h2><p>找回最近删除的会话，或查看已有保护记录支持的恢复方式。</p></div></div><RecentlyDeletedPage api={props.api} onOpenSession={openSession} onRestored={() => setRestoredRevision((value) => value + 1)} /><CheckpointsPage api={props.api} /><Advanced title="高级：历史事务与恢复"><TransactionsPage api={props.api} /></Advanced></div> : null}
       {view === "storage" ? <StorageGovernancePage key={request} api={props.api} /> : null}

@@ -1,3 +1,5 @@
+import { LearningService } from "./learning-service.js";
+import type { CodexContinuationTarget, LearningCodexPort } from "@linmu/dsh-session-contracts";
 import type { ExtensionDataService } from "./extensions/service.js";
 import { SessionContextService } from "./session-context-service.js";
 import { NativeContextService } from "./native-context-service.js";
@@ -205,6 +207,7 @@ function prefix(left: readonly string[], right: readonly string[]): boolean {
 }
 
 export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
+  readonly learning: LearningService;
   readonly sessionContext = new SessionContextService(this);
   readonly nativeContext = new NativeContextService(this);
   readonly userRequests = new UserRequestIndexService(this);
@@ -255,6 +258,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly repository: SqliteSessionRepository;
     readonly objectStore: ContentObjectStore;
     readonly continuations: ContinuationService;
+    readonly learningTargets?: readonly CodexContinuationTarget[];
+    readonly learningCodex?: LearningCodexPort;
     readonly clock?: () => string;
     readonly writeService?: WriteService;
     readonly settingsPort?: EngineSettingsPort;
@@ -299,6 +304,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.objectStore = input.objectStore;
     this.continuations = input.continuations;
     this.clock = input.clock ?? (() => new Date().toISOString());
+    this.learning = new LearningService(this, input.learningTargets ?? [], input.learningCodex, this.clock);
     this.discovery = new DiscoveryService(input);
     this.writeService = input.writeService;
     this.settingsPort = input.settingsPort ?? {

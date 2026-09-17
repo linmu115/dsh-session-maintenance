@@ -34,3 +34,5 @@ sources:
 真实模型长时交互、全部旧图迁移、真实用户并发和当前部署未重验。历史产品证据 [[VER-context]]、[[VER-reader]]；地图验证 [[VER-adoption]]。
 
 本次纠正 [[INT-gpt-format]]：GPT 属于扩展数据，独立注册解析器和业务面板；宿主保留 dsh-0.1.5 身份。源码版本 Engine 0.1.33-rc2.30 / 插件 0.2.26-rc2.24。过程见 [[HIST-gpt-extension-boundary]]，实际部署证据另见本轮报告。
+
+新增实验性学习双向维护源码见 [[IMP-learning-roundtrip]]，仅完成隔离验收，未部署或接管真实会话。

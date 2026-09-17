@@ -1,3 +1,4 @@
+import { prepareLearningV3, appendLearningV3 } from "./learning.js";
 import { adapter } from "./index.js";
 import { scopeV3Service, type V3AdapterDialect } from "./dialect.js";
 import { V3RuntimeBridge, bindV3NativeAppend, type V3RuntimeRegistrar } from "./runtime-bridge.js";
@@ -8,7 +9,7 @@ import { verifyV3NativeContextMaterials, verifyV3NativeContextRelease } from "./
 /** Compose trusted native event extensions into a host service without global mutations. */
 export function createV3DialectAdapter(dialect: V3AdapterDialect) {
   const services = scopeV3Service({ bindNativeAppend: bindV3NativeAppend, recoverRuntimeTail: recoverV3RuntimeTail,
-    validateArtifact: validateV3, verifyNativeContextMaterials: verifyV3NativeContextMaterials, verifyNativeContextRelease: verifyV3NativeContextRelease,
+    prepareLearningV3, appendLearningV3, validateArtifact: validateV3, verifyNativeContextMaterials: verifyV3NativeContextMaterials, verifyNativeContextRelease: verifyV3NativeContextRelease,
   }, dialect);
   return {
     adapter: scopeV3Service({ ...adapter, manifest: dialect.manifest,

@@ -602,6 +602,12 @@ export async function applyCodexCanonicalImportPlan(input: {
       });
     };
     await assertScope();
+    if (await input.canonicalEngine.store.learningSourceOwner?.(item.authorityBinding.key.instanceId, item.sourceSessionId)) {
+      counts.noop += 1;
+      await input.onStatus?.({ stage: "canonical.import", state: "succeeded", instanceId: input.plan.instanceId,
+        sessionId: item.sourceSessionId, logicalSessionId: item.logicalSessionId, outcome: "noop", detail: "学习绑定由显式交接维护" });
+      continue;
+    }
     await input.projectPort.ensureWorkspace(item.assignment);
     const canonicalEvents: CanonicalEventV1[] = [];
     for (const event of item.normalized.events) {

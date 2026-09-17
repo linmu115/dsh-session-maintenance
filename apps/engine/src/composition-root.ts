@@ -355,6 +355,7 @@ async function createComposition(
     repository,
     objectStore,
     continuations,
+    learningTargets: registeredCodexTargets(config),
     canonicalEngine,
     writes,
     codexImports,

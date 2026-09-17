@@ -84,6 +84,7 @@ export interface CanonicalEngineMutation {
 }
 
 export interface CanonicalSessionEngineStore {
+  learningSourceOwner?(instanceId: string, sessionId: string): Promise<CanonicalSessionSnapshot | undefined>;
   getSession(id: LogicalSessionId): Promise<CanonicalSessionSnapshot | undefined>;
   getVersion(id: SessionVersionId): Promise<CanonicalVersionRecord | undefined>;
   getOperationReceipt(operationId: OperationId): Promise<CanonicalEngineReceipt | undefined>;
@@ -106,6 +107,9 @@ export class CanonicalSessionEngine {
   }
 
   async observeCodex(input: CodexObservationInput): Promise<CanonicalEngineReceipt> {
+    const key = input.authorityBinding?.key;
+    const owner = key ? await this.store.learningSourceOwner?.(key.instanceId, key.sessionId) : undefined;
+    if (owner) return { outcome: "noop", operationId: null, logicalSessionId: owner.session.id, versionId: owner.headVersionId, tombstoneState: null, committedAt: input.observedAt };
     return observeCodex(this.store, input);
   }
 

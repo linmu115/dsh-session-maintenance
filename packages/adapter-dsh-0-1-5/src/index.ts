@@ -69,3 +69,5 @@ export * from "./reader-storage.js";
 export * from "./request-index.js";
 export * from "./native-context-evidence.js";
 export { createV3DialectAdapter, type V3AdapterDialect } from "./factory.js";
+
+export * from "./learning.js";
