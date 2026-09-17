@@ -54,6 +54,15 @@ async function fixture() {
 }
 
 describe('V3 persisted effective native header recovery',()=>{
+  it('checkpoints a cold-open preparation tail without committing a continuation',async()=>{
+    const f=await fixture(),prefix=f.payload.events as JsonValue[];
+    const value={...f.payload,events:[...prefix,{type:'session/end-seed',seq:prefix.length,time:40,data:{inherited:false}}]};
+    await writeFile(f.file,v3NativeSessionCodec.encode(value,{relativePath:f.artifact.relativePath,header:f.effective}));
+    expect((await f.recover()).state).toBe('recovered');
+    expect(f.appendDsh).not.toHaveBeenCalled();
+    expect([...f.runs.receipts.values()]).toHaveLength(0);
+    expect(JSON.parse(await readFile(join(dirname(f.prepared.nativeSpace!.root),'space.json'),'utf8')).state).toBe('clean');
+  });
   it.each([false,true])('recovers a missing-cwd projection in a fresh lifecycle with native tail=%s',async withTail=>{
     const f=await fixture(),before=await readFile(f.file);
     const prefix=f.payload.events as JsonValue[];

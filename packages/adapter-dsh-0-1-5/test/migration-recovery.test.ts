@@ -26,6 +26,24 @@ const artifact={header,events:rows,inheritedEventCount:0} as any;
 function official(input:any){const physical={type:"session",...input.header};if(input.header.version<2){delete physical.isSeeded;if(input.header.isSeeded)physical.seedLength=input.inheritedEventCount;}const reader=sessionFormatCatalog.createRestore(physical,{recovery:"strict",validation:"current"});for(const row of input.events)reader.decodeRow(row);return reader.finish()}
 const run={id:"synthetic-run",adapterId:"dsh-0.1.5",instanceId:"synthetic-instance",profileId:"web"} as any;
 describe("V3 composite migration and cold recovery",()=>{
+ it("ignores a verified preparation-only tail but preserves mixed user work and rejects corrupt prefixes",async()=>{
+  const root=await mkdtemp(join(tmpdir(),"synthetic-v3-preparation-"));
+  try {
+   const original=migrateLegacy(artifact).artifact;
+   const preparation={type:"session/end-seed",seq:original.events.length,time:30,data:{inherited:false}};
+   const payload={...original,events:[...original.events,preparation],projectId:"fixture"};
+   const d=await v3NativeSessionCodec.describe(payload as any,root),file=join(root,d.relativePath);
+   await mkdir(dirname(file),{recursive:true});await writeFile(file,v3NativeSessionCodec.encode(payload as any,d));
+   const mapping={nativeSessionId:original.header.id,logicalSessionId:"logical",baseVersionId:null,nativeRevision:original.events.length,header:d.header,committedEvents:original.events};
+   const input={runId:run.id,persistenceRoot:root,sessions:[mapping],observedAt:"2026-09-17T00:00:00Z"} as any;
+   expect(await recoverV3RuntimeTail(input)).toEqual([]);
+   await expect(recoverV3RuntimeTail({...input,sessions:[{...mapping,committedEvents:original.events.map((e,i)=>i===0?{...e,time:900}:e)}]})).rejects.toThrow("rewritten");
+   const rename={type:"session/title",seq:preparation.seq+1,time:31,data:{title:"Explicit user rename",messageSeqs:[],source:{kind:"user"}}};
+   await writeFile(file,v3NativeSessionCodec.encode({...payload,events:[...payload.events,rename]} as any,d));
+   const operations=await recoverV3RuntimeTail(input);
+   expect(operations).toHaveLength(1);expect((operations[0]!.payload as any).events).toEqual([preparation,rename]);
+  } finally { await rm(root,{recursive:true,force:true}); }
+ });
  it("matches fixed official system/PTC/compaction migration and preserves a fork cut with an archived detail",()=>{
   const migrated=migrateLegacy(artifact);expect(migrated.artifact).toEqual(official(artifact));expect(migrated.ledger.seqMap[3]).toHaveLength(2);
   const end={type:"session/end-seed",seq:rows.length,time:20,data:{inherited:true}};

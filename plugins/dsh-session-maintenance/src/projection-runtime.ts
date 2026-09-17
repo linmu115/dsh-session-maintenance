@@ -519,6 +519,7 @@ export interface SessionPersistenceProjectionContext {
     ensureMaterialized?(session: import("@deepseek-ai/dsh-session").Session): Promise<void>;
   };
   readonly workspaceRegistry: {
+    archiveSession?(sessionId: string): Promise<void>;
     replaceHeaderIndex(headers: readonly { readonly id: string }[]): Promise<void>;
     list(): readonly {
       readonly id: string;
@@ -613,6 +614,16 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
     // SessionPersistence.list() decorator separately exposes cold headers to
     // SessionQuery without materializing their histories.
     await this.context.workspaceRegistry.replaceHeaderIndex(headers);
+    // Restore positive canonical archive intent through the official API.
+    // A missing/negative catalog flag must never unarchive a local user action.
+    for (const item of normalizedSessions) {
+      const payload = object(item.payload, "DSH projected session");
+      if (typeof payload.archivedAt === "string") {
+        if (!Number.isFinite(Date.parse(payload.archivedAt))) throw new TypeError("Invalid projected archive timestamp");
+        if (!this.context.workspaceRegistry.archiveSession) throw new Error("Host cannot restore archived sessions");
+        await this.context.workspaceRegistry.archiveSession(item.nativeSessionId);
+      }
+    }
     this.status("runtime.workspace.index", {
       sessions: headers.length,
       projects: workspaceGroups.size,

@@ -23,7 +23,7 @@ const host = createV3DialectAdapter({ manifest, formatId: FORMAT_ID, catalog, kn
   eventOwners: new Map([...PLUGIN_EVENTS].map(type => [type, "gpt-compat"])),
   legacyOwners: [{adapterId:"dsh-gpt-compat", formatId:"dsh-gpt-compat-v1-jsonl-zstd"}],
 });
-export const adapter = host.adapter;
+export const adapter: typeof import("@linmu/dsh-session-adapter-0-1-5").adapter = host.adapter;
 export const createRuntimeBridge = host.createRuntimeBridge;
 export const bindNativeAppend = host.bindNativeAppend;
 export const recoverRuntimeTail = host.recoverRuntimeTail;

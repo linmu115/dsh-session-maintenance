@@ -31,7 +31,7 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
  for(const workspace of input.workspaces)await output.writeWorkspace(workspace.id,{schemaVersion:1,id:workspace.id,parentId:workspace.parentId,name:workspace.name,sortKey:workspace.sortKey,deletedAt:workspace.deletedAt});
  for(const item of input.sessions) {
   const nativeId=rc1NativeSessionId(item.session.id), createdAt=Date.parse(item.session.createdAt);count(createdAt,"createdAt");
-  let base:Record<string,JsonValue>={schemaVersion:1,logicalSessionId:item.session.id,baseVersionId:item.session.headVersionId,projectId:item.projectId??null,projectTitle:item.projectName??null,workspaceId:item.workspaceId,updatedAt:item.session.updatedAt,title:item.session.title,tags:[...item.session.tags],canonicalHistoryMode:"native"};
+  let base:Record<string,JsonValue>={schemaVersion:1,logicalSessionId:item.session.id,baseVersionId:item.session.headVersionId,projectId:item.projectId??null,projectTitle:item.projectName??null,workspaceId:item.workspaceId,updatedAt:item.session.updatedAt,title:item.session.title,tags:[...item.session.tags],archivedAt:item.session.archivedAt??null,canonicalHistoryMode:"native"};
   const firstV3=item.events.findIndex(e=>e.extensions.nativeFormatVersion===3), prefix=firstV3<0?item.events:item.events.slice(0,firstV3), tail=firstV3<0?[]:item.events.slice(firstV3);
   if(tail.some(e=>e.extensions.nativeFormatVersion!==3))throw new TypeError("Mixed format epochs must be contiguous");
   const rawNative=prefix.every(e=>isRecord(e.rawPayload)&&typeof e.rawPayload.type==="string"&&! ["text-chunks","reasoning-chunks","tool-call-chunks"].includes(e.rawPayload.type)&&Number.isSafeInteger(e.rawPayload.seq));

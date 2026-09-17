@@ -22,6 +22,14 @@ async function projection(events:any[],name="DSH session session-placeholder"){
 }
 
 describe("durable RC2 session titles",()=>{
+  it("carries canonical archive intent in the runtime payload",async()=>{
+    const f=await projection(contextEvents(false));let payload:any;
+    const archivedAt="2026-09-16T11:12:56.127Z";
+    await materializeV3({run:{id:"run",instanceId:"instance",profileId:"web"},sessions:[{...f.item,session:{...f.item.session,archivedAt}}],workspaces:[]} as any,
+      {writeWorkspace:async()=>{},writeSession:async(_id,value)=>{payload=value;}});
+    expect(payload.archivedAt).toBe(archivedAt);
+    expect(payload.events).toEqual(f.payload.events);
+  });
   it("recovers the last native rename over old registration metadata without changing messages or event identity",async()=>{
     const base=contextEvents(false),events=[...base,title(base.length,"Initial readable title"),title(base.length+1,"Renamed readable title")];
     const first=await projection(events);
@@ -84,6 +92,18 @@ function coldTitle(payload:any){
   return session.snapshotEvents().reduce<string|null>((value,event)=>event.type==="session/title"?(event.data as any).title:value,null);
 }
 describe("Codex mirror titles in cold native history",()=>{
+  it("repairs a title-less old derived history by appending a rename without shifting existing anchors",async()=>{
+    const source=portableSource(),base=await mirrorProjection(source);
+    const preparation={type:"session/end-seed",seq:base.payload.events.length-1,time:50,data:{inherited:false}};
+    const normalize=async (events:any[])=>normalizeV3Append({...operation(events),nativeSessionId:base.payload.header.id,payload:{...operation(events).payload,header:base.payload.header}});
+    const old=await mirrorProjection([...source,...(await normalize([preparation])).events],"Saved title",true);
+    expect(coldTitle(old.payload)).toBeNull();
+    const repair=title(old.payload.events.length,"Saved title");
+    const fixed=await mirrorProjection([...old.item.events,...(await normalize([repair])).events],"Saved title",true);
+    expect(fixed.payload.events.slice(0,-1)).toEqual(old.payload.events);
+    expect(coldTitle(fixed.payload)).toBe("Saved title");
+    expect(v3ProjectedNativeRevision(fixed.item as any,fixed.payload)).toBe(fixed.payload.events.length);
+  });
   it("survives cache-free reopen and Codex rename without changing source rows or message anchors",async()=>{
     const source=portableSource();
     const first=await mirrorProjection(source);

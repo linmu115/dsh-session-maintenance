@@ -25,6 +25,7 @@ function titleCacheFixture(
     rows: { title: cachedTitle },
   });
   const put = vi.fn(async (key: string, value: unknown) => { records.set(key, value); });
+  const archiveSession = vi.fn(async (_id: string) => undefined);
   const persistence = {
     root: cwd,
     create: vi.fn(async () => undefined),
@@ -34,6 +35,7 @@ function titleCacheFixture(
   const overlay = new SessionPersistenceProjection({
     sessionPersistence: persistence,
     workspaceRegistry: {
+      archiveSession,
       replaceHeaderIndex: vi.fn(async () => undefined),
       list: () => [],
       create: vi.fn(async (path: string, title?: string) => ({
@@ -46,6 +48,7 @@ function titleCacheFixture(
     sessionProjectionCache: { table: { get: (key: string) => records.get(key), put } },
   }, `projection:${runId}`);
   return {
+    archiveSession,
     persistence,
     put,
     row: () => (records.get(id) as { readonly rows: Record<string, unknown> }).rows,
@@ -65,6 +68,19 @@ function titleCacheFixture(
 }
 
 describe("DSH projection runtime", () => {
+  it("restores canonical archives through the official host API and never reverses local archives", async () => {
+    const archived = titleCacheFixture();
+    await archived.attach({ archivedAt: "2026-09-16T11:12:56.127Z" });
+    expect(archived.archiveSession).toHaveBeenCalledExactlyOnceWith("native-title-cache");
+    for (const metadata of [{}, { archivedAt: null }]) {
+      const local = titleCacheFixture();
+      await local.attach(metadata);
+      expect(local.archiveSession).not.toHaveBeenCalled();
+    }
+    const failed = titleCacheFixture();
+    failed.archiveSession.mockRejectedValueOnce(new Error("archive persistence failed"));
+    await expect(failed.attach({ archivedAt: "2026-09-16T11:12:56.127Z" })).rejects.toThrow("archive persistence failed");
+  });
   it("loads by runId and loopback endpoint and attaches the projected Alpha2 catalog", async () => {
     const catalog = {
       type: "catalog" as const,

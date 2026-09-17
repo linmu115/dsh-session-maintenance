@@ -12,7 +12,11 @@ export async function recoverV3RuntimeTail(input:{readonly runId:RunId;readonly 
  const revision=count(mapping.nativeRevision,"native revision");if(mapping.committedEvents.length!==revision||artifact.events.length<revision)throw new TypeError("Recovery prefix length mismatch");
  if(digest(artifact.header)!==digest(mapping.header)||digest(artifact.events.slice(0,revision))!==digest(mapping.committedEvents))throw new TypeError("Recovery prefix/header rewritten");
  const inherited=mapping.adapterMetadata===undefined?0:count(record(mapping.adapterMetadata).inheritedEventCount);if(inherited!==artifact.inheritedEventCount)throw new TypeError("Recovery fork cut changed");
- const tail=artifact.events.slice(revision);if(!tail.length)continue;const operationId=`v3-recovery-${digest([input.runId,artifact.relativePath,artifact.header,revision,tail]).slice(7)}`;
+ const tail=artifact.events.slice(revision);
+ // Cold-open preparation is not a continuation. Validate the committed prefix
+ // above before ignoring it; mixed tails still retain every preparation row.
+ if(!tail.length||isV3PreparationEvents(tail))continue;
+ const operationId=`v3-recovery-${digest([input.runId,artifact.relativePath,artifact.header,revision,tail]).slice(7)}`;
  result.push({runId:input.runId,operationId:operationId as never,nativeSessionId:artifact.nativeSessionId,nativeRevision:artifact.events.length,observedAt:input.observedAt,payload:{logicalSessionId:mapping.logicalSessionId,baseVersionId:mapping.baseVersionId,...(mapping.instanceId?{instanceId:mapping.instanceId}:{}),header:artifact.header,inheritedEventCount:artifact.inheritedEventCount,events:tail}});}
  for(const mapping of input.sessions)if(mapping.nativeRevision>0&&!seen.has(mapping.nativeSessionId))throw new TypeError(`Committed native session is missing: ${mapping.nativeSessionId}`);
  return result;
