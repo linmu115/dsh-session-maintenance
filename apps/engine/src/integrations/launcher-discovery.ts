@@ -1,3 +1,4 @@
+import { supportsPluginVersion } from "@linmu/dsh-session-adapter-gpt-compat";
 import { verifyDsh015RuntimeAttestation } from "./runtime-attestation.js";
 import { createHash } from "node:crypto";
 import { readFile, readdir, realpath, stat } from "node:fs/promises";
@@ -178,7 +179,7 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
         if (actualVersion !== version.version) issues.push("实际安装版本与 Launcher 登记不一致，请先修复实例。");
         const cliPath = join(cliRoot, "lib", "bin.js");
         if (!(await stat(cliPath).then(item => item.isFile(), () => false))) issues.push("实例缺少官方启动程序。");
-        const adapterId = SUPPORTED_DSH_INTEGRATIONS[version.version] ?? null;
+        let adapterId = SUPPORTED_DSH_INTEGRATIONS[version.version] ?? null;
         if (entry.name !== "web") issues.push("本批接入仅支持 web 配置。");
         if (adapterId === null) issues.push("此版本的完整启动与增量提交尚未验证。");
         if (Object.keys(instance.env_overrides ?? {}).some(key => ["DSH_HOME", "NODE_OPTIONS"].includes(key.toUpperCase()))) issues.push("实例包含会改变接入环境的覆盖项，请先在 Launcher 核对配置。");
@@ -205,13 +206,18 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
             if (name !== "@deepseek-ai/dsh-base") issues.push(...inspectRc2ProfileOverrides([bundle.patches], overrideScope));
           }
         }
+        if(version.version === "0.1.5-rc.2" && Array.isArray(bundles) && bundles.includes("dsh-gpt-compat")) {
+          const formatPlugin=await resolvePackage(join(profileRoot,"package.json"),"dsh-gpt-compat",packageRoots);
+          if(!formatPlugin || !supportsPluginVersion(formatPlugin.version)) issues.push("GPT 会话格式插件版本未经独立 Adapter 验证。");
+          else { adapterId="dsh-gpt-compat"; versions["dsh-gpt-compat"]=formatPlugin.version; manifests.push(formatPlugin.path); }
+        }
         let runtimeCapabilities:readonly string[]=["sessionPersistence","session/event","session/flush"];
         let attestationDigest:string|null=null;
         let coreBinding:{path:string;sha256:string}|undefined;
         if(version.version === "0.1.5-rc.2") {
           if(versions["@deepseek-ai/dsh-session-persistence-jsonl"]!==version.version)issues.push("实际 JSONL backend 未解析到 RC2。 ");
           if(versions["@deepseek-ai/dsh-session-format-catalog"]!==version.version)issues.push("实际 format catalog 未解析到 RC2。");
-          try {const attested=await verifyDsh015RuntimeAttestation({profileRoot,instanceId:instance.id,profileId:entry.name,homeRoot,cliPath,launcherDigest:host.digest,resolvedManifests:manifests});runtimeCapabilities=attested.runtimeCapabilities;attestationDigest=attested.digest;coreBinding=attested.coreBinding;}catch(error){issues.push(error instanceof Error?error.message:"RC2 能力验证失败。");runtimeCapabilities=[];}
+          try {const attested=await verifyDsh015RuntimeAttestation({profileRoot,instanceId:instance.id,profileId:entry.name,homeRoot,cliPath,launcherDigest:host.digest,resolvedManifests:manifests,expectedAdapterId:adapterId??"dsh-0.1.5"});runtimeCapabilities=attested.runtimeCapabilities;attestationDigest=attested.digest;coreBinding=attested.coreBinding;}catch(error){issues.push(error instanceof Error?error.message:"RC2 能力验证失败。");runtimeCapabilities=[];}
         }
         const id = integrationTargetId("dsh", canonicalLauncherRoot, instance.id, entry.name);
         const target: IntegrationTarget = {

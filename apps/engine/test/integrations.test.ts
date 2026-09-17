@@ -73,7 +73,7 @@ describe("instance onboarding", () => {
     expect((await f.discover()).targets[0]!.pluginReady).toBe(false);
   });
 
-  it("connects the declared current Engine/plugin release through real discovery and attestation checks", async () => {
+  it.each([false,true])("connects the declared release with a separately attested plugin format: %s", async (gpt) => {
     const f = await fixture();
     const engineVersion = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version;
     const pluginVersion = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
@@ -99,18 +99,28 @@ describe("instance onboarding", () => {
     const paths = { cli: join(cliRoot, "lib", "bin.js"), node: syntheticNode, session: manifests.get("dsh-session")!,
       sessionPersistence: manifests.get("dsh-session-persistence")!, jsonl: manifests.get("dsh-session-persistence-jsonl")!,
       formatCatalog: manifests.get("dsh-session-format-catalog")!, maintenancePlugin: pluginPath, engine: f.engineEntry, coreBindingReceipt: coreBinding };
+    if(gpt){
+      const directory=join(f.profileRoot,"node_modules","dsh-gpt-compat"),path=join(directory,"package.json");
+      await json(path,{name:"dsh-gpt-compat",version:"0.5.0-dev.3",main:"index.js",dsh:{bundle:{patch:"./cordis.patch.yml"}}});
+      await writeFile(join(directory,"index.js"),"// synthetic format plugin");
+      await writeFile(join(directory,"cordis.patch.yml"),"- insert:\n    - id: gpt-compat\n      name: dsh-gpt-compat\n");
+      await json(join(f.profileRoot,"package.json"),{dsh:{profile:{bundles:["@deepseek-ai/dsh-web-app","dsh-session-maintenance","dsh-gpt-compat"]}}});
+      Object.assign(paths,{sessionFormatPlugin:path});
+    }
+    const adapterId=gpt?"dsh-gpt-compat":"dsh-0.1.5",formatId=gpt?"dsh-gpt-compat-v1-jsonl-zstd":"dsh-0.1.5-v3-jsonl-zstd-v1";
+    const capabilities=[...REQUIRED_CAPABILITIES,...gpt?["dsh-gpt-compat/session-v1"]:[]];
     const files = await Promise.all(Object.entries(paths).map(async ([role, path]) => ({ role, path, sha256: createHash("sha256").update(await readFile(path)).digest("hex") })));
     const launcher = await inspectLauncherCapabilities(f.dataRoot); expect(launcher.issue).toBeNull();
-    const receipt = { schemaVersion: 1, instanceId: "instance-a", profileId: "web", homeRoot: f.homeRoot, adapterId: "dsh-0.1.5", formatId: "dsh-0.1.5-v3-jsonl-zstd-v1",
-      runtimeVersion: "0.1.5-rc.2", engineVersion, launcherCapabilityDigest: launcher.digest, runtimeCapabilities: [...REQUIRED_CAPABILITIES], files };
+    const receipt = { schemaVersion: 1, instanceId: "instance-a", profileId: "web", homeRoot: f.homeRoot, adapterId, formatId,
+      runtimeVersion: "0.1.5-rc.2", engineVersion, launcherCapabilityDigest: launcher.digest, runtimeCapabilities: capabilities, files };
     const attestationPath = join(f.profileRoot, DSH015_ATTESTATION_FILE);
     await json(attestationPath, receipt);
     const target = (await f.discover()).targets[0]!;
-    expect(target.target).toMatchObject({ status: "available", adapterId: "dsh-0.1.5", issues: [] });
+    expect(target.target).toMatchObject({ status: "available", adapterId, issues: [] });
     expect(target.pluginReady).toBe(true); expect(target.coreBinding?.path).toBe(coreBinding);
     expect((await f.service.action(target.target.id, "connect")).targets[0]!.status).toBe("connected");
     const request = { schemaVersion: 1, phase: "prepare", instanceId: "instance-a", profileId: "web", runtimeVersion: "0.1.5-rc.2", web: true } as const;
-    expect(await resolveRuntimeIntegration(f.stateRoot, request)).toMatchObject({ adapterId: "dsh-0.1.5", runtimeCapabilities: [...REQUIRED_CAPABILITIES], coreBinding: { path: coreBinding } });
+    expect(await resolveRuntimeIntegration(f.stateRoot, request)).toMatchObject({ adapterId, runtimeCapabilities: capabilities, coreBinding: { path: coreBinding } });
     await json(attestationPath, { ...receipt, engineVersion: "0.1.33-rc2.999" });
     expect((await f.discover()).targets[0]!.target.status).toBe("unsupported");
     await expect(resolveRuntimeIntegration(f.stateRoot, request)).rejects.toMatchObject({ code: "INTEGRATION_RECHECK_REQUIRED" });

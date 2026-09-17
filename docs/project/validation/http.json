@@ -1,0 +1,20 @@
+{
+  "url": "http://localhost:52890/2c1f7e375bab80a8cd2d7e7fe21ed1cf/",
+  "checks": [
+    {
+      "path": "",
+      "status": 200,
+      "bytes": 5085771
+    },
+    {
+      "path": "architecture.html",
+      "status": 200,
+      "bytes": 849070
+    },
+    {
+      "path": "workflow.html",
+      "status": 200,
+      "bytes": 840237
+    }
+  ]
+}

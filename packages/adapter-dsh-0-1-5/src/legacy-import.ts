@@ -3,7 +3,7 @@ import { sessionFormatV0ToV1 } from "@deepseek-ai/dsh-session-format-v0-to-v1";
 import { sessionFormatV1ToV2 } from "@deepseek-ai/dsh-session-format-v1-to-v2";
 import { sessionFormatV2ToV3 } from "@deepseek-ai/dsh-session-format-v2-to-v3";
 import type { SessionFormatArtifact, SessionFormatEvent, SessionFormatMigration, SessionFormatMigrationStage } from "@deepseek-ai/dsh-session-format";
-import { validateV3, KNOWN_SESSION_EVENT_TYPES } from "./official.js";
+import { validateV3, knownEventTypes } from "./official.js";
 import { count, digest, record } from "./common.js";
 import { assertInformational } from "./references-remap.js";
 export const CONVERTER_ID = "dsh-0.1.5/migration-2/fb2c4b9e698e30edb738bca4cf0618587db7d203";

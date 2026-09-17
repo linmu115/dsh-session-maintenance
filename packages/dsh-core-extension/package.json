@@ -20,7 +20,8 @@
   "dependencies": {
     "@linmu/dsh-session-contracts": "workspace:*",
     "@linmu/dsh-session-domain": "workspace:*",
-    "@linmu/dsh-session-adapter-0-1-5": "workspace:*"
+    "@linmu/dsh-session-adapter-0-1-5": "workspace:*",
+    "@linmu/dsh-session-adapter-gpt-compat": "workspace:*"
   },
   "devDependencies": {
     "@linmu/dsh-session-test-support": "workspace:*",

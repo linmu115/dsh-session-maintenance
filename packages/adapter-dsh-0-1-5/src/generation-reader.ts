@@ -6,7 +6,7 @@ import { lstat, readdir, readFile, realpath } from "node:fs/promises";
 import { join, relative, resolve, dirname } from "node:path";
 import { zstdDecompressSync } from "node:zlib";
 import type { NativeSessionArtifact, NativeSessionId } from "@linmu/dsh-session-adapter-sdk";
-import { sessionFormatCatalog } from "./official.js";
+import { currentCatalog } from "./official.js";
 import { count, record } from "./common.js";
 import { scanZstdFrames } from "./zstd-frames.js";
 import { expectedV3ArtifactPath } from "./layout.js";
@@ -26,7 +26,7 @@ export function decodeGeneration(bytes:Buffer, compression:"none"|"zstd", versio
  const physical=record(rows.shift());if(physical.version!==version)throw new TypeError("Generation filename/header mismatch");
  // Strict logical admission: only torn physical tails can be ignored. A malformed complete row is never dropped.
  if(version<3){const codec=[releasedV0SessionFormatCodec,releasedV1SessionFormatCodec,releasedV2SessionFormatCodec][version];if(!codec)throw new TypeError("Unknown generation");const decoder=codec.createDecoder(physical,"strict"),events:SessionFormatEvent[]=[];const sink={emitEvent:(e:SessionFormatEvent)=>{events.push(e);},emitRun:(r:{expand():Iterable<SessionFormatEvent>})=>{events.push(...r.expand());}};for(const row of rows)decoder.decodeRow(row,sink);const inheritedEventCount=decoder.finish(sink);return {artifact:migrateLegacy({header:decoder.header,events,inheritedEventCount}).artifact,complete};}
- const restore=sessionFormatCatalog.createRestore(physical,{recovery:"strict",validation:"current"});for(const row of rows)restore.decodeRow(row);
+ const restore=currentCatalog().createRestore(physical,{recovery:"strict",validation:"current"});for(const row of rows)restore.decodeRow(row);
  return {artifact:restore.finish(),complete};
 }
 export async function inspectV3NativeSpace(root:string):Promise<readonly NativeSessionArtifact[]> {

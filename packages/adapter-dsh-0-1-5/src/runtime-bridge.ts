@@ -16,7 +16,7 @@ import type {
   SessionVersionId,
 } from "@linmu/dsh-session-adapter-sdk";
 
-import { manifest } from "./manifest.js";
+import { currentManifest, currentFormatId } from "./dialect.js";
 import {
   parseV3LogicalSessionHeader,
   parseV3RegistrationMetadata,
@@ -80,7 +80,7 @@ export class V3RuntimeBridge implements DshRuntimeBridgeV1 {
     this.runs.set(context.run.id, context.run);
     return {
       runId: context.run.id,
-      adapterId: manifest.id,
+      adapterId: currentManifest().id,
       attachedAt: registration.attachedAt,
     };
   }
@@ -265,7 +265,7 @@ export class V3RuntimeBridge implements DshRuntimeBridgeV1 {
   }
 
   private registration(handle: RuntimeHandle): V3RuntimeRegistration {
-    if (handle.adapterId !== manifest.id) throw new Error("Runtime handle belongs to another Adapter");
+    if (handle.adapterId !== currentManifest().id) throw new Error("Runtime handle belongs to another Adapter");
     const registration = this.registrations.get(handle.runId);
     if (registration === undefined) throw new Error(`V3 runtime is not attached for ${handle.runId}`);
     return registration;
@@ -274,7 +274,7 @@ export class V3RuntimeBridge implements DshRuntimeBridgeV1 {
 
 /** Bind host appends to Broker-owned identity and immutable projection lineage. */
 export async function bindV3NativeAppend(operation: NativeAppendOperation, run: ProjectionRun, projection: Pick<V3MutableProjection, "readSession">): Promise<NativeAppendOperation> {
- if(operation.runId!==run.id||run.adapterId!==manifest.id)throw new TypeError("V3 append run mismatch");
+ if(operation.runId!==run.id||run.adapterId!==currentManifest().id)throw new TypeError("V3 append run mismatch");
  const session=record(await projection.readSession(operation.nativeSessionId),"V3 projection"),payload=record(operation.payload,"V3 append");
  if(payload.instanceId!==undefined&&payload.instanceId!==run.instanceId)throw new TypeError("V3 append instance mismatch");
  if(payload.header!==undefined&&!isDeepStrictEqual(payload.header,session.header))throw new TypeError("V3 append header mismatch");

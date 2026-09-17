@@ -1,60 +1,420 @@
 {
-  "as_of": "2026-09-16",
+  "as_of": "2026-09-17",
   "repositories": [
     {
       "repository": "dsh-session-maintenance",
       "path": "../..",
       "branch": "codex/rc2-session-context-graph",
-      "commit": "5f3c066ffaba8751e377442da044c90a38cf22a5"
+      "commit": "2afb4f777e041c46a4b86cd38d88f220a7638028"
     }
   ],
   "selected_sources": [
     {
       "path": "../../README.md",
-      "sha256": "cb2e41fa0255e00a7c62d58cf14545b7fd2473c13d5d21a7abaef2a1a907c4a7",
-      "bound_headings": [
-        "当前功能",
-        "数据与组件边界",
-        "使用流程",
-        "当前配套版本"
-      ]
+      "sha256": "046b59312c6b238bf8501bb5f3b96607fe78f92650eb44da3fe4b5964056eaa4"
     },
     {
-      "path": "../superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md",
-      "sha256": "13f0a49abc8585141d3b9a1e147d64dd04564d0a05b13edeae44e7b232f6bcee",
-      "bound_headings": [
-        "业务 Adapter 与所属会话",
-        "会话阅读器"
-      ]
+      "path": "../../apps/dashboard/src/app.tsx",
+      "sha256": "3131076fe1ec5ad547988b599327a972bc0fec365bea2971f64d8c8d81061f8a"
     },
     {
-      "path": "../superpowers/specs/2026-09-15-native-agent-context-management.md",
-      "sha256": "9aaa05d99b69ca2016549dee323ca4ed00b04ad1584513951371b0b9cf14d74f",
-      "bound_headings": [
-        "1. 已确认的产品决定"
-      ]
+      "path": "../../apps/dashboard/src/extension-business-directory.tsx",
+      "sha256": "240c1b943847291534aa5bf8b3c4f3ffb9c59b35a28d81b5512b0eea9fdb8b80"
     },
     {
-      "path": "../superpowers/specs/2026-09-10-session-context-graph-requirements.md",
-      "sha256": "671d89b30fe5c68fa810fcff7da6d8a266026c5fcc0a2590500c3064f36602c9",
-      "bound_headings": [
-        "3. 功能需求：跨会话引用"
-      ]
+      "path": "../../apps/dashboard/src/session-reader.tsx",
+      "sha256": "f9cea00278f01f460e880ac1bec9e0332a7d9d6ab3a3785f9dd819d122047226"
+    },
+    {
+      "path": "../../apps/engine/src/codex-import-service.ts",
+      "sha256": "d7573b8820253c78c0e633b855e53c717b4c91d0913fd574da85c5d77e672c09"
+    },
+    {
+      "path": "../../apps/engine/src/codex-project-mapping.ts",
+      "sha256": "d2c2215960eb3e84377773d257b1e6075772e525071e92e32f5488d54031b8ec"
+    },
+    {
+      "path": "../../apps/engine/src/composition-root.ts",
+      "sha256": "869f12aaa3b2b6b8f44960287822731ee920691e790ebc4b117e1e6263383683"
+    },
+    {
+      "path": "../../apps/engine/src/engine.ts",
+      "sha256": "8c53fef8c450a8548b611f29c5235d3622ee278ec1081261840f861d3444880c"
+    },
+    {
+      "path": "../../apps/engine/src/extensions/adapters.ts",
+      "sha256": "20b7823368834f30abe9540810cf4ad1ed51727b48623ae8c8f7946e59042f2d"
+    },
+    {
+      "path": "../../apps/engine/src/extensions/annotation-sync.ts",
+      "sha256": "5c7e542d97cb164c2052625fc0c87ee255403dae3785787b7882e4ba01c47d8d"
+    },
+    {
+      "path": "../../apps/engine/src/extensions/directory.ts",
+      "sha256": "66d292b692d78b06f35ae7e822e2596a4bb870f0568f8a73314636fef8e21efc"
+    },
+    {
+      "path": "../../apps/engine/src/extensions/service.ts",
+      "sha256": "ad1d4f8b6535c52806fb64dc0e0a706e1afbbe61efc2442d87bf2746b6cb859d"
+    },
+    {
+      "path": "../../apps/engine/src/external-lifecycle-provider.ts",
+      "sha256": "20449722e410564c233430f9f10a48cf46e090c8e80c9870f2172bd3cb4a62d9"
+    },
+    {
+      "path": "../../apps/engine/src/http/server.ts",
+      "sha256": "f37b1af629edbb0f61c16769e4bc9d4948a6d4fa5de236ced67872282d07c11c"
+    },
+    {
+      "path": "../../apps/engine/src/http/session-graph-routes.ts",
+      "sha256": "13f5295dcd0521eb1e8b28cfb3d21461ffe5ef45e2359519ab15a1eee64780ae"
+    },
+    {
+      "path": "../../apps/engine/src/native-context-service.ts",
+      "sha256": "6d88951948900b3720d8c4b95dfbfacb2b9a30ff8d9f3366cc3d149bbbb702bd"
+    },
+    {
+      "path": "../../apps/engine/src/runtime-broker.ts",
+      "sha256": "8da0e333c66915330bed60e800902b60a4ac63d7a8dd1ea9554fc45f35b76490"
+    },
+    {
+      "path": "../../apps/engine/src/session-context-service.ts",
+      "sha256": "a601fe3d16b9f6eb88444c634370c24c319e7d3e37c1e14907293d9fbdeb27ff"
+    },
+    {
+      "path": "../../apps/engine/src/session-graph-service.ts",
+      "sha256": "4e4f86b3edf59111ab72e930f17b51656aba906656d1e6966c36e6df10922381"
+    },
+    {
+      "path": "../../apps/engine/src/session-graph-store.ts",
+      "sha256": "18d85d0a0512f897116b3e905d5d221396da5134bc7dc37425045d871a7b422b"
+    },
+    {
+      "path": "../../apps/engine/src/session-knowledge-service.ts",
+      "sha256": "844a2ea9ec572c0a4dadfcfcccdf823d850ac68bdbcabb88d74be8d1780b5474"
+    },
+    {
+      "path": "../../apps/engine/src/session-maintenance-commands.ts",
+      "sha256": "71547c7cf6266865b966a24569309ee969899f1746735dc9260ca10afe126981"
+    },
+    {
+      "path": "../../apps/engine/src/session-reader-queries.ts",
+      "sha256": "a4db53604925df1c16ba1f9381dbed975ec6484bd0ca40a107d5ce6fc6e4c680"
+    },
+    {
+      "path": "../../apps/engine/src/user-request-index-service.ts",
+      "sha256": "0fcdad2d33756f3922a3040a685c4432420252a054a88f003a646ebb8cc76eea"
+    },
+    {
+      "path": "../../packages/adapter-codex-continuation/src/adapter.ts",
+      "sha256": "76f2ec6d8346ab673b7d7922d65153cd1ca70e132e308c1ed1c60b4440f89869"
+    },
+    {
+      "path": "../../packages/adapter-codex-read/src/index.ts",
+      "sha256": "02c770dbd2075e334ab8fee45269fad48c86b993b0bd035afea66cce33b4257a"
+    },
+    {
+      "path": "../../packages/adapter-codex-read/src/stable-read.ts",
+      "sha256": "5f95a9112e0b7ada2c90cccd27a273a3082e6fbd5c23034bc05a54142b4aa90c"
+    },
+    {
+      "path": "../../packages/adapter-dsh-0-1-5/COMPATIBILITY.md",
+      "sha256": "3e86ea22a8b138d78ae7e5852a6808914476e72d6741c3b4835b50b044974dca"
+    },
+    {
+      "path": "../../packages/adapter-dsh-0-1-5/src/index.ts",
+      "sha256": "b3e81bbaf17093fc3feb181e991796eb122c10c398b46826f3a7ca618cfb10d9"
+    },
+    {
+      "path": "../../packages/canonical-session-engine/src/dsh-append.ts",
+      "sha256": "812f73613d3544f1cb164dada7583b3ab4f21ba84427448bf456433b21a7a710"
+    },
+    {
+      "path": "../../packages/canonical-session-engine/src/engine.ts",
+      "sha256": "d03c51f9715be4aa82b3b632df046d41f2124b37bda6b3e351ca2f5125080f0c"
+    },
+    {
+      "path": "../../packages/continuation-engine/src/service.ts",
+      "sha256": "bad18fecbb0f9100e1d82185991619823a4e73261e56678f364147c21ca7bce1"
+    },
+    {
+      "path": "../../packages/contracts/src/adapter-sdk.ts",
+      "sha256": "69b863f5799143de4d5e2c67127b1a6278310d5f18e19c26d23b9ca187c3c0ab"
+    },
+    {
+      "path": "../../packages/contracts/src/adapters.ts",
+      "sha256": "a473761cda209088466601ac35fcc1043d93b0b183b6397ccb04e08e8d93ee6c"
+    },
+    {
+      "path": "../../packages/contracts/src/canonical.ts",
+      "sha256": "35a8eec54d93c077dc7f14557e8a747be341b978345775f89dd2606ea7ff84b5"
+    },
+    {
+      "path": "../../packages/contracts/src/continuations.ts",
+      "sha256": "5c9d4628f2447065762e3822f68f91da4bca9c8d2f6056ec48c316a25b036bd9"
+    },
+    {
+      "path": "../../packages/contracts/src/extension-data.ts",
+      "sha256": "7873cd1f06f0975bb84c29e1d4f9ef9f49600ef776951aa5e64912baebf41805"
+    },
+    {
+      "path": "../../packages/contracts/src/extension-directory.ts",
+      "sha256": "5bb6f72422139850cd9a908a094f1a1b8add6202a00030a988002b85e29871e6"
+    },
+    {
+      "path": "../../packages/contracts/src/external-lifecycle.ts",
+      "sha256": "24c4441d56162e5aee6e0f7e10452690cbef71df20bc6e8ae7fa75028b6927da"
+    },
+    {
+      "path": "../../packages/contracts/src/model.ts",
+      "sha256": "1d0546296bb9cf825612f858d79ae8400a12aefd1adf8ac8b767d0710f82a99b"
+    },
+    {
+      "path": "../../packages/contracts/src/native-context-evidence.ts",
+      "sha256": "05e4365b56f53f6ca63ca150a16534a571ba00be3b8a16b89e993f3c333afda0"
+    },
+    {
+      "path": "../../packages/contracts/src/native-context.ts",
+      "sha256": "b0267645272acd00171884f172437b9463083b40b139fe07a96c45026e93af28"
+    },
+    {
+      "path": "../../packages/contracts/src/native-session-space.ts",
+      "sha256": "9709a9d01078da6a6d94fd01f89f4957803edc15a4b3d8eadefcdf2c2b94db02"
+    },
+    {
+      "path": "../../packages/contracts/src/projection.ts",
+      "sha256": "c51d3a121057abb98bf6a64d887b4544f39a015563b2e4926b62cb149e53cf8d"
+    },
+    {
+      "path": "../../packages/contracts/src/runtime-broker.ts",
+      "sha256": "95aff6c0c148186be4e0a8be99d473bd7a5edd45d1ebb36903cf30790f217344"
+    },
+    {
+      "path": "../../packages/contracts/src/session-context.ts",
+      "sha256": "70759f6b707c78f650f011a33dfb448b5ac8909ce7aeb90faed7dd54e195c927"
+    },
+    {
+      "path": "../../packages/contracts/src/session-graph.ts",
+      "sha256": "eb46c4ed1f879022031a94e0a14d5efb883d9391984bcc4c97239dd506719b5e"
+    },
+    {
+      "path": "../../packages/contracts/src/session-knowledge.ts",
+      "sha256": "94d2910dcdff8d3706afec44a6e2d357c27dd91136a007f5806f27bfdad154b2"
+    },
+    {
+      "path": "../../packages/contracts/src/session-reader.ts",
+      "sha256": "95aad8dad443d0edac85d87cc003b39590c8c688d2f28521674471c3f7368bc2"
+    },
+    {
+      "path": "../../packages/contracts/src/user-request-index.ts",
+      "sha256": "4ca403e7380fb387ee32974c4cdf8373febdb0e073905d824eed54408a8d07a8"
+    },
+    {
+      "path": "../../packages/handoff-context/src/index.ts",
+      "sha256": "b9469ab187967dd28a45fdbffa595bbc88bfcd90268eca8391be6b16992f1067"
+    },
+    {
+      "path": "../../packages/projection-lifecycle/src/append.ts",
+      "sha256": "bffe7733d6cd3c2754f7a4b903719af429cab49ed216a1c2136e4b670d0a5973"
+    },
+    {
+      "path": "../../packages/projection-lifecycle/src/lifecycle.ts",
+      "sha256": "9b391a07400b54ae2979e0038a6b6f4869d1087c906ef7fd47de8fc12a778cba"
+    },
+    {
+      "path": "../../packages/projection-lifecycle/src/native-space.ts",
+      "sha256": "9f472c63811532ec26632c779ddeb18c6fa87fb4b9e58ff8f2831f9c48af14cc"
+    },
+    {
+      "path": "../../packages/session-domain/src/graph.ts",
+      "sha256": "ec3042fed8d18fb91d5cd4b58c0e4c1f6f18df5fb72ce277aae5f64809133e0e"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/annotation-mirror.ts",
+      "sha256": "a9cb46e190c7475a913d43aff60839c1057805c2c7201b4d7f43d13a18c4bcd0"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/extension-data.ts",
+      "sha256": "a0a266f2e0593629545632fb1127fbb3338f47c9ee895c4c340cd4cbf01fe863"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/index.ts",
+      "sha256": "9bd519e528e0863794be24d012d9f60886590346c97d5eefa021f468f6df77dd"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/native-context.ts",
+      "sha256": "59670a90204a793c3d69b586b8afb258e9c3175218280bebf979ef4fef31b73a"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/projection-runtime.ts",
+      "sha256": "6fdff267858d0bbb7802180b25f47519967a9bf60fe91da6d70551223d8a8f37"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/rc2-persistence.ts",
+      "sha256": "87996b11416dd87d9cf4db4f154f1364d5b39be0705d42f444a53a752e1ad37f"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/session-context.ts",
+      "sha256": "a26a9f0a5edd45cc9c7c5ebee7bac46d49bfa7b39f697b9f388c6b480c30c0c8"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/session-graph.ts",
+      "sha256": "0478733367d6f0bc03c10c1b99f4ac282343fd2a43a9291909493041bc417e84"
+    },
+    {
+      "path": "../../tests/integration/phase-3-continuation.test.ts",
+      "sha256": "9ea43f7bd28d816c6c9fe298c7ec1b9c376cb831d46c14fe360c67e78bed9c25"
+    },
+    {
+      "path": "../adapters/architecture.md",
+      "sha256": "9e79e5a534f00e1c3ec0a0d4325aab7bd83b938da55bb26a4152bb712fbc8a6a"
+    },
+    {
+      "path": "../adapters/compatibility-matrix.md",
+      "sha256": "e79de601484057eed577eb442248b3ae5b08f9165ea42f2c84c40430151ad111"
+    },
+    {
+      "path": "../adapters/contract.md",
+      "sha256": "10df2c00233c6e5d58aecf758191404e5037686163a6e1e7827d1029dd50618c"
+    },
+    {
+      "path": "../adapters/testing-guide.md",
+      "sha256": "4f9a16035be5a8dcaa768fb8334ab8fa33a4aeca9ea1f82fc138d197d9a32caa"
+    },
+    {
+      "path": "../changes/2026-09-14-session-main-graph-spec-revision.md",
+      "sha256": "2708878919761eb78739db9a305a6604f56a72108829fb3c6e7dc39b854a37e1"
     },
     {
       "path": "../changes/2026-09-15-native-context-management.md",
-      "sha256": "bf84087008a918a6728e948d5272a61417980e44f418eb72ddeed75ef989c950",
-      "bound_headings": [
-        "验证对应"
-      ]
+      "sha256": "bf84087008a918a6728e948d5272a61417980e44f418eb72ddeed75ef989c950"
+    },
+    {
+      "path": "../changes/2026-09-16-project-map-adoption.md",
+      "sha256": "9d83208cb31349fd1365443c0cf802b700bf8d38ab8e625ccb74db96ca74390b"
+    },
+    {
+      "path": "../deployment/launcher-hook.md",
+      "sha256": "0cecc78ee9fcc93d96b6c9615205e15d49874e0ba210927a89d14a0a50319273"
+    },
+    {
+      "path": "../extensions/plugin-data-integration.md",
+      "sha256": "d1c8a81ab2fd1422d01cd5c8f308905c220b5761c8693916ec4d846c389925e7"
     },
     {
       "path": "../reports/2026-09-15-extension-ownership-reader-release.md",
-      "sha256": "618ee76060630e19f64bc8d76a2115d1a2ae3b6aa772ab8a4217da483fad1e3d",
-      "bound_headings": [
-        "验证与部署"
-      ]
+      "sha256": "618ee76060630e19f64bc8d76a2115d1a2ae3b6aa772ab8a4217da483fad1e3d"
+    },
+    {
+      "path": "../reports/2026-09-15-graph-reference-lifecycle-release.md",
+      "sha256": "d830a8c58e665825965d6eaa0178ec460cf4c0f70a286253de0e5b2e1b7636cb"
+    },
+    {
+      "path": "../superpowers/specs/2026-08-31-session-maintenance-canonical-projection-design.md",
+      "sha256": "2c8ab511bcf88ee16595d30229e01aa878da1a1c6b441aa14e6d610d6a89b35c"
+    },
+    {
+      "path": "../superpowers/specs/2026-09-03-maintenance-canonical-session-format-v1.md",
+      "sha256": "84f0b48403961a28770a41f2b40d0010894288a4a66ea51e1e44f49c7b8e87b9"
+    },
+    {
+      "path": "../superpowers/specs/2026-09-10-persistent-native-session-space.md",
+      "sha256": "78490f31dd5b071432ede542f6ccb4cf05c9ee5bcde7e703abd83963220a97cf"
+    },
+    {
+      "path": "../superpowers/specs/2026-09-10-pluggable-extension-data-requirements.md",
+      "sha256": "df97c7d5eb9e3d9fadd097b58f280a26fb0daeeb97129d34820c2a06eb0fb738"
+    },
+    {
+      "path": "../superpowers/specs/2026-09-10-session-context-graph-requirements.md",
+      "sha256": "671d89b30fe5c68fa810fcff7da6d8a266026c5fcc0a2590500c3064f36602c9"
+    },
+    {
+      "path": "../superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md",
+      "sha256": "13f0a49abc8585141d3b9a1e147d64dd04564d0a05b13edeae44e7b232f6bcee"
+    },
+    {
+      "path": "../superpowers/specs/2026-09-15-native-agent-context-management.md",
+      "sha256": "9aaa05d99b69ca2016549dee323ca4ed00b04ad1584513951371b0b9cf14d74f"
+    },
+    {
+      "path": "../../packages/adapter-dsh-gpt-compat/src/index.ts",
+      "sha256": "a8b41478f0ae47c169a5ac7fe169d416b543a3ea41a043bae9b765ffc7973840"
+    },
+    {
+      "path": "../../packages/adapter-dsh-gpt-compat/src/codec.ts",
+      "sha256": "f80120ffef94db990edd6c5e656a10a4f0400f478f55e0df6c94cd936b3361be"
+    },
+    {
+      "path": "../../packages/dsh-core-extension/src/dsh-015-binding.ts",
+      "sha256": "96c88cb1ec813876c949b9521ded2133ef4e9cd627ccf3f31555c9b09a6ee016"
     }
   ],
-  "note": "Adoption baseline before adding the map. Runtime deployment was not inspected. Refresh only affected entries when sources change."
+  "history": [
+    {
+      "reason": "Original adoption baseline retained; source-selection expanded for independent responsibility map",
+      "baseline": {
+        "as_of": "2026-09-16",
+        "repositories": [
+          {
+            "repository": "dsh-session-maintenance",
+            "path": "../..",
+            "branch": "codex/rc2-session-context-graph",
+            "commit": "5f3c066ffaba8751e377442da044c90a38cf22a5"
+          }
+        ],
+        "selected_sources": [
+          {
+            "path": "../../README.md",
+            "sha256": "cb2e41fa0255e00a7c62d58cf14545b7fd2473c13d5d21a7abaef2a1a907c4a7",
+            "bound_headings": [
+              "当前功能",
+              "数据与组件边界",
+              "使用流程",
+              "当前配套版本"
+            ]
+          },
+          {
+            "path": "../superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md",
+            "sha256": "13f0a49abc8585141d3b9a1e147d64dd04564d0a05b13edeae44e7b232f6bcee",
+            "bound_headings": [
+              "业务 Adapter 与所属会话",
+              "会话阅读器"
+            ]
+          },
+          {
+            "path": "../superpowers/specs/2026-09-15-native-agent-context-management.md",
+            "sha256": "9aaa05d99b69ca2016549dee323ca4ed00b04ad1584513951371b0b9cf14d74f",
+            "bound_headings": [
+              "1. 已确认的产品决定"
+            ]
+          },
+          {
+            "path": "../superpowers/specs/2026-09-10-session-context-graph-requirements.md",
+            "sha256": "671d89b30fe5c68fa810fcff7da6d8a266026c5fcc0a2590500c3064f36602c9",
+            "bound_headings": [
+              "3. 功能需求：跨会话引用"
+            ]
+          },
+          {
+            "path": "../changes/2026-09-15-native-context-management.md",
+            "sha256": "bf84087008a918a6728e948d5272a61417980e44f418eb72ddeed75ef989c950",
+            "bound_headings": [
+              "验证对应"
+            ]
+          },
+          {
+            "path": "../reports/2026-09-15-extension-ownership-reader-release.md",
+            "sha256": "618ee76060630e19f64bc8d76a2115d1a2ae3b6aa772ab8a4217da483fad1e3d",
+            "bound_headings": [
+              "验证与部署"
+            ]
+          }
+        ],
+        "note": "Adoption baseline before adding the map. Runtime deployment was not inspected. Refresh only affected entries when sources change."
+      }
+    }
+  ],
+  "note": "Current source evidence only. Map edits are uncommitted. No runtime deployment, home, Vault or external plugin installation was inspected.",
+  "working_tree_note": "Includes the separately tested GPT format adapter changes prepared for this commit."
 }

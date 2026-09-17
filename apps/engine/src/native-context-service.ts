@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { SqliteExtensionRepository } from "@linmu/dsh-session-store";
 import { JsonProjectionDirectory, projectionRootFor } from "@linmu/dsh-session-projection-lifecycle";
 import { verifyV3NativeContextMaterials, verifyV3NativeContextRelease } from "@linmu/dsh-session-adapter-0-1-5";
+import { manifest as gptManifest, verifyNativeContextMaterials as verifyGptMaterials, verifyNativeContextRelease as verifyGptRelease } from "@linmu/dsh-session-adapter-gpt-compat";
 import {
   ExtensionDataError, NATIVE_CONTEXT_NAMESPACE, nativeContextStateSchema, nativeContextScopeSchema,
   nativeContextWindowSchema, nativeContextSourceSetSchema, nativeContextReleaseSchema, nativeContextPinSchema,
@@ -209,7 +210,7 @@ export class NativeContextService {
     const q=nativeContextRegisterSchema.parse(input);if(q.actor!=="host")throw fail("材料登记仅供原生宿主使用");
     const a=await this.access(q.runId,q.targetNativeSessionId);let changed=false;
     const payload=await new JsonProjectionDirectory(projectionRootFor(this.engine.projectionRuntimeRoot,a.run.id)).readSession(q.targetNativeSessionId as NativeSessionId);
-    try{verifyV3NativeContextMaterials(payload,{nativeSessionId:q.targetNativeSessionId,materials:q.materials});}
+    try{(a.run.adapterId===gptManifest.id?verifyGptMaterials:verifyV3NativeContextMaterials)(payload,{nativeSessionId:q.targetNativeSessionId,materials:q.materials});}
     catch(error){throw fail(error instanceof Error?error.message:"材料尚未持久提交", "NATIVE_CONTEXT_EVIDENCE_INVALID");}
     for(const material of q.materials){const old=a.state.materials.find(m=>m.materialId===material.materialId);
       if(old){if(hash(materialInput(old))!==hash(material))throw fail("材料身份或内容摘要发生变化");continue;}
@@ -237,7 +238,7 @@ export class NativeContextService {
       const materials=op.materialIds.map(id=>a.state.materials.find(m=>m.materialId===id));
       if(materials.some(m=>!m))throw fail("释放操作的原始材料记录不完整");
       const payload=await new JsonProjectionDirectory(projectionRootFor(this.engine.projectionRuntimeRoot,a.run.id)).readSession(q.targetNativeSessionId as NativeSessionId);
-      try{const evidence=verifyV3NativeContextRelease(payload,{nativeSessionId:q.targetNativeSessionId,operationId:q.operationId,
+      try{const evidence=(a.run.adapterId===gptManifest.id?verifyGptRelease:verifyV3NativeContextRelease)(payload,{nativeSessionId:q.targetNativeSessionId,operationId:q.operationId,
         materials:materials.map(m=>materialInput(m!)),surfaceEventSeqs:q.surfaceEventSeqs,sourceEventSeqs:q.sourceEventSeqs});
         releasedBytes=evidence.releasedBytes;surfaceEventSeqs=[...evidence.surfaceEventSeqs];sourceEventSeqs=[...evidence.sourceEventSeqs];
       }catch(error){throw fail(error instanceof Error?error.message:"缺少实际原生替代事件，不能确认已释放", "NATIVE_CONTEXT_EVIDENCE_INVALID");}

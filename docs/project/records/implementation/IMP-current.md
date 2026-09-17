@@ -3,9 +3,9 @@ id: IMP-current
 kind: implementation
 title: 当前源码已经做到哪
 status: current
-summary: RC2 当前代码已有会话运行、两类业务目录、固定引用、主干和原生上下文管理。
+summary: 当前 RC2 支持会话、持久运行、续接、扩展目录、主干和原生上下文；部署另查。
 progress: implemented
-gap: 真实模型长时间交互、大规模旧图迁移与用户手工并发体验仍需按各交付记录补验；本轮未执行这些产品验收。
+gap: 本轮仅核对地图与关键源码，真实模型、全部旧图迁移、用户并发及当前部署未复验。
 relations:
 - relation: implements
   to:
@@ -17,18 +17,20 @@ relations:
   to:
     record_id: REQ-reader
 sources:
-- file: ../../README.md
-- file: ../superpowers/specs/2026-09-15-native-agent-context-management.md
+- path: ../../README.md
 ---
 
 # 当前源码已经做到哪
 
-## 已有
+- 历史/来源：[[MOD-canonical]] 和 [[MOD-harness-codex]]，不可变版本、检查点、工作区、只读 Codex 镜像。
+- 运行/恢复：[[MOD-runtime]] 和 [[MOD-host]]，持久空间、租约、WAL 与回执。
+- 新 Codex 续接：[[MOD-continuation]]，固定来源预览、可追踪作业与恢复。
+- 业务对象：[[MOD-extension-store]] / [[MOD-business]]，七个 namespace、两类业务面板、归属索引与轻量镜像。
+- 主干/上下文：[[MOD-graph]] / [[MOD-native-context]]，固定许可、撤销、日志、窗口和持久释放。
+- 阅读：[[MOD-reader]] / [[MOD-dashboard]]，分页问答、过程和请求目录。
 
-- 会话导入、不可变版本、检查点、持久原生空间与 prepare/attach/drain/close/recover 生命周期。
-- 接收会话唯一主干，固定版本和完成截止、按需读取与位置日志、统一撤销。
-- Obsidian 系列 / ThoughtDAG 两类业务面板；按工作区和所属会话分页加载；轻量引用镜像。
-- 会话正文与“本轮过程”分开；用户请求索引按需读取。
-- 原生 Agent 的九个上下文/图工具以及窗口、释放、暂停、固定保留和持久回执。
+日常操作 [[IMP-usage]]，配套版本 [[IMP-versions]]。本次以当前 README、合同和关键实现核对，不代表新安装或运行验收。
 
-操作从 README 的使用流程开始。地图整理于 2026-09-16；这是当前工作区源码认识，不是本轮重新安装或启动插件的声明。
+真实模型长时交互、全部旧图迁移、真实用户并发和当前部署未重验。历史产品证据 [[VER-context]]、[[VER-reader]]；地图验证 [[VER-adoption]]。
+
+本次新增 [[INT-gpt-format]]：GPT 插件格式拥有独立 Adapter、codec、worker、启动选择、持久恢复及 Core 绑定。引擎版本 0.1.33-rc2.29。普通路径的聚焦回归通过；源码接入与当前副本部署分开记录。

@@ -1,3 +1,4 @@
+import { currentManifest } from "./dialect.js";
 import type {
   NativeReferenceResolution,
   JsonValue,
@@ -41,7 +42,7 @@ export async function resolveV3Reference(
     || !isRecord(payload.header) || payload.header.id !== nativeSessionId || !Array.isArray(payload.events)) {
     return unavailable;
   }
-  if (_run.adapterId !== "dsh-0.1.5" || payload.instanceId !== _run.instanceId || payload.profileId !== _run.profileId) return unavailable;
+  if (_run.adapterId !== currentManifest().id || payload.instanceId !== _run.instanceId || payload.profileId !== _run.profileId) return unavailable;
   if(reference.legacyNativeSessionId !== null && reference.legacyNativeSessionId !== nativeSessionId && (!Array.isArray(payload.legacyNativeSessionIds) || !payload.legacyNativeSessionIds.includes(reference.legacyNativeSessionId))) return unavailable;
   let nativeAnchorId = reference.logicalAnchorId;
   if (nativeAnchorId !== null) {

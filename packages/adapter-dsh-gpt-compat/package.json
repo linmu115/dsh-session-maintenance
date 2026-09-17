@@ -1,0 +1,41 @@
+{
+  "name": "@linmu/dsh-session-adapter-gpt-compat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./rpc-worker": {
+      "types": "./dist/rpc-worker.d.ts",
+      "default": "./dist/rpc-worker.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@linmu/dsh-session-adapter-sdk": "workspace:*",
+    "@linmu/dsh-session-adapter-rc1": "workspace:*",
+    "@deepseek-ai/dsh-session-format": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-session-format-catalog": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-session-format-v0-to-v1": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-session-format-v1-to-v2": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-session-format-v2-to-v3": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-session": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-scope": "0.1.5-rc.2",
+    "@deepseek-ai/dsh-invariants": "0.1.5-rc.2",
+    "@deepseek-ai/cordis": "4.0.2",
+    "@linmu/dsh-session-contracts": "workspace:*",
+    "@linmu/dsh-session-adapter-0-1-5": "workspace:*"
+  }
+}

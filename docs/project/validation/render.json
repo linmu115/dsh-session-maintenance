@@ -1,0 +1,410 @@
+{
+  "output": "D:\\AI\\DeepSeekHarness-Plugin\\worktrees\\session-context-graph-20260913\\dsh-session-maintenance\\docs\\project\\views\\index.html",
+  "fingerprint": "c249343f65a12b75937878ee8e94434ae336e0d21f35ad2a61e0d20b30dac0a7",
+  "diagrams": {
+    "architecture": {
+      "file": "architecture.html",
+      "canonical_file": "architecture.native.html",
+      "source": "native-archify",
+      "source_path": "D:\\AI\\DeepSeekHarness-Plugin\\worktrees\\session-context-graph-20260913\\dsh-session-maintenance\\docs\\project\\diagrams\\architecture.json",
+      "source_sha256": "ca59ad99cfb31ec100d46b78a16c1b4eba366fee624c7f4a475e6abb81ef28b5",
+      "title": "Session Maintenance · 责任与接口",
+      "archify_commit": "d673e8300df60a5c8166abe78787fdc78f6b8000",
+      "warnings": [],
+      "errors": [],
+      "record_nodes": {
+        "OBJ-session": [
+          "source"
+        ],
+        "MOD-harness-codex": [
+          "codex-reader"
+        ],
+        "IF-harness-adapter": [
+          "codex-reader",
+          "adapter"
+        ],
+        "MOD-harness-dsh": [
+          "adapter"
+        ],
+        "INT-harness-directory": [
+          "adapter"
+        ],
+        "MOD-canonical": [
+          "engine"
+        ],
+        "OBJ-version": [
+          "engine"
+        ],
+        "MOD-runtime": [
+          "runtime"
+        ],
+        "IF-runtime": [
+          "runtime"
+        ],
+        "OBJ-runtime": [
+          "runtime"
+        ],
+        "MOD-continuation": [
+          "continuation"
+        ],
+        "MOD-reader": [
+          "reader"
+        ],
+        "MOD-host": [
+          "launcher"
+        ],
+        "MOD-dashboard": [
+          "dashboard"
+        ],
+        "INT-annotation": [
+          "business"
+        ],
+        "INT-stickers": [
+          "business"
+        ],
+        "INT-obsidian": [
+          "business"
+        ],
+        "MOD-business": [
+          "business-adapter"
+        ],
+        "INT-business-directory": [
+          "business-adapter"
+        ],
+        "MOD-extension-store": [
+          "extension-store"
+        ],
+        "IF-extension": [
+          "extension-store"
+        ],
+        "OBJ-extension": [
+          "extension-store"
+        ],
+        "MOD-graph": [
+          "graph"
+        ],
+        "IF-graph": [
+          "graph"
+        ],
+        "OBJ-graph": [
+          "graph"
+        ],
+        "MOD-native-context": [
+          "native-context"
+        ],
+        "IF-native-context": [
+          "native-context"
+        ],
+        "INT-thoughtdag": [
+          "thoughtdag"
+        ]
+      },
+      "nodes": [
+        {
+          "id": "source",
+          "label": "Codex / DSH 来源",
+          "record_ids": [
+            "OBJ-session"
+          ]
+        },
+        {
+          "id": "codex-reader",
+          "label": "平台来源读取",
+          "record_ids": [
+            "MOD-harness-codex",
+            "IF-harness-adapter"
+          ]
+        },
+        {
+          "id": "adapter",
+          "label": "DSH 格式 Adapter",
+          "record_ids": [
+            "MOD-harness-dsh",
+            "IF-harness-adapter",
+            "INT-harness-directory"
+          ]
+        },
+        {
+          "id": "engine",
+          "label": "Canonical 真源",
+          "record_ids": [
+            "MOD-canonical",
+            "OBJ-version"
+          ]
+        },
+        {
+          "id": "runtime",
+          "label": "运行与恢复",
+          "record_ids": [
+            "MOD-runtime",
+            "IF-runtime",
+            "OBJ-runtime"
+          ]
+        },
+        {
+          "id": "continuation",
+          "label": "Codex 续接作业",
+          "record_ids": [
+            "MOD-continuation"
+          ]
+        },
+        {
+          "id": "reader",
+          "label": "阅读与请求查询",
+          "record_ids": [
+            "MOD-reader"
+          ]
+        },
+        {
+          "id": "launcher",
+          "label": "Provider / DSH 插件",
+          "record_ids": [
+            "MOD-host"
+          ]
+        },
+        {
+          "id": "dashboard",
+          "label": "维护看板",
+          "record_ids": [
+            "MOD-dashboard"
+          ]
+        },
+        {
+          "id": "business",
+          "label": "外部 Suite / Core",
+          "record_ids": [
+            "INT-annotation",
+            "INT-stickers",
+            "INT-obsidian"
+          ]
+        },
+        {
+          "id": "business-adapter",
+          "label": "业务扩展 Adapter",
+          "record_ids": [
+            "MOD-business",
+            "INT-business-directory"
+          ]
+        },
+        {
+          "id": "extension-store",
+          "label": "扩展对象接口",
+          "record_ids": [
+            "MOD-extension-store",
+            "IF-extension",
+            "OBJ-extension"
+          ]
+        },
+        {
+          "id": "graph",
+          "label": "主干/引用领域接口",
+          "record_ids": [
+            "MOD-graph",
+            "IF-graph",
+            "OBJ-graph"
+          ]
+        },
+        {
+          "id": "native-context",
+          "label": "原生上下文接口",
+          "record_ids": [
+            "MOD-native-context",
+            "IF-native-context"
+          ]
+        },
+        {
+          "id": "thoughtdag",
+          "label": "外部 ThoughtDAG",
+          "record_ids": [
+            "INT-thoughtdag"
+          ]
+        }
+      ],
+      "receipt_file": "architecture.receipt.json",
+      "validation": {
+        "checksPassed": 9,
+        "checkCount": 9,
+        "compositionProfile": "standard",
+        "compositionStatus": "pass",
+        "errors": 0,
+        "warnings": 0
+      }
+    },
+    "workflow": {
+      "file": "workflow.html",
+      "canonical_file": "workflow.native.html",
+      "source": "native-archify",
+      "source_path": "D:\\AI\\DeepSeekHarness-Plugin\\worktrees\\session-context-graph-20260913\\dsh-session-maintenance\\docs\\project\\diagrams\\workflow.json",
+      "source_sha256": "313f40e464765787a67c5e70a729c1104ee8b2629793f7e458856f1b94525d0d",
+      "title": "Session Maintenance · 来源导入与原生提交",
+      "archify_commit": "d673e8300df60a5c8166abe78787fdc78f6b8000",
+      "warnings": [],
+      "errors": [],
+      "record_nodes": {
+        "MOD-harness-codex": [
+          "import"
+        ],
+        "IF-harness-adapter": [
+          "import",
+          "materialize",
+          "normalize"
+        ],
+        "MOD-canonical": [
+          "canonical"
+        ],
+        "OBJ-session": [
+          "canonical"
+        ],
+        "MOD-runtime": [
+          "prepare",
+          "wal",
+          "receipt",
+          "close",
+          "recover"
+        ],
+        "OBJ-runtime": [
+          "prepare",
+          "recover"
+        ],
+        "MOD-harness-dsh": [
+          "materialize",
+          "normalize"
+        ],
+        "MOD-host": [
+          "run",
+          "drain"
+        ],
+        "IF-runtime": [
+          "run",
+          "wal",
+          "drain"
+        ],
+        "OBJ-version": [
+          "receipt"
+        ],
+        "MOD-reader": [
+          "read"
+        ],
+        "MOD-dashboard": [
+          "read"
+        ]
+      },
+      "nodes": [
+        {
+          "id": "import",
+          "label": "只读观察来源",
+          "record_ids": [
+            "MOD-harness-codex",
+            "IF-harness-adapter"
+          ]
+        },
+        {
+          "id": "canonical",
+          "label": "纳入规范会话",
+          "record_ids": [
+            "MOD-canonical",
+            "OBJ-session"
+          ]
+        },
+        {
+          "id": "prepare",
+          "label": "准备与恢复空间",
+          "record_ids": [
+            "MOD-runtime",
+            "OBJ-runtime"
+          ]
+        },
+        {
+          "id": "materialize",
+          "label": "编码并核验原生",
+          "record_ids": [
+            "MOD-harness-dsh",
+            "IF-harness-adapter"
+          ]
+        },
+        {
+          "id": "run",
+          "label": "attach 与实际运行",
+          "record_ids": [
+            "MOD-host",
+            "IF-runtime"
+          ]
+        },
+        {
+          "id": "wal",
+          "label": "核对并持久化意图",
+          "record_ids": [
+            "MOD-runtime",
+            "IF-runtime"
+          ]
+        },
+        {
+          "id": "normalize",
+          "label": "规范化实际追加",
+          "record_ids": [
+            "MOD-harness-dsh",
+            "IF-harness-adapter"
+          ]
+        },
+        {
+          "id": "receipt",
+          "label": "提交规范版本与回执",
+          "record_ids": [
+            "MOD-runtime",
+            "OBJ-version"
+          ]
+        },
+        {
+          "id": "read",
+          "label": "按需阅读持久结果",
+          "record_ids": [
+            "MOD-reader",
+            "MOD-dashboard"
+          ]
+        },
+        {
+          "id": "drain",
+          "label": "停止时排空写入",
+          "record_ids": [
+            "MOD-host",
+            "IF-runtime"
+          ]
+        },
+        {
+          "id": "close",
+          "label": "核对并关闭运行",
+          "record_ids": [
+            "MOD-runtime"
+          ]
+        },
+        {
+          "id": "recover",
+          "label": "中断恢复核对",
+          "record_ids": [
+            "MOD-runtime",
+            "OBJ-runtime"
+          ]
+        }
+      ],
+      "receipt_file": "workflow.receipt.json",
+      "validation": {
+        "checksPassed": 9,
+        "checkCount": 9,
+        "compositionProfile": "standard",
+        "compositionStatus": "pass",
+        "errors": 0,
+        "warnings": 4
+      }
+    }
+  },
+  "exported_at": "2026-09-16 06:28 UTC",
+  "preview": {
+    "status": "running",
+    "url": "http://localhost:52890/2c1f7e375bab80a8cd2d7e7fe21ed1cf/",
+    "entry": "D:\\AI\\DeepSeekHarness-Plugin\\worktrees\\session-context-graph-20260913\\dsh-session-maintenance\\docs\\project\\views\\index.html",
+    "pid": 7644,
+    "reused": true,
+    "idle_timeout_hours": 8
+  },
+  "url": "http://localhost:52890/2c1f7e375bab80a8cd2d7e7fe21ed1cf/"
+}

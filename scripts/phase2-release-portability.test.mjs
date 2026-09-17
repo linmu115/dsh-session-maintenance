@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { completeComponentInventory, PHASE2_COMPONENT_PATHS, normalizedTextHash, validDsh015HostProvenance } from "./phase2-release-contract.mjs";
 import { missingPackagedDocumentLinks, rewritePackagedReadmeLinks } from "./phase2-readme.mjs";
 
-test("component inventory requires each of the eight source components exactly once", () => {
+test("component inventory requires each declared source component exactly once", () => {
   const components = PHASE2_COMPONENT_PATHS.map(sourcePath => ({ sourcePath }));
   assert.equal(completeComponentInventory(components), true);
   assert.equal(completeComponentInventory(components.slice(1)), false);

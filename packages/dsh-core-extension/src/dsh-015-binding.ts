@@ -6,6 +6,7 @@ import { basename,dirname,isAbsolute,join,relative,resolve,sep } from "node:path
 import { fileURLToPath,pathToFileURL } from "node:url";
 import { canonicalJson } from "@linmu/dsh-session-domain";
 import { v3NativeSessionCodec,v3NativeArtifactPath,validateV3Artifact } from "@linmu/dsh-session-adapter-0-1-5";
+import { adapter as gptAdapter, validateArtifact as validateGptArtifact, FORMAT_ID as GPT_FORMAT_ID, manifest as gptManifest } from "@linmu/dsh-session-adapter-gpt-compat";
 import { Dsh015CoreHost,type Dsh015MetadataHost,type Dsh015SessionHandle,type Dsh015SessionPersistence } from "./dsh-015-host.js";
 import { assessDsh015CoreContract,dsh015CoreContractFingerprint,type Dsh015CoreContractObservation } from "./dsh-015-contract.js";
 import { probeBuiltDsh015CoreHost } from "./dsh-015-materialization.js";
@@ -16,6 +17,7 @@ const object=(value:unknown):ObjectRecord=>{if(value===null||typeof value!=="obj
 const sha=(value:string|Uint8Array)=>createHash("sha256").update(value).digest("hex");
 export interface Dsh015CoreBindingReceipt {
  readonly schemaVersion:1;
+ readonly sessionFormat?:{readonly adapterId:string;readonly formatId:string};
  readonly node:{readonly path:string;readonly sha256:string};
  readonly observation:Dsh015CoreContractObservation;
  readonly expectedContractFingerprint:string;
@@ -32,6 +34,12 @@ export interface Dsh015CoreBindingInput {
  readonly receiptPath:string;
  readonly receiptSha256:string;
 }
+/** Select only a supported, receipt-pinned adapter/format pair. Legacy receipts remain ordinary V3. */
+export function resolveDsh015SessionFormat(format?:Dsh015CoreBindingReceipt["sessionFormat"]){
+ if(format===undefined||(format.adapterId==="dsh-0.1.5"&&format.formatId===v3NativeSessionCodec.formatId))return {adapterId:"dsh-0.1.5",formatId:v3NativeSessionCodec.formatId,codec:v3NativeSessionCodec,validate:validateV3Artifact};
+ if(format.adapterId===gptManifest.id&&format.formatId===GPT_FORMAT_ID)return {adapterId:gptManifest.id,formatId:GPT_FORMAT_ID,codec:gptAdapter.nativeSessionCodec!,validate:validateGptArtifact};
+ throw new TypeError("Unsupported RC2 receipt session adapter/format pair");
+}
 const modules={session:"@deepseek-ai/dsh-session",sessionPersistence:"@deepseek-ai/dsh-session-persistence",jsonlPersistence:"@deepseek-ai/dsh-session-persistence-jsonl",workspace:"@deepseek-ai/dsh-workspace",projectionCache:"@deepseek-ai/dsh-session-projection-cache",sessionQuery:"@deepseek-ai/dsh-session-query",formatCatalog:"@deepseek-ai/dsh-session-format-catalog"} as const;
 function requireMethods(value:unknown,names:readonly string[]):void{const target=object(value);for(const name of names)if(typeof target[name]!=="function")throw new TypeError(`RC2 required method missing: ${name}`);}
 let nodeDigest:{stamp:string;value:string}|undefined;
@@ -39,6 +47,7 @@ async function actualNode(){const path=await realpath(process.execPath),before=a
 async function verifyReceipt(input:Dsh015CoreBindingInput){
  const bytes=await readFile(input.receiptPath);if(sha(bytes)!==input.receiptSha256)throw new TypeError("Untrusted RC2 Core receipt");const receipt=JSON.parse(bytes.toString("utf8")) as Dsh015CoreBindingReceipt;
  if(receipt.schemaVersion!==1||assessDsh015CoreContract(receipt.observation,receipt.expectedContractFingerprint).status!=="compatible")throw new TypeError("RC2 Core receipt contract mismatch");
+ resolveDsh015SessionFormat(receipt.sessionFormat);
  const node=await actualNode();if(!receipt.node||await realpath(receipt.node.path)!==node.path||receipt.node.sha256!==node.sha256)throw new TypeError("RC2 actual Node differs from the approved receipt");
  const anchor=input.importAnchor.startsWith("file:")?fileURLToPath(input.importAnchor):input.importAnchor;
  const require=createRequire(anchor), loaded:Record<string,ObjectRecord>={};
@@ -54,13 +63,13 @@ async function verifyReceipt(input:Dsh015CoreBindingInput){
 /** Real runtime binding for the pinned RC2 backend. No legacy persistence/coordinator facade. */
 export async function createDsh015CoreHostBinding(input:Dsh015CoreBindingInput){
  const ctx=object(input.runtime),storage=object(ctx.sessionPersistence),sessions=object(ctx.sessions),workspace=object(ctx.workspaceRegistry);
- const {receipt,loaded}=await verifyReceipt(input);
+ const {receipt,loaded}=await verifyReceipt(input),format=resolveDsh015SessionFormat(receipt.sessionFormat);
  requireMethods(storage,["stat","list","open","create"]);requireMethods(sessions,["get","prepare","enter"]);requireMethods(workspace,["list","get","archiveSession"]);requireMethods(ctx.sessionQuery,["readSession"]);requireMethods(ctx.storageDomain,["get"]);
  requireMethods(loaded.sessionPersistence,["validateStoredEvents"]);
  // Exactly two registry primitives lack public unarchive equivalents in fixed RC2. Never route them through the legacy CoreHost.
  requireMethods(workspace,["enqueueOperation","setState"]);
  const root=await realpath(resolve(object(storage.config).root));
- const key=sha(JSON.stringify([input.instanceId,input.profileId,input.branchId??"main","dsh-0.1.5","dsh-0.1.5-v3-jsonl-zstd-v1"]));
+ const key=sha(JSON.stringify([input.instanceId,input.profileId,input.branchId??"main",format.adapterId,format.formatId]));
  if(basename(root)!=="sessions"||basename(dirname(root))!==key||basename(dirname(dirname(root)))!=="native-spaces")throw new TypeError("Core writes require this instance's Broker native space");
  const assertSpace=async()=>{const state=object(JSON.parse(await readFile(join(dirname(root),"space.json"),"utf8")));if(state.key!==key||state.owner!==input.runId||!["ready","clean"].includes(state.state))throw new TypeError("RC2 native-space owner is not this run");};await assertSpace();
  for(const [field,role] of [["sessions","session"],["sessionPersistence","jsonlPersistence"],["workspaceRegistry","workspace"],["sessionProjectionCache","projectionCache"]] as const){const implementation=loaded[role]!.default;if(typeof implementation!=="function"||!(ctx[field] instanceof implementation))throw new TypeError(`RC2 live service does not belong to the attested module: ${field}`);}
@@ -99,16 +108,16 @@ export async function createDsh015CoreHostBinding(input:Dsh015CoreBindingInput){
   const generations=(await readdir(dirname(path))).filter(n=>/^session(?:\.v[0-9]+)?\.jsonl(?:\.zstd)?$/u.test(n));if(generations.length!==1)throw new TypeError("Offline rollback refuses retained or future generations");
   if(!snapshot.exists){await unlink(path);return;}
   const decoded=object(JSON.parse(Buffer.from(snapshot.artifact,"base64").toString("utf8")));if(canonicalJson(decoded as never)!==canonicalJson({header:snapshot.header,events:snapshot.events,inheritedEventCount:snapshot.inheritedEventCount??0} as never))throw new TypeError("Offline snapshot payload mismatch");
-  const artifact=validateV3Artifact(decoded as never);if(canonicalJson(artifact.header as never)!==canonicalJson(current.header as never))throw new TypeError("Immutable V3 header changed before rollback");
-  if(!path.endsWith(".zstd"))throw new TypeError("Managed offline rollback requires the configured zstd codec");const description={relativePath:relative(root,path),header:artifact.header};const bytes=v3NativeSessionCodec.encode(artifact as never,description);const temporary=`${path}.${randomUUID()}.maintenance-tmp`;
-  const file=await open(temporary,"wx",0o600);try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}try{v3NativeSessionCodec.verifyEncoded?.(await readFile(temporary),artifact as never,description);await rename(temporary,path);}finally{await unlink(temporary).catch((e:NodeJS.ErrnoException)=>{if(e.code!=="ENOENT")throw e;});}
+  const artifact=format.validate(decoded as never);if(canonicalJson(artifact.header as never)!==canonicalJson(current.header as never))throw new TypeError("Immutable V3 header changed before rollback");
+  if(!path.endsWith(".zstd"))throw new TypeError("Managed offline rollback requires the configured zstd codec");const description={relativePath:relative(root,path),header:artifact.header};const bytes=format.codec.encode(artifact as never,description);const temporary=`${path}.${randomUUID()}.maintenance-tmp`;
+  const file=await open(temporary,"wx",0o600);try{await file.writeFile(bytes);await file.sync();}finally{await file.close();}try{format.codec.verifyEncoded?.(await readFile(temporary),artifact as never,description);await rename(temporary,path);}finally{await unlink(temporary).catch((e:NodeJS.ErrnoException)=>{if(e.code!=="ENOENT")throw e;});}
  };
  const host=new Dsh015CoreHost({persistence,isSessionLive:id=>sessions.get(id)!==undefined||Boolean(externalWriters.get(id)),observation:async()=>{await verifyReceipt(input);return receipt.observation;},validateStoredEvents:(header,events)=>loaded.sessionPersistence!.validateStoredEvents(header,events),metadata,withOfflineSession,restoreOfflineSession});
  return {host,expectedContractFingerprint:receipt.expectedContractFingerprint,materializationProbe:()=>probeBuiltDsh015CoreHost(receipt.materialization),dispose:async()=>{if(reserved.size)throw new Error("Cannot dispose an active offline transaction");for(const dispose of disposers.reverse())dispose();}};
 }
 
 /** Collect a reviewable receipt from the actual importer closure; caller approves its digest after validation. No files are written. */
-export async function collectDsh015CoreBindingReceipt(input:{readonly importAnchor:string;readonly materialization:{readonly sourceHash:string;readonly artifactHash:string}}):Promise<Dsh015CoreBindingReceipt>{
+export async function collectDsh015CoreBindingReceipt(input:{readonly importAnchor:string;readonly sessionFormat?:Dsh015CoreBindingReceipt["sessionFormat"];readonly materialization:{readonly sourceHash:string;readonly artifactHash:string}}):Promise<Dsh015CoreBindingReceipt>{
  const anchor=input.importAnchor.startsWith("file:")?fileURLToPath(input.importAnchor):input.importAnchor,require=createRequire(anchor),packages:Record<string,{manifestPath:string;entryPath:string;manifestSha256:string;entrySha256:string}>={},packageVersions:Record<string,string>={},implementationHashes:Record<string,string>={};
  for(const [role,name] of Object.entries(modules)){
   const entryPath=await realpath(require.resolve(name));let directory=dirname(entryPath),manifestPath:string|undefined;
@@ -118,5 +127,6 @@ export async function collectDsh015CoreBindingReceipt(input:{readonly importAnch
   const entrySha256=sha(entryBytes);packages[name]={manifestPath,entryPath,manifestSha256:sha(manifestBytes),entrySha256};packageVersions[name]=manifest.version;implementationHashes[role]=`sha256:${entrySha256}`;
  }
  const observation:Dsh015CoreContractObservation={platformVersion:"0.1.5-rc.2",sessionFormatVersion:3,packageVersions,implementationHashes,methods:{sessionPersistence:["stat","list","open","create"],sessionHandle:["read","append","flush","close"],session:["validateStoredEvents"]}};
- return {schemaVersion:1,node:await actualNode(),observation,expectedContractFingerprint:dsh015CoreContractFingerprint(observation),packages,materialization:input.materialization};
+ resolveDsh015SessionFormat(input.sessionFormat);
+ return {schemaVersion:1,...(input.sessionFormat?{sessionFormat:input.sessionFormat}:{}),node:await actualNode(),observation,expectedContractFingerprint:dsh015CoreContractFingerprint(observation),packages,materialization:input.materialization};
 }

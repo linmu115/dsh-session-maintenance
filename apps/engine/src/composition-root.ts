@@ -1,3 +1,4 @@
+import { adapter as gptAdapter } from "@linmu/dsh-session-adapter-gpt-compat";
 import { adapter as v3Adapter } from "@linmu/dsh-session-adapter-0-1-5";
 import { SqliteExtensionRepository } from "@linmu/dsh-session-store";
 import { ExtensionDataService } from "./extensions/service.js";
@@ -196,6 +197,7 @@ async function createComposition(
     ...(options.clock === undefined ? {} : { now: options.clock }),
   });
   const builtinAdapters = [
+    { adapter: gptAdapter, generationId: "builtin-gpt-compat-v1", packageName: "@linmu/dsh-session-adapter-gpt-compat", workerFile: "dsh-gpt-compat-rpc-worker.mjs" },
     { adapter: v3Adapter, generationId: "builtin-canonical-0-1-5", packageName: "@linmu/dsh-session-adapter-0-1-5", workerFile: "dsh-0-1-5-rpc-worker.mjs" },
     {
       adapter: alpha2Adapter,

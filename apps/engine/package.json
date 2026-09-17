@@ -1,6 +1,6 @@
 {
   "name": "@linmu/dsh-session-maintenance-engine",
-  "version": "0.1.33-rc2.28",
+  "version": "0.1.33-rc2.29",
   "private": true,
   "type": "module",
   "bin": {
@@ -41,6 +41,7 @@
     "commander": "14.0.0",
     "yaml": "2.8.1",
     "zod": "4.1.5",
-    "@linmu/dsh-session-adapter-0-1-5": "workspace:*"
+    "@linmu/dsh-session-adapter-0-1-5": "workspace:*",
+    "@linmu/dsh-session-adapter-gpt-compat": "workspace:*"
   }
 }

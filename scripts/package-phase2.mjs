@@ -159,6 +159,20 @@ const v3WorkerBundle = await build({
   legalComments: "none",
   metafile: true,
 });
+const gptWorkerBundle = await build({
+  plugins: [dshRc2PackageMetadata()],
+  banner: { js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);' },
+  absWorkingDir: root,
+  entryPoints: ["packages/adapter-dsh-gpt-compat/src/rpc-worker.ts"],
+  outfile: join(engine, "engine", "adapters", "dsh-gpt-compat-rpc-worker.mjs"),
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node24",
+  conditions: ["development"],
+  legalComments: "none",
+  metafile: true,
+});
 const rc2WorkerBundle = await build({
   absWorkingDir: root,
   entryPoints: ["packages/adapter-dsh-rc2/src/rpc-worker.ts"],
@@ -245,6 +259,7 @@ const manifest = {
       alpha2: portableInputs(alpha2WorkerBundle.metafile),
       rc1: portableInputs(rc1WorkerBundle.metafile),
       v3: portableInputs(v3WorkerBundle.metafile),
+      gptCompat: portableInputs(gptWorkerBundle.metafile),
       rc2: portableInputs(rc2WorkerBundle.metafile),
     },
     pluginHost: portableInputs(pluginHost.metafile),

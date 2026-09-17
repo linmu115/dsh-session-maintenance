@@ -45,3 +45,9 @@ The Adapter manifest ID identifies a compatible native-format family, not an
 individual product patch release. When the native persistence schema or
 lifecycle becomes incompatible, publish a new Adapter ID and review its exact
 field mapping; do not silently reinterpret an existing cache.
+
+## Plugin-defined session formats
+
+Plugins that add durable events, replay fields, checkpoints or new event semantics must first implement a separately identified Harness Adapter. Pin the host/plugin versions, capabilities and native format ID; preserve opaque payloads and sequence references; validate materialization, append, native codec, durable recovery and evidence handling. Reuse common mechanics without globally replacing another adapter's codec or marking required events ignorable. Select the adapter through verified per-profile discovery and attestation, and ship its worker. Business-only extensions retain their existing extension adapter contract.
+
+The current example is [dsh-gpt-compat](../../packages/adapter-dsh-gpt-compat/README.md).

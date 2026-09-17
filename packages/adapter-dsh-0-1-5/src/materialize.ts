@@ -1,16 +1,16 @@
 import type { CanonicalProjectionInput, CanonicalProjectionSessionInput, JsonValue, ProjectionManifest, ProjectionManifestCompositionInput, ProjectionWriter } from "@linmu/dsh-session-adapter-sdk";
 import type { SessionFormatArtifact, SessionFormatEvent, SessionFormatHeader } from "@deepseek-ai/dsh-session-format";
 import { rc1NativeSessionId } from "@linmu/dsh-session-adapter-rc1";
-import { digest, record, isRecord, count, FORMAT_ID, verifySourceExport } from "./common.js";
+import { digest, record, isRecord, count, verifySourceExport } from "./common.js";
 import { materializePortableV3, restorePortableCanonical } from "./portable-v3.js";
 import { migrateLegacy } from "./legacy-import.js";
 import { validateV3 } from "./official.js";
-import { manifest } from "./manifest.js";
+import { currentManifest, currentFormatId } from "./dialect.js";
 import { v3TitleProjection } from "./session-title.js";
 export { rc1NativeSessionId as v3NativeSessionId };
 export { digest } from "./common.js";
 export function catalogDigest(sessionDigests:Readonly<Record<string,string>>, workspaceIds:readonly string[]):string {return digest({sessions:Object.entries(sessionDigests).sort(([a],[b])=>a.localeCompare(b)),workspaces:[...new Set(workspaceIds)].sort()});}
-export function composeV3ProjectionManifest(input:ProjectionManifestCompositionInput):ProjectionManifest {return {schemaVersion:1,runId:input.run.id,adapterId:manifest.id,sessionCount:Object.keys(input.sessionDigests).length,workspaceCount:new Set(input.workspaceIds).size,catalogDigest:catalogDigest(input.sessionDigests,input.workspaceIds),sessionDigests:input.sessionDigests};}
+export function composeV3ProjectionManifest(input:ProjectionManifestCompositionInput):ProjectionManifest {return {schemaVersion:1,runId:input.run.id,adapterId:currentManifest().id,sessionCount:Object.keys(input.sessionDigests).length,workspaceCount:new Set(input.workspaceIds).size,catalogDigest:catalogDigest(input.sessionDigests,input.workspaceIds),sessionDigests:input.sessionDigests};}
 function canonicalDigest(item:Pick<CanonicalProjectionSessionInput,"events">):string {return digest(item.events.map(e=>({id:e.id,contentDigest:e.contentDigest,source:e.source,rawPayload:e.rawPayload})));}
 export function v3ProjectedNativeRevision(item:Pick<CanonicalProjectionSessionInput,"events">,value:JsonValue):number {
  const payload=record(value);if(!Array.isArray(payload.events))throw new TypeError("V3 projection events are missing");
@@ -69,7 +69,7 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
   const artifact=validateV3({header:converted?.artifact.header??header,events:all,inheritedEventCount:converted?.artifact.inheritedEventCount??count(cut)});
   const titleProjection=v3TitleProjection(artifact.events,artifact.events.length-1);
   const legacyAliases=[...new Set(item.events.map(e=>e.source.sessionId).filter(id=>id!==nativeId))];
-  const payload={...base,title:titleProjection.title??item.session.title,titleProjection,instanceId:input.run.instanceId,profileId:input.run.profileId,runId:input.run.id,nativeFormatVersion:3,nativeFormatId:FORMAT_ID,header:artifact.header,events:artifact.events,inheritedEventCount:artifact.inheritedEventCount,legacyNativeSessionIds:legacyAliases,
+  const payload={...base,title:titleProjection.title??item.session.title,titleProjection,instanceId:input.run.instanceId,profileId:input.run.profileId,runId:input.run.id,nativeFormatVersion:3,nativeFormatId:currentFormatId(),header:artifact.header,events:artifact.events,inheritedEventCount:artifact.inheritedEventCount,legacyNativeSessionIds:legacyAliases,
    conversionLedger:{...(converted?.ledger??{}),canonicalDigest:canonicalDigest(item),canonicalEventCount:item.events.length,eventsDigest:digest(artifact.events),nativeRevision:artifact.events.length,sourceExports:exported.map(({events,...receipt})=>receipt)}};
   await output.writeSession(nativeId,payload as unknown as JsonValue);sessionDigests[nativeId]=digest(payload);
  }

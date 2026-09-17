@@ -19,6 +19,16 @@ it("pins RC2 scope, closure, capabilities and exact artifact bytes before granti
   const currentVersion=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8")).version;
   await save({...receipt,engineVersion:currentVersion});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   for(const engineVersion of ["0.1.33-rc2.0","0.1.33-rc2.999",`${currentVersion}+unverified`]){await save({...receipt,engineVersion});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_REQUIRED"});}
+  const pluginPath=join(root,"gpt-plugin");await writeFile(pluginPath,"synthetic-gpt-plugin");
+  const pluginPin={role:"sessionFormatPlugin",path:pluginPath,sha256:createHash("sha256").update("synthetic-gpt-plugin").digest("hex")};
+  const gptReceipt={...receipt,engineVersion:currentVersion,adapterId:"dsh-gpt-compat",formatId:"dsh-gpt-compat-v1-jsonl-zstd",runtimeCapabilities:[...REQUIRED_CAPABILITIES,"dsh-gpt-compat/session-v1"],files:[...files,pluginPin]};
+  const gptInput={...input,expectedAdapterId:"dsh-gpt-compat",resolvedManifests:[files[2]!.path,pluginPath]};
+  await save(gptReceipt);await expect(verifyDsh015RuntimeAttestation(gptInput)).resolves.toHaveProperty("coreBinding");
+  await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"FORMAT_ADAPTER_MISMATCH"});
+  await save({...gptReceipt,formatId:receipt.formatId});await expect(verifyDsh015RuntimeAttestation(gptInput)).rejects.toMatchObject({code:"FORMAT_ADAPTER_MISMATCH"});
+  await save({...gptReceipt,runtimeCapabilities:REQUIRED_CAPABILITIES});await expect(verifyDsh015RuntimeAttestation(gptInput)).rejects.toMatchObject({code:"GPT_FORMAT_ATTESTATION_REQUIRED"});
+  await save({...gptReceipt,files});await expect(verifyDsh015RuntimeAttestation(gptInput)).rejects.toMatchObject({code:"GPT_FORMAT_ATTESTATION_REQUIRED"});
+  await save(gptReceipt);await writeFile(pluginPath,"changed-plugin");await expect(verifyDsh015RuntimeAttestation(gptInput)).rejects.toMatchObject({code:"V3_ARTIFACT_CHANGED"});
   await save(receipt);
   await expect(verifyDsh015RuntimeAttestation({...input,instanceId:"other"})).rejects.toMatchObject({code:"V3_ATTESTATION_IDENTITY_MISMATCH"});
   const foreign=join(root,"foreign-manifest");await writeFile(foreign,"{}");await expect(verifyDsh015RuntimeAttestation({...input,resolvedManifests:[foreign]})).rejects.toMatchObject({code:"V3_PACKAGE_CLOSURE_MISMATCH"});

@@ -4,7 +4,7 @@ import { sha256 } from "./phase2-pack-lib.mjs";
 
 export const PHASE2_COMPONENT_PATHS = [
   "apps/engine", "apps/dashboard", "plugins/dsh-session-maintenance", "packages/contracts",
-  "packages/adapter-dsh-0-1-5", "packages/adapter-dsh-alpha2", "packages/adapter-dsh-rc1", "packages/adapter-dsh-rc2",
+  "packages/adapter-dsh-0-1-5", "packages/adapter-dsh-gpt-compat", "packages/adapter-dsh-alpha2", "packages/adapter-dsh-rc1", "packages/adapter-dsh-rc2",
 ];
 export function completeComponentInventory(components) {
   return Array.isArray(components) && components.length === PHASE2_COMPONENT_PATHS.length

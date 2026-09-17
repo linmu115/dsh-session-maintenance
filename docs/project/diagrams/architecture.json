@@ -2,160 +2,519 @@
   "schema_version": 1,
   "diagram_type": "architecture",
   "meta": {
-    "title": "DSH Session Maintenance · 职责与数据归属",
-    "locale": "zh-CN"
+    "title": "Session Maintenance · 责任与接口",
+    "locale": "zh-CN",
+    "repository": {
+      "url": "https://github.com/linmu115/dsh-session-maintenance",
+      "revision": "b7faf2938d96697078b90df16106081846e726e7",
+      "link_mode": "local-only"
+    }
   },
   "components": [
     {
       "id": "source",
       "type": "external",
       "label": "Codex / DSH 来源",
-      "sublabel": "只读导入 · 原生格式",
+      "sublabel": "源平台资料 · 只读导入",
       "pos": [
-        60,
-        100
+        30.0,
+        105.0
       ],
       "size": [
-        200,
+        180,
         84
+      ]
+    },
+    {
+      "id": "codex-reader",
+      "type": "backend",
+      "label": "平台来源读取",
+      "sublabel": "Codex / DSH · 稳定观察",
+      "pos": [
+        292.5,
+        105.0
+      ],
+      "size": [
+        180,
+        84
+      ],
+      "sources": [
+        {
+          "path": "packages/contracts/src/adapters.ts"
+        }
       ]
     },
     {
       "id": "adapter",
       "type": "backend",
-      "label": "平台 Adapter",
-      "sublabel": "解析身份 · 版本 · 回执",
+      "label": "DSH 格式 Adapter",
+      "sublabel": "普通 V3 / GPT 插件 / 旧格式族",
       "pos": [
-        400,
-        100
+        292.5,
+        322.5
       ],
       "size": [
-        200,
+        180,
         84
+      ],
+      "sources": [
+        {
+          "path": "packages/adapter-dsh-0-1-5/src/index.ts"
+        },
+        {
+          "path": "packages/adapter-dsh-gpt-compat/src/index.ts"
+        }
       ]
     },
     {
       "id": "engine",
       "type": "database",
-      "label": "Maintenance Engine",
-      "sublabel": "规范事件 · 版本 · 领域服务",
+      "label": "Canonical 真源",
+      "sublabel": "逻辑身份 · 版本 · 派生",
       "pos": [
-        740,
-        100
+        555.0,
+        105.0
       ],
       "size": [
-        200,
+        180,
         84
+      ],
+      "sources": [
+        {
+          "path": "packages/canonical-session-engine/src/engine.ts"
+        }
+      ]
+    },
+    {
+      "id": "runtime",
+      "type": "backend",
+      "label": "运行与恢复",
+      "sublabel": "租约 · WAL · 提交回执",
+      "pos": [
+        555.0,
+        322.5
+      ],
+      "size": [
+        180,
+        84
+      ],
+      "sources": [
+        {
+          "path": "packages/projection-lifecycle/src/append.ts"
+        }
+      ]
+    },
+    {
+      "id": "continuation",
+      "type": "backend",
+      "label": "Codex 续接作业",
+      "sublabel": "固定来源 · 原生 Port · 核验",
+      "pos": [
+        817.5,
+        105.0
+      ],
+      "size": [
+        180,
+        84
+      ],
+      "sources": [
+        {
+          "path": "packages/continuation-engine/src/service.ts"
+        }
+      ]
+    },
+    {
+      "id": "reader",
+      "type": "backend",
+      "label": "阅读与请求查询",
+      "sublabel": "固定快照 · 按需分页",
+      "pos": [
+        817.5,
+        322.5
+      ],
+      "size": [
+        180,
+        84
+      ],
+      "sources": [
+        {
+          "path": "apps/engine/src/session-reader-queries.ts"
+        }
       ]
     },
     {
       "id": "launcher",
       "type": "backend",
-      "label": "Launcher 与插件",
-      "sublabel": "运行绑定 · 生命周期",
+      "label": "Provider / DSH 插件",
+      "sublabel": "启停 · persistence · 宿主桥",
       "pos": [
-        400,
-        360
+        30.0,
+        322.5
       ],
       "size": [
-        200,
+        180,
         84
+      ],
+      "sources": [
+        {
+          "path": "plugins/dsh-session-maintenance/src/projection-runtime.ts"
+        }
       ]
     },
     {
       "id": "dashboard",
       "type": "frontend",
       "label": "维护看板",
-      "sublabel": "所属会话目录 · 过程阅读",
+      "sublabel": "问答过程 · 目录 · 状态",
       "pos": [
-        1080,
-        100
+        1080.0,
+        322.5
       ],
       "size": [
-        200,
+        180,
         84
+      ],
+      "sources": [
+        {
+          "path": "apps/dashboard/src/app.tsx"
+        }
       ]
     },
     {
       "id": "business",
       "type": "external",
-      "label": "业务插件",
-      "sublabel": "Core · Obsidian · ThoughtDAG",
+      "label": "外部 Suite / Core",
+      "sublabel": "引用事务 · 贴纸 · 笔记接入",
       "pos": [
-        740,
-        360
+        30.0,
+        577.5
       ],
       "size": [
-        200,
+        180,
         84
       ]
+    },
+    {
+      "id": "business-adapter",
+      "type": "backend",
+      "label": "业务扩展 Adapter",
+      "sublabel": "七个 namespace · 归属/schema",
+      "pos": [
+        292.5,
+        577.5
+      ],
+      "size": [
+        180,
+        84
+      ],
+      "sources": [
+        {
+          "path": "apps/engine/src/extensions/adapters.ts"
+        }
+      ]
+    },
+    {
+      "id": "extension-store",
+      "type": "database",
+      "label": "扩展对象接口",
+      "sublabel": "writer · revision · 冲突/目录",
+      "pos": [
+        555.0,
+        577.5
+      ],
+      "size": [
+        180,
+        84
+      ],
+      "sources": [
+        {
+          "path": "apps/engine/src/extensions/service.ts"
+        }
+      ]
+    },
+    {
+      "id": "graph",
+      "type": "backend",
+      "label": "主干/引用领域接口",
+      "sublabel": "固定截止 · 图事务 · 撤销",
+      "pos": [
+        817.5,
+        577.5
+      ],
+      "size": [
+        180,
+        84
+      ],
+      "sources": [
+        {
+          "path": "apps/engine/src/session-graph-service.ts"
+        }
+      ]
+    },
+    {
+      "id": "native-context",
+      "type": "backend",
+      "label": "原生上下文接口",
+      "sublabel": "窗口 · 材料 · 持久核验",
+      "pos": [
+        1080.0,
+        577.5
+      ],
+      "size": [
+        180,
+        84
+      ],
+      "sources": [
+        {
+          "path": "apps/engine/src/native-context-service.ts"
+        }
+      ]
+    },
+    {
+      "id": "thoughtdag",
+      "type": "external",
+      "label": "外部 ThoughtDAG",
+      "sublabel": "主干交互 · 上下文视图",
+      "pos": [
+        817.5,
+        810.0
+      ],
+      "size": [
+        180,
+        84
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "平台适配责任 · Harness",
+      "wraps": [
+        "codex-reader",
+        "adapter"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "region",
+      "label": "Engine · 会话与运行",
+      "wraps": [
+        "engine",
+        "runtime",
+        "continuation",
+        "reader"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "region",
+      "label": "业务适配责任 · Extension",
+      "wraps": [
+        "business-adapter"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "region",
+      "label": "Engine · 业务存储与领域",
+      "wraps": [
+        "extension-store",
+        "graph",
+        "native-context"
+      ],
+      "pad": 24
+    },
+    {
+      "kind": "security-group",
+      "label": "受信宿主接入",
+      "wraps": [
+        "launcher"
+      ],
+      "pad": 24
     }
   ],
   "connections": [
     {
       "id": "c0",
       "from": "source",
-      "to": "adapter",
-      "label": "解析原生资料"
+      "to": "codex-reader",
+      "label": "稳定观察"
     },
     {
       "id": "c1",
-      "from": "adapter",
+      "from": "codex-reader",
       "to": "engine",
-      "label": "规范记录与证据"
+      "label": "规范事件"
     },
     {
       "id": "c2",
       "from": "launcher",
-      "to": "engine",
-      "label": "准备 / 追加 / 恢复",
-      "fromSide": "top",
-      "toSide": "left",
+      "to": "runtime",
+      "label": "准备 / 追加 / 排空",
+      "fromSide": "bottom",
+      "toSide": "bottom",
       "via": [
         [
-          500,
-          260
+          120.0,
+          446.25
         ],
         [
-          680,
-          260
-        ],
-        [
-          680,
-          142
+          645.0,
+          446.25
         ]
       ],
       "labelAt": [
-        600,
-        248
+        390.0,
+        461.25
       ]
     },
     {
       "id": "c3",
-      "from": "engine",
+      "from": "reader",
       "to": "dashboard",
-      "label": "分页目录与正文"
+      "label": "分页正文 / 目录"
     },
     {
       "id": "c4",
       "from": "business",
+      "to": "business-adapter",
+      "label": "业务对象"
+    },
+    {
+      "id": "codec-runtime",
+      "from": "adapter",
+      "to": "runtime",
+      "label": "物化 / 规范化"
+    },
+    {
+      "id": "runtime-canonical",
+      "from": "runtime",
       "to": "engine",
-      "label": "领域操作与轻量对象",
+      "label": "提交版本 / 谱系",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "canonical-continuation",
+      "from": "engine",
+      "to": "continuation",
+      "label": "固定版本材料"
+    },
+    {
+      "id": "canonical-reader",
+      "from": "engine",
+      "to": "reader",
+      "label": "稳定版本查询",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "via": [
+        [
+          645.0,
+          236.25
+        ],
+        [
+          907.5,
+          236.25
+        ]
+      ]
+    },
+    {
+      "id": "business-storage",
+      "from": "business-adapter",
+      "to": "extension-store",
+      "label": "格式 / 能力检查"
+    },
+    {
+      "id": "graph-storage",
+      "from": "graph",
+      "to": "extension-store",
+      "label": "受控对象事务"
+    },
+    {
+      "id": "context-graph",
+      "from": "native-context",
+      "to": "graph",
+      "label": "权限 / 统一撤销"
+    },
+    {
+      "id": "thought-graph",
+      "from": "thoughtdag",
+      "to": "graph",
+      "label": "主干操作",
+      "fromSide": "top",
+      "toSide": "bottom"
+    },
+    {
+      "id": "thought-context",
+      "from": "thoughtdag",
+      "to": "native-context",
+      "label": "窗口 / 释放意图",
+      "fromSide": "right",
+      "toSide": "bottom",
+      "via": [
+        [
+          1170.0,
+          852.0
+        ]
+      ]
+    },
+    {
+      "id": "core-native",
+      "from": "business",
+      "to": "native-context",
+      "label": "Core 经宿主：工具 / surface 证据",
+      "fromSide": "bottom",
+      "toSide": "right",
+      "via": [
+        [
+          120.0,
+          945.0
+        ],
+        [
+          1312.5,
+          945.0
+        ],
+        [
+          1312.5,
+          619.5
+        ]
+      ],
+      "labelAt": [
+        480.0,
+        960.0
+      ]
+    },
+    {
+      "id": "ext-directory",
+      "from": "extension-store",
+      "to": "reader",
+      "label": "所属会话元数据",
       "fromSide": "top",
       "toSide": "bottom",
+      "via": [
+        [
+          645.0,
+          487.5
+        ],
+        [
+          907.5,
+          487.5
+        ]
+      ],
       "labelAt": [
-        880,
-        280
+        780.0,
+        505.5
       ]
     }
   ],
   "cards": [
     {
       "dot": "cyan",
-      "title": "阅读约定",
+      "title": "阅读边界",
       "items": [
-        "箭头标明具体交接；位置不表示运行顺序。",
-        "外部依赖用项目 ID 关联；本图不保存另一项目的全文。"
+        "框表达实际内部责任；Suite 与 ThoughtDAG 只作外部关联。",
+        "连线表示注明的调用/数据依赖，不自动代表执行顺序。",
+        "平台合同与业务对象合同分别绑定；图/上下文使用独立领域入口。"
       ]
     }
   ]

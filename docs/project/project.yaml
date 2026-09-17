@@ -1,6 +1,6 @@
 schema: project-map/v1
 project_id: 0d05f813-7097-47d9-9e88-3d523bb537d6
-name: DSH Session Maintenance
+name: Session Maintenance
 kind: software
 map: map.md
 sources:
@@ -21,6 +21,12 @@ sources:
   format: markdown
 - source_id: source-6
   path: ../reports/2026-09-15-extension-ownership-reader-release.md
+  format: markdown
+- source_id: source-extension-requirements
+  path: ../superpowers/specs/2026-09-10-pluggable-extension-data-requirements.md
+  format: markdown
+- source_id: source-native-space
+  path: ../superpowers/specs/2026-09-10-persistent-native-session-space.md
   format: markdown
 bindings:
 - id: REQ-product
@@ -93,34 +99,118 @@ bindings:
   heading: 验证与部署
   status: current
   summary: 历史 129 项相关回归及副本交付记录；不代表今日复测。
+- id: REQ-adapter-families
+  kind: requirement
+  title: 两类 Adapter 独立的要求
+  source_id: source-extension-requirements
+  heading: 两类 Adapter
+  status: current
+  summary: 平台格式和业务对象的注册、兼容与启用独立。
+- id: REQ-main-graph
+  kind: requirement
+  title: 每个接收会话自己的主干图
+  source_id: source-4
+  heading: 5.2 每个会话自己的主干图
+  status: current
+  summary: 按需主干归属、固定来源与延迟绑定。
+- id: REQ-graph-removal
+  kind: requirement
+  title: 移除与撤销保持一致
+  source_id: source-4
+  heading: 5.4 移除、撤销和刷新
+  status: current
+  summary: 解除后停止读取，保留真实会话，刷新不复活。
+- id: REQ-runtime-space
+  kind: requirement
+  title: 持久原生空间的范围
+  source_id: source-native-space
+  heading: 目标与本次范围
+  status: current
+  summary: 沿用持久空间要求，原文保留RC1基线，当前RC2实现另查。
 archify:
   architecture:
     source: diagrams/architecture.json
+    repo_root: ../..
     node_records:
       source:
       - OBJ-session
+      codex-reader:
+      - MOD-harness-codex
+      - IF-harness-adapter
       adapter:
-      - MOD-boundaries
+      - MOD-harness-dsh
+      - IF-harness-adapter
+      - INT-harness-directory
       engine:
-      - IF-extension
+      - MOD-canonical
+      - OBJ-version
+      runtime:
+      - MOD-runtime
+      - IF-runtime
+      - OBJ-runtime
+      continuation:
+      - MOD-continuation
+      reader:
+      - MOD-reader
       launcher:
-      - IMP-usage
+      - MOD-host
       dashboard:
-      - REQ-reader
+      - MOD-dashboard
       business:
+      - INT-annotation
+      - INT-stickers
+      - INT-obsidian
+      business-adapter:
+      - MOD-business
+      - INT-business-directory
+      extension-store:
+      - MOD-extension-store
+      - IF-extension
+      - OBJ-extension
+      graph:
+      - MOD-graph
       - IF-graph
+      - OBJ-graph
+      native-context:
+      - MOD-native-context
+      - IF-native-context
+      thoughtdag:
+      - INT-thoughtdag
   workflow:
     source: diagrams/workflow.json
     node_records:
       import:
+      - MOD-harness-codex
+      - IF-harness-adapter
+      canonical:
+      - MOD-canonical
       - OBJ-session
       prepare:
-      - IMP-usage
+      - MOD-runtime
+      - OBJ-runtime
+      materialize:
+      - MOD-harness-dsh
+      - IF-harness-adapter
       run:
-      - MOD-boundaries
+      - MOD-host
+      - IF-runtime
+      wal:
+      - MOD-runtime
+      - IF-runtime
+      normalize:
+      - MOD-harness-dsh
+      - IF-harness-adapter
       receipt:
-      - IF-native-context
+      - MOD-runtime
+      - OBJ-version
       read:
-      - REQ-reader
+      - MOD-reader
+      - MOD-dashboard
+      drain:
+      - MOD-host
+      - IF-runtime
+      close:
+      - MOD-runtime
       recover:
-      - IMP-usage
+      - MOD-runtime
+      - OBJ-runtime

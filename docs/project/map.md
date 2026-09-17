@@ -1,22 +1,26 @@
-# DSH Session Maintenance
+# Session Maintenance
 
 ## 这个项目做什么
 
-把 Codex/DSH 会话作为可追溯的长期资产维护：知道它来自哪里、运行到了哪、怎样恢复，也让贴纸、引用与思维图能围绕同一个逻辑会话协作。
+将 Codex 与 DSH 会话维护为有稳定身份、版本、来源和恢复证据的长期资料。Engine 管规范历史及业务对象，平台 Adapter 处理宿主格式，业务 Adapter 解释引用、贴纸、链接和主干。源 Codex 日志与 Vault 笔记各由原平台拥有。
 
-## 先看什么
+本项目独立维护，ID 为 `0d05f813-7097-47d9-9e88-3d523bb537d6`。DSH–Obsidian Suite 与 ThoughtDAG 是外部协作者，各有独立地图。
 
-1. “现在怎样导入、运行与阅读”了解日常操作。
-2. “逻辑会话、源版本与运行空间”和架构图了解数据归属。
-3. “外部插件怎样交给 Maintenance 管理”了解扩展边界；原生上下文接口解释释放如何生效。
-4. “当前源码已经做到哪”看现状与缺口；旧检查结果在独立验证记录中。
+## 按问题阅读
 
-## 范围
+| 想了解什么 | 入口 |
+| --- | --- |
+| 能做什么、现在怎样用 | [当前能力](../../README.md#%E5%BD%93%E5%89%8D%E5%8A%9F%E8%83%BD)、[使用流程](../../README.md#%E4%BD%BF%E7%94%A8%E6%B5%81%E7%A8%8B)、[当前实现](records/implementation/IMP-current.md) |
+| 身份、版本、真源与写入权 | [会话与工作区身份](records/objects/overview.md)、[版本与续接](records/objects/versions.md)、[对象归属与写入权](records/objects/extensions.md) |
+| 内部责任及生命周期 | [Engine 编排](records/modules/engine/overview.md)、[宿主接入](records/modules/host/overview.md)、[维护看板](records/modules/dashboard/overview.md) |
+| 接 Codex/DSH 平台 | [平台适配](records/modules/adapters/harness/overview.md) → [平台合同](records/modules/adapters/harness/contract.md) → [平台已知接入](records/modules/adapters/harness/connected.md) |
+| 接业务插件 | [业务数据适配](records/modules/adapters/business/overview.md) → [对象合同](records/modules/adapters/business/contract.md) → [业务已知接入](records/modules/adapters/business/connected.md) |
+| 主干、引用与释放怎样协作 | [主干与固定引用](records/modules/engine/graph/contract.md)、[原生上下文释放](records/modules/engine/native-context/contract.md) |
+| 旧设计哪些有效 | [规格继承](records/decision/authority-history.md) |
+| 这次验证了什么 | [本次地图验证](records/verification/VER-adoption.md)；历史产品证据 [原生上下文历史验证](../changes/2026-09-15-native-context-management.md#%E9%AA%8C%E8%AF%81%E5%AF%B9%E5%BA%94)、[目录与阅读器历史验证](../reports/2026-09-15-extension-ownership-reader-release.md#%E9%AA%8C%E8%AF%81%E4%B8%8E%E9%83%A8%E7%BD%B2) |
 
-本图属于会话维护项目。另一个 `dsh-maintenance-engine` 是插件包/运行代际维护项目，不合并进来。当前来源为 RC2 工作区；主目录中的 RC1 文档不覆盖新版规格。
+架构图以责任边界展示内部模块与接口；流程图只画实现可证明的交接。A/B 共用本地图，B 可展开目录按责任定位记录。
 
-## 地图怎样维护
+## 维护约定
 
-需求和设计继续在已绑定的原文里修改；地图补充解释、状态与关系。只有相关事实改变才维护，不要求每轮读全图、重画图或执行产品测试。已有实现与验证分别保存；旧功能退役与失败探索分别记录。切换工作树仍沿用本项目 ID。
-
-阅读页是按需生成的快照，正常提问继续在 Codex 会话中进行。默认先看“当前功能”和“做到哪”，验证记录按需打开。
+原需求、合同及交付报告保留原位置和编号。提供方技术合同只维护一份，消费者说明具体调用能力；记录和节点绑定随相关事实更新。diagrams 是原生图源，views 是带指纹的按需快照。普通维护不新增更新记录，不要求每轮读全图、重测产品或做成本基准。
