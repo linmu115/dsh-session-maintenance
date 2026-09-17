@@ -9,13 +9,13 @@
     "运行时投影与兼容校验"
   ],
   "summary": "用户反馈启动后仍无法引用发送，并出现未发送就新增同名会话；区分三处故障并保留验证边界。",
-  "outcome": "真实重试未发送；修正旧轮次保护边界及内部压缩派生触发，已部署，最终发送待验证",
+  "outcome": "真实正文与引用已提交，首个请求投影逐对象核对原文完整，模型已回复；准备阶段未派生会话",
   "applicability": "DSH 0.1.5-rc.2；Core 0.3.12-rc2.15；GPT 0.5.0-dev.6；Obsidian Bridge 0.6.4-rc2.7；Maintenance Engine 0.1.33-rc2.34 / 插件 0.2.26-rc2.27。",
-  "coverage_note": "Codex 2026-09-18 整理公开会话第 1379–2429 行；扩展旧范围，原索引保留，仅保存定位和指纹。",
+  "coverage_note": "Codex 2026-09-18 整理本任务公开来源第 1379–2594 行，包含失败反馈、修正与真实发送验证；此前范围快照保留。",
   "history": {
-    "path": "history/reference-send-20260918",
-    "sha256": "07cb614591ce12551e12b69eec5de1ba162cc0deae03ec0685cfe014d6cc467e",
-    "capture_sha256": "71cdc7cf4201568f682c0c4e07b3dff3145ea8fcdb21e0558c71a994a5541c07"
+    "path": "history/reference-send-verified-20260918",
+    "sha256": "bf9d6e8beca2efd4393527cc694c8a18a5e9f2a457bc86ac67150871baeba194",
+    "capture_sha256": "83a244edcfb76688c7a3a748964dfae886f82d08d2be62259ffdd02ab6582867"
   },
   "related_records": [
     "IMP-reference-send"
@@ -37,3 +37,6 @@
 23:43 的真实重试暴露两处遗漏：按钮长时间置灰后恢复，草稿仍在输入框，用户只看到闪过的报错。后台完成两段原生压缩，但没有检查点提交或新用户消息。此前只按最近历史用户消息保护，误把上一轮已完成的全部工具输出也排除在压缩外。现通过请求中的待发送消息 ID 识别边界；预检草稿未进入持久历史时，旧轮次可压缩，当前正文与引用仍原样保留。新增回归测试覆盖超长上一轮与未提交草稿；Core 244 项、GPT 71 项通过（1 项网络测试跳过），均通过类型检查。
 
 另一次同名派生由 context/operation 而非模型切换触发。Maintenance 将 context/operation、context/operation-result、context/checkpoint、context/checkpoint-commit 同样列入准备事件，运行时与恢复判断保持一致；首条真实消息出现后再一起提交。两份相关测试共 26 项通过，插件和引擎类型检查通过。新版本已更新主引擎、独立 worker、插件、绑定回执与配套安装包；已有派生会话保留。服务启动和测试通过不代表用户正文已发送。
+
+
+最终实证：2026-09-18 00:10:26，原会话完成三段旧历史压缩后写入用户正文和 dsh-annotation 引用消息，从开始预检至写入约 286 秒。检查点提交 seq 431 在正文 seq 437 和引用 seq 438 之前；首个 request/projection seq 443 中正文和引用对象与原消息逐对象相等。随后观察到 assistant/message 与工具调用。准备阶段派生计数为 0；真实消息进入 inbox 后才按现有镜像写入规则创建派生记录（触发 seq 434），不能将其描述为完全不再生成派生会话。旧的误派生记录没有删除。Core、GPT、Obsidian、Maintenance 修复及所属地图已提交并同步到 GitHub 开发分支。首次长历史预检仍需等待，UI 缺少明确压缩进度的体验问题尚未在本次修改。
