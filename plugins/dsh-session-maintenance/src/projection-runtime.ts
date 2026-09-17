@@ -953,6 +953,12 @@ const DEFERRED_SESSION_PRELUDE_TYPES = new Set([
   "permission/preset",
   "sandbox/mode",
   "approval/policy",
+  // Model and reasoning choices alone must not create a continuation.
+  "model/selection",
+  "context/operation",
+  "context/operation-result",
+  "context/checkpoint",
+  "context/checkpoint-commit",
 ]);
 
 function isDeferredSessionPrelude(value: JsonValue): boolean {

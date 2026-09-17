@@ -31,17 +31,18 @@ describe("V3 composite migration and cold recovery",()=>{
   try {
    const original=migrateLegacy(artifact).artifact;
    const preparation={type:"session/end-seed",seq:original.events.length,time:30,data:{inherited:false}};
-   const payload={...original,events:[...original.events,preparation],projectId:"fixture"};
+   const model={type:"model/selection",seq:preparation.seq+1,time:31,data:{provider:"synthetic",model:"test",reasoningEffort:"low"}};
+   const payload={...original,events:[...original.events,preparation,model],projectId:"fixture"};
    const d=await v3NativeSessionCodec.describe(payload as any,root),file=join(root,d.relativePath);
    await mkdir(dirname(file),{recursive:true});await writeFile(file,v3NativeSessionCodec.encode(payload as any,d));
    const mapping={nativeSessionId:original.header.id,logicalSessionId:"logical",baseVersionId:null,nativeRevision:original.events.length,header:d.header,committedEvents:original.events};
    const input={runId:run.id,persistenceRoot:root,sessions:[mapping],observedAt:"2026-09-17T00:00:00Z"} as any;
    expect(await recoverV3RuntimeTail(input)).toEqual([]);
    await expect(recoverV3RuntimeTail({...input,sessions:[{...mapping,committedEvents:original.events.map((e,i)=>i===0?{...e,time:900}:e)}]})).rejects.toThrow("rewritten");
-   const rename={type:"session/title",seq:preparation.seq+1,time:31,data:{title:"Explicit user rename",messageSeqs:[],source:{kind:"user"}}};
+   const rename={type:"session/title",seq:model.seq+1,time:32,data:{title:"Explicit user rename",messageSeqs:[],source:{kind:"user"}}};
    await writeFile(file,v3NativeSessionCodec.encode({...payload,events:[...payload.events,rename]} as any,d));
    const operations=await recoverV3RuntimeTail(input);
-   expect(operations).toHaveLength(1);expect((operations[0]!.payload as any).events).toEqual([preparation,rename]);
+   expect(operations).toHaveLength(1);expect((operations[0]!.payload as any).events).toEqual([preparation,model,rename]);
   } finally { await rm(root,{recursive:true,force:true}); }
  });
  it("matches fixed official system/PTC/compaction migration and preserves a fork cut with an archived detail",()=>{
@@ -79,4 +80,12 @@ it("preserves text stream completion and per-source provenance through v1 coales
   {type:"step/end",data:{turn:1,step:1}},{type:"turn/end",data:{turn:1,reason:{kind:"completed"}}}].map((e,seq)=>({...e,seq,time:seq+1}));
  const source={header:{version:1,id:"synthetic-stream",createdAt:1,delegationDepth:0,isSeeded:false},events:rows,inheritedEventCount:0};
  const migrated=migrateLegacy(source as any);expect(migrated.artifact).toEqual(official(source));expect(migrated.ledger.seqMap).toHaveLength(rows.length);expect(migrated.artifact.events.find(e=>e.type==="assistant/message")?.data).toMatchObject({message:{id:"stable-assistant",content:[{type:"text",text:"hello"}]}});
+});
+
+
+it("classifies pre-admission compaction as preparation without hiding a user input", () => {
+ const types=["context/operation","context/operation-result","context/checkpoint","context/checkpoint-commit"];
+ const events=types.map(type=>({type}));
+ expect(v3NativeSessionCodec.isPreparationOnly!(events)).toBe(true);
+ expect(v3NativeSessionCodec.isPreparationOnly!([...events,{type:"user/message"}])).toBe(false);
 });

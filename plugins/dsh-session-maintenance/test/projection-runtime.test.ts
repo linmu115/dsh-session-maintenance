@@ -703,14 +703,18 @@ describe("DSH projection runtime", () => {
     const permission = { seq: 3, type: "permission/preset", data: { preset: "workspace-write" } };
     const sandbox = { seq: 4, type: "sandbox/mode", data: { mode: "workspace-write" } };
     const approval = { seq: 5, type: "approval/policy", data: { policy: "ask" } };
-    const continuation = { seq: 6, type: "user/message", data: { text: "continue" } };
+    const model = { seq: 6, type: "model/selection", data: { provider: "synthetic", model: "test", reasoningEffort: "low" } };
+    const context = ["context/operation", "context/operation-result", "context/checkpoint", "context/checkpoint-commit"].map((type, i) => ({ seq: 7 + i, type, data: {} }));
+    const continuation = { seq: 11, type: "user/message", data: { text: "continue" } };
 
     await client.attach();
-    const complete = [...seed, marker, permission, sandbox, approval, continuation];
+    const complete = [...seed, marker, permission, sandbox, approval, model, ...context, continuation];
     const readSuffix = vi.fn((from: number, to: number) => complete.slice(from, to));
     client.observe(nativeSessionId, permission, header, readSuffix);
     client.observe(nativeSessionId, sandbox, header, readSuffix);
     client.observe(nativeSessionId, approval, header, readSuffix);
+    client.observe(nativeSessionId, model, header, readSuffix);
+    for (const event of context) client.observe(nativeSessionId, event, header, readSuffix);
     await client.flush(nativeSessionId);
     expect(requests.filter((request) => request.path.endsWith("/append"))).toHaveLength(0);
 
@@ -722,8 +726,8 @@ describe("DSH projection runtime", () => {
       readonly nativeRevision: number;
       readonly payload: { readonly events: unknown[] };
     };
-    expect(operation.nativeRevision).toBe(7);
-    expect(operation.payload.events).toEqual([marker, permission, sandbox, approval, continuation]);
+    expect(operation.nativeRevision).toBe(12);
+    expect(operation.payload.events).toEqual([marker, permission, sandbox, approval, model, ...context, continuation]);
     expect(readSuffix).toHaveBeenCalledTimes(1);
     expect(readSuffix).toHaveBeenCalledWith(2, 4);
     expect(requests.some((request) => request.path.endsWith("/sessions"))).toBe(false);
