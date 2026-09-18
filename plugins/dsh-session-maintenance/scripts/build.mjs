@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { build } from "esbuild";
+import { writeBusinessPageDeclarations } from "./business-pages-declarations.mjs";
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const workspaceRoot = resolve(pluginRoot, "..", "..");
@@ -10,6 +11,8 @@ const lib = join(pluginRoot, "lib");
 
 await rm(lib, { recursive: true, force: true });
 await mkdir(join(lib, "client"), { recursive: true });
+await build({ entryPoints: [join(pluginRoot, "src", "business-pages-api.ts")], outfile: join(lib, "business-pages.js"), bundle: true, format: "esm", platform: "neutral" });
+await writeBusinessPageDeclarations(workspaceRoot, lib);
 
 await build({
   absWorkingDir: workspaceRoot,

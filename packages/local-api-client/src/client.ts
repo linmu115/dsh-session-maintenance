@@ -1,6 +1,7 @@
 import { learningBindSchema, learningBindingSchema, learningDirectorySchema, type LearningBind } from "@linmu/dsh-session-contracts";
 import { instanceWorkspaceConfigurationSchema, instanceWorkspaceInstanceDirectorySchema, instanceWorkspacePolicyUpdateSchema,
   instanceWorkspaceEffectiveScopeSchema, instanceSessionAvailabilitySchema, type InstanceWorkspacePolicyUpdate } from "@linmu/dsh-session-contracts";
+import { businessPageDirectorySchema, businessPageActionRequestSchema, businessPageActionReceiptSchema, type BusinessPageActionRequest, type BusinessPageOwner } from "@linmu/dsh-session-contracts";
 import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict } from "@linmu/dsh-session-contracts";
 import type { ExtensionBusinessPanel, ExtensionBusinessPanelQuery, ExtensionDirectoryQuery, ExtensionDirectoryPage, AnnotationMirrorSync, AnnotationMirrorSyncResult } from "@linmu/dsh-session-contracts";
 import type { UserRequestPage, UserRequestList } from "@linmu/dsh-session-contracts";
@@ -176,6 +177,13 @@ class ApiClient {
 
   async listInstanceWorkspaceInstances(signal?: AbortSignal) {
     return (await this.request("/v1/instances/workspace-sync", {}, z.strictObject({ directory: instanceWorkspaceInstanceDirectorySchema }), signal)).directory;
+  }
+  listBusinessPages(signal?: AbortSignal) { return this.request("/v1/business-pages", {}, businessPageDirectorySchema, signal); }
+  enqueueBusinessPageAction(input: BusinessPageActionRequest, signal?: AbortSignal) {
+    return this.request("/v1/business-pages/actions", this.jsonPost(businessPageActionRequestSchema.parse(input)), businessPageActionReceiptSchema, signal);
+  }
+  getBusinessPageActionReceipt(owner: BusinessPageOwner, operationId: string, signal?: AbortSignal) {
+    return this.request("/v1/business-pages/receipt", this.jsonPost({ owner, operationId }), businessPageActionReceiptSchema, signal);
   }
   async getInstanceWorkspaceSync(instanceId: string, signal?: AbortSignal) {
     return (await this.request(`/v1/instances/${encodeURIComponent(instanceId)}/workspace-sync`, {}, z.strictObject({ configuration: instanceWorkspaceConfigurationSchema }), signal)).configuration;
