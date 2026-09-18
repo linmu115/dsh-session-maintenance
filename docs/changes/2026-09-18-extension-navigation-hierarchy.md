@@ -31,3 +31,11 @@ Output directory: `D:\AI\DeepSeekHarness-Plugin\worktrees\session-context-graph-
 | `assets/extension-page-Bw3oOilp.css` | `b1e5d48eb577c4dc49fe606875f958f9e07fe972b775cb0832333dcb52fcf5e5` |
 
 The generated directory is a source-worktree build only. This task did not copy it into any Engine or plugin runtime directory.
+
+## Current-instance deployment and browser acceptance
+
+The root task deployed Dashboard 0.1.4 from commit 5c4f1b9 to the running maintenance release on 2026-09-18. All served asset hashes match the build. Old static assets and an independent backup were retained; the Engine entry hash is unchanged and neither Engine nor DSH was restarted.
+
+Browser Use confirmed the actual navigation: Extensions → Obsidian series → Extension data / Plugin information and integration. The binding page reports math READY, revision 1, target i-7ecb6c19-80a5-4c2e-97e6-484bbfc0e926 / web. ThoughtDAG's information page correctly reports no registered information page and contains no Obsidian binding control. Switching back preserves the selected Obsidian information view. The inspected viewport has document clientWidth = scrollWidth = 1088; screenshot inspection shows the expected nested layout, and console error collection is empty. This supersedes the earlier not-yet-verified note for these particular checks; other reference operations are not covered.
+
+Deployment receipt: D:/AI/DeepSeekHarness-Plugin/artifacts/single-bridge-20260918/dashboard-extension-hierarchy-installed.json. Companion installation/binding receipt: D:/AI/DeepSeekHarness-Plugin/artifacts/single-bridge-20260918/companion-binding-fix-installed.json. External Edge/Chrome access remains unverified because the browser control connection fails before page inspection.
