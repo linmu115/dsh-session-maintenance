@@ -22,12 +22,22 @@ const labels = { ready:"已接入",disabled:"已停用，数据保留","missing-
 const scopeKey = (scope: ExtensionScope) => JSON.stringify(scope);
 
 export function ExtensionPageView({api,onOpenSession}:{api:ExtensionPageApi;onOpenSession:(id:string)=>void}) {
+  const [view, setView] = useState<"directory" | "plugins">("directory");
   const renderDetail: Parameters<typeof ExtensionBusinessDirectory>[0]["renderDetail"] = (object, member, onChanged) => <ObjectEditor key={`${scopeKey(object.scope)}:${object.objectId}:${object.revision}`} api={api} scope={object.scope} capabilities={member.capabilities!} id={object.objectId} readOnly={object.readOnly} onChanged={onChanged} onOpenSession={onOpenSession}/>;
-  return <><BusinessPages api={api} renderDirectory={(owner, adapterId) => api.listExtensionBusinessPanels && api.listExtensionDirectory
+  return <div className="page-stack extension-page">
+    {api.listBusinessPages ? <div className="extension-view-switch" role="group" aria-label="扩展数据视图">
+      <button className="dsm-button" type="button" aria-pressed={view === "directory"} onClick={() => setView("directory")}>数据目录</button>
+      <button className="dsm-button" type="button" aria-pressed={view === "plugins"} onClick={() => setView("plugins")}>插件信息与接入</button>
+    </div> : null}
+    <div hidden={view !== "directory" && Boolean(api.listBusinessPages)}>
+      {api.listExtensionBusinessPanels && api.listExtensionDirectory ? <ExtensionBusinessDirectory api={api as ExtensionBusinessApi} onOpenSession={onOpenSession} renderDetail={renderDetail} /> : <LegacyExtensionPage api={api} onOpenSession={onOpenSession}/>}
+    </div>
+    {/* Keep mounted: switching views must not discard an in-flight action or its receipt. */}
+    <div hidden={view !== "plugins"}><BusinessPages api={api} renderDirectory={(owner, adapterId) => api.listExtensionBusinessPanels && api.listExtensionDirectory
     ? <ExtensionBusinessDirectory api={{ ...api, listExtensionDirectory: api.listExtensionDirectory.bind(api), enableExtension: api.enableExtension.bind(api),
       listExtensionBusinessPanels: async (_filter, signal) => (await api.listExtensionBusinessPanels!({ instanceId: owner.instanceId, profileId: owner.profileId }, signal)).filter(panel => panel.adapterId === adapterId && panel.scope.instanceId === owner.instanceId && panel.scope.profileId === owner.profileId),
     }} onOpenSession={onOpenSession} renderDetail={renderDetail} /> : <p>当前引擎未提供该数据目录。</p>} />
-    {api.listExtensionBusinessPanels && api.listExtensionDirectory ? <ExtensionBusinessDirectory api={api as ExtensionBusinessApi} onOpenSession={onOpenSession} renderDetail={renderDetail} /> : <LegacyExtensionPage api={api} onOpenSession={onOpenSession}/>}</>;
+    </div></div>;
 }
 function LegacyExtensionPage({api,onOpenSession}:{api:ExtensionPageApi;onOpenSession:(id:string)=>void}) {
   const [panels,setPanels]=useState<ExtensionPanel[]>();

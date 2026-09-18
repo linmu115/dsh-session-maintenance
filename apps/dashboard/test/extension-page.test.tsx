@@ -3,7 +3,34 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { ExtensionPageView, type ExtensionPageApi } from "../src/extension-page.js";
-import type { ExtensionPanel } from "@linmu/dsh-session-contracts";
+import type { BusinessPage, ExtensionPanel } from "@linmu/dsh-session-contracts";
+
+it("keeps the directory visible by default and retains uncertain actions across view switches", async () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const page: BusinessPage = { owner: { instanceId: "copy", profileId: "web", namespace: "bridge", providerId: "binding", bootId: "550e8400-e29b-41d4-a716-446655440000" }, online: true, updatedAt: 1, expiresAt: 20000,
+    snapshot: { title: "Vault 接入", revision: 1, sections: [{ id: "actions", title: "绑定", kind: "actions", actions: [{ id: "bind", label: "确认绑定", expectedRevision: 4, fields: [] }] }] } };
+  const enqueue = vi.fn().mockRejectedValue(new Error("response lost"));
+  const api = { listExtensionPanels: async () => [], listBusinessPages: async () => ({ pages: [page] }), enqueueBusinessPageAction: enqueue } as unknown as ExtensionPageApi;
+  const node = document.createElement("div"); document.body.append(node); const root = createRoot(node);
+  const switchView = async (name: string) => act(async () => [...node.querySelectorAll("button")].find(button => button.textContent === name)!.click());
+  try {
+    await act(async () => root.render(<ExtensionPageView api={api} onOpenSession={() => undefined} />));
+    const plugins = node.querySelector(".business-pages")!;
+    expect(plugins.closest("[hidden]")).not.toBeNull();
+    expect([...node.querySelectorAll("h2")].find(title => title.textContent === "扩展数据")!.closest("[hidden]")).toBeNull();
+    await switchView("插件信息与接入");
+    expect(plugins.closest("[hidden]")).toBeNull();
+    const form = plugins.querySelector("form")!;
+    await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    const original = enqueue.mock.calls[0]![0];
+    await switchView("数据目录"); await switchView("插件信息与接入");
+    expect(plugins.querySelector("form")).toBe(form);
+    expect(plugins.textContent).toContain("同一操作编号");
+    await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
+    expect(enqueue.mock.calls[1]![0]).toEqual(original);
+    expect(original).toMatchObject({ owner: page.owner, actionId: "bind", expectedRevision: 4 });
+  } finally { await act(async () => root.unmount()); node.remove(); }
+});
 
 it("loads only the selected body, renders graph preview and requires an explicit conflict choice",async()=>{
   (globalThis as {IS_REACT_ACT_ENVIRONMENT?:boolean}).IS_REACT_ACT_ENVIRONMENT=true;

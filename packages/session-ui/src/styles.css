@@ -95,6 +95,7 @@ button:focus-visible, summary:focus-visible, input:focus-visible, select:focus-v
   background: var(--dsm-soft-surface);
 }
 .dsm-nav-button { display: inline-flex; flex: 0 0 auto; flex-direction: column; align-items: center; justify-content: center; gap: 5px; min-height: 54px; padding: 8px 2px; border: 1px solid transparent; border-radius: 7px; color: var(--dsm-muted); background: transparent; cursor: pointer; white-space: nowrap; font-size: 11px; line-height: 1.3; }
+.dsm-nav-button > span { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; line-height: 1.45; }
 .dsm-nav-button:hover { color: var(--dsm-text); background: var(--dsm-hover); }
 .dsm-nav-button[data-active="true"], .dsm-nav-button[aria-current="page"] { color: var(--dsm-selected-text); background: var(--dsm-selected); font-weight: 550; }
 .dsm-workspace { grid-column: 2; min-width: 0; width: min(1184px, 100%); margin: 0 auto; padding: 30px clamp(18px, 3vw, 36px) 48px; }
