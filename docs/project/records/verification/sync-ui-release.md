@@ -37,3 +37,13 @@ sources:
 用户正常停止DSH后，主任务核验原run关闭与Launcher最终回执，Bridge .4.1-rc2.2 / Sticker .7.4-rc2.4随后安装。外部installed-verification.json（08:31:47Z）明确verified-installed-not-activated、runtimeStarted=false，导入、metadata hash及其他配置保留检查通过。
 
 之后正式Start在08:32:23/54 UTC的prepare阶段exit1，Launcher trace记invalid-json；这只表明未取得合法provider回执，不能凭错误标签确定JSON本身是根因。证据位置为 `C:/Users/19717/AppData/Roaming/in.dsh-plug.dsh-launcher/runtime-lifecycle.trace.log` 对应时间点，主任务继续只读排查。此截点目标DSH stopped，Engine .38 ready，.39仍未激活，**不能记为已恢复启动**。本地图不复制可能含运行参数的原始trace正文。
+
+
+### 接入指纹修复（保留失败前因）
+
+2026-09-18 08:40 UTC，确认prepare拒绝原因为保存的Maintenance接入fingerprint仍对应旧插件/profile配置；不是attestation构件失败。插件及patch升级使其失配，provider在stderr报错而stdout为空，外层才记录invalid-json。备份后通过正式integrations repair验证本目标，恢复connected/issues=[]，其他绑定、同步范围、profile包与配置均不变。证据：D:/AI/DeepSeekHarness-Plugin/artifacts/bridge-folder-binding-20260918/start-binding-repaired.json。随后单一控制方执行Start，08:41:53 prepare已成功；后续running身份仍需单独核验，不能以prepare成功替代。
+
+
+### 正式启动结果
+
+本轮正式Start最终成功：RC2副本/web为running，新origin为http://127.0.0.1:27583，boot为05c53aef-7f18-465e-b773-1fc7750b66e7，run-2f0d3ad7-9778-43fc-857b-c6258c9ecc22为running，Engine ready，all/revision0。端口仅本次证据，不写入固定绑定。准备完成至web入口约40秒；旧boot日志不能归入新启动故障。运行恢复不代表外部浏览器bundle根因、真实folder绑定或所有引用交互已通过。Engine仍.38，.39未激活。

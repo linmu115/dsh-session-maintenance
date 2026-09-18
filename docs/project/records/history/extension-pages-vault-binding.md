@@ -111,3 +111,13 @@ related_records: [REQ-extension-pages, REQ-sync-extension-navigation, IF-extensi
 本次整理扩展同一来源索引至第5944行，之后的Bridge安装不凭推测写入SM事实；用户后续停止DSH不等于Engine已切换。旧段落描述的“待实现/未部署”保留当时语境，当前状态以新增implementation和verification为准。可选SM业务维护、Core运行时引用、Bridge通道与Vault真源仍各自拥有自己的职责。
 
 公开来源截点后的补充回执单独由 [[VER-sync-ui-release]] 记录：08:31插件安装校验通过但未激活；08:32正式Start在prepare阶段exit1/invalid-json，主任务只读排查，DSH仍stopped，Engine .38就绪。该补充来自准确安装回执及主任务提供的Launcher trace时间点，不伪造本索引范围内的history-event，也不把早先UI验收误写为这次新启动恢复成功。
+
+
+### 接入指纹修复（保留失败前因）
+
+2026-09-18 08:40 UTC，确认prepare拒绝原因为保存的Maintenance接入fingerprint仍对应旧插件/profile配置；不是attestation构件失败。插件及patch升级使其失配，provider在stderr报错而stdout为空，外层才记录invalid-json。备份后通过正式integrations repair验证本目标，恢复connected/issues=[]，其他绑定、同步范围、profile包与配置均不变。证据：D:/AI/DeepSeekHarness-Plugin/artifacts/bridge-folder-binding-20260918/start-binding-repaired.json。随后单一控制方执行Start，08:41:53 prepare已成功；后续running身份仍需单独核验，不能以prepare成功替代。
+
+
+### 正式启动结果
+
+本轮正式Start最终成功：RC2副本/web为running，新origin为http://127.0.0.1:27583，boot为05c53aef-7f18-465e-b773-1fc7750b66e7，run-2f0d3ad7-9778-43fc-857b-c6258c9ecc22为running，Engine ready，all/revision0。端口仅本次证据，不写入固定绑定。准备完成至web入口约40秒；旧boot日志不能归入新启动故障。运行恢复不代表外部浏览器bundle根因、真实folder绑定或所有引用交互已通过。Engine仍.38，.39未激活。
