@@ -1,6 +1,6 @@
 import { expect, it } from "vitest";
 import type { BusinessPage, ExtensionBusinessPanel } from "@linmu/dsh-session-contracts";
-import { extensionCategories } from "../src/extension-navigation.js";
+import { extensionCategories, extensionRegisteredViews } from "../src/extension-navigation.js";
 
 const page = (namespace: string, sections: BusinessPage["snapshot"]["sections"] = []): BusinessPage => ({
   owner: { instanceId: "copy", profileId: "web", namespace, providerId: "settings", bootId: "550e8400-e29b-41d4-a716-446655440000" },
@@ -34,4 +34,15 @@ it("keeps offline and information-only plugins discoverable without a global inf
     { id: "provider:custom-plugin", label: "custom-plugin 插件", pages: [unknown] },
     { id: "obsidian-series", adapterId: "obsidian-series", label: "Obsidian 系列", pages: [bridge] },
   ]);
+});
+
+it("creates no implicit information page and uses registered titles for custom pages", () => {
+  expect(extensionRegisteredViews([])).toEqual([]);
+  const custom = page("custom");
+  const second = { ...custom, owner: { ...custom.owner, providerId: "tools" }, snapshot: { ...custom.snapshot, title: "自定义工具" } };
+  const anotherInstance = { ...custom, owner: { ...custom.owner, instanceId: "other" } };
+  const views = extensionRegisteredViews([custom, second, anotherInstance]);
+  expect(views.map(view => view.label)).toEqual(["custom 插件", "自定义工具"]);
+  expect(views[0]!.pages).toHaveLength(2);
+  expect(views[1]!.pages).toEqual([second]);
 });

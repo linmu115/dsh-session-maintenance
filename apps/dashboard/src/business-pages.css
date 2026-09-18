@@ -1,18 +1,21 @@
 .extension-page > *, .business-pages > *, .business-page-body > * { min-width: 0; }
-.extension-view-switch { display: flex; flex-wrap: wrap; gap: 8px; }
-.extension-view-switch .dsm-button[aria-pressed="true"] { background: var(--dsm-selected); border-color: var(--dsm-selected-border); color: var(--dsm-selected-text); }
-.extension-category-nav { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--dsm-border); }
-.extension-category-nav .dsm-button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
-.extension-category-nav .dsm-button[aria-pressed="true"] { background: var(--dsm-selected); border-color: var(--dsm-selected-border); color: var(--dsm-selected-text); }
-.extension-category-heading { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
-.extension-category .extension-view-switch { padding-bottom: 12px; border-bottom: 1px solid var(--dsm-border); }
-.extension-view-switch .dsm-button { min-height: 44px; }
-.extension-category-nav .dsm-button:focus-visible, .extension-view-switch .dsm-button:focus-visible { outline: 2px solid var(--dsm-link); outline-offset: 3px; }
+.extension-page, .extension-category { gap: 0; }
+.extension-category-nav, .extension-view-switch { display: flex; flex-wrap: wrap; gap: 0 24px; margin: 0; padding: 0; border-bottom: 1px solid var(--dsm-border); }
+.extension-category-nav > button, .extension-view-switch > button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; padding: 14px 2px; min-height: 48px; background: transparent; color: var(--dsm-muted); font: inherit; font-weight: 600; cursor: pointer; }
+.extension-view-switch > button { padding-block: 11px; font-size: 13px; }
+.extension-category-nav > button[aria-current="page"], .extension-view-switch > button[aria-current="page"] { color: var(--dsm-text); border-bottom-color: var(--dsm-text); }
+.extension-category-nav > button:hover, .extension-view-switch > button:hover { color: var(--dsm-text); }
+.extension-category-nav > button:focus-visible, .extension-view-switch > button:focus-visible { outline: 2px solid var(--dsm-link); outline-offset: -2px; }
+.extension-content { padding-top: 28px; }
+.extension-content[hidden], .extension-page > [hidden] { display: none; }
+.business-provider-page { min-width: 0; }
+.business-provider-page > h3 { margin: 0; font-size: 16px; }
+.business-provider-page + .business-provider-page { border-top: 1px solid var(--dsm-border); padding-top: 24px; }
 .business-pages { overflow-wrap: anywhere; }
 .business-pages .dsm-page-heading > div { min-width: 0; }
 .business-pages .dsm-page-heading > .dsm-button { flex-shrink: 0; }
 .business-pages .dsm-surface-header h2 { min-width: 0; line-height: 1.5; }
-.business-page-body { display: grid; gap: 20px; padding: 20px; }
+.business-page-body { display: grid; gap: 20px; padding: 20px 0; }
 .business-page-owner { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; color: var(--dsm-muted); font-size: 12px; }
 .business-page-owner > span { min-width: 0; }
 .business-page-section { min-width: 0; }
@@ -42,7 +45,7 @@
 .business-page-directory .extension-directory-toolbar label { min-width: 0; max-width: 100%; }
 .business-page-directory .extension-directory-toolbar select { min-width: 0; max-width: 100%; }
 @media (max-width: 640px) {
-  .business-page-body { padding: 14px; gap: 16px; }
+  .business-page-body { padding: 14px 0; gap: 16px; }
   .business-page-values > div { grid-template-columns: minmax(0, 1fr); gap: 4px; }
   .business-page-actions { grid-template-columns: minmax(0, 1fr); }
 }

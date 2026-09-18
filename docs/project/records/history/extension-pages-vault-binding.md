@@ -139,3 +139,12 @@ related_records: [REQ-extension-pages, REQ-sync-extension-navigation, IF-extensi
 同步接口实测：原离线实例activeScopes为0，当前RC2副本为1。看板实际显示Maintenance与Codex并列子栏目，离线实例显示无在线运行；未修改同步名单、Vault绑定或笔记。通过正式integration repair刷新升级后失配的接入指纹，其他绑定、范围、包及配置保留。Launcher正式Start成功：副本/web running，boot 51386209-f905-4c6f-95d2-33b2b28e71e8，run-8a67195d-e8b0-4dc2-85f5-04767d91770e running，scope all/revision0。
 
 本次看板地址http://127.0.0.1:58529/dashboard/，DSH地址http://127.0.0.1:17118；均为动态端口证据，不写入固定绑定。最终证据：D:/AI/DeepSeekHarness-Plugin/artifacts/maintenance-engine40-install-20260918/activated.json；最终备份位于同目录final-state-backup；正常退出回执C:/Users/19717/AppData/Local/DSH-Session-Maintenance/logs/engine-lifecycle/57996.jsonl。外部浏览器插件bundle故障根因、完整引用往返及真实folder绑定交互不属于本次已通过项。
+
+
+## Dashboard .1.6 导航纠错（2026-09-18）
+
+用户再次验收指出：Obsidian专属信息页被前端错误套用到GPT与ThoughtDAG，顶部选择仍为气泡样式，整页内容被大卡片包裹。原因是ExtensionCategoryView以全局listBusinessPages能力存在作为显示通用信息入口的条件，而不是检查当前Adapter注册。现已改为固定数据页加实际namespace/provider注册页；移除两个未注册的空信息入口，自定义页面使用注册标题；顶部平直一级/二级导航，正文整页切换，保留草稿与幂等回执。此修订替代此前“所有插件都有数据与信息两页”的错误概括。
+
+11项针对性测试、Dashboard类型检查及构建通过。当前Engine .40静态部署Dashboard .1.6，17个文件逐项哈希一致，旧静态资源备份并保留；未重启Engine或DSH，同一boot 5c70b708-f8f4-43e7-842d-9419ab58d142 / run-cf18aaf6-8b8f-4ef7-aba6-37fbca6859ca持续running，Engine PID51548。工作区范围、接入登记和Launcher hook内容未变。真实浏览器分别打开GPT、ThoughtDAG、Obsidian信息页以及Maintenance/Codex同步页，确认入口归属、两层底线导航和无外层卡片的正文切换；没有执行绑定、解除或保存名单。
+
+证据与备份：D:/AI/DeepSeekHarness-Plugin/artifacts/dashboard-0.1.6-navigation-20260918/installed.json及dashboard-before。两次部署脚本校验故障也保留说明：第一次Windows basename处理错误发生在覆盖前；第二次覆盖后误用inspect返回结构导致回执写入失败，随后按live.bootId/run.id完成独立哈希和持续运行核验。未用脚本成功代替视觉验收。用户本次要求不用子代理，收到后立即停止已派出的代理，后续代码、测试、安装与浏览器检查均由主任务完成。

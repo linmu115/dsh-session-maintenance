@@ -5,7 +5,7 @@ import { expect, it, vi } from "vitest";
 import { ExtensionPageView, type ExtensionPageApi } from "../src/extension-page.js";
 import type { BusinessPage, ExtensionBusinessPanel, ExtensionPanel } from "@linmu/dsh-session-contracts";
 
-it("nests data and plugin information under each adapter and retains uncertain actions across category switches", async () => {
+it("shows information only for its registered adapter and retains uncertain actions across category switches", async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   const page: BusinessPage = { owner: { instanceId: "copy", profileId: "web", namespace: "obsidian-bridge", providerId: "binding", bootId: "550e8400-e29b-41d4-a716-446655440000" }, online: true, updatedAt: 1, expiresAt: 20000,
     snapshot: { title: "Vault 接入", revision: 1, sections: [{ id: "actions", title: "绑定", kind: "actions", actions: [{ id: "bind", label: "确认绑定", expectedRevision: 4, fields: [] }] }] } };
@@ -23,6 +23,8 @@ it("nests data and plugin information under each adapter and retains uncertain a
     expect(plugins.closest('section[aria-label="Obsidian 系列"]')).not.toBeNull();
     expect(node.querySelectorAll('[aria-label="扩展适配器"]')).toHaveLength(0);
     expect(directory.mock.calls).toHaveLength(1);
+    expect(node.querySelector(".extension-page")!.firstElementChild?.tagName).toBe("NAV");
+    expect(node.querySelector(".extension-category")!.firstElementChild?.tagName).toBe("NAV");
     expect(plugins.closest("[hidden]")).not.toBeNull();
     expect([...node.querySelectorAll("h2")].find(title => title.textContent === "扩展数据")!.closest("[hidden]")).toBeNull();
     await switchView("插件信息与接入");
@@ -34,6 +36,8 @@ it("nests data and plugin information under each adapter and retains uncertain a
     expect(plugins.closest("[hidden]")).not.toBeNull();
     const graphCategory = node.querySelector('section[aria-label="ThoughtDAG"]')!;
     expect(graphCategory.querySelector("form")).toBeNull();
+    expect([...graphCategory.querySelectorAll("nav button")].map(button => button.textContent)).toEqual(["扩展数据"]);
+    expect(graphCategory.querySelector(".business-pages")).toBeNull();
     await switchView("Obsidian 系列"); await switchView("插件信息与接入");
     expect(plugins.querySelector("form")).toBe(form);
     expect(plugins.textContent).toContain("同一操作编号");

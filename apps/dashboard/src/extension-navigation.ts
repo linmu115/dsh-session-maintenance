@@ -31,3 +31,15 @@ export function extensionCategories(panels: ExtensionBusinessPanel[], pages: Bus
   }
   return [...categories.values()];
 }
+
+/** One navigation entry per registered provider; instances share that entry. */
+export function extensionRegisteredViews(pages: BusinessPage[]) {
+  const views = new Map<string, { id: string; label: string; pages: BusinessPage[] }>();
+  for (const page of pages) {
+    const id = JSON.stringify([page.owner.namespace, page.owner.providerId]);
+    const view = views.get(id) ?? { id, label: page.owner.namespace === "obsidian-bridge" ? "插件信息与接入" : page.snapshot.title, pages: [] };
+    view.pages.push(page);
+    views.set(id, view);
+  }
+  return [...views.values()];
+}

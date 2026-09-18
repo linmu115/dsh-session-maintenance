@@ -21,3 +21,6 @@ Engine BusinessPageRegistry 持久保存页面快照和 operationId 回执，按
 Dashboard 使用通用摘要、状态、键值、目录入口和声明动作表单；提供方接口仅允许受信 host bearer，浏览器动作仍通过共同 session/origin/CSRF 入口。输入不可承载任意 HTML 或脚本。
 
 提供方源码合同：packages/contracts/src/business-pages.ts；Engine apps/engine/src/business-pages.ts 与 http/business-page-routes.ts；host plugins/dsh-session-maintenance/src/business-pages.ts。Bridge 是新增贡献者，绑定操作仍交 Companion CAS 确认；业务目录继续复用既有 Adapter，不与页面能力混成同一写权限。当前 UI 提交丢响应的幂等重试修复及最终验收见 [[VER-scope-business-pages]]。
+
+
+Dashboard .1.6导航只依据实际注册的业务页生成可选子目录；只有数据页是每个Adapter固定入口。公共API存在不构成某个Adapter已注册信息页。namespace/provider标识同一页面类型，不同instance/profile的快照在该页内按原owner分别展示与执行；普通自定义页面使用注册标题。Obsidian现有提供方保留“插件信息与接入”名称。

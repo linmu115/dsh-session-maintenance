@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Badge, Button, LoadingState, Surface } from "@linmu/dsh-session-ui";
+import { Badge, Button, LoadingState } from "@linmu/dsh-session-ui";
 import type { BusinessPage, BusinessPageOwner, BusinessPageActionDescriptor, BusinessPageActionRequest, BusinessPageActionReceipt } from "@linmu/dsh-session-contracts";
 import "./business-pages.css";
 export interface BusinessPagesApi {
@@ -60,7 +60,7 @@ function BusinessAction({ api, page, action }: { api: BusinessPagesApi; page: Bu
     {receipt ? <p role="status">{receipt.status === "uncertain" ? "执行结果需要核对：" : ""}{receipt.message}</p> : null}
   </form>;
 }
-export function BusinessPages({ api, renderDirectory, registeredPages, onRefresh }: { api: BusinessPagesApi; renderDirectory(owner: BusinessPageOwner, adapterId: string): ReactNode; registeredPages?: BusinessPage[]; onRefresh?: () => void }) {
+export function BusinessPages({ api, renderDirectory, registeredPages, onRefresh, title = "插件信息与接入" }: { title?: string; api: BusinessPagesApi; renderDirectory(owner: BusinessPageOwner, adapterId: string): ReactNode; registeredPages?: BusinessPage[]; onRefresh?: () => void }) {
   const [pages, setPages] = useState<BusinessPage[]>(); const [error, setError] = useState<string>();
   const [revision, setRevision] = useState(0); const [directory, setDirectory] = useState<string>();
   useEffect(() => {
@@ -72,18 +72,18 @@ export function BusinessPages({ api, renderDirectory, registeredPages, onRefresh
   }, [api, revision, registeredPages]);
   const visiblePages = registeredPages ?? pages;
   if (!api.listBusinessPages) return null;
-  return <div className="page-stack business-pages"><div className="dsm-page-heading"><div><h2>插件信息与接入</h2><p>查看本栏目的插件接入状态，并在对应实例下管理绑定与业务操作。</p></div><Button onClick={() => onRefresh ? onRefresh() : setRevision(value => value + 1)}>刷新信息页</Button></div>
+  return <div className="page-stack business-pages"><div className="dsm-page-heading"><div><h2>{title}</h2><p>查看本栏目的插件接入状态，并在对应实例下管理绑定与业务操作。</p></div><Button onClick={() => onRefresh ? onRefresh() : setRevision(value => value + 1)}>刷新信息页</Button></div>
     {error ? <p role="alert" className="inline-error">{error}</p> : !visiblePages ? <LoadingState label="正在读取插件信息页…" /> : visiblePages.length === 0 ? <p className="muted">本栏目尚未注册插件信息页。</p> : null}
     {visiblePages?.map(page => {
       const pageKey = JSON.stringify(page.owner);
-      return <Surface key={pageKey} title={page.snapshot.title}><div className="business-page-body"><div className="business-page-owner"><span>{page.owner.instanceId} · {page.owner.profileId}</span><Badge tone={page.online ? "success" : "neutral"}>{page.online ? "提供方在线" : "提供方离线，保留最后信息"}</Badge></div>
+      return <article key={pageKey} className="business-provider-page" aria-label={page.snapshot.title}><h3>{page.snapshot.title}</h3><div className="business-page-body"><div className="business-page-owner"><span>{page.owner.instanceId} · {page.owner.profileId}</span><Badge tone={page.online ? "success" : "neutral"}>{page.online ? "提供方在线" : "提供方离线，保留最后信息"}</Badge></div>
         {page.snapshot.sections.map(section => <section className="business-page-section" key={section.id}><h3>{section.title}</h3>
           {section.kind === "summary" ? <p>{section.text}</p> : section.kind === "status" ? <p><Badge tone={section.state === "ready" ? "success" : section.state === "warning" ? "warning" : "neutral"}>{section.label}</Badge></p>
             : section.kind === "key-values" ? <dl className="business-page-values">{section.items.map((item, index) => <div key={index}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
             : section.kind === "data-directory" ? <><button className="dsm-button" type="button" aria-expanded={directory === `${pageKey}:${section.id}`} onClick={() => setDirectory(directory === `${pageKey}:${section.id}` ? undefined : `${pageKey}:${section.id}`)}>{directory === `${pageKey}:${section.id}` ? "收起数据目录" : "查看数据目录"}</button>{directory === `${pageKey}:${section.id}` ? <div className="business-page-directory">{renderDirectory(page.owner, section.adapterId)}</div> : null}</>
             : <div className="business-page-actions">{section.actions.map(action => <BusinessAction key={`${action.id}:${action.expectedRevision}`} api={api} page={page} action={action} />)}</div>}
         </section>)}
-      </div></Surface>;
+      </div></article>;
     })}
   </div>;
 }

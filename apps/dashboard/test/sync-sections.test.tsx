@@ -34,6 +34,8 @@ async function click(element: HTMLElement) { await act(async () => element.click
 it("shows peer tabs, reads each section on first visit, and retains both drafts without saving", async () => {
   const api = apiFixture();
   await act(async () => root.render(<SyncSettingsPage api={api} />));
+  expect(container.querySelector(".sync-settings")!.firstElementChild?.tagName).toBe("NAV");
+  expect(panel(0).parentElement).toBe(container.querySelector(".sync-settings"));
   expect(tabs().map(tab => tab.textContent)).toEqual(["Maintenance 工作区同步", "Codex 项目同步"]);
   expect(panel(0).hidden).toBe(false); expect(panel(1).hidden).toBe(true);
   expect(api.getCodexProjectMapping).not.toHaveBeenCalled();

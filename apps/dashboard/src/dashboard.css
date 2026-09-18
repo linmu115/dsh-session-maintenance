@@ -309,11 +309,15 @@
 .advanced-section[open] > summary { padding-inline: 2px; margin-bottom: 12px; }
 .settings-content { padding: 8px 20px 22px; line-height: 1.75; font-size: 13px; }
 .sync-settings { min-width: 0; }
-.sync-section-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 22px; padding: 5px; border: 1px solid var(--dsm-border); border-radius: 10px; background: var(--dsm-soft-surface); }
-.sync-section-tabs > button { min-width: 0; min-height: 48px; padding: 10px 14px; border: 1px solid transparent; border-radius: 7px; color: var(--dsm-muted); background: transparent; font: inherit; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer; }
-.sync-section-tabs > button:hover { background: var(--dsm-hover); }
-.sync-section-tabs > button[aria-selected="true"] { color: var(--dsm-selected-text); border-color: var(--dsm-selected-border); background: var(--dsm-selected); box-shadow: var(--dsm-shadow); }
+.sync-section-tabs { display: flex; flex-wrap: wrap; gap: 0 28px; margin: 0 0 28px; padding: 0; border: 0; border-bottom: 1px solid var(--dsm-border); border-radius: 0; background: transparent; }
+.sync-section-tabs > button { min-width: 0; min-height: 48px; padding: 14px 2px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; color: var(--dsm-muted); background: transparent; font: inherit; font-weight: 600; line-height: 1.5; cursor: pointer; }
+.sync-section-tabs > button:hover { color: var(--dsm-text); }
+.sync-section-tabs > button[aria-selected="true"] { color: var(--dsm-text); border-bottom-color: var(--dsm-text); background: transparent; box-shadow: none; }
+.sync-section-tabs > button:focus-visible { outline: 2px solid var(--dsm-focus); outline-offset: -2px; }
 .sync-section-panel { min-width: 0; }
+.sync-section-panel > .dsm-surface { border: 0; border-radius: 0; box-shadow: none; background: transparent; overflow: visible; }
+.sync-section-panel > .dsm-surface > .dsm-surface-header { padding: 0 0 18px; }
+.sync-section-panel > .dsm-surface > .settings-content { padding: 0; }
 .sync-section-panel[hidden] { display: none; }
 .sync-section-panel:focus-visible { outline: 2px solid var(--dsm-focus); outline-offset: 4px; }
 .instance-workspace-intro { padding-bottom: 0; }
