@@ -36,6 +36,11 @@ export class MaintenanceKnowledge {
     })();this.creates.set(key,task);try{return await task;}finally{this.creates.delete(key);}
   }
   async dispatch(operation:string,input:Record<string,unknown>) {
+    if(operation==='session-availability' || operation==='workspace-scope') {
+      const scope=this.ctx.get('maintenanceInstanceWorkspace');
+      if(!scope)throw Object.assign(new Error('当前实例同步范围尚未就绪'),{code:'INSTANCE_WORKSPACE_UNAVAILABLE'});
+      return operation==='workspace-scope'?scope.effectiveScope():scope.sessionAvailability(id(input.logicalSessionId));
+    }
     if(operation==='source-markers')return this.ctx.maintenanceGraph.sourceMarkers(id(input.nativeSessionId),input.after===undefined?undefined:id(input.after));
     if(operation==='revoke-source-reference')return this.ctx.maintenanceGraph.revokeSource(id(input.nativeSessionId),id(input.referenceId));
     if(operation==='create-session')return this.createSession(id(input.operationId),id(input.workspaceId));

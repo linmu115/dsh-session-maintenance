@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
   instanceWorkspaceInstanceIdSchema, instanceWorkspacePolicySchema, instanceWorkspacePolicyUpdateSchema,
-  type InstanceWorkspacePolicy, type InstanceWorkspacePolicyUpdate, type LogicalSessionId, type LogicalWorkspaceId,
+  type InstanceWorkspacePolicy, type InstanceWorkspacePolicyUpdate, type LogicalSessionId, type LogicalWorkspaceId, type ProjectionRun,
 } from "@linmu/dsh-session-contracts";
 
 export type InstanceWorkspacePolicyErrorCode = "INSTANCE_WORKSPACE_POLICY_CONFLICT" | "INSTANCE_WORKSPACE_UNKNOWN"
@@ -29,6 +29,27 @@ export class SqliteInstanceWorkspacePolicyRepository {
     return instanceWorkspacePolicySchema.parse({ schemaVersion: 1, instanceId, revision: row?.revision ?? 0,
       selection: row ? JSON.parse(row.selection_json) : { kind: "all" }, updatedAt: row?.updated_at ?? null });
   }
+  /** Freeze the selected scope before materialization; later saves apply to the next run. */
+  policyForRun(run: Pick<ProjectionRun, "id" | "instanceId" | "profileId" | "state">): InstanceWorkspacePolicy {
+    const existing = this.database.prepare("SELECT instance_id, policy_json FROM projection_run_workspace_scopes WHERE run_id=?")
+      .get(run.id) as { instance_id: string; policy_json: string } | undefined;
+    if (existing) {
+      const policy = instanceWorkspacePolicySchema.parse(JSON.parse(existing.policy_json));
+      if (existing.instance_id !== run.instanceId || policy.instanceId !== run.instanceId) throw new Error("Projection scope belongs to another instance");
+      return policy;
+    }
+    const stored = this.database.prepare("SELECT instance_id, profile_id FROM projection_runs WHERE id=?").get(run.id) as { instance_id: string; profile_id: string } | undefined;
+    if (stored && (stored.instance_id !== run.instanceId || stored.profile_id !== run.profileId)) throw new Error("Projection scope identity mismatch");
+    // Existing pre-upgrade runs were projected with all workspaces. Recovery
+    // must retain that effective policy instead of applying a newly saved one.
+    const policy = run.state === "preparing" || !stored ? this.getPolicy(run.instanceId)
+      : instanceWorkspacePolicySchema.parse({ schemaVersion: 1, instanceId: run.instanceId, revision: 0, selection: { kind: "all" }, updatedAt: null });
+    if (stored && run.state === "preparing") this.database.prepare("INSERT INTO projection_run_workspace_scopes(run_id,instance_id,policy_json) VALUES (?,?,?)")
+      .run(run.id, run.instanceId, JSON.stringify(policy));
+    return policy;
+  }
+
+  workspaceSelected(policy: InstanceWorkspacePolicy, workspaceId: LogicalWorkspaceId | null): boolean { return selected(policy, workspaceId); }
   updatePolicy(instanceId: string, input: InstanceWorkspacePolicyUpdate): InstanceWorkspacePolicy {
     instanceWorkspaceInstanceIdSchema.parse(instanceId);
     const update = instanceWorkspacePolicyUpdateSchema.parse(input);

@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { registerFlatRetentionCandidate } from "../src/index.js";
+import { registerFlatRetentionCandidate, MAINTENANCE_SCHEMA_VERSION } from "../src/index.js";
 import { NOW, retentionFixture } from "./retention-fixture.js";
 
 async function manifest(path: string) {
@@ -13,16 +13,18 @@ async function manifest(path: string) {
 }
 
 describe("retention schema 21 compatibility boundary", () => {
-  it.each([21,22,23,24,25])("reads schema %s body references and verifies a static recovery point without changing it", async (schema) => {
+  it.each([21,22,23,24,25,26,27])("reads schema %s body references and verifies a static recovery point without changing it", async (schema) => {
     const f = await retentionFixture();
     try {
       const body = await f.addVersion("head", "retained schema 21 body");
-      expect(f.database.prepare("SELECT MAX(version) version FROM schema_migrations").get()?.version).toBe(25);
+      expect(f.database.prepare("SELECT MAX(version) version FROM schema_migrations").get()?.version).toBe(MAINTENANCE_SCHEMA_VERSION);
       const path = await f.external("schema21");
-      if (schema < 25) {
+      if (schema < 27) {
         const db = new DatabaseSync(path);
         try {
-          db.exec("DROP TRIGGER learning_body_revision; DROP TABLE learning_handoffs; DROP TABLE learning_bindings; DELETE FROM schema_migrations WHERE version=25");
+          db.exec("DROP TABLE projection_run_workspace_scopes; DELETE FROM schema_migrations WHERE version=27");
+          if (schema < 26) db.exec("DROP TABLE instance_workspace_policies; DELETE FROM schema_migrations WHERE version=26");
+          if (schema < 25) db.exec("DROP TRIGGER learning_body_revision; DROP TABLE learning_handoffs; DROP TABLE learning_bindings; DELETE FROM schema_migrations WHERE version=25");
           if (schema < 24) db.exec("DROP TABLE extension_object_owners; DELETE FROM schema_migrations WHERE version=24");
           if (schema < 23) db.exec("DROP TABLE context_read_executions; DELETE FROM schema_migrations WHERE version=23");
           if (schema === 21) db.exec("DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections; DELETE FROM schema_migrations WHERE version=22");
@@ -42,7 +44,7 @@ describe("retention schema 21 compatibility boundary", () => {
     } finally { await f.close(); }
   });
 
-  it.each([15, 18, 26, 999])("continues to reject unsupported schema %s for references and static candidates", async (schema) => {
+  it.each([15, 18, 28, 999])("continues to reject unsupported schema %s for references and static candidates", async (schema) => {
     const f = await retentionFixture();
     try {
       await f.addVersion("head");

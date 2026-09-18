@@ -1,4 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
+import { SqliteInstanceWorkspacePolicyRepository } from "./instance-workspace-policy-repository.js";
 import {
   canonicalChangePageSchema,
   canonicalChangeQuerySchema,
@@ -61,6 +62,10 @@ export class SqliteCanonicalProjectionSource implements IncrementalCanonicalProj
     return this.loadSelection(run);
   }
 
+  async scopeRevision(run: ProjectionRun): Promise<number> {
+    return new SqliteInstanceWorkspacePolicyRepository(this.database).policyForRun(run).revision;
+  }
+
   async loadVersionEvents(logicalSessionId: LogicalSessionId, versionId: SessionVersionId): Promise<readonly CanonicalEventV1[]> {
     if (this.objectStore === undefined) throw new Error("Immutable version bodies are required for projection recovery");
     return this.loadHeadEvents(logicalSessionId, versionId);
@@ -120,11 +125,25 @@ export class SqliteCanonicalProjectionSource implements IncrementalCanonicalProj
     run: ProjectionRun,
     logicalSessionIds?: readonly LogicalSessionId[],
   ): Promise<CanonicalProjectionInput> {
+    const policy = new SqliteInstanceWorkspacePolicyRepository(this.database).policyForRun(run);
+    const selected = (workspaceId: string | null): boolean => policy.selection.kind === "all"
+      || (workspaceId === null ? policy.selection.includeUnassigned : policy.selection.workspaceIds.includes(workspaceId as never));
     const workspaceRows = this.database.prepare(
       `SELECT id, parent_id, name, sort_key, deleted_at, created_at, updated_at
        FROM logical_workspaces WHERE deleted_at IS NULL ORDER BY sort_key, id`,
     ).all() as unknown as WorkspaceRow[];
-    const workspaces = workspaceRows.map((row) => logicalWorkspaceSchema.parse({
+    // Ancestor headers preserve the selected workspace's hierarchy; their
+    // sessions are not included unless the ancestor itself is selected.
+    const includedWorkspaceIds = new Set(workspaceRows.filter(row => selected(row.id)).map(row => row.id));
+    const parents = new Map(workspaceRows.map(row => [row.id, row.parent_id]));
+    for (const id of [...includedWorkspaceIds]) {
+      const visited = new Set<string>([id]);
+      let parent = parents.get(id);
+      while (parent && !visited.has(parent)) {
+        visited.add(parent); includedWorkspaceIds.add(parent); parent = parents.get(parent);
+      }
+    }
+    const workspaces = workspaceRows.filter(row => includedWorkspaceIds.has(row.id)).map((row) => logicalWorkspaceSchema.parse({
       schemaVersion: 1,
       id: row.id,
       parentId: row.parent_id,
@@ -163,7 +182,7 @@ export class SqliteCanonicalProjectionSource implements IncrementalCanonicalProj
          ${selectionClause}
        ORDER BY s.created_at, s.id`,
     ).all(...(logicalSessionIds ?? [])) as unknown as SessionRow[];
-    const sessions = await Promise.all(sessionRows.map(async (row) => {
+    const sessions = await Promise.all(sessionRows.filter(row => selected(row.workspace_id)).map(async (row) => {
       const session = canonicalSessionRecordSchema.parse({
         schemaVersion: 1,
         id: row.id,

@@ -69,6 +69,8 @@ function session(id: string, title: string, updatedAt = at): CanonicalProjection
 
 class MutableSource implements IncrementalCanonicalProjectionSource {
   revision = 2;
+  scope = 0;
+  async scopeRevision():Promise<number> { return this.scope; }
   sessions = new Map<string, CanonicalProjectionSessionInput>([
     ["logical-a", session("logical-a", "A")],
     ["logical-b", session("logical-b", "B")],
@@ -118,6 +120,23 @@ function sessionFile(root: string, logicalSessionId: string): string {
 }
 
 describe("persistent projection cache", () => {
+  it("uses a separate cache when effective scope changes without a canonical revision, retaining the prior cache", async () => {
+    const root = await mkdtemp(join(tmpdir(), "dsh-sm-scope-cache-fixture-")); roots.push(root);
+    const source = new MutableSource();
+    const cache = new PersistentProjectionCache({runtimeRoot:root,source,adapter,statusLog:new StatusLog(new MemoryStatusEventAdapter())});
+    const all = await cache.apply({run:run("scope-all"),configuration:{}});
+    const original = source.sessions.get("logical-b")!;
+    source.scope = 1; source.sessions.delete("logical-b");
+    const selected = await cache.apply({run:run("scope-selected"),configuration:{}});
+    expect(selected.cacheRoot).not.toBe(all.cacheRoot);
+    expect(selected.cacheManifest.sessions.map(item=>item.logicalSessionId)).toEqual(["logical-a"]);
+    expect(await stat(sessionFile(all.cacheRoot,"logical-b"))).toBeDefined();
+    source.scope = 2; source.sessions.set("logical-b",original);
+    const restored = await cache.apply({run:run("scope-restored"),configuration:{}});
+    expect(restored.cacheManifest.sessions.map(item=>item.logicalSessionId).sort()).toEqual(["logical-a","logical-b"]);
+    expect(restored.projectionManifest.sessionCount).toBe(2);
+  });
+
   it("builds once, performs zero body writes without changes, then updates only affected sessions", async () => {
     const root = await mkdtemp(join(tmpdir(), "dsh-sm-persistent-cache-"));
     roots.push(root);

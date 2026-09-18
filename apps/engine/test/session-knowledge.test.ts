@@ -13,9 +13,9 @@ it('keeps stickers, migrations, links and target-scoped graph metadata separate 
   const run=await f.engine.prepareProjectionRuntimeRun(request);
   await f.engine.attachProjectionRuntimeRun({schemaVersion:1,clientId:request.runtimeClientId,runId:run.runId,temporaryPersistenceRootId:run.temporaryPersistenceRootId,attachedAt:at,nativeMode:run.nativeMode});
   const header={...contextHeader,cwd:f.root};const ids:Record<string,string>={};
-  for(const nativeSessionId of ['source','target'])ids[nativeSessionId]=(await f.engine.registerProjectionRuntimeSession({schemaVersion:1,clientId:request.runtimeClientId,runId:run.runId,nativeSessionId:nativeSessionId as never,header:{...header,id:nativeSessionId},title:nativeSessionId})).logicalSessionId;
+  for(const nativeSessionId of ['source','target','other'])ids[nativeSessionId]=(await f.engine.registerProjectionRuntimeSession({schemaVersion:1,clientId:request.runtimeClientId,runId:run.runId,nativeSessionId:nativeSessionId as never,header:{...header,id:nativeSessionId},title:nativeSessionId})).logicalSessionId;
   const scope={instanceId:request.instanceId,profileId:'web'};
-  f.engine.extensions!.connect({...scope,plugins:[{namespace:'stickers',pluginVersion:'0.7.3-rc2.12',writerId:'dsh-session-sticker-board'},{namespace:'obsidian-links',pluginVersion:'0.6.4-rc2.5',writerId:'obsidian-deepharness-bridge'},{namespace:'thoughtdag',pluginVersion:'0.4.14-rc2.5',writerId:'dsh-thoughtdag'},{namespace:'annotation-upstream',pluginVersion:'0.3.12-rc2.7',writerId:'dsh-annotation-core'}]});
+  f.engine.extensions!.connect({...scope,plugins:[{namespace:'stickers',pluginVersion:'0.7.4-rc2.2',writerId:'dsh-session-sticker-board'},{namespace:'obsidian-links',pluginVersion:'0.7.0-rc2.1',writerId:'obsidian-deepharness-bridge'},{namespace:'thoughtdag',pluginVersion:'0.4.14-rc2.5',writerId:'dsh-thoughtdag'},{namespace:'annotation-upstream',pluginVersion:'0.3.12-rc2.19',writerId:'dsh-annotation-core'}]});
   const api=f.engine.sessionKnowledge;
   const sessionCount=()=>f.engine.repository.database.prepare('SELECT COUNT(*) n FROM logical_sessions').get()!.n;
   const count=sessionCount();
@@ -57,6 +57,15 @@ it('keeps stickers, migrations, links and target-scoped graph metadata separate 
   await expect(api.legacySave(run.runId,update)).rejects.toThrow('另一窗口');
   expect((await api.migration(run.runId,{...migrated,phase:'activate'})).verification).toBe('manifest-verified');
   expect((await api.legacyState(run.runId,'source')).document).toEqual(saved.document);
+  const pending={stickerId:'deleted-sticker',sessionId:'source',pendingVaultIds:['vault-one','vault-two']};
+  const enqueued=await api.legacySave(run.runId,{document:saved.document,expectedRevision:saved.document.revision,enqueueBacklinkDelete:pending});
+  const partial=await api.legacySave(run.runId,{document:enqueued.document,expectedRevision:enqueued.document.revision,updateBacklinkDelete:{...pending,pendingVaultIds:['vault-two']}});
+  expect(partial.pendingBacklinkDeletes).toEqual([{...pending,pendingVaultIds:['vault-two']}]);
+  await expect(api.legacySave(run.runId,{document:partial.document,expectedRevision:partial.document.revision,updateBacklinkDelete:{...pending,pendingVaultIds:['new-vault']}})).rejects.toThrow('改投');
+  await expect(api.legacySave(run.runId,{document:enqueued.document,expectedRevision:enqueued.document.revision,updateBacklinkDelete:{...pending,pendingVaultIds:[]}})).rejects.toThrow('另一窗口');
+  const completed=await api.legacySave(run.runId,{document:partial.document,expectedRevision:partial.document.revision,acknowledgeStickerId:pending.stickerId});
+  expect(completed.pendingBacklinkDeletes).toEqual([]);
+
   await expect(api.migration(run.runId,{...migrated,phase:'activate',stickers:[{...migrated.stickers[0]!,title:'changed incoming title'}]})).rejects.toThrow('完整内容核对');
   await expect(api.migration(run.runId,{...migrated,phase:'activate',stickers:[{...migrated.stickers[0]!,record:{changed:true}}]})).rejects.toThrow('完整内容核对');
   expect(sessionCount()).toBe(count);
@@ -75,10 +84,11 @@ it('keeps stickers, migrations, links and target-scoped graph metadata separate 
   await append(contextEvents().slice(7),'next');
   expect((await f.engine.sessionContext.inspect(run.runId,'target',ref.referenceId)).sourceVersionId).toBe(ref.sourceVersionId);
   await f.engine.appendProjectionRuntimeEvent(request.runtimeClientId,{runId:run.runId,nativeSessionId:'target' as never,operationId:'target-turn' as never,nativeRevision:events.at(-1)!.seq+1,observedAt:at,payload:{logicalSessionId:ids.target!,instanceId:request.instanceId,header:{...header,id:'target'},inheritedEventCount:0,events}});
-  const reverse=await f.engine.sessionContext.capture({runId:run.runId,sourceNativeSessionId:'target',targetNativeSessionId:'source',operationId:'reverse',anchorId:'reply-one',selectedText:'重点'});
-  await f.engine.sessionContext.bind(run.runId,'source',reverse.referenceId,'reverse-user');
+  await expect(f.engine.sessionContext.capture({runId:run.runId,sourceNativeSessionId:'target',targetNativeSessionId:'source',operationId:'cyclic',anchorId:'reply-one',selectedText:'重点'})).rejects.toThrow('循环');
+  const reverse=await f.engine.sessionContext.capture({runId:run.runId,sourceNativeSessionId:'target',targetNativeSessionId:'other',operationId:'reverse',anchorId:'reply-one',selectedText:'重点'});
+  await f.engine.sessionContext.bind(run.runId,'other',reverse.referenceId,'reverse-user');
   expect((await f.engine.sessionGraph.relations(run.runId,ids.target!)).items.map(item=>item.referenceId)).toEqual([ref.referenceId]);
-  expect((await f.engine.sessionGraph.relations(run.runId,ids.source!)).items.map(item=>item.referenceId)).toEqual([reverse.referenceId]);
+  expect((await f.engine.sessionGraph.relations(run.runId,ids.other!)).items.map(item=>item.referenceId)).toEqual([reverse.referenceId]);
   await expect(f.engine.sessionGraph.relations(run.runId,'foreign')).rejects.toThrow();
   for(let i=0;i<60;i++)await api.write(run.runId,{...sticker,title:'分页贴纸'+i,objectId:'page-'+String(i).padStart(3,'0')});
   const first=await api.list(run.runId,{namespace:'stickers'});expect(first.items).toHaveLength(30);expect(first.nextCursor).toBeTruthy();
@@ -115,8 +125,8 @@ it('keeps stickers, migrations, links and target-scoped graph metadata separate 
   const oldEdited=await api.legacySave(run.runId,{document:{sessionId:'target',stickers:oldState.document.stickers.map((item:any)=>({...item,sessionId:'target',markdown:'legitimate legacy edit'}))},expectedRevision:oldState.document.revision});
   expect((await api.migration(run.runId,{...two,phase:'activate'})).verification).toBe('legacy-receipt-only');
   expect((await api.legacyState(run.runId,'target')).document).toEqual(oldEdited.document);
-  await f.engine.sessionContext.bind(run.runId,'source',reverse.referenceId,null);
-  expect((await f.engine.sessionGraph.relations(run.runId,ids.source!)).items[0]?.state).toBe('revoked');
+  await f.engine.sessionContext.bind(run.runId,'other',reverse.referenceId,null);
+  expect((await f.engine.sessionGraph.relations(run.runId,ids.other!)).items[0]?.state).toBe('revoked');
   expect(await hashTree(f.dshHome)).toBe(before);
  }finally{await f.cleanupAll();}
 },60000);

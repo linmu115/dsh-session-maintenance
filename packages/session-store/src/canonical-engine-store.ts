@@ -52,7 +52,8 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
   readonly workspaces: SqliteLogicalWorkspaceRepository;
 
   constructor(database: DatabaseSync, objectStore: ContentObjectStore, writes?: MaintenanceWriteScope,
-    private readonly onSessionArchiveChange?: (session: CanonicalSessionRecord) => void) {
+    private readonly onSessionArchiveChange?: (session: CanonicalSessionRecord) => void,
+    private readonly assertMutationAllowed?: (input: CanonicalEngineMutation) => void) {
     this.database = database;
     this.objectStore = objectStore;
     this.canonical = new SqliteCanonicalRepository(database);
@@ -160,6 +161,7 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
   }
 
   async commit(input: CanonicalEngineMutation): Promise<CanonicalEngineReceipt> {
+    this.assertMutationAllowed?.(input);
     if (input.version !== null) {
       const version = input.version;
       if (version.metadataAvailability !== "available" || version.metadata === null ||
@@ -178,6 +180,9 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
     const nested = this.database.isTransaction;
     this.database.exec(nested ? "SAVEPOINT canonical_commit" : "BEGIN IMMEDIATE");
     try {
+      // Recheck inside the write transaction: policy may have changed while the
+      // immutable body object was written. No canonical head/receipt may escape.
+      this.assertMutationAllowed?.(input);
       const previousArchive = this.onSessionArchiveChange ? this.database.prepare("SELECT archived_at FROM logical_sessions WHERE id=?")
         .get(input.session.id) as { archived_at: string | null } | undefined : undefined;
       if (input.version === null) {

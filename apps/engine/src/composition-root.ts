@@ -1,3 +1,5 @@
+import { BusinessPageRegistry } from "./business-pages.js";
+import { InstanceWorkspaceRuntime } from "./instance-workspace-runtime.js";
 import { adapter as v3Adapter } from "@linmu/dsh-session-extension-gpt-compat";
 import { SqliteExtensionRepository } from "@linmu/dsh-session-store";
 import { ExtensionDataService } from "./extensions/service.js";
@@ -231,6 +233,8 @@ async function createComposition(
   coordinateAsyncMethods(adapterRegistry, ["register", "select"], writes, "adapter-registration");
   const projectionRunRepository = coordinateAsyncMethods(new SqliteProjectionRunRepository(repository.database), ["createProjectionRun", "setProjectionRunState", "setProjectionRunCheckpoint", "upsertProjectionSession", "saveOperationReceipt"], writes, "projection-state");
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
+  let composedEngine: SessionMaintenanceEngine | undefined;
+  const instanceWorkspaceRuntime = new InstanceWorkspaceRuntime(repository.database, instances, writes, runId => composedEngine?.runtimeBroker.isRunActive(runId) ?? false);
   const graphLifecycle = new SessionGraphStore(repository.database);
   await writes.run("graph-archive-reconcile", () => {
     const rows = repository.database.prepare(`SELECT id,archived_at FROM logical_sessions s WHERE s.tombstoned_at IS NULL
@@ -242,7 +246,7 @@ async function createComposition(
   const resolveSourceAdapter: SourceAdapterResolver = event => builtinAdapters.map(item => item.adapter).find(owner => event.id.startsWith(`${owner.manifest.id}:`) || (typeof event.content === "object" && event.content !== null && !Array.isArray(event.content) && typeof (event.content as Readonly<Record<string, unknown>>).sourceKind === "string" && String((event.content as Readonly<Record<string, unknown>>).sourceKind).startsWith(`${owner.manifest.id}/`)));
   const canonicalEngine = coordinateAsyncMethods(new CanonicalSessionEngine(
     new SqliteCanonicalSessionEngineStore(repository.database, objectStore, writes,
-      session => { if (!session.tombstonedAt) graphLifecycle.reconcileSessionArchive(session.id, session.archivedAt); }),
+      session => { if (!session.tombstonedAt) graphLifecycle.reconcileSessionArchive(session.id, session.archivedAt); }, instanceWorkspaceRuntime.assertMutationAllowed),
   ), ["observeCodex", "retitleCodexMirror", "appendDsh", "importDshNative", "tombstone", "restore"], writes, "canonical-commit");
   const codexProjectMapping = new CodexProjectMappingService({ database: repository.database, writes, instances,
     ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
@@ -306,7 +310,10 @@ async function createComposition(
     database: repository.database, databasePath: metadataPath, stateRoot: options.stateRoot, writes,
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
-  return new SessionMaintenanceEngine({
+  const businessPages = await BusinessPageRegistry.create({stateRoot:options.stateRoot,writes});
+  composedEngine = new SessionMaintenanceEngine({
+    businessPages,
+    instanceWorkspace: instanceWorkspaceRuntime.createService(),
     extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), options.extensionAdapters ?? builtInExtensionAdapters, (sessionId, versionId) => canonicalProjectionSource.loadVersionEvents(sessionId, versionId)),
     codexProjectMapping,
     codexProjectObserver,
@@ -402,6 +409,7 @@ async function createComposition(
     ...(writeService === undefined ? {} : { writeService }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
+  return composedEngine;
   } catch (error) { closeRepository?.(); writes.close(); throw error; }
 }
 

@@ -167,6 +167,11 @@ export class ProjectionRuntimeBroker {
     this.clock = input.clock ?? (() => new Date().toISOString());
   }
 
+  isRunActive(runId: RunId): boolean {
+    const run = this.runs.get(runId);
+    return run !== undefined && run.active !== null && !run.closing;
+  }
+
   async prepareRun(input: RuntimeBrokerPrepareRunRequest): Promise<RuntimeBrokerPreparedRun> {
     if (input.projectSelection.kind !== "all") {
       throw new Error("Runtime Broker project-id filtering is not yet available; use the all-project selection");

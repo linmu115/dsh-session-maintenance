@@ -1,3 +1,5 @@
+import { routeBusinessPageRequest } from "./business-page-routes.js";
+import { routeInstanceWorkspaceRequest } from "./instance-workspace-routes.js";
 import { routeLearning } from "./learning-routes.js";
 import { ExtensionDataError } from "@linmu/dsh-session-contracts";
 import { routeExtensionRequest } from "./extension-routes.js";
@@ -276,6 +278,8 @@ export async function routeRequest(
     if (await routeLearning(request, response, url, context.engine)) return;
     if (await routeRetentionRequest(request, response, url, context.engine.retention)) return;
     if (await routeIntegrationRequest(request, response, url, context.engine)) return;
+    if (await routeInstanceWorkspaceRequest(request, response, url, context.engine)) return;
+    if (await routeBusinessPageRequest(request, response, url, {businessPages:context.engine.businessPages,hostAuthenticated:bearer})) return;
     if (await routeExtensionRequest(request, response, url, context.engine)) return;
     if (await routeSessionReader(request, response, url, context.engine)) return;
     if (await routeNativeContext(request, response, url, context.engine, !bearer)) return;

@@ -224,7 +224,9 @@ export class PersistentProjectionCache {
     if (input.run.adapterId !== this.adapter.manifest.id) {
       throw new TypeError(`Projection run Adapter mismatch: ${input.run.adapterId}/${this.adapter.manifest.id}`);
     }
-    const identity = projectionCacheIdentity(this.adapter, input.configuration);
+    const scopeRevision = await this.source.scopeRevision?.(input.run) ?? 0;
+    const identity = projectionCacheIdentity(this.adapter, scopeRevision === 0 ? input.configuration
+      : { configuration: input.configuration, instanceWorkspaceScopeRevision: scopeRevision });
     const cacheRoot = projectionCacheRootFor(this.runtimeRoot, this.adapter.manifest.id, identity.configurationDigest);
     const span = await this.startSpan(input.run);
     try {

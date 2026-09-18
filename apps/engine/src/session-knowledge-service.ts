@@ -142,7 +142,7 @@ export class SessionKnowledgeService {
   async legacyState(runId:string,nativeSessionId:string) {
     const c=await this.legacyContext(runId,nativeSessionId);return {document:c.document,pendingBacklinkDeletes:c.body.pendingBacklinkDeletes};
   }
-  async legacySave(runId:string,input:{document:{sessionId:string;stickers:unknown[]};expectedRevision:string;enqueueBacklinkDelete?:unknown;acknowledgeStickerId?:string|undefined}) {
+  async legacySave(runId:string,input:{document:{sessionId:string;stickers:unknown[]};expectedRevision:string;enqueueBacklinkDelete?:unknown;updateBacklinkDelete?:unknown;acknowledgeStickerId?:string|undefined}) {
     const c=await this.legacyContext(runId,input.document.sessionId);
     if(c.document.revision!==input.expectedRevision)throw fail('REVISION_CONFLICT','贴纸已在另一窗口修改，请重新读取');
     if(input.document.stickers.length>500)throw fail('STICKER_LIMIT','此会话最多处理 500 张贴纸');
@@ -158,6 +158,19 @@ export class SessionKnowledgeService {
       for(const object of c.objects)if(!remain.has((object.content.body as {legacyStickerId:string}).legacyStickerId)){const saved=c.extensions.write({scope:c.scope,writerId:c.writerId,objectId:object.objectId,expectedRevision:object.revision,deleted:true,content:object.content});if(saved.status==='conflict')throw fail('REVISION_CONFLICT','贴纸删除冲突');}
       let pending=c.body.pendingBacklinkDeletes;
       if(input.enqueueBacklinkDelete&&!pending.some(r=>(r as {stickerId:string}).stickerId===(input.enqueueBacklinkDelete as {stickerId:string}).stickerId))pending=[...pending,input.enqueueBacklinkDelete as never];
+      if(input.updateBacklinkDelete){
+        const item=jsonValueSchema.parse(input.updateBacklinkDelete) as {stickerId?:unknown;sessionId?:unknown;pendingVaultIds?:unknown};
+        if(!item||typeof item.stickerId!=='string'||item.sessionId!==input.document.sessionId||!Array.isArray(item.pendingVaultIds)
+          ||item.pendingVaultIds.some(id=>typeof id!=='string'||!id||id.length>256)||new Set(item.pendingVaultIds).size!==item.pendingVaultIds.length)
+          throw fail('STICKER_IDENTITY','待清理贴纸的会话或目标仓库身份无效');
+        const index=pending.findIndex(r=>(r as {stickerId:string}).stickerId===item.stickerId);
+        if(index<0)throw fail('STICKER_IDENTITY','待清理贴纸已变化，请重新读取');
+        const previous=pending[index] as {pendingVaultIds?:unknown};
+        const previousTargets=previous.pendingVaultIds;
+        if(Array.isArray(previousTargets)&&item.pendingVaultIds.some(id=>!previousTargets.includes(id)))
+          throw fail('STICKER_IDENTITY','待清理操作不能改投新仓库');
+        pending=pending.map((r,i)=>i===index?input.updateBacklinkDelete as never:r);
+      }
       if(input.acknowledgeStickerId)pending=pending.filter(r=>(r as {stickerId:string}).stickerId!==input.acknowledgeStickerId);
       const saved=c.extensions.write({scope:c.scope,writerId:c.writerId,objectId:c.marker.objectId,expectedRevision:c.marker.revision,deleted:false,content:{...c.marker.content,body:jsonValueSchema.parse({...c.body,pendingBacklinkDeletes:pending})}});if(saved.status==='conflict')throw fail('REVISION_CONFLICT','贴纸清理记录冲突');
     });

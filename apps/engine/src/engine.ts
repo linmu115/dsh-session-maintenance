@@ -1,3 +1,5 @@
+import type { BusinessPageRegistry } from "./business-pages.js";
+import type { InstanceWorkspaceService } from "./instance-workspace-service.js";
 import type { LogicalSessionId } from "@linmu/dsh-session-contracts";
 import { resolveDerivedReference } from "./derived-reference.js";
 import { LearningService } from "./learning-service.js";
@@ -237,6 +239,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly extensions: ExtensionDataService | undefined;
   readonly integrations: InstanceIntegrationService | undefined;
   readonly workspaceSync: WorkspaceSyncPolicyService | undefined;
+  readonly instanceWorkspace: InstanceWorkspaceService | undefined;
+  readonly businessPages: BusinessPageRegistry | undefined;
   readonly codexProjectMapping: CodexProjectMappingService | undefined;
   readonly codexProjectObserver: CodexProjectObserver | undefined;
   readonly jobs: JobRunner;
@@ -286,11 +290,15 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly codexImports?: CodexImportService;
     readonly integrations?: InstanceIntegrationService;
     readonly workspaceSync?: WorkspaceSyncPolicyService;
+    readonly instanceWorkspace?: InstanceWorkspaceService;
+    readonly businessPages?: BusinessPageRegistry;
     readonly codexProjectMapping?: CodexProjectMappingService;
     readonly codexProjectObserver?: CodexProjectObserver;
   }) {
     this.integrations = input.integrations;
     this.workspaceSync = input.workspaceSync;
+    this.instanceWorkspace = input.instanceWorkspace;
+    this.businessPages = input.businessPages;
     this.codexProjectMapping = input.codexProjectMapping;
     this.codexProjectObserver = input.codexProjectObserver;
     this.writes = input.writes;

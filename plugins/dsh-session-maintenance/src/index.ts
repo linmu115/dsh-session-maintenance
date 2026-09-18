@@ -1,3 +1,5 @@
+import { registerMaintenanceBusinessPages } from "./business-pages.js";
+import { registerMaintenanceInstanceWorkspace } from "./instance-workspace.js";
 import { bindRc2ProjectionContext, rc2RuntimeHeader } from './rc2-persistence.js';
 import { MaintenanceSessionContext,registerSessionContext } from './session-context.js';
 import { MaintenanceGraph, registerMaintenanceGraph } from './session-graph.js';
@@ -62,6 +64,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     ? { current: async () => { throw new Error("维护引擎连接尚未由可信安装器登记"); } }
     : new FileConnectionProvider(descriptorPath);
   const proxy = new RestrictedEngineProxy(config, connection, fetch, launchProfile?.runId);
+  await registerMaintenanceBusinessPages(ctx as unknown as Context, connection, {instanceId:config.dshInstanceId,profileId:config.profileId});
   (ctx as unknown as Context).provide("maintenanceReferenceResolver", {
     resolve: (location: import("./engine-proxy.js").ProxyRequest) => proxy.invoke({ ...location, operation: "reference:resolve" }),
   });
@@ -96,6 +99,7 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     });
     try { await runtime.attach(); }
     catch (error) { throw new Error("RC2 prepared runtime could not attach", { cause: error }); }
+    registerMaintenanceInstanceWorkspace(ctx as unknown as Context, {instanceId:config.dshInstanceId,profileId:config.profileId}, connection);
     const graph = new MaintenanceGraph(connection, launchProfile.runId, async id => {
       const session = ctx.sessions.get(id as never);
       if (!session) throw new Error("新建会话不在当前 DSH 运行环境中");

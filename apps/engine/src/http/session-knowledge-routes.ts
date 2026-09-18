@@ -13,7 +13,7 @@ export async function routeSessionKnowledge(request:IncomingMessage,response:Ser
   else if(op==='write'){const q=base.extend({input:knowledgeWriteSchema}).parse(body);result=await engine.runWrite('knowledge-write',()=>engine.sessionKnowledge.write(q.runId,q.input));}
   else if(op==='migrate'){const q=base.extend({input:knowledgeMigrationSchema}).parse(body);result=await engine.runWrite('knowledge-migration',()=>engine.sessionKnowledge.migration(q.runId,q.input));}
   else if(op==='legacy-state'){const q=base.extend({nativeSessionId:id}).parse(body);result=await engine.sessionKnowledge.legacyState(q.runId,q.nativeSessionId);}
-  else if(op==='legacy-save'){const q=base.extend({input:z.strictObject({document:z.object({sessionId:id,stickers:z.array(jsonValueSchema).max(500)}),expectedRevision:id,enqueueBacklinkDelete:jsonValueSchema.optional(),acknowledgeStickerId:id.optional()})}).parse(body);result=await engine.runWrite('knowledge-legacy-save',()=>engine.sessionKnowledge.legacySave(q.runId,q.input));}
+  else if(op==='legacy-save'){const q=base.extend({input:z.strictObject({document:z.object({sessionId:id,stickers:z.array(jsonValueSchema).max(500)}),expectedRevision:id,enqueueBacklinkDelete:jsonValueSchema.optional(),updateBacklinkDelete:jsonValueSchema.optional(),acknowledgeStickerId:id.optional()})}).parse(body);result=await engine.runWrite('knowledge-legacy-save',()=>engine.sessionKnowledge.legacySave(q.runId,q.input));}
   else return false;
   response.statusCode=200;response.setHeader('content-type','application/json; charset=utf-8');response.setHeader('cache-control','no-store');response.end(JSON.stringify(result));return true;
 }

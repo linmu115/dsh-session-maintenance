@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import type { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import type { LogicalSessionId, LogicalWorkspaceId } from "@linmu/dsh-session-contracts";
-import { openMaintenanceDatabase, SqliteInstanceWorkspacePolicyRepository } from "../src/index.js";
+import { openMaintenanceDatabase, SqliteInstanceWorkspacePolicyRepository, MAINTENANCE_SCHEMA_VERSION } from "../src/index.js";
 
 const at = "2026-09-18T00:00:00.000Z";
 const roots: string[] = [], databases: DatabaseSync[] = [];
@@ -25,13 +25,13 @@ async function fixture() {
   return { db, path, repo: new SqliteInstanceWorkspacePolicyRepository(db, () => at) };
 }
 describe("instance workspace policy repository", () => {
-  it("upgrades schema 25 without changing canonical memberships and reopens schema 26 idempotently", async () => {
+  it("upgrades schema 25 without changing canonical memberships and reopens the current schema idempotently", async () => {
     const { db, path } = await fixture();
     const before = db.prepare("SELECT * FROM workspace_memberships ORDER BY logical_session_id").all();
-    db.exec("DROP TABLE instance_workspace_policies; DELETE FROM schema_migrations WHERE version=26");
+    db.exec("DROP TABLE projection_run_workspace_scopes; DROP TABLE instance_workspace_policies; DELETE FROM schema_migrations WHERE version>=26");
     db.close(); databases.splice(databases.indexOf(db), 1);
     const upgraded = openMaintenanceDatabase(path); databases.push(upgraded);
-    expect(upgraded.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toMatchObject({ version: 26 });
+    expect(upgraded.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toMatchObject({ version: MAINTENANCE_SCHEMA_VERSION });
     expect(upgraded.prepare("SELECT * FROM workspace_memberships ORDER BY logical_session_id").all()).toEqual(before);
     new SqliteInstanceWorkspacePolicyRepository(upgraded).updatePolicy("i-one", { expectedRevision: 0, selection: { kind: "all" } });
     upgraded.close(); databases.splice(databases.indexOf(upgraded), 1);
