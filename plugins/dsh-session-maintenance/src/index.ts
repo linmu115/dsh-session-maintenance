@@ -1,3 +1,4 @@
+import { retryExtensionConnect } from './retry-extension-connect.js';
 import { registerMaintenanceBusinessPages } from "./business-pages.js";
 import { registerMaintenanceInstanceWorkspace } from "./instance-workspace.js";
 import { bindRc2ProjectionContext, rc2RuntimeHeader } from './rc2-persistence.js';
@@ -114,25 +115,26 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     });
     if (config.extensionPlugins !== undefined) {
       const extensions = new MaintenanceExtensionBridge(connection,{instanceId:config.dshInstanceId,profileId:config.profileId},config.extensionPlugins);
-      try {
-        const panels = await extensions.connectPanels();
+      {
+        // Publish instance-bound capabilities independently of Engine availability.
+        // Each operation still goes through the authoritative Engine and its guards.
         await registerMaintenanceExtensionData(ctx as unknown as Context,extensions);
         registerMaintenanceKnowledge(ctx as unknown as Context,new MaintenanceKnowledge(connection,launchProfile.runId,ctx as unknown as Context));
         if(config.extensionPlugins.some(p=>p.namespace==="annotation-upstream")) {
           registerSessionContext(ctx as unknown as Context,new MaintenanceSessionContext(connection,launchProfile.runId,id=>runtime.flush(id)));
         }
         const nativePlugin = config.extensionPlugins.find(p=>p.namespace==="annotation-context");
-        if(nativePlugin && nativeContextReady(panels, config.dshInstanceId, config.profileId, nativePlugin.pluginVersion)) {
+        if(nativePlugin) {
           registerMaintenanceNativeContext(ctx as unknown as Context,new MaintenanceNativeContext(connection,launchProfile.runId,id=>runtime.flush(id), async signal => {
             if (!nativeContextReady(await extensions.panels(signal), config.dshInstanceId, config.profileId, nativePlugin.pluginVersion))
               throw new Error('原生上下文 Adapter 已停用或不兼容；保存的数据仍然保留');
           }));
         }
-      } catch {
-        // Optional extension initialization must never skip native event/drain hooks.
-        const message = "[dsh-session-maintenance] 扩展数据暂未接通；保留本地未提交编辑，重新连接后再保存。";
-        if (ctx.logger) ctx.logger.warn(message); else console.warn(message);
       }
+      ctx.effect(() => retryExtensionConnect(signal => extensions.connect(signal), () => {
+        const message = "[dsh-session-maintenance] 扩展数据暂未接通；将自动重试，未提交编辑保留。";
+        if (ctx.logger) ctx.logger.warn(message); else console.warn(message);
+      }), "maintenance.extension-registration");
       registerAnnotationMirror(ctx as unknown as AnnotationMirrorContext, {
         plugins: config.extensionPlugins, connection, runId: launchProfile.runId, connect: signal => extensions.connect(signal),
         reportRetry: () => {

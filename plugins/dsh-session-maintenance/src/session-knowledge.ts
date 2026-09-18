@@ -12,8 +12,10 @@ export class MaintenanceKnowledge {
   async request(operation:string,input:Record<string,unknown>={}) {
     if(!operations.has(operation))throw new Error('不支持此知识操作');
     if('runId' in input)throw new Error('不能更改当前实例');
-    const connection=await this.connection.current();
-    const response=await fetch(connection.origin+'/v1/session-knowledge/'+operation,{method:'POST',headers:{authorization:`Bearer ${connection.token}`,'content-type':'application/json'},body:JSON.stringify({...(wrapped.has(operation)?{input}:input),runId:this.runId}),signal:AbortSignal.timeout(30000)});
+    let response: Response;
+    try { const connection=await this.connection.current();
+    response=await fetch(connection.origin+'/v1/session-knowledge/'+operation,{method:'POST',headers:{authorization:`Bearer ${connection.token}`,'content-type':'application/json'},body:JSON.stringify({...(wrapped.has(operation)?{input}:input),runId:this.runId}),signal:AbortSignal.timeout(15000)}); }
+    catch { throw Object.assign(new Error('维护引擎暂不可用，操作结果尚未确认；保留编辑，连接恢复后重试。'), {code:'MAINTENANCE_UNAVAILABLE',status:503}); }
     const result=await response.json() as {error?:{message?:string;code?:string}};
     if(!response.ok)throw Object.assign(new Error(result.error?.message??'知识操作未完成'),{code:result.error?.code,status:response.status});return result;
   }

@@ -10,7 +10,7 @@ it("shows information only for its registered adapter and retains uncertain acti
   const page: BusinessPage = { owner: { instanceId: "copy", profileId: "web", namespace: "obsidian-bridge", providerId: "binding", bootId: "550e8400-e29b-41d4-a716-446655440000" }, online: true, updatedAt: 1, expiresAt: 20000,
     snapshot: { title: "Vault 接入", revision: 1, sections: [{ id: "actions", title: "绑定", kind: "actions", actions: [{ id: "bind", label: "确认绑定", expectedRevision: 4, fields: [] }] }] } };
   const enqueue = vi.fn().mockRejectedValue(new Error("response lost"));
-  const panel: ExtensionBusinessPanel = { adapterId: "obsidian-series", label: "Obsidian 系列", scope: { instanceId: "copy", profileId: "web" }, instanceLabel: "Copy", profileLabel: "Web", status: "ready", members: [], objectCount: 0, conflictCount: 0, bytes: 0 };
+  const panel: ExtensionBusinessPanel = { adapterId: "obsidian-series", label: "Obsidian Bridge", scope: { instanceId: "copy", profileId: "web" }, instanceLabel: "Copy", profileLabel: "Web", status: "ready", members: [], objectCount: 0, conflictCount: 0, bytes: 0 };
   const directory = vi.fn(async () => ({ level: "workspaces", items: [], nextCursor: null }));
   const api = { listExtensionPanels: async () => [], listExtensionBusinessPanels: async () => [panel, { ...panel, adapterId: "thoughtdag", label: "ThoughtDAG" }], listExtensionDirectory: directory, listBusinessPages: async () => ({ pages: [page] }), enqueueBusinessPageAction: enqueue } as unknown as ExtensionPageApi;
   const node = document.createElement("div"); document.body.append(node); const root = createRoot(node);
@@ -18,16 +18,16 @@ it("shows information only for its registered adapter and retains uncertain acti
   try {
     await act(async () => root.render(<ExtensionPageView api={api} onOpenSession={() => undefined} />));
     const plugins = node.querySelector(".business-pages")!;
-    expect([...node.querySelectorAll('[aria-label="扩展栏目"] button')].map(button => button.textContent)).toEqual(["Obsidian 系列", "ThoughtDAG"]);
+    expect([...node.querySelectorAll('[aria-label="扩展栏目"] button')].map(button => button.textContent)).toEqual(["Obsidian Bridge", "ThoughtDAG"]);
     expect(node.querySelector('.extension-page > .extension-view-switch')).toBeNull();
-    expect(plugins.closest('section[aria-label="Obsidian 系列"]')).not.toBeNull();
+    expect(plugins.closest('section[aria-label="Obsidian Bridge"]')).not.toBeNull();
     expect(node.querySelectorAll('[aria-label="扩展适配器"]')).toHaveLength(0);
     expect(directory.mock.calls).toHaveLength(1);
     expect(node.querySelector(".extension-page")!.firstElementChild?.tagName).toBe("NAV");
     expect(node.querySelector(".extension-category")!.firstElementChild?.tagName).toBe("NAV");
     expect(plugins.closest("[hidden]")).not.toBeNull();
     expect([...node.querySelectorAll("h2")].find(title => title.textContent === "扩展数据")!.closest("[hidden]")).toBeNull();
-    await switchView("插件信息与接入");
+    await switchView("Vault 绑定");
     expect(plugins.closest("[hidden]")).toBeNull();
     const form = plugins.querySelector("form")!;
     await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
@@ -38,7 +38,7 @@ it("shows information only for its registered adapter and retains uncertain acti
     expect(graphCategory.querySelector("form")).toBeNull();
     expect([...graphCategory.querySelectorAll("nav button")].map(button => button.textContent)).toEqual(["扩展数据"]);
     expect(graphCategory.querySelector(".business-pages")).toBeNull();
-    await switchView("Obsidian 系列"); await switchView("插件信息与接入");
+    await switchView("Obsidian Bridge"); await switchView("Vault 绑定");
     expect(plugins.querySelector("form")).toBe(form);
     expect(plugins.textContent).toContain("同一操作编号");
     await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });

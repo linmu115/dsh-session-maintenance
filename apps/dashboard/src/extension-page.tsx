@@ -31,17 +31,34 @@ export function ExtensionPageView({api,onOpenSession}:{api:ExtensionPageApi;onOp
   const [selected, setSelected] = useState<string>();
   const [visited, setVisited] = useState<string[]>([]);
   useEffect(() => {
-    const abort = new AbortController(); setError(undefined);
-    const load = api.listExtensionBusinessPanels
-      ? api.listExtensionBusinessPanels({}, abort.signal)
-      : api.listExtensionPanels(abort.signal).then(items => items.map(item => ({ adapterId: item.scope.namespace, label: item.label, scope: item.scope, instanceLabel: item.scope.instanceId, profileLabel: item.scope.profileId, status: item.status, members: [item], objectCount: item.objectCount, conflictCount: item.conflictCount, bytes: item.bytes })));
-    void load.then(result => { if (!abort.signal.aborted) setPanels(result); }, failure => { if (!abort.signal.aborted) setError(errorText(failure)); });
-    return () => abort.abort();
+    let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let abort: AbortController | undefined;
+    const refresh = async () => {
+      abort = new AbortController();
+      const timeout = setTimeout(() => { abort?.abort(); if (!disposed) setError("扩展栏目读取超时，将自动重试；已加载内容保留。"); }, 10000);
+      try {
+        const result = api.listExtensionBusinessPanels
+          ? await api.listExtensionBusinessPanels({}, abort.signal)
+          : (await api.listExtensionPanels(abort.signal)).map(item => ({ adapterId: item.scope.namespace, label: item.label, scope: item.scope, instanceLabel: item.scope.instanceId, profileLabel: item.scope.profileId, status: item.status, members: [item], objectCount: item.objectCount, conflictCount: item.conflictCount, bytes: item.bytes }));
+        if (!disposed && !abort.signal.aborted) { setPanels(result); setError(undefined); }
+      } catch (failure) { if (!disposed && !abort.signal.aborted) setError(errorText(failure)); }
+      finally { clearTimeout(timeout); if (!disposed) timer = setTimeout(() => void refresh(), 5000); }
+    };
+    void refresh();
+    return () => { disposed = true; abort?.abort(); clearTimeout(timer); };
   }, [api, revision]);
   useEffect(() => {
     if (!api.listBusinessPages) return;
     const abort = new AbortController();
-    const refresh = () => { void api.listBusinessPages!(abort.signal).then(result => { if (!abort.signal.aborted) { setPages(result.pages); setPageError(undefined); } }, failure => { if (!abort.signal.aborted) setPageError(errorText(failure)); }); };
+    let pending = false;
+    const refresh = () => {
+      if (pending) return;
+      pending = true;
+      void api.listBusinessPages!(AbortSignal.any([abort.signal, AbortSignal.timeout(10000)])).then(result => {
+        if (!abort.signal.aborted) { setPages(result.pages); setPageError(undefined); }
+      }, failure => { if (!abort.signal.aborted) setPageError(errorText(failure)); }).finally(() => { pending = false; });
+    };
     refresh(); const timer = setInterval(refresh, 5000);
     return () => { abort.abort(); clearInterval(timer); };
   }, [api, revision]);

@@ -32,7 +32,7 @@ it("keeps offline and information-only plugins discoverable without a global inf
   const result = extensionCategories([], [unknown, bridge]);
   expect(result).toEqual([
     { id: "provider:custom-plugin", label: "custom-plugin 插件", pages: [unknown] },
-    { id: "obsidian-series", adapterId: "obsidian-series", label: "Obsidian 系列", pages: [bridge] },
+    { id: "obsidian-series", adapterId: "obsidian-series", label: "Obsidian Bridge", pages: [bridge] },
   ]);
 });
 
