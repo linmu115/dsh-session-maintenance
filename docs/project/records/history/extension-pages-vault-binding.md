@@ -8,11 +8,11 @@ modules: [业务扩展, Dashboard, 宿主接入]
 outcome: 已整理公开扩展与有效范围设计，尚未实施产品改动
 summary: 用户将统一目录扩展为插件自主信息页，确认共享实例同步范围及未同步链接保留。
 applicability: Maintenance 公开业务扩展和 Obsidian 可选接入，沿用当前数据与写入归属。
-coverage_note: 当前 Codex 任务公开来源第 9–259 行；只索引公开事件，末尾一个工具调用的返回不在范围内，不作为检查成功证据。文档验证另见 VER-extension-pages-design。
+coverage_note: 当前 Codex 任务公开来源第 9–409 行，包含前次确认和后续完整文档请求；92 个公开事件且工具均配对，原 9–259 行索引保留。后续桥插件职责建议不视为确认需求。
 history:
-  path: history/20260918-vault-binding-requirements
-  sha256: 501c03390e67199271aa48d396a36db737ca1346e80887036745873bf812f53d
-  capture_sha256: 4c9ab0529c2b8e078f9d665fd49d0c6148e26aed3426593d726618db4a9839cd
+  path: history/20260918-vault-binding-complete-requirements
+  sha256: bb9906b563fd63d91a996ce00869196166f348400f8c5de3e2971188b46d45d0
+  capture_sha256: c698def16030cf7b4a0ad026c5493d12fd4e33d96d7025af784c804cd24b8bf1
 related_records: [REQ-extension-pages, IF-extension-pages, IF-instance-workspace-scope, VER-extension-pages-design]
 ---
 
@@ -37,3 +37,11 @@ related_records: [REQ-extension-pages, IF-extension-pages, IF-instance-workspace
 [查看依据：整理授权与历史规则确认](history-event:EVT-55e4c3bcb5375635db5b)
 
 本次没有定位并验证实际运行组合中“按实例勾选”的权威范围入口；历史 Codex 回写配置不等于该接口。这一项被记录为工程核查，不能声称新范围接口已经存在或另建竞争名单。文档验证与未执行的产品验收见 [[VER-extension-pages-design]]。
+
+## 完整需求阅读入口
+
+用户后续要求统一整理完整需求，并另行讨论 Core 与桥插件的组合。完整稿由 Suite 地图维护为跨项目入口，本项目通过已有设计和地图链接过去，继续拥有自己的公开扩展与实例范围合同。桥插件的合并建议尚未确认，不改变 Maintenance 独立安装和可选接入要求。
+
+[查看依据：完整文档与架构提问](history-event:EVT-1ff80cd98322df6cdb24)
+
+本次更新同一任务的公开来源范围，保留原索引；产品代码没有因本次文档同步发生改变。

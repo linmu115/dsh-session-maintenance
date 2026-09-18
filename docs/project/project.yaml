@@ -141,6 +141,12 @@ bindings:
   status: current
   progress: planned
   summary: 插件贡献页面栏目，目录可复用；可选 Bridge 集成与实例同步范围保持独立归属。
+  relations:
+  - relation: derived_from
+    to:
+      project_id: dd46311f-d98d-49ff-ae13-fef0a8a6f9c3
+      record_id: REQ-integration-complete
+    reason: 完整需求统一阅读入口；本项目仍维护提供方合同
 - id: IF-extension-pages
   kind: interface
   title: 公开业务页面与栏目注册合同草案
