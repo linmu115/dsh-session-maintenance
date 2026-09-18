@@ -52,7 +52,7 @@ function portableInputs(metafile) {
 
 // Even --skip-build must prove the actual release version can attest itself.
 // This exercises identity, capability and exact-byte checks, not just enum text.
-const attestationCheck = spawnSync(process.execPath, [join(root, "node_modules/vitest/vitest.mjs"), "run", "apps/engine/test/v3-runtime-attestation.test.ts"], {
+const attestationCheck = spawnSync(process.execPath, [join(root, "node_modules/vitest/vitest.mjs"), "run", "apps/engine/test/v3-runtime-attestation.test.ts", "apps/engine/test/integrations.test.ts"], {
   cwd: root, stdio: "inherit", shell: false, windowsHide: true,
 });
 if (attestationCheck.error) throw attestationCheck.error;

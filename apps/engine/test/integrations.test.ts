@@ -67,7 +67,7 @@ describe("instance onboarding", () => {
     const version = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
     const path = join(f.profileRoot, "node_modules", "dsh-session-maintenance", "package.json");
     const plugin = JSON.parse(await readFile(path, "utf8"));
-    for (const released of ["0.2.26-rc2.28", "0.2.26-rc2.29"]) {
+    for (const released of ["0.2.26-rc2.28", "0.2.26-rc2.29", "0.2.26-rc2.30"]) {
       await json(path, { ...plugin, version: released });
       expect((await f.discover()).targets[0]!.pluginReady).toBe(true);
     }
@@ -122,6 +122,9 @@ describe("instance onboarding", () => {
     const target = (await f.discover()).targets[0]!;
     expect(target.target).toMatchObject({ status: "available", adapterId, issues: [] });
     expect(target.pluginReady).toBe(true); expect(target.coreBinding?.path).toBe(coreBinding);
+    for (const id of ["projection", "plugin"]) {
+      expect(target.target.capabilities.find(capability => capability.id === id)?.status).toBe("supported");
+    }
     expect((await f.service.action(target.target.id, "connect")).targets[0]!.status).toBe("connected");
     const request = { schemaVersion: 1, phase: "prepare", instanceId: "instance-a", profileId: "web", runtimeVersion: "0.1.5-rc.2", web: true } as const;
     expect(await resolveRuntimeIntegration(f.stateRoot, request)).toMatchObject({ adapterId, runtimeCapabilities: capabilities, coreBinding: { path: coreBinding } });
