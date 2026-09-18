@@ -5,14 +5,14 @@ title: 公开业务栏目与实例同步范围的确认
 date: 2026-09-18
 status: current
 modules: [业务扩展, Dashboard, 宿主接入]
-outcome: 已整理公开扩展与有效范围设计，尚未实施产品改动
+outcome: 已授权施工，桥整合首阶段本地验收通过；新增 Maintenance 实例同步范围，后续绑定与扩展接入进行中
 summary: 用户将统一目录扩展为插件自主信息页，确认共享实例同步范围及未同步链接保留。
 applicability: Maintenance 公开业务扩展和 Obsidian 可选接入，沿用当前数据与写入归属。
-coverage_note: 当前 Codex 任务公开来源第 9–626 行，包含本轮归属修正、分期要求与两项明确选择；143 个公开事件，56 组工具调用与返回配对。此前范围索引保留；当前仅更新文档，未开始施工。
+coverage_note: 2026-09-18 主代理整理当前任务公开来源第 9–1260 行，共 302 事件；含开工授权、新增实例同步策略及首阶段验收，截点处有一条工具调用尚未配对。旧索引保留，不收录隐藏推理。
 history:
-  path: history/20260918-bridge-refactor-confirmation
-  sha256: 4be28f40681d58f7be0e077bf95091a8b061b62212370ff5f96436a2e515a342
-  capture_sha256: af6ee6a8c324cf0eb0b8612c7a7d03ee599c2fc05d5c3b01d2b1567049590ddd
+  path: history/20260918-phase1-construction
+  sha256: 984f7df50d63c185a4eca66ed750295bece71a9723dbdb174868810e3f45968b
+  capture_sha256: 5aa1bdeaf9b714e4b0d18c8b9f93032ef95f69282b4cb18dcbeb6544c3dc6d9d
 related_records: [REQ-extension-pages, IF-extension-pages, IF-instance-workspace-scope, VER-extension-pages-design]
 ---
 
@@ -59,3 +59,17 @@ related_records: [REQ-extension-pages, IF-extension-pages, IF-instance-workspace
 现有 Maintenance 贴纸、引用和会话定位接入必须在重构阶段保持可用，新 Adapter 后置不等于移除旧能力。先落实实施计划，只有用户明确下令后才开始产品代码施工；本次只修订文档与地图。
 
 [查看依据：保留现有维护接入](history-event:EVT-fd7a27be9c986eb9d8e3)
+
+## 开工、第一阶段验收与新增同步策略
+
+用户明确下令按需求和执行规划开始施工，由主代理指挥 Astra 子代理，思考强度不超过 high。此前等待开工的约束已经满足，不能继续作为停工条件。
+
+[查看依据：明确开工与代理配置](history-event:EVT-a4b93285e8682a319461)
+
+施工核查发现当前源码没有每 DSH 目标实例的工作区选择，只有全部投影及独立的 Codex 来源名单。用户明确授权 Maintenance 新增自己的实例工作区会话同步选择，只有选中内容在 DSH 与真源间双向同步。它成为有效范围权威来源，Bridge 不另建名单。
+
+[查看依据：新增每实例双向同步范围](history-event:EVT-7c5cd785972fbe658088)
+
+首阶段将引用接入整合进 Bridge，普通贴纸保留关联业务并使用共享通道。聚焦修复独立 Sticker 可选服务访问和共享队列的跨 Profile 重试容量；Core 仍负责事务与补偿。桥、贴纸、兼容入口、Suite 和 Companion 相关本地测试通过，组合来源检查发现并修正了旧开发依赖，未部署真实应用。
+
+[查看依据：首阶段验收与进入后续阶段](history-event:EVT-a059a28e5421ba36e9f7)
