@@ -42,3 +42,5 @@ export * from "./retention-journal.js";
 export * from "./retention-executor.js";
 export * from "./migrations/020-retention-journal.js";
 export * from "./extension-repository.js";
+export * from "./instance-workspace-policy-repository.js";
+export * from "./migrations/026-instance-workspace-policy.js";

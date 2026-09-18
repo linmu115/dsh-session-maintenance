@@ -40,3 +40,4 @@ export * from "./native-source-export.js";
 export * from "./gpt-extension.js";
 
 export * from "./learning.js";
+export * from "./instance-workspace-policy.js";

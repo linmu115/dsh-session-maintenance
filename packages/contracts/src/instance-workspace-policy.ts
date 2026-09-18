@@ -1,0 +1,41 @@
+import { z } from "zod";
+import type { LogicalSessionId, LogicalWorkspaceId } from "./canonical.js";
+
+/** These identities are keys, not labels or paths; never silently trim them. */
+export const instanceWorkspaceInstanceIdSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u);
+const identity = z.string().min(1).max(256).refine(value => !/[\s\u0000-\u001f\u007f]/u.test(value), "Identity cannot contain whitespace or control characters");
+const workspaceId = identity.transform(value => value as LogicalWorkspaceId);
+const sessionId = identity.transform(value => value as LogicalSessionId);
+export const instanceWorkspaceSelectionSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("all") }),
+  z.strictObject({ kind: z.literal("ids"), workspaceIds: z.array(workspaceId).max(10_000)
+    .refine(ids => new Set(ids).size === ids.length, "Duplicate workspace identity"), includeUnassigned: z.boolean() }),
+]);
+export type InstanceWorkspaceSelection = z.infer<typeof instanceWorkspaceSelectionSchema>;
+export const instanceWorkspacePolicySchema = z.strictObject({
+  schemaVersion: z.literal(1), instanceId: instanceWorkspaceInstanceIdSchema,
+  revision: z.number().int().nonnegative(), selection: instanceWorkspaceSelectionSchema,
+  updatedAt: z.iso.datetime().nullable(),
+});
+export type InstanceWorkspacePolicy = z.infer<typeof instanceWorkspacePolicySchema>;
+export const instanceWorkspacePolicyUpdateSchema = z.strictObject({
+  expectedRevision: z.number().int().nonnegative(), selection: instanceWorkspaceSelectionSchema,
+});
+export type InstanceWorkspacePolicyUpdate = z.infer<typeof instanceWorkspacePolicyUpdateSchema>;
+export const instanceWorkspaceEffectiveScopeSchema = z.strictObject({
+  schemaVersion: z.literal(1), instanceId: instanceWorkspaceInstanceIdSchema, profileId: identity,
+  policyRevision: z.number().int().nonnegative(), selection: instanceWorkspaceSelectionSchema,
+  workspaces: z.array(z.strictObject({ workspaceId, name: z.string(), selected: z.boolean(), deleted: z.boolean() })),
+  includeUnassigned: z.boolean(),
+});
+export type InstanceWorkspaceEffectiveScope = z.infer<typeof instanceWorkspaceEffectiveScopeSchema>;
+export const instanceSessionAvailabilitySchema = z.strictObject({
+  schemaVersion: z.literal(1), instanceId: instanceWorkspaceInstanceIdSchema, profileId: identity,
+  logicalSessionId: sessionId, workspaceId: workspaceId.nullable(), policyRevision: z.number().int().nonnegative(),
+  status: z.enum(["available", "not-synced", "offline", "mapping-pending", "deleted", "not-found"]),
+  nativeSessionId: identity.nullable(),
+}).superRefine((value, ctx) => {
+  if (value.status === "available" && value.nativeSessionId === null)
+    ctx.addIssue({ code: "custom", path: ["nativeSessionId"], message: "An available session requires a verified native mapping" });
+});
+export type InstanceSessionAvailability = z.infer<typeof instanceSessionAvailabilitySchema>;

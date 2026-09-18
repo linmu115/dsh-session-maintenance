@@ -196,6 +196,8 @@ export interface StatusEventRepository {
 
 export interface CanonicalProjectionSource {
   load(run: ProjectionRun): Promise<CanonicalProjectionInput>;
+  /** Instance workspace selection revision for cache identity; zero means unconfigured. */
+  scopeRevision?(run: ProjectionRun): Promise<number>;
   /** Read a pinned immutable body when the live canonical head has advanced. */
   loadVersionEvents?(logicalSessionId: LogicalSessionId, versionId: SessionVersionId): Promise<readonly CanonicalEventV1[]>;
 }

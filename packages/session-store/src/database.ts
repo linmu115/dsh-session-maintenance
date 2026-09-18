@@ -1,4 +1,5 @@
 import { MIGRATION_025 } from "./migrations/025-learning-roundtrip.js";
+import { MIGRATION_026 } from "./migrations/026-instance-workspace-policy.js";
 import { assertMaintenanceDatabaseOwnership } from "./write-coordinator.js";
 import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -453,6 +454,17 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
       database.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(25, new Date().toISOString());
       database.exec("COMMIT");
     } catch (error) { database.exec("ROLLBACK"); database.close(); throw error; }
+  }
+  if (currentVersion < 26) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_026);
+      database.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(26, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) {
+      try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
+      database.close(); throw error;
+    }
   }
   return database;
 }
