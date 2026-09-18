@@ -8,11 +8,11 @@ modules: [业务扩展, Dashboard, 宿主接入]
 outcome: 已整理公开扩展与有效范围设计，尚未实施产品改动
 summary: 用户将统一目录扩展为插件自主信息页，确认共享实例同步范围及未同步链接保留。
 applicability: Maintenance 公开业务扩展和 Obsidian 可选接入，沿用当前数据与写入归属。
-coverage_note: 当前 Codex 任务公开来源第 9–409 行，包含前次确认和后续完整文档请求；92 个公开事件且工具均配对，原 9–259 行索引保留。后续桥插件职责建议不视为确认需求。
+coverage_note: 当前 Codex 任务公开来源第 9–626 行，包含本轮归属修正、分期要求与两项明确选择；143 个公开事件，56 组工具调用与返回配对。此前范围索引保留；当前仅更新文档，未开始施工。
 history:
-  path: history/20260918-vault-binding-complete-requirements
-  sha256: bb9906b563fd63d91a996ce00869196166f348400f8c5de3e2971188b46d45d0
-  capture_sha256: c698def16030cf7b4a0ad026c5493d12fd4e33d96d7025af784c804cd24b8bf1
+  path: history/20260918-bridge-refactor-confirmation
+  sha256: 4be28f40681d58f7be0e077bf95091a8b061b62212370ff5f96436a2e515a342
+  capture_sha256: af6ee6a8c324cf0eb0b8612c7a7d03ee599c2fc05d5c3b01d2b1567049590ddd
 related_records: [REQ-extension-pages, IF-extension-pages, IF-instance-workspace-scope, VER-extension-pages-design]
 ---
 
@@ -45,3 +45,17 @@ related_records: [REQ-extension-pages, IF-extension-pages, IF-instance-workspace
 [查看依据：完整文档与架构提问](history-event:EVT-1ff80cd98322df6cdb24)
 
 本次更新同一任务的公开来源范围，保留原索引；产品代码没有因本次文档同步发生改变。
+
+## 桥公共能力收敛与实施顺序确认
+
+用户明确笔记关联是普通贴纸业务，应继续保留；Bridge 暴露共用双向引用通道，由普通贴纸适配。用户同时确认纯笔记操作不必经过 Core 引用流程或 Maintenance。此前迁移笔记关联功能的建议撤回。
+
+[查看依据：职责修正、分期及等待开工要求](history-event:EVT-7001997878bc8d33bea6)
+
+顺序确定为先整合 DSH Bridge 和普通贴纸的已有接入，再在两侧 Bridge 实现 Vault 绑定与路由，之后新增 Maintenance 的业务 Adapter 和扩展信息页，未来专门操作通道最后再展开。新追问确认第一阶段只统一已有引用、回链、定位和解除能力，保留扩展位置。
+
+[查看依据：第一阶段只整合现有能力](history-event:EVT-adbd0f0aa425de5f0771)
+
+现有 Maintenance 贴纸、引用和会话定位接入必须在重构阶段保持可用，新 Adapter 后置不等于移除旧能力。先落实实施计划，只有用户明确下令后才开始产品代码施工；本次只修订文档与地图。
+
+[查看依据：保留现有维护接入](history-event:EVT-fd7a27be9c986eb9d8e3)

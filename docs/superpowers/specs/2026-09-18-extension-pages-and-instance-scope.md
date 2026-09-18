@@ -2,7 +2,7 @@
 
 日期：2026-09-18。状态：需求已确认，合同草案与验收待实现。本次仅修改设计与地图，不修改运行服务、会话数据或插件构件。
 
-完整产品要求见 [DSH–Obsidian 与 Maintenance 需求完整稿](../../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-dsh-obsidian-confirmed-requirements.md)。本页保留 EP 编号摘要和 Maintenance 提供方的接口草案；最新桥插件合并问题仍处于讨论，不改变本项目的独立性要求。
+完整产品要求见 [DSH–Obsidian 与 Maintenance 需求完整稿](../../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-dsh-obsidian-confirmed-requirements.md)。本页保留 EP 编号摘要和 Maintenance 提供方的接口草案。用户确认先整合桥，再完成两侧 Vault 绑定与路由，最后补本页的新注册／绑定 Adapter；当前已有维护接入须在重构时继续工作。笔记关联保留普通贴纸，本项目仍独立运行；实施计划待落实，尚未开工。
 
 本文件拥有 Session Maintenance 提供的公开扩展注册、页面栏目和实例有效范围合同。Vault 绑定与动态连接由独立项目提供，见 [Bridge 绑定设计](../../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-vault-instance-binding-design.md)。双方接入说明相互链接，Bridge 不成为 Engine 的启动依赖。
 
