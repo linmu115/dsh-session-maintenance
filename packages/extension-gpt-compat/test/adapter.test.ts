@@ -25,6 +25,7 @@ it("composes plugin events under the existing Harness identity without mutating 
   expect(()=>validateV3Artifact(artifact())).toThrow(/unknown event/);
   expect(probe(environment()).status).toBe("verified");
   expect(probe({...environment(),packageVersions:{...environment().packageVersions,"dsh-gpt-compat":"0.5.0-dev.4"}}).status).toBe("verified");
+  expect(probe({...environment(),packageVersions:{...environment().packageVersions,"dsh-gpt-compat":"0.5.0-dev.7"}}).status).toBe("verified");
   expect(probe({...environment(),runtimeCapabilities:REQUIRED_CAPABILITIES}).status).toBe("failed");
   expect(probe({...environment(),packageVersions:{...environment().packageVersions,"dsh-gpt-compat":"0.6.0"}}).status).toBe("failed");
 });
