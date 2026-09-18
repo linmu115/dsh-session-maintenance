@@ -16,6 +16,8 @@ it("pins RC2 scope, closure, capabilities and exact artifact bytes before granti
   await save({...receipt,engineVersion:"0.1.33-rc2.1"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   await save({...receipt,engineVersion:"0.1.33-rc2.2"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   await save({...receipt,engineVersion:"0.1.33-rc2.3"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
+  await save({...receipt,engineVersion:"0.1.33-rc2.37"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
+  await save({...receipt,engineVersion:"0.1.33-rc2.38"});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   const currentVersion=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8")).version;
   await save({...receipt,engineVersion:currentVersion});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
   for(const engineVersion of ["0.1.33-rc2.0","0.1.33-rc2.999",`${currentVersion}+unverified`]){await save({...receipt,engineVersion});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_REQUIRED"});}

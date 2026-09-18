@@ -67,6 +67,10 @@ describe("instance onboarding", () => {
     const version = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
     const path = join(f.profileRoot, "node_modules", "dsh-session-maintenance", "package.json");
     const plugin = JSON.parse(await readFile(path, "utf8"));
+    for (const released of ["0.2.26-rc2.28", "0.2.26-rc2.29"]) {
+      await json(path, { ...plugin, version: released });
+      expect((await f.discover()).targets[0]!.pluginReady).toBe(true);
+    }
     await json(path, { ...plugin, version });
     expect((await f.discover()).targets[0]!.pluginReady).toBe(true);
     await json(path, { ...plugin, version: "0.2.26-rc2.999" });
