@@ -308,6 +308,32 @@
 .advanced-section[open] { padding: 0 20px 20px; }
 .advanced-section[open] > summary { padding-inline: 2px; margin-bottom: 12px; }
 .settings-content { padding: 8px 20px 22px; line-height: 1.75; font-size: 13px; }
+.sync-settings { min-width: 0; }
+.sync-section-tabs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-bottom: 22px; padding: 5px; border: 1px solid var(--dsm-border); border-radius: 10px; background: var(--dsm-soft-surface); }
+.sync-section-tabs > button { min-width: 0; min-height: 48px; padding: 10px 14px; border: 1px solid transparent; border-radius: 7px; color: var(--dsm-muted); background: transparent; font: inherit; font-weight: 600; line-height: 1.5; overflow-wrap: anywhere; cursor: pointer; }
+.sync-section-tabs > button:hover { background: var(--dsm-hover); }
+.sync-section-tabs > button[aria-selected="true"] { color: var(--dsm-selected-text); border-color: var(--dsm-selected-border); background: var(--dsm-selected); box-shadow: var(--dsm-shadow); }
+.sync-section-panel { min-width: 0; }
+.sync-section-panel[hidden] { display: none; }
+.sync-section-panel:focus-visible { outline: 2px solid var(--dsm-focus); outline-offset: 4px; }
+.instance-workspace-intro { padding-bottom: 0; }
+.instance-workspace-intro .field { max-width: 560px; font-size: 13px; }
+.instance-workspace-status { margin-top: 8px; }
+.instance-scope-details > summary { cursor: pointer; }
+.instance-active-scopes { max-height: 240px; margin-top: 12px; overflow: auto; }
+.instance-active-scopes details + details { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--dsm-border); }
+.instance-active-scopes summary { cursor: pointer; }
+.instance-active-scopes code { font-family: var(--dsm-mono); overflow-wrap: anywhere; }
+.instance-workspace-selection { min-width: 0; margin: 20px 0 0; padding: 14px; border: 1px solid var(--dsm-border); border-radius: 8px; }
+.instance-workspace-selection legend { padding: 0 6px; font-weight: 600; }
+.instance-workspace-selection .sync-workspace { grid-template-columns: auto minmax(0, 1fr); min-height: 44px; padding: 12px; gap: 10px; overflow-wrap: anywhere; }
+.instance-workspace-selection > .sync-workspace + .sync-workspace { margin-top: 8px; }
+.instance-workspace-selection .sync-workspaces { gap: 8px; margin-bottom: 0; }
+@media (max-width: 600px) {
+  .sync-section-tabs > button { padding: 10px 8px; font-size: 13px; }
+  .instance-workspace-selection { padding: 10px; }
+  .instance-workspace-editor .sync-save-row > button { flex: 1 1 160px; }
+}
 .capability-notice { border: 1px solid var(--dsm-warning-border); border-radius: 10px; background: var(--dsm-warning-surface); color: var(--dsm-warning); padding: 13px 16px; }
 .integration-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 310px), 1fr)); gap: 12px; }
 .integration-card { padding: 16px; border: 1px solid var(--dsm-border); border-radius: 8px; }

@@ -26,8 +26,7 @@ const RunCenterPage = lazy(async () => ({ default: (await import("./run-center.j
 const AdapterPage = lazy(async () => ({ default: (await import("./adapter-page.js")).AdapterPage }));
 const StorageGovernancePage = lazy(async () => ({ default: (await import("./storage-governance.js")).StorageGovernancePage }));
 const IntegrationPage = lazy(async () => ({ default: (await import("./integration-page.js")).IntegrationPage }));
-const SyncPage = lazy(async () => ({ default: (await import("./sync-page.js")).SyncPage }));
-const InstanceWorkspacePage = lazy(async () => ({ default: (await import("./instance-workspace-page.js")).InstanceWorkspacePage }));
+const SyncPage = lazy(async () => ({ default: (await import("./sync-page.js")).SyncSettingsPage }));
 const ExtensionPage = lazy(async () => ({ default: (await import("./extension-page.js")).ExtensionPageView }));
 
 const LearningPage = lazy(async () => ({ default: (await import("./learning-page.js")).LearningPage }));
@@ -63,7 +62,7 @@ export function DashboardApp(props: { readonly api: DashboardApi; readonly initi
     </div>
     <Suspense fallback={<Surface><LoadingState label="正在读取…" /></Surface>}>
       {view === "learning" ? <LearningPage key={request} api={props.api} /> : null}
-      {view === "sync" ? <div key={`sync-${request}`} className="page-stack"><InstanceWorkspacePage api={props.api} /><SyncPage api={props.api} /><Advanced title="导入与运行进度"><RunCenterPage api={props.api} /></Advanced><Advanced title="高级：历史同步计划"><PlansPage api={props.api} /></Advanced></div> : null}
+      {view === "sync" ? <div key={`sync-${request}`} className="page-stack"><SyncPage api={props.api} /><Advanced title="导入与运行进度"><RunCenterPage api={props.api} /></Advanced><Advanced title="高级：历史同步计划"><PlansPage api={props.api} /></Advanced></div> : null}
       {view === "checkpoints" ? <div key={`restore-${request}`} className="page-stack"><div className="dsm-page-heading"><div><h2>恢复点</h2><p>找回最近删除的会话，或查看已有保护记录支持的恢复方式。</p></div></div><RecentlyDeletedPage api={props.api} onOpenSession={openSession} onRestored={() => setRestoredRevision((value) => value + 1)} /><CheckpointsPage api={props.api} /><Advanced title="高级：历史事务与恢复"><TransactionsPage api={props.api} /></Advanced></div> : null}
       {view === "storage" ? <StorageGovernancePage key={request} api={props.api} /> : null}
       {view === "extensions" ? <div className="page-stack" key={request}><ExtensionPage api={props.api} onOpenSession={openSession} /></div> : null}

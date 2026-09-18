@@ -1,6 +1,44 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { CodexProjectMappingConfiguration, CodexProjectMappingUpdate, WorkspaceSyncConfiguration, WorkspaceSyncUpdate } from "@linmu/dsh-session-contracts";
 import { Badge, Button, EmptyState, LoadingState, Surface } from "@linmu/dsh-session-ui";
+import { InstanceWorkspacePage, type InstanceWorkspaceApi } from "./instance-workspace-page.js";
+
+const syncSections = [
+  { id: "maintenance", title: "Maintenance 工作区同步" },
+  { id: "codex", title: "Codex 项目同步" },
+] as const;
+type SyncSection = typeof syncSections[number]["id"];
+
+export function SyncSettingsPage({ api }: { readonly api: WorkspaceSyncApi & InstanceWorkspaceApi }) {
+  const prefix = useId();
+  const [section, setSection] = useState<SyncSection>("maintenance");
+  const [visited, setVisited] = useState<ReadonlySet<SyncSection>>(new Set(["maintenance"]));
+  const tabs = useRef<(HTMLButtonElement | null)[]>([]);
+  const select = (next: SyncSection) => {
+    setSection(next);
+    setVisited(current => new Set([...current, next]));
+  };
+  return <div className="sync-settings">
+    <div className="dsm-page-heading"><div><h2>同步</h2><p>分别管理 Maintenance 工作区和 Codex 项目的同步范围。切换栏目会保留未保存的选择。</p></div></div>
+    <div className="sync-section-tabs" role="tablist" aria-label="同步栏目">
+      {syncSections.map((item, index) => <button key={item.id} type="button" role="tab"
+        ref={element => { tabs.current[index] = element; }} id={`${prefix}-tab-${item.id}`}
+        aria-controls={`${prefix}-panel-${item.id}`} aria-selected={section === item.id} tabIndex={section === item.id ? 0 : -1}
+        onClick={() => select(item.id)} onKeyDown={event => {
+          const next = event.key === "Home" ? 0 : event.key === "End" ? syncSections.length - 1
+            : event.key === "ArrowRight" ? (index + 1) % syncSections.length
+            : event.key === "ArrowLeft" ? (index + syncSections.length - 1) % syncSections.length : undefined;
+          if (next === undefined) return;
+          event.preventDefault(); select(syncSections[next]!.id); tabs.current[next]?.focus();
+        }}>{item.title}</button>)}
+    </div>
+    {syncSections.map(item => <div key={item.id} role="tabpanel" id={`${prefix}-panel-${item.id}`}
+      aria-labelledby={`${prefix}-tab-${item.id}`} hidden={section !== item.id} className="sync-section-panel" tabIndex={0}>
+      {/* Keep visited panels mounted: changing tabs never reloads or saves a draft. */}
+      {visited.has(item.id) ? item.id === "maintenance" ? <InstanceWorkspacePage api={api} /> : <SyncPage api={api} /> : null}
+    </div>)}
+  </div>;
+}
 
 export interface WorkspaceSyncApi {
   getCodexProjectMapping?(signal?: AbortSignal): Promise<CodexProjectMappingConfiguration>;

@@ -60,18 +60,26 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
       workspaceIds: checked ? [...previous.workspaceIds, id].sort() : previous.workspaceIds.filter(candidate => candidate !== id) });
     setNotice(undefined);
   };
-  return <div className="surface-body">
+  return <div className="settings-content instance-workspace-editor">
     {error ? <p role="alert">{error}</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
     {!configuration ? <>{!error ? <LoadingState label="正在读取实例范围…" /> : null}<Button onClick={() => setReload(value => value + 1)}>重新读取范围</Button></> : <>
-      <h3>当前运行范围</h3>
-      {configuration.activeScopes.length ? <ul>{configuration.activeScopes.map(scope => <li key={scope.runId}>
-        {scope.profileId}：{summary(scope.selection, configuration)} <span className="muted">（生效修订 {scope.policyRevision}）</span>
-      </li>)}</ul> : <p className="muted">实例当前没有活动运行；下次启动将使用已保存范围。</p>}
-      {configuration.pendingActivation ? <Badge tone="warning">有保存的更改等待下次启动</Badge> : null}
-      <h3>已保存范围</h3><p>{summary(configuration.policy.selection, configuration)} · 修订 {configuration.policy.revision}</p>
+      <div className="mapping-policy-status instance-workspace-status">
+        <section aria-label="当前运行范围"><h3>当前运行范围</h3>
+          {configuration.activeScopes.length ? <>
+            <details className="instance-scope-details"><summary>查看 {configuration.activeScopes.length} 条运行范围</summary>
+            <div className="instance-active-scopes">{configuration.activeScopes.map(scope => <details key={scope.runId}>
+              <summary><strong>{scope.profileId}</strong> · {summary(scope.selection, configuration)} <span className="muted">（生效修订 {scope.policyRevision}）</span></summary>
+              <p>运行标识：<code>{scope.runId}</code></p>
+            </details>)}</div></details>
+          </> : <p className="muted">实例当前没有在线运行；下次启动将使用已保存范围。</p>}
+        </section>
+        <section aria-label="已保存范围"><h3>已保存范围</h3><p>{summary(configuration.policy.selection, configuration)}</p><small>修订 {configuration.policy.revision} · 下次启动采用此范围</small>
+          {configuration.pendingActivation ? <p><Badge tone="warning">有保存的更改等待下次启动</Badge></p> : null}
+        </section>
+      </div>
       <form onSubmit={event => { event.preventDefault(); void save(); }}>
-        <fieldset disabled={busy}><legend>此实例下次启动时同步</legend>
+        <fieldset className="instance-workspace-selection" disabled={busy}><legend>此实例下次启动时同步</legend>
           <label className="sync-workspace"><input type="radio" name="instance-selection" checked={selection.kind === "all"} onChange={() => setSelection({ kind: "all" })} />全部工作区及未分组会话</label>
           <label className="sync-workspace"><input type="radio" name="instance-selection" checked={selection.kind === "ids"} onChange={() => setSelection({ kind: "ids", workspaceIds: [], includeUnassigned: false })} />仅同步以下选择</label>
           {selection.kind === "ids" ? <div className="sync-workspaces">
@@ -85,7 +93,8 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
           </div> : null}
         </fieldset>
         <p className="muted">同一实例的所有配置与已绑定 Vault 共用此范围。所选工作区未来新增的会话也包含在内。取消选择保留历史与链接。</p>
-        <div className="dsm-action-row"><Button type="submit" tone="primary" disabled={!changed || busy || !api.saveInstanceWorkspaceSync}>{busy ? "正在保存…" : "保存下次启动范围"}</Button><Button disabled={busy} onClick={() => setReload(value => value + 1)}>重新读取范围</Button></div>
+        <div className="sync-save-row"><Button type="submit" tone="primary" disabled={!changed || busy || !api.saveInstanceWorkspaceSync}>{busy ? "正在保存…" : "保存下次启动范围"}</Button><Button disabled={busy} onClick={() => setReload(value => value + 1)}>重新读取范围</Button><span className="muted">{changed ? "有未保存的更改" : "与已保存范围一致"}</span></div>
+        <p className="muted">重新读取范围会取消未保存的更改。</p>
       </form>
     </>}
   </div>;
@@ -104,7 +113,7 @@ export function InstanceWorkspacePage({ api }: { api: InstanceWorkspaceApi }) {
     return () => controller.abort();
   }, [api, reload]);
   return <Surface title="DSH 实例同步范围" action={<Button onClick={() => setReload(value => value + 1)}>刷新实例</Button>}>
-    <div className="surface-body"><p>为每个 DSH 实例选择与真源双向同步的工作区。保存后在实例下次启动时生效。</p>
+    <div className="settings-content instance-workspace-intro"><p>为每个 DSH 实例选择与真源双向同步的 Maintenance 工作区。保存后在实例下次启动时生效。</p>
       {error ? <p role="alert">{error}</p> : !directory ? <LoadingState label="正在读取 DSH 实例…" /> : !directory.instances.length ? <EmptyState title="没有可配置的 DSH 实例" description="请先在设置中接入 DSH 实例。" /> : <label className="field">DSH 实例<select value={instanceId} onChange={event => setInstanceId(event.currentTarget.value)}>{directory.instances.map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}</option>)}</select></label>}
     </div>
     {directory && instanceId && directory.instances.some(item => item.instanceId === instanceId) ? <InstanceEditor key={instanceId} api={api} instanceId={instanceId} /> : null}

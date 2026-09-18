@@ -28,9 +28,9 @@ async function fixture() {
   for(const id of ['a','b','unassigned']) {
     await engine.observeCodex({logicalSessionId:id as never,title:id,tags:[],archivedAt:null,workspaceId:id==='unassigned'?null:id as never,events:[event(id)],sourceCursor:'0',observedAt:at});
   }
-  const run=(id:string,state:ProjectionRun['state']='preparing'):ProjectionRun=>{
-    db.prepare(`INSERT INTO projection_runs(id,lease_id,branch_id,instance_id,profile_id,dsh_version,adapter_id,state,started_at,heartbeat_at) VALUES (?,?,'main','i-one','web','0.1.5-rc.2','adapter-fixture',?,?,?)`).run(id,'lease-'+id,state,at,at);
-    return {schemaVersion:1,id:id as never,leaseId:('lease-'+id) as never,branchId:'main' as never,instanceId:'i-one',profileId:'web',dshVersion:'0.1.5-rc.2',adapterId:'adapter-fixture' as never,state,startedAt:at,heartbeatAt:at,checkpointId:null};
+  const run=(id:string,state:ProjectionRun['state']='preparing',branchId='main'):ProjectionRun=>{
+    db.prepare(`INSERT INTO projection_runs(id,lease_id,branch_id,instance_id,profile_id,dsh_version,adapter_id,state,started_at,heartbeat_at) VALUES (?,?,?,'i-one','web','0.1.5-rc.2','adapter-fixture',?,?,?)`).run(id,'lease-'+id,branchId,state,at,at);
+    return {schemaVersion:1,id:id as never,leaseId:('lease-'+id) as never,branchId:branchId as never,instanceId:'i-one',profileId:'web',dshVersion:'0.1.5-rc.2',adapterId:'adapter-fixture' as never,state,startedAt:at,heartbeatAt:at,checkpointId:null};
   };
   return {root,db,writes,objects,online,runtime,policies,service,source,engine,run};
 }
@@ -39,6 +39,7 @@ it('freezes scope before projection; later saves affect only the next run, with 
   const f=await fixture();
   f.policies.updatePolicy('i-one',{expectedRevision:0,selection:{kind:'ids',workspaceIds:['a' as never],includeUnassigned:false}});
   const first=f.run('first'), projected=await f.source.load(first);
+  f.online.add(first.id);
   expect(projected.sessions.map(x=>x.session.id)).toEqual(['a']);
   expect(projected.workspaces.map(x=>x.id).sort()).toEqual(['a','parent']);
   f.policies.updatePolicy('i-one',{expectedRevision:1,selection:{kind:'ids',workspaceIds:[],includeUnassigned:false}});
@@ -62,6 +63,25 @@ it('keeps pre-upgrade recovery at all scope, without configuration reads freezin
   await f.service.get('i-one');
   expect(f.db.prepare('SELECT COUNT(*) AS count FROM projection_run_workspace_scopes').get()).toMatchObject({count:0});
   expect((await f.source.load({...candidate,state:'preparing'})).sessions).toEqual([]);
+});
+
+it('reports only online open runs as active and preserves different runs with identical profile and scope',async()=>{
+  const f=await fixture();
+  for (const state of ['preparing','running','draining','verifying','recovery-required','recovering','quarantined','cleanup-pending','closed'] as const)
+    f.run(`history-${state}`,state,`history-${state}`);
+  f.policies.updatePolicy('i-one',{expectedRevision:0,selection:{kind:'ids',workspaceIds:[],includeUnassigned:false}});
+  expect((await f.service.get('i-one')).activeScopes).toEqual([]);
+  expect((await f.service.get('i-one')).pendingActivation).toBe(false);
+  const first=f.run('online-first','running','first'), second=f.run('online-second','running','second');
+  f.online.add(first.id); f.online.add(second.id);
+  // Closed records must not appear even if the broker has a stale online signal.
+  f.online.add('history-closed');
+  const configuration=await f.service.get('i-one');
+  expect(configuration.activeScopes.map(scope=>scope.runId).sort()).toEqual(['online-first','online-second']);
+  expect(configuration.activeScopes.every(scope=>scope.profileId==='web' && scope.policyRevision===0)).toBe(true);
+  expect(configuration.pendingActivation).toBe(true);
+  expect(f.db.prepare('SELECT COUNT(*) AS count FROM projection_runs').get()).toMatchObject({count:11});
+  expect(f.db.prepare('SELECT COUNT(*) AS count FROM projection_run_workspace_scopes').get()).toMatchObject({count:0});
 });
 
 it('distinguishes selected offline, missing mapping, available, excluded, deleted, and not found sessions',async()=>{

@@ -25,6 +25,18 @@ it("saves explicit empty selection without rewriting current active scope", asyn
   expect(container.textContent).toContain("等待下次启动");
   expect(container.textContent).toContain("当前运行范围保持不变");
 });
+it("keeps distinct online runs visible even when profile, revision and scope match", async () => {
+  const value = configuration("one");
+  value.activeScopes.push({ ...value.activeScopes[0]!, runId: "another-run" });
+  await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async () => value });
+  const current = container.querySelector('[aria-label="当前运行范围"]')!;
+  expect(current.textContent).toContain("查看 2 条运行范围");
+  expect(current.querySelector<HTMLDetailsElement>(".instance-scope-details")!.open).toBe(false);
+  const scopes = [...current.querySelectorAll<HTMLDetailsElement>(".instance-active-scopes > details")];
+  expect(scopes).toHaveLength(2);
+  expect(scopes.map(scope => scope.querySelector("code")!.textContent)).toEqual(["run", "another-run"]);
+  expect(scopes.every(scope => !scope.open)).toBe(true);
+});
 it("reloads a 409 policy conflict and requires a fresh choice before another save", async () => {
   let reads = 0;
   await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async id => configuration(id, ++reads), saveInstanceWorkspaceSync: async () => { throw Object.assign(new Error("名单冲突"), { status: 409 }); } });

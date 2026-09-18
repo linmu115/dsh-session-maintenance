@@ -58,7 +58,9 @@ export class InstanceWorkspaceRuntime {
       },
       readConfiguration: async instanceId => {
         const policy = this.policies.getPolicy(instanceId);
-        const activeScopes = this.runs(instanceId).map(run => ({ profileId: run.profile_id, runId: run.id,
+        // Open recovery records retain their frozen scope but are not current online runs.
+        // Match effective()/availability and keep every distinct attested run, even for one profile.
+        const activeScopes = this.runs(instanceId).filter(run => this.isRunOnline(run.id)).map(run => ({ profileId: run.profile_id, runId: run.id,
           policyRevision: this.policies.policyForRun(runIdentity(run)).revision, selection: this.policies.policyForRun(runIdentity(run)).selection }));
         return { policy, activeScopes, workspaces: this.workspaces().map(row => ({ id: row.id, name: row.name, deleted: row.deleted_at !== null })),
           pendingActivation: activeScopes.some(scope => scope.policyRevision !== policy.revision) };
