@@ -18,7 +18,7 @@ it("renders provider text as text, disables offline actions and confines executi
     expect(enqueue.mock.calls[0]?.[0]).toMatchObject({ actionId: "bind", expectedRevision: 4, owner: page.owner, input: {} });
     expect(container.textContent).toContain("Companion confirmed");
     page.online = false;
-    await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "刷新信息页")!.click());
+    await act(async () => [...container.querySelectorAll("button")].find(button => button.textContent === "刷新")!.click());
     expect(container.querySelector("fieldset")!.disabled).toBe(true); expect(container.textContent).toContain("提供方离线");
   } finally { await act(async () => root.unmount()); container.remove(); }
 });

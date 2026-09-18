@@ -74,7 +74,7 @@ function WorkspaceBranch(props: {
     <button className="workspace-folder-row" type="button" onClick={() => props.onToggle(props.node.workspace.id)}>
       <ChevronRight className="workspace-chevron" size={16} data-expanded={open} />
       {open ? <FolderOpen size={18} /> : <Folder size={18} />}
-      <span className="workspace-folder-title"><strong title={props.node.workspace.name}>{props.node.workspace.name}</strong><small>{props.node.sessions.length} 个直属会话</small></span>
+      <span className="workspace-folder-title"><strong title={props.node.workspace.name}>{props.node.workspace.name}</strong></span>
     </button>
     {open ? <div className="workspace-folder-content" role="group">
       <SessionList sessions={props.node.sessions} onOpen={props.onOpenSession} selectedSessionId={props.selectedSessionId} />
@@ -90,7 +90,7 @@ export function WorkspaceDirectory(props: {
 }) {
   const [query, setQuery] = useState("");
   const tree = useMemo(() => buildCanonicalWorkspaceTree(props.directory), [props.directory]);
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(tree.map((node) => node.workspace.id)));
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const needle = query.trim().toLocaleLowerCase();
   const matches = (session: CanonicalDashboardSessionSummary) => needle.length === 0
     || session.session.title.toLocaleLowerCase().includes(needle)
@@ -115,9 +115,9 @@ export function WorkspaceDirectory(props: {
     <label className="workspace-search"><Search size={15} /><span className="sr-only">搜索工作区或会话</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="搜索工作区或会话" /></label>
     <div className="workspace-directory" role="tree" aria-label="工作区会话目录">
       {filtered.map((node) => <WorkspaceBranch key={node.workspace.id} node={node} expanded={visibleExpanded} onToggle={toggle} onOpenSession={props.onOpenSession} selectedSessionId={props.selectedSessionId} />)}
-      {unclassified.length > 0 ? <section className="workspace-folder canonical-unclassified" role="treeitem" aria-expanded="true" data-testid="canonical-workspace-unclassified">
-        <div className="workspace-folder-row"><FolderOpen size={18} /><span className="workspace-folder-title"><strong>未归类</strong><small>{unclassified.length} 个会话</small></span></div>
-        <div className="workspace-folder-content" role="group"><SessionList sessions={unclassified} onOpen={props.onOpenSession} selectedSessionId={props.selectedSessionId} /></div>
+      {unclassified.length > 0 ? <section className="workspace-folder canonical-unclassified" role="treeitem" aria-expanded={needle.length > 0 || expanded.has("unclassified")} data-testid="canonical-workspace-unclassified">
+        <button type="button" className="workspace-folder-row" onClick={() => toggle("unclassified")} aria-expanded={needle.length > 0 || expanded.has("unclassified")}><ChevronRight size={16} className="workspace-chevron" data-expanded={needle.length > 0 || expanded.has("unclassified")} /><Folder size={18} /><span className="workspace-folder-title"><strong>未归类</strong></span></button>
+        {needle.length > 0 || expanded.has("unclassified") ? <div className="workspace-folder-content" role="group"><SessionList sessions={unclassified} onOpen={props.onOpenSession} selectedSessionId={props.selectedSessionId} /></div> : null}
       </section> : null}
       {filtered.length === 0 && unclassified.length === 0 ? <EmptyState title="没有匹配结果" description="换一个工作区名称或会话标题再试。" /> : null}
     </div>

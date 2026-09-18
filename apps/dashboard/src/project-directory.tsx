@@ -55,7 +55,7 @@ export function ProjectDirectory(props: {
 }) {
   const [query, setQuery] = useState("");
   const groups = useMemo(() => buildCanonicalProjectDirectory(props.directory), [props.directory]);
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const needle = query.trim().toLocaleLowerCase();
   const visible = groups.map((group) => ({
     ...group,
@@ -70,17 +70,16 @@ export function ProjectDirectory(props: {
     <div className="workspace-directory" aria-label="Maintenance 项目会话目录">
       {visible.map((group) => {
         const id = group.project?.id ?? "unclassified";
-        const open = !collapsed.has(id);
+        const open = needle.length > 0 || expanded.has(id);
         return <section className="workspace-folder project-folder" key={id} data-testid={`canonical-project-${id}`}>
-          <button className="workspace-folder-row" type="button" aria-expanded={open} onClick={() => setCollapsed((current) => {
+          <button className="workspace-folder-row" type="button" aria-expanded={open} onClick={() => setExpanded((current) => {
             const next = new Set(current);
             if (next.has(id)) next.delete(id); else next.add(id);
             return next;
           })}>
             <ChevronRight className="workspace-chevron" size={16} data-expanded={open} />
             <FolderKanban size={18} />
-            <span className="workspace-folder-title"><strong>{group.project?.name ?? "待指定项目"}</strong><small>{group.sessions.length} 个会话</small></span>
-            <span className="project-root-label">{group.roots[0]?.path ?? (group.project === null ? "尚未分配" : "无项目根")}</span>
+            <span className="workspace-folder-title"><strong>{group.project?.name ?? "待指定项目"}</strong></span>
           </button>
           {open ? <div className="workspace-folder-content"><SessionList sessions={group.sessions} onOpen={props.onOpenSession} /></div> : null}
         </section>;

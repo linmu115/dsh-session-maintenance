@@ -44,7 +44,7 @@ function BusinessAction({ api, page, action }: { api: BusinessPagesApi; page: Bu
     return () => { abort.abort(); if (timer) clearTimeout(timer); };
   }, [api, operationId, waiting, page.owner]);
   return <form className="business-action" onSubmit={event => { event.preventDefault(); void submit(); }}>
-    <fieldset disabled={busy || waiting || !page.online}><legend>{action.label}</legend>
+    <fieldset disabled={busy || waiting || !page.online}>{action.fields.length > 0 && <legend>{action.label}</legend>}
       <div className="business-action-fields">{action.fields.map(field => <label className={field.kind === "boolean" ? "business-action-checkbox" : "field"} key={field.id}>
         <span>{field.label}{field.required && field.kind !== "boolean" ? "（必填）" : ""}</span>
         {field.kind === "boolean" ? <input type="checkbox" checked={input[field.id] === true} onChange={event => setInput({ ...input, [field.id]: event.currentTarget.checked })} />
@@ -60,7 +60,7 @@ function BusinessAction({ api, page, action }: { api: BusinessPagesApi; page: Bu
     {receipt ? <p role="status">{receipt.status === "uncertain" ? "执行结果需要核对：" : ""}{receipt.message}</p> : null}
   </form>;
 }
-export function BusinessPages({ api, renderDirectory, registeredPages, onRefresh, title = "插件信息与接入" }: { title?: string; api: BusinessPagesApi; renderDirectory(owner: BusinessPageOwner, adapterId: string): ReactNode; registeredPages?: BusinessPage[]; onRefresh?: () => void }) {
+export function BusinessPages({ api, renderDirectory, registeredPages, onRefresh, title = "Vault 绑定" }: { title?: string; api: BusinessPagesApi; renderDirectory(owner: BusinessPageOwner, adapterId: string): ReactNode; registeredPages?: BusinessPage[]; onRefresh?: () => void }) {
   const [pages, setPages] = useState<BusinessPage[]>(); const [error, setError] = useState<string>();
   const [revision, setRevision] = useState(0); const [directory, setDirectory] = useState<string>();
   useEffect(() => {
@@ -72,14 +72,14 @@ export function BusinessPages({ api, renderDirectory, registeredPages, onRefresh
   }, [api, revision, registeredPages]);
   const visiblePages = registeredPages ?? pages;
   if (!api.listBusinessPages) return null;
-  return <div className="page-stack business-pages"><div className="dsm-page-heading"><div><h2>{title}</h2><p>查看本栏目的插件接入状态，并在对应实例下管理绑定与业务操作。</p></div><Button onClick={() => onRefresh ? onRefresh() : setRevision(value => value + 1)}>刷新信息页</Button></div>
+  return <div className="page-stack business-pages"><div className="dsm-page-heading"><div><h2>{title}</h2></div><Button onClick={() => onRefresh ? onRefresh() : setRevision(value => value + 1)}>刷新</Button></div>
     {error ? <p role="alert" className="inline-error">{error}</p> : !visiblePages ? <LoadingState label="正在读取插件信息页…" /> : visiblePages.length === 0 ? <p className="muted">本栏目尚未注册插件信息页。</p> : null}
     {visiblePages?.map(page => {
       const pageKey = JSON.stringify(page.owner);
-      return <article key={pageKey} className="business-provider-page" aria-label={page.snapshot.title}><h3>{page.snapshot.title}</h3><div className="business-page-body"><div className="business-page-owner"><span>{page.owner.instanceId} · {page.owner.profileId}</span><Badge tone={page.online ? "success" : "neutral"}>{page.online ? "提供方在线" : "提供方离线，保留最后信息"}</Badge></div>
-        {page.snapshot.sections.map(section => <section className="business-page-section" key={section.id}><h3>{section.title}</h3>
-          {section.kind === "summary" ? <p>{section.text}</p> : section.kind === "status" ? <p><Badge tone={section.state === "ready" ? "success" : section.state === "warning" ? "warning" : "neutral"}>{section.label}</Badge></p>
-            : section.kind === "key-values" ? <dl className="business-page-values">{section.items.map((item, index) => <div key={index}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
+      return <article key={pageKey} className="business-provider-page" aria-label={page.snapshot.title}>{visiblePages.length > 1 && <h3>{page.snapshot.title}</h3>}<div className="business-page-body"><div className="business-page-owner"><details className="business-connection-details"><summary>连接详情</summary><p>{page.owner.instanceId} · {page.owner.profileId}</p></details><Badge tone={page.online ? "success" : "neutral"}>{page.online ? "已连接" : "提供方离线 · 显示上次状态"}</Badge></div>
+        {[...page.snapshot.sections].sort((a, b) => Number(a.kind === "summary") - Number(b.kind === "summary")).map(section => <section className="business-page-section" key={section.id}>{section.kind !== "summary" && <h3>{section.title}</h3>}
+          {section.kind === "summary" ? <details className="business-help"><summary>{section.title} · 使用说明</summary><p>{section.text}</p></details> : section.kind === "status" ? <p><Badge tone={section.state === "ready" ? "success" : section.state === "warning" ? "warning" : "neutral"}>{section.label}</Badge></p>
+            : section.kind === "key-values" ? <dl className="business-page-values">{section.items.map((item, index) => <div key={index}><dt>{item.label}</dt><dd>{item.value.length > 70 ? <details><summary>{item.value.split(" · ").find(part => /^(已绑定|未绑定|待绑定|已断开|连接失败)/u.test(part))?.replace(/\s*\/\s*READY\b/u, "") ?? "查看详情"}</summary><p>{item.value}</p></details> : item.value}</dd></div>)}</dl>
             : section.kind === "data-directory" ? <><button className="dsm-button" type="button" aria-expanded={directory === `${pageKey}:${section.id}`} onClick={() => setDirectory(directory === `${pageKey}:${section.id}` ? undefined : `${pageKey}:${section.id}`)}>{directory === `${pageKey}:${section.id}` ? "收起数据目录" : "查看数据目录"}</button>{directory === `${pageKey}:${section.id}` ? <div className="business-page-directory">{renderDirectory(page.owner, section.adapterId)}</div> : null}</>
             : <div className="business-page-actions">{section.actions.map(action => <BusinessAction key={`${action.id}:${action.expectedRevision}`} api={api} page={page} action={action} />)}</div>}
         </section>)}

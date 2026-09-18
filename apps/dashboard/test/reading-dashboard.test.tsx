@@ -60,9 +60,13 @@ describe("reading-first dashboard behavior", () => {
     const toggle = container.querySelector<HTMLButtonElement>(".workspace-panel-toggle");
     expect(toggle).not.toBeNull();
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(container.querySelector('[data-testid="canonical-session-one"]')).toBeNull();
+    expect(container.querySelector('.workspace-folder')?.getAttribute('aria-expanded')).toBe('false');
+    expect(container.textContent).not.toContain('个直属会话');
     await click(toggle!);
     expect(toggle?.getAttribute("aria-expanded")).toBe("true");
     expect(document.getElementById(toggle!.getAttribute("aria-controls")!)).not.toBeNull();
+    if (!container.querySelector('[data-testid="canonical-session-one"]')) await click(container.querySelector('.workspace-folder-row')!);
     await click(container.querySelector('[data-testid="canonical-session-one"]')!);
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
     expect(container.querySelector('[aria-label="会话阅读"] h2')?.textContent).toBe("one");
@@ -76,6 +80,7 @@ describe("reading-first dashboard behavior", () => {
     await render(<DashboardApp api={api} />);
     expect([...container.querySelectorAll("nav button")].map((item) => item.textContent)).toEqual(["会话", "同步", "学习双向维护", "恢复点", "存储空间", "扩展", "设置"]);
     expect(container.querySelector('nav button[data-active="true"]')?.textContent).toBe("会话");
+    if (!container.querySelector('[data-testid="canonical-session-one"]')) await click(container.querySelector('.workspace-folder-row')!);
     await click(container.querySelector('[data-testid="canonical-session-one"]')!);
     expect(container.querySelector('[aria-label="会话阅读"] h2')?.textContent).toBe("第一条");
     expect(container.querySelector(".safe-markdown h2")?.textContent).toBe("第一条 的正文");
@@ -107,6 +112,7 @@ describe("reading-first dashboard behavior", () => {
     await input(search, "第一条");
     expect(container.querySelector('[data-testid="canonical-workspace-parent"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="canonical-session-one"]')).not.toBeNull();
+    if (!container.querySelector('[data-testid="canonical-session-one"]')) await click(container.querySelector('.workspace-folder-row')!);
     await click(container.querySelector('[data-testid="canonical-session-one"]')!);
     await input(search, "空工作区");
     expect(container.querySelector('[data-testid="canonical-workspace-empty"]')).toBeNull();
@@ -121,6 +127,7 @@ describe("reading-first dashboard behavior", () => {
   it("keeps the directory available when reading fails and retries the selected session", async () => {
     const getCanonicalSession = vi.fn().mockRejectedValueOnce(new Error("读取失败")).mockResolvedValue(detail("one"));
     await render(<DashboardApp api={{ listCanonicalWorkspaces: async () => directory, getCanonicalSession } as unknown as DashboardApi} />);
+    if (!container.querySelector('[data-testid="canonical-session-one"]')) await click(container.querySelector('.workspace-folder-row')!);
     await click(container.querySelector('[data-testid="canonical-session-one"]')!);
     expect(container.textContent).toContain("读取失败");
     expect(container.querySelector('[aria-label="工作区与会话"]')).not.toBeNull();
