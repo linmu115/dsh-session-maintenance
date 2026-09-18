@@ -55,7 +55,7 @@ export function DashboardApp(props: { readonly api: DashboardApi; readonly initi
     <NavButton active={view === "learning"} icon={RefreshCw} onClick={() => setView("learning")}>学习双向维护</NavButton>
     <NavButton active={view === "checkpoints"} icon={BookmarkCheck} onClick={() => setView("checkpoints")}>恢复点</NavButton>
     <NavButton active={view === "storage"} icon={HardDrive} onClick={() => setView("storage")}>存储空间</NavButton>
-    <NavButton active={view === "extensions"} icon={ListTree} onClick={() => setView("extensions")}>扩展数据</NavButton>
+    <NavButton active={view === "extensions"} icon={ListTree} onClick={() => setView("extensions")}>扩展</NavButton>
     <NavButton active={view === "settings"} icon={Settings2} onClick={() => setView("settings")}>设置</NavButton>
   </>} actions={<><DashboardAppearanceControl /><div className="dashboard-refresh"><Button ariaLabel="刷新" onClick={() => setRequest((value) => value + 1)}><RefreshCw size={14} aria-hidden="true" /><span>刷新</span></Button></div></>}>
     <div hidden={view !== "sessions"}>

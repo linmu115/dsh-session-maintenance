@@ -1,9 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Button, Surface, LoadingState, EmptyState } from "@linmu/dsh-session-ui";
-import { managedGraphSchema, type ExtensionPanel, type ExtensionScope, type ExtensionList, type ExtensionPage, type ExtensionDetail, type ExtensionWrite, type ExtensionWriteResult, type ExtensionConflict, type ExtensionCapabilities, type ExtensionPreview, type JsonValue } from "@linmu/dsh-session-contracts";
+import { managedGraphSchema, type ExtensionBusinessPanel, type BusinessPage, type ExtensionPanel, type ExtensionScope, type ExtensionList, type ExtensionPage, type ExtensionDetail, type ExtensionWrite, type ExtensionWriteResult, type ExtensionConflict, type ExtensionCapabilities, type ExtensionPreview, type JsonValue } from "@linmu/dsh-session-contracts";
 import { ExtensionBusinessDirectory, type ExtensionBusinessApi } from "./extension-business-directory.js";
 import { nativeContextStateSchema } from "@linmu/dsh-session-contracts";
 import { NativeContextDetail } from "./native-context-detail.js";
+import { extensionCategories, type ExtensionCategory } from "./extension-navigation.js";
 import { BusinessPages, type BusinessPagesApi } from "./business-pages.js";
 
 export interface ExtensionPageApi extends BusinessPagesApi {
@@ -22,22 +23,78 @@ const labels = { ready:"已接入",disabled:"已停用，数据保留","missing-
 const scopeKey = (scope: ExtensionScope) => JSON.stringify(scope);
 
 export function ExtensionPageView({api,onOpenSession}:{api:ExtensionPageApi;onOpenSession:(id:string)=>void}) {
-  const [view, setView] = useState<"directory" | "plugins">("directory");
+  const [panels, setPanels] = useState<ExtensionBusinessPanel[]>();
+  const [pages, setPages] = useState<BusinessPage[]>([]);
+  const [error, setError] = useState<string>();
+  const [pageError, setPageError] = useState<string>();
+  const [revision, setRevision] = useState(0);
+  const [selected, setSelected] = useState<string>();
+  const [visited, setVisited] = useState<string[]>([]);
+  useEffect(() => {
+    const abort = new AbortController(); setError(undefined);
+    const load = api.listExtensionBusinessPanels
+      ? api.listExtensionBusinessPanels({}, abort.signal)
+      : api.listExtensionPanels(abort.signal).then(items => items.map(item => ({ adapterId: item.scope.namespace, label: item.label, scope: item.scope, instanceLabel: item.scope.instanceId, profileLabel: item.scope.profileId, status: item.status, members: [item], objectCount: item.objectCount, conflictCount: item.conflictCount, bytes: item.bytes })));
+    void load.then(result => { if (!abort.signal.aborted) setPanels(result); }, failure => { if (!abort.signal.aborted) setError(errorText(failure)); });
+    return () => abort.abort();
+  }, [api, revision]);
+  useEffect(() => {
+    if (!api.listBusinessPages) return;
+    const abort = new AbortController();
+    const refresh = () => { void api.listBusinessPages!(abort.signal).then(result => { if (!abort.signal.aborted) { setPages(result.pages); setPageError(undefined); } }, failure => { if (!abort.signal.aborted) setPageError(errorText(failure)); }); };
+    refresh(); const timer = setInterval(refresh, 5000);
+    return () => { abort.abort(); clearInterval(timer); };
+  }, [api, revision]);
+  const categories = extensionCategories(panels ?? [], pages);
+  const active = categories.find(item => item.id === selected) ?? categories[0];
   const renderDetail: Parameters<typeof ExtensionBusinessDirectory>[0]["renderDetail"] = (object, member, onChanged) => <ObjectEditor key={`${scopeKey(object.scope)}:${object.objectId}:${object.revision}`} api={api} scope={object.scope} capabilities={member.capabilities!} id={object.objectId} readOnly={object.readOnly} onChanged={onChanged} onOpenSession={onOpenSession}/>;
   return <div className="page-stack extension-page">
-    {api.listBusinessPages ? <div className="extension-view-switch" role="group" aria-label="扩展数据视图">
-      <button className="dsm-button" type="button" aria-pressed={view === "directory"} onClick={() => setView("directory")}>数据目录</button>
-      <button className="dsm-button" type="button" aria-pressed={view === "plugins"} onClick={() => setView("plugins")}>插件信息与接入</button>
-    </div> : null}
-    <div hidden={view !== "directory" && Boolean(api.listBusinessPages)}>
-      {api.listExtensionBusinessPanels && api.listExtensionDirectory ? <ExtensionBusinessDirectory api={api as ExtensionBusinessApi} onOpenSession={onOpenSession} renderDetail={renderDetail} /> : <LegacyExtensionPage api={api} onOpenSession={onOpenSession}/>}
+    <div className="dsm-page-heading"><div><h2>扩展</h2><p>选择插件或业务栏目，查看扩展数据与接入信息。</p></div><Button onClick={() => setRevision(value => value + 1)}>刷新扩展</Button></div>
+    {error || pageError ? <p role="alert" className="inline-error">{error ?? pageError}</p> : null}
+    {!panels && !error ? <LoadingState label="正在读取扩展栏目…"/> : null}
+    {panels && categories.length === 0 ? <Surface><EmptyState title="尚未接入扩展" description="插件注册数据适配器或信息页后，对应栏目会显示在这里。"/></Surface> : null}
+    <nav className="extension-category-nav" aria-label="扩展栏目">{categories.map(category => <button className="dsm-button" type="button" key={category.id} aria-pressed={active?.id === category.id} onClick={() => { setSelected(category.id); setVisited(previous => [...new Set([...previous, ...(active ? [active.id] : []), category.id])]); }}>{category.label}</button>)}</nav>
+    {categories.filter(category => category.id === active?.id || visited.includes(category.id)).map(category => <div key={category.id} hidden={category.id !== active?.id}>
+      <ExtensionCategoryView api={api} category={category} revision={revision} onRefresh={() => setRevision(value => value + 1)} onOpenSession={onOpenSession} renderDetail={renderDetail}/>
+    </div>)}
+  </div>;
+}
+
+function ExtensionCategoryView({api, category, revision, onRefresh, onOpenSession, renderDetail}: {
+  api: ExtensionPageApi; category: ExtensionCategory; revision: number; onRefresh(): void; onOpenSession(id: string): void;
+  renderDetail: Parameters<typeof ExtensionBusinessDirectory>[0]["renderDetail"];
+}) {
+  const [view, setView] = useState<"directory" | "plugins">("directory");
+  const adapterId = category.adapterId;
+  const scopedApi = useMemo(() => ({
+    ...api,
+    listExtensionPanels: async (signal?: AbortSignal) => (await api.listExtensionPanels(signal)).filter(panel => panel.scope.namespace === adapterId),
+    listExtensionBusinessPanels: async (filter: Parameters<ExtensionBusinessApi["listExtensionBusinessPanels"]>[0], signal?: AbortSignal) => (await api.listExtensionBusinessPanels!(filter, signal)).filter(panel => panel.adapterId === adapterId),
+    enableExtension: api.enableExtension?.bind(api),
+    listExtensionDirectory: api.listExtensionDirectory?.bind(api),
+    listExtensionObjects: api.listExtensionObjects?.bind(api),
+    getExtensionObject: api.getExtensionObject?.bind(api),
+    writeExtensionObject: api.writeExtensionObject?.bind(api),
+    getExtensionConflict: api.getExtensionConflict?.bind(api),
+    resolveExtensionConflict: api.resolveExtensionConflict?.bind(api),
+  }), [api, adapterId, revision]);
+  return <section className="page-stack extension-category" aria-label={category.label}>
+    <h3 className="extension-category-heading">{category.label}</h3>
+    <div className="extension-view-switch" role="group" aria-label={`${category.label}栏目视图`}>
+      <button className="dsm-button" type="button" aria-pressed={view === "directory"} onClick={() => setView("directory")}>扩展数据</button>
+      {api.listBusinessPages ? <button className="dsm-button" type="button" aria-pressed={view === "plugins"} onClick={() => setView("plugins")}>插件信息与接入</button> : null}
     </div>
-    {/* Keep mounted: switching views must not discard an in-flight action or its receipt. */}
-    <div hidden={view !== "plugins"}><BusinessPages api={api} renderDirectory={(owner, adapterId) => api.listExtensionBusinessPanels && api.listExtensionDirectory
-    ? <ExtensionBusinessDirectory api={{ ...api, listExtensionDirectory: api.listExtensionDirectory.bind(api), enableExtension: api.enableExtension.bind(api),
-      listExtensionBusinessPanels: async (_filter, signal) => (await api.listExtensionBusinessPanels!({ instanceId: owner.instanceId, profileId: owner.profileId }, signal)).filter(panel => panel.adapterId === adapterId && panel.scope.instanceId === owner.instanceId && panel.scope.profileId === owner.profileId),
-    }} onOpenSession={onOpenSession} renderDetail={renderDetail} /> : <p>当前引擎未提供该数据目录。</p>} />
-    </div></div>;
+    <div hidden={view !== "directory"}>
+      {!adapterId ? <p className="muted">此插件尚未注册扩展数据适配器。</p> : api.listExtensionBusinessPanels && api.listExtensionDirectory
+        ? <ExtensionBusinessDirectory api={scopedApi as ExtensionBusinessApi} hideAdapterNavigation onOpenSession={onOpenSession} renderDetail={renderDetail}/>
+        : <LegacyExtensionPage api={scopedApi as ExtensionPageApi} onOpenSession={onOpenSession}/>}
+    </div>
+    {/* Keep mounted across both category and view switches to retain action receipts. */}
+    <div hidden={view !== "plugins"}><BusinessPages api={api} registeredPages={category.pages} onRefresh={onRefresh} renderDirectory={(owner, directoryAdapterId) => api.listExtensionBusinessPanels && api.listExtensionDirectory
+      ? <ExtensionBusinessDirectory api={{ ...api, listExtensionDirectory: api.listExtensionDirectory.bind(api), enableExtension: api.enableExtension.bind(api),
+        listExtensionBusinessPanels: async (_filter, signal) => (await api.listExtensionBusinessPanels!({ instanceId: owner.instanceId, profileId: owner.profileId }, signal)).filter(panel => panel.adapterId === directoryAdapterId && panel.scope.instanceId === owner.instanceId && panel.scope.profileId === owner.profileId),
+      }} hideAdapterNavigation onOpenSession={onOpenSession} renderDetail={renderDetail}/> : <p>当前引擎未提供该数据目录。</p>}/></div>
+  </section>;
 }
 function LegacyExtensionPage({api,onOpenSession}:{api:ExtensionPageApi;onOpenSession:(id:string)=>void}) {
   const [panels,setPanels]=useState<ExtensionPanel[]>();

@@ -15,10 +15,11 @@ const kindLabels: Record<string, string> = { "native-context": "上下文使用�
 const scopeKey = (scope: {instanceId: string; profileId: string}) => JSON.stringify([scope.instanceId, scope.profileId]);
 const objectKey = (object: ExtensionDirectoryObject) => JSON.stringify([object.scope, object.objectId]);
 
-export function ExtensionBusinessDirectory({ api, onOpenSession, renderDetail }: {
+export function ExtensionBusinessDirectory({ api, onOpenSession, renderDetail, hideAdapterNavigation = false }: {
   api: ExtensionBusinessApi;
   onOpenSession(id: string): void;
   renderDetail(object: ExtensionDirectoryObject, member: ExtensionPanel, onChanged: () => void): ReactNode;
+  hideAdapterNavigation?: boolean;
 }) {
   const [panels, setPanels] = useState<ExtensionBusinessPanel[]>();
   const [scope, setScope] = useState("");
@@ -65,11 +66,11 @@ export function ExtensionBusinessDirectory({ api, onOpenSession, renderDetail }:
           <option value="active">当前条目</option><option value="deleted">已归档或删除</option><option value="all">全部条目</option>
         </select></label>
       </div>
-      <div className="extension-adapter-tabs" role="tablist" aria-label="扩展适配器">
+      {!hideAdapterNavigation ? <div className="extension-adapter-tabs" role="tablist" aria-label="扩展适配器">
         {visiblePanels.map(item => <button type="button" role="tab" key={item.adapterId} aria-selected={item.adapterId === panel?.adapterId} onClick={() => { setAdapter(item.adapterId); changeView(); }}>
           {item.adapterId === "thoughtdag" ? <GitBranch size={17}/> : <Link2 size={17}/>}<span>{item.label}</span><small>{item.objectCount}</small>
         </button>)}
-      </div>
+      </div> : null}
       {panel && base ? <section role="tabpanel" aria-label={panel.label}>
         <div className="extension-adapter-summary"><p>{statusLabels[panel.status]} · {panel.conflictCount} 个冲突</p>
           <details className="extension-member-details"><summary>接入状态</summary><ul>{panel.members.map(item => <li key={item.scope.namespace}><span>{item.label}<small>{statusLabels[item.status]} · {item.pluginVersion}</small></span>

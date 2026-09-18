@@ -3,19 +3,26 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { expect, it, vi } from "vitest";
 import { ExtensionPageView, type ExtensionPageApi } from "../src/extension-page.js";
-import type { BusinessPage, ExtensionPanel } from "@linmu/dsh-session-contracts";
+import type { BusinessPage, ExtensionBusinessPanel, ExtensionPanel } from "@linmu/dsh-session-contracts";
 
-it("keeps the directory visible by default and retains uncertain actions across view switches", async () => {
+it("nests data and plugin information under each adapter and retains uncertain actions across category switches", async () => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-  const page: BusinessPage = { owner: { instanceId: "copy", profileId: "web", namespace: "bridge", providerId: "binding", bootId: "550e8400-e29b-41d4-a716-446655440000" }, online: true, updatedAt: 1, expiresAt: 20000,
+  const page: BusinessPage = { owner: { instanceId: "copy", profileId: "web", namespace: "obsidian-bridge", providerId: "binding", bootId: "550e8400-e29b-41d4-a716-446655440000" }, online: true, updatedAt: 1, expiresAt: 20000,
     snapshot: { title: "Vault 接入", revision: 1, sections: [{ id: "actions", title: "绑定", kind: "actions", actions: [{ id: "bind", label: "确认绑定", expectedRevision: 4, fields: [] }] }] } };
   const enqueue = vi.fn().mockRejectedValue(new Error("response lost"));
-  const api = { listExtensionPanels: async () => [], listBusinessPages: async () => ({ pages: [page] }), enqueueBusinessPageAction: enqueue } as unknown as ExtensionPageApi;
+  const panel: ExtensionBusinessPanel = { adapterId: "obsidian-series", label: "Obsidian 系列", scope: { instanceId: "copy", profileId: "web" }, instanceLabel: "Copy", profileLabel: "Web", status: "ready", members: [], objectCount: 0, conflictCount: 0, bytes: 0 };
+  const directory = vi.fn(async () => ({ level: "workspaces", items: [], nextCursor: null }));
+  const api = { listExtensionPanels: async () => [], listExtensionBusinessPanels: async () => [panel, { ...panel, adapterId: "thoughtdag", label: "ThoughtDAG" }], listExtensionDirectory: directory, listBusinessPages: async () => ({ pages: [page] }), enqueueBusinessPageAction: enqueue } as unknown as ExtensionPageApi;
   const node = document.createElement("div"); document.body.append(node); const root = createRoot(node);
   const switchView = async (name: string) => act(async () => [...node.querySelectorAll("button")].find(button => button.textContent === name)!.click());
   try {
     await act(async () => root.render(<ExtensionPageView api={api} onOpenSession={() => undefined} />));
     const plugins = node.querySelector(".business-pages")!;
+    expect([...node.querySelectorAll('[aria-label="扩展栏目"] button')].map(button => button.textContent)).toEqual(["Obsidian 系列", "ThoughtDAG"]);
+    expect(node.querySelector('.extension-page > .extension-view-switch')).toBeNull();
+    expect(plugins.closest('section[aria-label="Obsidian 系列"]')).not.toBeNull();
+    expect(node.querySelectorAll('[aria-label="扩展适配器"]')).toHaveLength(0);
+    expect(directory.mock.calls).toHaveLength(1);
     expect(plugins.closest("[hidden]")).not.toBeNull();
     expect([...node.querySelectorAll("h2")].find(title => title.textContent === "扩展数据")!.closest("[hidden]")).toBeNull();
     await switchView("插件信息与接入");
@@ -23,7 +30,11 @@ it("keeps the directory visible by default and retains uncertain actions across 
     const form = plugins.querySelector("form")!;
     await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
     const original = enqueue.mock.calls[0]![0];
-    await switchView("数据目录"); await switchView("插件信息与接入");
+    await switchView("扩展数据"); await switchView("ThoughtDAG");
+    expect(plugins.closest("[hidden]")).not.toBeNull();
+    const graphCategory = node.querySelector('section[aria-label="ThoughtDAG"]')!;
+    expect(graphCategory.querySelector("form")).toBeNull();
+    await switchView("Obsidian 系列"); await switchView("插件信息与接入");
     expect(plugins.querySelector("form")).toBe(form);
     expect(plugins.textContent).toContain("同一操作编号");
     await act(async () => { form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })); });
@@ -42,7 +53,7 @@ it("loads only the selected body, renders graph preview and requires an explicit
   const conflict={id:"conflict",objectId:"canvas",createdAt:"now",expectedRevision:1,current:object,incoming:{scope,objectId:"canvas",writerId:panel.writerId,expectedRevision:1,deleted:false,content:{...object.content,title:"另一个编辑"}}};
   const write=vi.fn().mockResolvedValue({status:"conflict",conflict});
   const resolve=vi.fn().mockRejectedValue(new Error("对象再次发生变化，请重新检查冲突。"));
-  const api={listExtensionPanels:async()=>[panel],listExtensionObjects:async()=>({items:[object],nextCursor:null}),getExtensionObject:get,writeExtensionObject:write,resolveExtensionConflict:resolve} as unknown as ExtensionPageApi;
+  const api={listExtensionPanels:async()=>[panel],listExtensionObjects:async function(this: ExtensionPageApi) { expect(this).toBe(api); return {items:[object],nextCursor:null}; },getExtensionObject:get,writeExtensionObject:write,resolveExtensionConflict:resolve} as unknown as ExtensionPageApi;
   const node=document.createElement("div");document.body.append(node);const root=createRoot(node);
   const click=async(text:string)=>{const button=[...node.querySelectorAll("button")].find(b=>b.textContent===text);expect(button).toBeDefined();await act(async()=>button!.click());};
   try {

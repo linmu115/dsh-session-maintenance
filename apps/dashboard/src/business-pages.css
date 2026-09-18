@@ -1,6 +1,13 @@
 .extension-page > *, .business-pages > *, .business-page-body > * { min-width: 0; }
 .extension-view-switch { display: flex; flex-wrap: wrap; gap: 8px; }
 .extension-view-switch .dsm-button[aria-pressed="true"] { background: var(--dsm-selected); border-color: var(--dsm-selected-border); color: var(--dsm-selected-text); }
+.extension-category-nav { display: flex; flex-wrap: wrap; gap: 8px; padding-bottom: 16px; border-bottom: 1px solid var(--dsm-border); }
+.extension-category-nav .dsm-button { min-height: 44px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.extension-category-nav .dsm-button[aria-pressed="true"] { background: var(--dsm-selected); border-color: var(--dsm-selected-border); color: var(--dsm-selected-text); }
+.extension-category-heading { margin: 0; font-size: 18px; overflow-wrap: anywhere; }
+.extension-category .extension-view-switch { padding-bottom: 12px; border-bottom: 1px solid var(--dsm-border); }
+.extension-view-switch .dsm-button { min-height: 44px; }
+.extension-category-nav .dsm-button:focus-visible, .extension-view-switch .dsm-button:focus-visible { outline: 2px solid var(--dsm-link); outline-offset: 3px; }
 .business-pages { overflow-wrap: anywhere; }
 .business-pages .dsm-page-heading > div { min-width: 0; }
 .business-pages .dsm-page-heading > .dsm-button { flex-shrink: 0; }

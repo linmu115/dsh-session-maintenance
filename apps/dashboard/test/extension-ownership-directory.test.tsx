@@ -27,7 +27,7 @@ async function mount(api: ExtensionPageApi) {
 it("uses one panel per Adapter and lazily walks workspace → owning session → object", async () => {
   const {api, get, list} = fixture(); const view = await mount(api);
   try {
-    expect(view.element.querySelectorAll('[role="tab"]')).toHaveLength(2);
+    expect([...view.element.querySelectorAll('[aria-label="扩展栏目"] button')].map(button => button.textContent)).toEqual(["Obsidian 系列", "ThoughtDAG"]);
     expect(view.element.querySelectorAll('select[aria-label="实例与配置"] option')).toHaveLength(2);
     expect(list.mock.calls.map(call => call[0].level)).toEqual(["workspaces"]);
     expect(get).not.toHaveBeenCalled(); expect(view.element.textContent).not.toContain("接收会话 Y");

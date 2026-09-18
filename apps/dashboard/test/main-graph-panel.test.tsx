@@ -24,7 +24,7 @@ it("opens domain panels without requesting a global network or exposing unsafe g
   try {
     await act(async () => root.render(<DashboardApp api={api as any} />));
     await act(async () => { await import("../src/extension-page.js"); });
-    await click("扩展数据");
+    await click("扩展");
     await click("查看对象"); await click("打开");
     expect(node.textContent).toContain("主干 Y"); expect(node.textContent).toContain("同步停用对应引用");
     expect([...node.querySelectorAll("button")].map(b => b.textContent)).not.toContain("删除对象");
