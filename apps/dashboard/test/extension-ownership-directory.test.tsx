@@ -7,7 +7,7 @@ import { ExtensionPageView, type ExtensionPageApi } from "../src/extension-page.
 
 const scope = {instanceId: "copy", profileId: "web", namespace: "annotation-records"};
 const member = {scope, label: "引用", writerId: "dsh-annotation-core", pluginVersion: "0.3.12-rc2.10", configured: true, enabled: true, status: "ready" as const, objectCount: 1, conflictCount: 0, bytes: 20, capabilities: {read: true, write: true, delete: true, restore: true, panel: true, context: false as const}};
-const panel: ExtensionBusinessPanel = {adapterId: "obsidian-series", label: "Obsidian 系列", scope, instanceLabel: "运行副本", profileLabel: "web", status: "ready", members: [member, {...member, scope: {...scope, namespace: "stickers"}, label: "贴纸"}], objectCount: 2, conflictCount: 0, bytes: 20};
+const panel: ExtensionBusinessPanel = {adapterId: "obsidian-series", label: "Obsidian Bridge", scope, instanceLabel: "运行副本", profileLabel: "web", status: "ready", members: [member, {...member, scope: {...scope, namespace: "stickers"}, label: "贴纸"}], objectCount: 2, conflictCount: 0, bytes: 20};
 const object: ExtensionDirectoryObject = {type: "object", id: "reference", objectId: "reference", label: "来自 X 的引用", title: "来自 X 的引用", scope, writerId: member.writerId, revision: 3, schemaVersion: 1, deleted: false, updatedAt: "2026-09-15", bytes: 20, conflicts: 0, count: 0, ownerSessionId: "Y", kind: "reference-record", parentObjectId: null, readOnly: true, unavailableReason: null, ownershipReason: null, archived: false, archivedAt: null, missing: false};
 const group = (type: "workspace" | "session", id: string, label: string) => ({type, id, label, count: 1, archived: false, archivedAt: null, missing: false});
 
@@ -27,7 +27,7 @@ async function mount(api: ExtensionPageApi) {
 it("uses one panel per Adapter and lazily walks workspace → owning session → object", async () => {
   const {api, get, list} = fixture(); const view = await mount(api);
   try {
-    expect([...view.element.querySelectorAll('[aria-label="扩展栏目"] button')].map(button => button.textContent)).toEqual(["Obsidian 系列", "ThoughtDAG"]);
+    expect([...view.element.querySelectorAll('[aria-label="扩展栏目"] button')].map(button => button.textContent)).toEqual(["Obsidian Bridge", "ThoughtDAG"]);
     expect(view.element.querySelectorAll('select[aria-label="实例与配置"] option')).toHaveLength(2);
     expect(list.mock.calls.map(call => call[0].level)).toEqual(["workspaces"]);
     expect(get).not.toHaveBeenCalled(); expect(view.element.textContent).not.toContain("接收会话 Y");
