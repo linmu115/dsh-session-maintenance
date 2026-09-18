@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DshGatewayTokenService } from "@linmu/dsh-host-gateway";
+import { Context } from "@deepseek-ai/cordis";
 
 import { assertRc2RuntimeSurface, createCoreGatewayHandler } from "../src/core-gateway.js";
 import { apply } from "../src/index.js";
@@ -45,21 +46,19 @@ describe("DSH rc.2 Core host entry", () => {
   it("unregisters both host endpoints when Cordis unloads the plugin", async () => {
     const unregistrations = [vi.fn(), vi.fn()];
     const registrations: string[] = [];
-    let dispose: (() => void) | undefined;
-    const ctx = {
-      provide: vi.fn(),
-      webServer: {
-        register: vi.fn((input: { readonly path: string }) => {
-          registrations.push(input.path);
-          return unregistrations[registrations.length - 1];
-        }),
-      },
-      effect: (callback: () => () => void) => { dispose = callback(); },
-    };
-    await apply(ctx as never, { connectionId: "primary", dshInstanceId: "dsh-web", profileId: "web" });
-    expect(registrations).toEqual(["/dsh-session-maintenance/api", "/dsh-session-maintenance/core"]);
-    await dispose?.();
-    expect(unregistrations[0]).toHaveBeenCalledOnce();
-    expect(unregistrations[1]).toHaveBeenCalledOnce();
+    const ctx = new Context();
+    ctx.provide("webServer", {
+      register: vi.fn((input: { readonly path: string }) => {
+        registrations.push(input.path);
+        return unregistrations[registrations.length - 1];
+      }),
+    } as never);
+    try {
+      const host = await ctx.plugin({ inject: ["webServer"], apply: child => apply(child as never, { connectionId: "primary", dshInstanceId: "dsh-web", profileId: "web" }) });
+      expect(registrations).toEqual(["/dsh-session-maintenance/api", "/dsh-session-maintenance/core"]);
+      await host.dispose();
+      expect(unregistrations[0]).toHaveBeenCalledOnce();
+      expect(unregistrations[1]).toHaveBeenCalledOnce();
+    } finally { await ctx.fiber.dispose(); }
   });
 });

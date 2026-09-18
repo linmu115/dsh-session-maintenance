@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { MaintenanceBusinessPages } from "../src/business-pages.js";
+import { MaintenanceBusinessPages, registerMaintenanceBusinessPages } from "../src/business-pages.js";
+import { Context } from "@deepseek-ai/cordis";
 import type { BusinessPageOwner, BusinessPageSnapshot } from "@linmu/dsh-session-contracts";
 afterEach(() => vi.useRealTimers());
 it("keeps tokens host-only, retries a lost receipt without executing the provider twice, and unregisters only its boot", async () => {
@@ -26,4 +27,33 @@ it("keeps tokens host-only, retries a lost receipt without executing the provide
   expect(() => host.register({ namespace: "bridge", providerId: "binding", snapshot: async () => snapshot, handleAction: handler })).toThrow("already registered");
   dispose(); await host.dispose(); expect(paths).toContain("unregister");
   const count = paths.length; await vi.advanceTimersByTimeAsync(30_000); expect(paths.length).toBe(count);
+});
+it("reacts to late service load and unload in real Cordis without requiring SM, Bridge or a live Engine", async () => {
+  vi.useFakeTimers();
+  const ctx = new Context();
+  const connection = { current: vi.fn(async () => { throw new Error("synthetic offline Engine"); }) };
+  const attached = vi.fn();
+  try {
+    const consumer = await ctx.plugin(child => {
+      child.inject(["maintenanceBusinessPages"], scoped => {
+        attached(scoped.maintenanceBusinessPages.identity);
+        scoped.effect(() => scoped.maintenanceBusinessPages.register({ namespace: "fixture", providerId: "optional", snapshot: async () => ({ title: "Fixture", revision: 1, sections: [] }), handleAction: async () => ({ message: "unused" }) }));
+      });
+    });
+    await vi.advanceTimersByTimeAsync(1);
+    expect(attached).not.toHaveBeenCalled(); expect(connection.current).not.toHaveBeenCalled();
+    const host = await ctx.plugin(child => registerMaintenanceBusinessPages(child, connection, { instanceId: "fixture", profileId: "web" }));
+    await vi.advanceTimersByTimeAsync(1);
+    expect(attached).toHaveBeenCalledTimes(1); expect(attached).toHaveBeenLastCalledWith({ instanceId: "fixture", profileId: "web" });
+    expect(connection.current).toHaveBeenCalledTimes(1);
+    await host.dispose();
+    const attempts = connection.current.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(connection.current).toHaveBeenCalledTimes(attempts);
+    await consumer.dispose();
+    const standalone = await ctx.plugin(child => registerMaintenanceBusinessPages(child, connection, { instanceId: "fixture", profileId: "web" }));
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(connection.current).toHaveBeenCalledTimes(attempts);
+    await standalone.dispose();
+  } finally { await ctx.fiber.dispose(); }
 });
