@@ -8,7 +8,7 @@ relations:
 - relation: provides
   to:
     record_id: IF-extension-pages
-  reason: 计划中的公开扩展贡献入口
+  reason: 当前公开贡献入口，最终组合验证见 VER-scope-business-pages
 - relation: consumes
   to:
     record_id: IF-runtime
@@ -42,6 +42,8 @@ sources:
 
 [Provider](../../../../../apps/engine/src/external-lifecycle-provider.ts)、[运行接入](../../../../../plugins/dsh-session-maintenance/src/projection-runtime.ts)、[RC2 persistence](../../../../../plugins/dsh-session-maintenance/src/rc2-persistence.ts)、[插件注册](../../../../../plugins/dsh-session-maintenance/src/index.ts)为实现入口。合同 [[IF-runtime]]、[[IF-extension]]、[[IF-graph]]、[[IF-native-context]]。
 
-## 可选业务贡献注册（待实现）
+## 可选业务贡献注册（已接入，最终验证进行中）
 
 [[IF-extension-pages]] 要求宿主按能力挂载各插件自己的贡献并汇总接入名单，支持晚加载、禁用和恢复。Maintenance 不硬依赖 Obsidian／Core 的运行服务；缺席不阻断会话维护。实例范围与身份由受信宿主传递，不以浏览器自报值替代。
+
+当前运行范围服务见 [[MOD-instance-workspace]]；公开信息页与贡献者生命周期见 [[MOD-business-pages]]。实现和最终验证边界分别见 [[IMP-scope-business-pages]]、[[VER-scope-business-pages]]。

@@ -18,8 +18,8 @@
 | 主干、引用与释放怎样协作 | [主干与固定引用](records/modules/engine/graph/contract.md)、[原生上下文释放](records/modules/engine/native-context/contract.md) |
 | GPT 插件接入与本次误解 | [[INT-gpt-format]]、[[HIST-gpt-extension-boundary]] |
 | 学习会话双端交接（实验，待实现） | [[REQ-learning-roundtrip]]、[[HIST-learning-roundtrip]] |
-| 业务插件自主信息页、Vault 绑定与实例同步范围（待实现） | [[REQ-extension-pages]]、[[IF-extension-pages]]、[[IF-instance-workspace-scope]]；历程 [[HIST-extension-pages-vault-binding]] |
-| 跨项目完整确认稿 | [DSH–Obsidian 与 Maintenance 完整需求](../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-dsh-obsidian-confirmed-requirements.md)；先桥重构、再绑定路由、后新增业务 Adapter；保留现有维护接入，尚未开工。 |
+| 业务插件信息页与实例分类工作区范围（本地实现与验证完成） | [[REQ-extension-pages]]、[[IF-extension-pages]]、[[IF-instance-workspace-scope]]；历程 [[HIST-extension-pages-vault-binding]] |
+| 跨项目完整确认稿 | [DSH–Obsidian 与 Maintenance 完整需求](../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-dsh-obsidian-confirmed-requirements.md)；先桥重构、再绑定路由、后新增业务 Adapter；保留现有维护接入；本地组合已验收，真实安装与窗口验收尚未进行。 |
 | 旧设计哪些有效 | [规格继承](records/decision/authority-history.md) |
 | 这次验证了什么 | [本次地图验证](records/verification/VER-adoption.md)；历史产品证据 [原生上下文历史验证](../changes/2026-09-15-native-context-management.md#%E9%AA%8C%E8%AF%81%E5%AF%B9%E5%BA%94)、[目录与阅读器历史验证](../reports/2026-09-15-extension-ownership-reader-release.md#%E9%AA%8C%E8%AF%81%E4%B8%8E%E9%83%A8%E7%BD%B2) |
 
@@ -30,3 +30,7 @@
 重启重复会话、归档还原与旧派生标题修复：[[IMP-recovery-archive]]；开发历程与来源：[[HIST-recovery-archive-title]]。
 
 原需求、合同及交付报告保留原位置和编号。提供方技术合同只维护一份，消费者说明具体调用能力；记录和节点绑定随相关事实更新。diagrams 是原生图源，views 是带指纹的按需快照。普通维护不新增更新记录，不要求每轮读全图、重测产品或做成本基准。
+
+## 当前实现与验收边界
+
+[[MOD-instance-workspace]] 提供分类工作区策略、run 快照及可选 host 有效范围；配置保存后下次启动生效，当前 run 不换范围。[[MOD-business-pages]] 提供公开贡献注册、结构化栏目与持久动作回执。当前代码与版本见 [[IMP-scope-business-pages]]，分组测试及已闭合的响应丢失重试问题见 [[VER-scope-business-pages]]。旧设计与历史检查保留原时点；本轮完成本地实现、构建与合成验收，未部署真实实例。

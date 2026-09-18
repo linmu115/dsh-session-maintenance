@@ -139,7 +139,7 @@ bindings:
   source_id: extension-pages-design
   heading: 已确认需求
   status: current
-  progress: planned
+  progress: in_progress
   summary: 插件贡献页面栏目，目录可复用；可选 Bridge 集成与实例同步范围保持独立归属。
   relations:
   - relation: derived_from
@@ -147,22 +147,25 @@ bindings:
       project_id: dd46311f-d98d-49ff-ae13-fef0a8a6f9c3
       record_id: REQ-integration-complete
     reason: 完整需求统一阅读入口；本项目仍维护提供方合同
+  gap: 当前实现已落地，最终组合验收待完成；原绑定正文保留设计时点，当前实现和验证见新增记录。
 - id: IF-extension-pages
   kind: interface
   title: 公开业务页面与栏目注册合同草案
   source_id: extension-pages-design
   heading: 公开扩展注册合同草案
   status: proposed
-  progress: planned
+  progress: in_progress
   summary: 插件只注册自己的贡献，Maintenance 汇总名单；数据与页面能力可独立提供。
+  gap: 当前实现已落地，最终组合验收待完成；原绑定正文保留设计时点，当前实现和验证见新增记录。
 - id: IF-instance-workspace-scope
   kind: interface
   title: 实例有效工作区与会话范围合同草案
   source_id: extension-pages-design
   heading: 实例有效范围合同草案
   status: proposed
-  progress: planned
+  progress: in_progress
   summary: 所有绑定 Vault 复用实例范围，未同步保留旧链接，提交时再次校验。
+  gap: 当前实现已落地，最终组合验收待完成；原绑定正文保留设计时点，当前实现和验证见新增记录。
 - id: VER-extension-pages-design
   kind: verification
   title: 公开扩展页设计的文档检查
@@ -225,6 +228,14 @@ archify:
       - IF-native-context
       thoughtdag:
       - INT-thoughtdag
+      instance-scope:
+      - MOD-instance-workspace
+      - IF-instance-workspace-scope
+      - VER-scope-business-pages
+      business-pages:
+      - MOD-business-pages
+      - IF-extension-pages
+      - VER-scope-business-pages
   workflow:
     source: diagrams/workflow.json
     node_records:
@@ -237,6 +248,7 @@ archify:
       prepare:
       - MOD-runtime
       - OBJ-runtime
+      - MOD-instance-workspace
       materialize:
       - MOD-harness-dsh
       - IF-harness-adapter
@@ -252,6 +264,7 @@ archify:
       receipt:
       - MOD-runtime
       - OBJ-version
+      - IMP-scope-business-pages
       read:
       - MOD-reader
       - MOD-dashboard

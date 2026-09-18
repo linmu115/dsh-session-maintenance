@@ -8,7 +8,7 @@ relations:
 - relation: consumes
   to:
     record_id: IF-extension-pages
-  reason: 计划装载业务页与栏目
+  reason: 已装载结构化业务页，重试交互修复验收进行中
 - relation: consumes
   to:
     record_id: IF-extension
@@ -37,6 +37,8 @@ HTTP 使用回环绑定、Bearer 或 UI cookie/CSRF/Origin 校验，浏览器不
 
 源码新增独立栏目，管理显式确认的双端绑定、同步、回收和冲突提示。入口与首版重启约束见 [[IMP-learning-roundtrip]]，真实部署状态见 [[VER-learning-roundtrip]]。
 
-## 业务扩展信息页（待实现）
+## 业务扩展信息页（已接入，最终验证进行中）
 
 [[REQ-extension-pages]] 要求公开插件栏目注册。Dashboard 按 [[IF-extension-pages]] 装载页面，提供标准目录与局部失败状态；绑定、状态和同步栏目由业务扩展贡献。绑定目录属于实例级信息，不强塞入所属会话树；实例可用范围统一消费 [[IF-instance-workspace-scope]]。
+
+当前运行范围服务见 [[MOD-instance-workspace]]；公开信息页与贡献者生命周期见 [[MOD-business-pages]]。实现和最终验证边界分别见 [[IMP-scope-business-pages]]、[[VER-scope-business-pages]]。
