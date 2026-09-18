@@ -50,6 +50,14 @@ function portableInputs(metafile) {
     .sort();
 }
 
+// Even --skip-build must prove the actual release version can attest itself.
+// This exercises identity, capability and exact-byte checks, not just enum text.
+const attestationCheck = spawnSync(process.execPath, [join(root, "node_modules/vitest/vitest.mjs"), "run", "apps/engine/test/v3-runtime-attestation.test.ts"], {
+  cwd: root, stdio: "inherit", shell: false, windowsHide: true,
+});
+if (attestationCheck.error) throw attestationCheck.error;
+if (attestationCheck.status !== 0) throw new Error("Release runtime attestation verification failed; no archives written");
+
 await rm(out, { recursive: true, force: true });
 await mkdir(out, { recursive: true });
 if (!skipBuild) runPnpm("build");
