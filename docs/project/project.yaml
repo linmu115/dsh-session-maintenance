@@ -139,7 +139,7 @@ bindings:
   source_id: extension-pages-design
   heading: 已确认需求
   status: current
-  progress: in_progress
+  progress: implemented
   summary: 插件贡献页面栏目，目录可复用；可选 Bridge 集成与实例同步范围保持独立归属。
   relations:
   - relation: derived_from
@@ -147,7 +147,7 @@ bindings:
       project_id: dd46311f-d98d-49ff-ae13-fef0a8a6f9c3
       record_id: REQ-integration-complete
     reason: 完整需求统一阅读入口；本项目仍维护提供方合同
-  gap: 当前实现已落地，最终组合验收待完成；原绑定正文保留设计时点，当前实现和验证见新增记录。
+  gap: 原绑定保留设计来源；实现已落地，Dashboard .1.5已限定真实UI验收，Engine .39独立安装未激活。见IMP-sync-ui-release及VER-sync-ui-release。
 - id: IF-extension-pages
   kind: interface
   title: 公开业务页面与栏目注册合同草案
@@ -156,7 +156,7 @@ bindings:
   status: proposed
   progress: in_progress
   summary: 插件只注册自己的贡献，Maintenance 汇总名单；数据与页面能力可独立提供。
-  gap: 当前实现已落地，最终组合验收待完成；原绑定正文保留设计时点，当前实现和验证见新增记录。
+  gap: 原绑定保留设计来源；实现已落地，Dashboard .1.5已限定真实UI验收，Engine .39独立安装未激活。见IMP-sync-ui-release及VER-sync-ui-release。
 - id: IF-instance-workspace-scope
   kind: interface
   title: 实例有效工作区与会话范围合同草案
@@ -165,14 +165,14 @@ bindings:
   status: proposed
   progress: in_progress
   summary: 所有绑定 Vault 复用实例范围，未同步保留旧链接，提交时再次校验。
-  gap: 当前实现已落地，最终组合验收待完成；原绑定正文保留设计时点，当前实现和验证见新增记录。
+  gap: 原绑定保留设计来源；实现已落地，Dashboard .1.5已限定真实UI验收，Engine .39独立安装未激活。见IMP-sync-ui-release及VER-sync-ui-release。
 - id: VER-extension-pages-design
   kind: verification
   title: 公开扩展页设计的文档检查
   source_id: extension-pages-design-report
   heading: 验证结果
   status: current
-  summary: 仅有文档与地图检查；实际同步范围接入和产品组合尚未验收。
+  summary: 保留设计时点的文档检查；后续真实UI与独立安装证据见VER-sync-ui-release。
 archify:
   architecture:
     source: diagrams/architecture.json
@@ -194,6 +194,8 @@ archify:
       - MOD-runtime
       - IF-runtime
       - OBJ-runtime
+      - IMP-sync-ui-release
+      - VER-sync-ui-release
       continuation:
       - MOD-continuation
       reader:
@@ -205,6 +207,8 @@ archify:
       - REQ-extension-pages
       - IF-extension-pages
       - MOD-dashboard
+      - IMP-sync-ui-release
+      - VER-sync-ui-release
       business:
       - INT-annotation
       - INT-stickers
@@ -236,6 +240,21 @@ archify:
       - MOD-business-pages
       - IF-extension-pages
       - VER-scope-business-pages
+      sync-maintenance:
+      - REQ-sync-extension-navigation
+      - MOD-instance-workspace
+      - IMP-sync-ui-release
+      sync-codex:
+      - REQ-sync-extension-navigation
+      - MOD-harness-codex
+      plugin-data:
+      - MOD-dashboard
+      - IF-extension
+      - REQ-sync-extension-navigation
+      plugin-info:
+      - MOD-dashboard
+      - MOD-business-pages
+      - REQ-sync-extension-navigation
   workflow:
     source: diagrams/workflow.json
     node_records:
@@ -271,6 +290,7 @@ archify:
       drain:
       - MOD-host
       - IF-runtime
+      - VER-sync-ui-release
       close:
       - MOD-runtime
       recover:

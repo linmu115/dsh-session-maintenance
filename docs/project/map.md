@@ -19,7 +19,8 @@
 | GPT 插件接入与本次误解 | [[INT-gpt-format]]、[[HIST-gpt-extension-boundary]] |
 | 学习会话双端交接（实验，待实现） | [[REQ-learning-roundtrip]]、[[HIST-learning-roundtrip]] |
 | 业务插件信息页与实例分类工作区范围（本地实现与验证完成） | [[REQ-extension-pages]]、[[IF-extension-pages]]、[[IF-instance-workspace-scope]]；历程 [[HIST-extension-pages-vault-binding]] |
-| 跨项目完整确认稿 | [DSH–Obsidian 与 Maintenance 完整需求](../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-dsh-obsidian-confirmed-requirements.md)；先桥重构、再绑定路由、后新增业务 Adapter；保留现有维护接入；本地组合已验收，真实安装与窗口验收尚未进行。 |
+| 跨项目完整确认稿 | [DSH–Obsidian 与 Maintenance 完整需求](../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-dsh-obsidian-confirmed-requirements.md)；外部提供方维护自己的合同；SM本轮真实状态见 [[IMP-sync-ui-release]] 与 [[VER-sync-ui-release]]。 |
+| 同步与扩展层级、安装后哪些生效 | [[REQ-sync-extension-navigation]]、[[IMP-sync-ui-release]]、[[VER-sync-ui-release]]；Dashboard .1.5真实UI已检查，Engine .39独立安装未激活。 |
 | 旧设计哪些有效 | [规格继承](records/decision/authority-history.md) |
 | 这次验证了什么 | [本次地图验证](records/verification/VER-adoption.md)；历史产品证据 [原生上下文历史验证](../changes/2026-09-15-native-context-management.md#%E9%AA%8C%E8%AF%81%E5%AF%B9%E5%BA%94)、[目录与阅读器历史验证](../reports/2026-09-15-extension-ownership-reader-release.md#%E9%AA%8C%E8%AF%81%E4%B8%8E%E9%83%A8%E7%BD%B2) |
 
@@ -33,4 +34,8 @@
 
 ## 当前实现与验收边界
 
-[[MOD-instance-workspace]] 提供分类工作区策略、run 快照及可选 host 有效范围；配置保存后下次启动生效，当前 run 不换范围。[[MOD-business-pages]] 提供公开贡献注册、结构化栏目与持久动作回执。当前代码与版本见 [[IMP-scope-business-pages]]，分组测试及已闭合的响应丢失重试问题见 [[VER-scope-business-pages]]。旧设计与历史检查保留原时点；本轮完成本地实现、构建与合成验收，未部署真实实例。
+[[MOD-instance-workspace]] 提供Maintenance自身分类工作区策略、每实例共享范围、run快照及可选host有效范围；配置保存后下次启动生效，当前run不换范围。Codex项目映射在同步的另一同级子栏目。[[MOD-business-pages]] 提供公开贡献注册、结构化栏目与持久动作回执，Dashboard按“扩展→业务插件→插件内数据/信息页”组织；SM是外部业务的可选维护能力。
+
+Dashboard .1.5已静态部署并实际检查双子栏目、间距和范围折叠，未保存用户名单。Engine .39修复activeScopes混入历史run，已独立安装但当前仍运行.38，须正常切换才能生效。当前Launcher无正式外部Stop/Restart入口，不强杀、不用直接shutdown冒充正常停止。最新实现与边界见 [[IMP-sync-ui-release]]、[[VER-sync-ui-release]]；此前合成分组证据仍见 [[VER-scope-business-pages]]，同一任务来源与用户纠偏见 [[HIST-extension-pages-vault-binding]]。
+
+最新启动截点：用户正常停DSH后完成Bridge/Sticker文件安装，但08:32 UTC正式Start在prepare阶段exit1/invalid-json，尚未恢复；DSH stopped、Engine .38 ready、.39未激活。安装成功、早先UI通过与本次启动失败分别保留，见 [[VER-sync-ui-release]]。

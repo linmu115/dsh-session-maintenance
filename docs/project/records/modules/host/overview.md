@@ -47,3 +47,9 @@ sources:
 [[IF-extension-pages]] 要求宿主按能力挂载各插件自己的贡献并汇总接入名单，支持晚加载、禁用和恢复。Maintenance 不硬依赖 Obsidian／Core 的运行服务；缺席不阻断会话维护。实例范围与身份由受信宿主传递，不以浏览器自报值替代。
 
 当前运行范围服务见 [[MOD-instance-workspace]]；公开信息页与贡献者生命周期见 [[MOD-business-pages]]。实现和最终验证边界分别见 [[IMP-scope-business-pages]]、[[VER-scope-business-pages]]。
+
+## 本轮启动与停止限制
+
+双击/命令启动需发现当前配置、检查已有Engine并复用；状态核验通过稳定instance/profile/实际home及本次boot/run，不固定端口。2026-09-18工作区包装命令只有Status/Start已核验；当前Launcher没有正式外部停止入口，Stop/Restart必须在任何退出前拒绝。Tauri内部IPC方法不是CLI，直接runtime shutdown会缺少beforeStop停止意图并走恢复路径，不能当正常停止。必须正常flush/drain/close并核对run=closed、handle=finalized、finalReceipt=closed后才能重启。
+
+Engine .39已独立安装，但.38仍运行，未热替换Engine路径、lifecycle或attestation。正常切换时要共同更新Launcher入口、Engine版本/path/hash pin与双击启动发行目录；不能把静态Dashboard .1.5的成功误报为Engine .39已激活。安装与切换边界见 [[IMP-sync-ui-release]]、[[VER-sync-ui-release]]。

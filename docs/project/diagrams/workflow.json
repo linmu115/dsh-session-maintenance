@@ -134,7 +134,7 @@
       "col": 4,
       "type": "backend",
       "label": "停止时排空写入",
-      "sublabel": "drain / detach",
+      "sublabel": "正式外部停止入口尚缺",
       "width": 190
     },
     {
@@ -143,7 +143,7 @@
       "col": 5,
       "type": "backend",
       "label": "核对并关闭运行",
-      "sublabel": "保留可复用原生空间",
+      "sublabel": "核验closed回执再启动",
       "width": 190
     },
     {
@@ -210,7 +210,7 @@
       "id": "receipt-drain",
       "from": "receipt",
       "to": "drain",
-      "label": "停止触发",
+      "label": "须Launcher正常停止意图",
       "role": "branch"
     },
     {
@@ -283,6 +283,15 @@
         "用户保存分类工作区策略只影响下次启动，不改当前运行快照。",
         "提交再次核验当前成员关系与删除状态；拒绝时保留未完成操作。",
         "公共信息页是独立协作接口，不串入会话追加的主流程。"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "本轮可用性，不是自动重启承诺",
+      "items": [
+        "Status/Start已有核验；Stop/Restart在正式Launcher协议接通前拒绝。",
+        "直接runtime shutdown缺beforeStop意图，会进入恢复；不能替代正常flush/drain/close。",
+        "同步策略保存只影响下次实例启动；.39独立安装也不等于当前Engine已切换。"
       ]
     }
   ]

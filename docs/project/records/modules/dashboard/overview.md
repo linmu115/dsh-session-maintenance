@@ -8,7 +8,7 @@ relations:
 - relation: consumes
   to:
     record_id: IF-extension-pages
-  reason: 已装载结构化业务页，重试交互修复验收进行中
+  reason: 按插件归类的结构化信息页与动作回执；与同插件扩展数据并列
 - relation: consumes
   to:
     record_id: IF-extension
@@ -37,8 +37,12 @@ HTTP 使用回环绑定、Bearer 或 UI cookie/CSRF/Origin 校验，浏览器不
 
 源码新增独立栏目，管理显式确认的双端绑定、同步、回收和冲突提示。入口与首版重启约束见 [[IMP-learning-roundtrip]]，真实部署状态见 [[VER-learning-roundtrip]]。
 
-## 业务扩展信息页（已接入，最终验证进行中）
+## 业务扩展信息页（已接入，限定真实UI已验收）
 
 [[REQ-extension-pages]] 要求公开插件栏目注册。Dashboard 按 [[IF-extension-pages]] 装载页面，提供标准目录与局部失败状态；绑定、状态和同步栏目由业务扩展贡献。绑定目录属于实例级信息，不强塞入所属会话树；实例可用范围统一消费 [[IF-instance-workspace-scope]]。
 
 当前运行范围服务见 [[MOD-instance-workspace]]；公开信息页与贡献者生命周期见 [[MOD-business-pages]]。实现和最终验证边界分别见 [[IMP-scope-business-pages]]、[[VER-scope-business-pages]]。
+
+2026-09-18 已实现“扩展 → 每个已登记业务插件/Adapter → 插件内页面”。Obsidian 系列内“扩展数据”和“插件信息与接入”是同级视图，不再让全局插件信息与所有扩展数据并列。分类主要消费注册元数据，旧 obsidian-bridge 到 obsidian-series 的兼容关联独立明示；信息页和数据操作各保留自身 owner/权限，切换保留尚未确认的 operationId。
+
+同步使用同级的“Maintenance 工作区同步”和“Codex 项目同步”子栏目，各管自己的名单；访问后保持挂载，来回切换保留草稿和搜索，不自动保存。Maintenance 选择逻辑分类工作区及未分组会话，不按 DSH 的文件夹项目解释。实现、限定浏览器验收与 .39待激活边界见 [[REQ-sync-extension-navigation]]、[[IMP-sync-ui-release]]、[[VER-sync-ui-release]]。

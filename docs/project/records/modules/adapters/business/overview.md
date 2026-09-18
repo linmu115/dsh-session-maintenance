@@ -8,7 +8,7 @@ relations:
 - relation: provides
   to:
     record_id: IF-extension-pages
-  reason: 计划中的公开扩展贡献入口
+  reason: 已实现的公开扩展贡献入口，业务数据与信息页能力独立
 - relation: implements
   to:
     record_id: REQ-adapter-families
@@ -22,6 +22,8 @@ sources:
 ExtensionDataAdapter 声明 namespace、支持插件/schema 版本、校验、摘要和能力，必要时提供 ownership 与预览；数据由 [扩展存储、冲突与目录](../../engine/extensions/overview.md) 保存。
 
 可信 Engine 代码通过 register 或 CompositionOptions.extensionAdapters 注册，disposer 只卸载能力。实例/Profile 的 extensionPlugins 是本实例参与者的完整声明，和代码注册表分开；不接受浏览器上传执行代码。
+
+公开业务贡献由各插件注册自身能力，Maintenance汇总完整名单，单一插件不能以自己的名单撤销其他插件。数据Adapter与结构化信息页是两项独立能力：信息页动作仍交业务提供方执行，不能借页面注册取得对象写权限。Maintenance对于Core/Bridge/贴纸的运行时引用与笔记通道是可选维护能力，缺席时报告该维护服务不可用，不阻断已独立具备的业务通道。业务Adapter保存/恢复历史类型，不接管Core实时引用事务；更完整职责由外部提供方地图维护。
 
 合同 [对象合同](contract.md)；已知目录 [业务已知接入](connected.md)；具体接入 [Core 的固定引用、镜像与原生接入](integrations/annotation.md)、[贴纸：对象、会话与引用接入](integrations/stickers.md)、[ThoughtDAG：主干领域与上下文视图](integrations/thoughtdag.md)、[Obsidian：链接与引用分别接入](integrations/obsidian.md)。
 

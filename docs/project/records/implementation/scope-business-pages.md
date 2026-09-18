@@ -11,7 +11,7 @@ relations:
 
 # 工作区策略、运行快照与公共信息页当前实现
 
-策略 foundation eb7e9fa、配置 UI 0c8efca、公共信息页 b32c594、Dashboard/host 验收 7dc2067 与实例运行接线 d3695f6 已分别提交。候选 Engine 为 0.1.33-rc2.38，维护插件为 0.2.26-rc2.29。
+策略 foundation eb7e9fa、配置 UI 0c8efca、公共信息页 b32c594、Dashboard/host 验收 7dc2067 与实例运行接线 d3695f6 已分别提交。该阶段候选Engine为0.1.33-rc2.38、维护插件0.2.26-rc2.29，随后完成真实安装。当前Dashboard .1.5静态UI已部署并限定验收，Engine .39独立安装未激活、当前仍运行.38；最新状态见 [[IMP-sync-ui-release]]、[[VER-sync-ui-release]]，不把旧候选状态当成当前未安装。
 
 [[MOD-instance-workspace]] 已提供 Maintenance 分类工作区策略、运行快照、投影过滤/缓存和提交复核，以及 Bridge 可选消费的身份/有效范围/会话 availability。用户已确认保存后下次启动生效，旧 run 按自身快照完成写入。
 

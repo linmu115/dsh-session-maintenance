@@ -5,15 +5,15 @@ title: 公开业务栏目与实例同步范围的确认
 date: 2026-09-18
 status: current
 modules: [业务扩展, Dashboard, 宿主接入]
-outcome: 已按授权实施桥整合、双侧绑定与路由、实例分类范围及公共信息页；本地合成验收与真实部署分别记录。
+outcome: 同步及扩展层级已修复并完成限定真实UI验收；Engine .39已独立安装未激活，正式停止协议仍阻塞完整重启。
 summary: 用户将统一目录扩展为插件自主信息页，确认共享实例同步范围及未同步链接保留。
 applicability: Maintenance 公开业务扩展和 Obsidian 可选接入，沿用当前数据与写入归属。
-coverage_note: 当前任务公开来源第 9–2203 行，共 536 事件；包含开工、分类工作区与下次启动生效的确认，以及实施和分组验收。截点有一条工具调用尚未配对；旧索引保留，不收录隐藏推理。
+coverage_note: Codex于2026-09-18扩展同一任务公开来源至第9–5944行，共1559事件；涵盖需求、施工、部署、UI纠偏及独立安装。截点一条工具调用未配对；保留旧索引，不收录隐藏推理或复制消息正文。
 history:
-  path: history/20260918-binding-scope-implementation
-  sha256: 7d4f56b79277d188358d1564805861b64df0f9faf856a90ebd47e3649e5ba338
-  capture_sha256: 1906245268ee125af34796362ab9d17cee02b7ba44e6d9fbad0b6cbc407987bf
-related_records: [REQ-extension-pages, IF-extension-pages, IF-instance-workspace-scope, VER-extension-pages-design]
+  path: history/20260918-binding-scope-ui-installed
+  sha256: 11b23d87d51c00137a498a8c95e7a48d4667bf677424ba3388b7e135b0e6b344
+  capture_sha256: 29729cd575fd4d8684472efd9b14b8ba467c4753099cf6160621c2ce6d2908a2
+related_records: [REQ-extension-pages, REQ-sync-extension-navigation, IF-extension-pages, IF-instance-workspace-scope, VER-extension-pages-design, IMP-sync-ui-release, VER-sync-ui-release]
 ---
 
 # 公开业务栏目与实例同步范围的确认
@@ -85,3 +85,29 @@ related_records: [REQ-extension-pages, IF-extension-pages, IF-instance-workspace
 [查看依据：分类工作区语义](history-event:EVT-853cc1946e5b3ca9e0a7)
 
 实施采用持久绑定修订、动态发现与端口重连、每运行范围快照、投影筛选及事务内回写复核。公开业务页使用声明式栏目与有界动作回执，绑定写入仍交给 Companion。实际改动和后续验证的提交、测试数与限制见 implementation / verification 记录；本历程截点不代表后续工具工作已停止。
+
+## 真实页面反馈与栏目层级纠正
+
+用户指出原实现把“插件信息”错误放到了全局扩展数据旁边，明确要求“扩展→每个插件→Obsidian内扩展数据/插件信息与接入并列”。实现依据注册元数据归类，保留旧Bridge兼容关联，切换保留未完成操作身份。Dashboard .1.4静态更新后，主任务实际检查了Obsidian与ThoughtDAG隔离、切回状态、1088px无横向溢出及无console error；这只覆盖对应导航和展示，不代表引用业务往返全部通过。
+
+[查看依据：插件内并列而非全局并列](history-event:EVT-94d26715699378ff3594)
+
+[查看依据：扩展层级实际验收](history-event:EVT-004a872b1a0bf1515453)
+
+用户随后明确Codex与Maintenance选择应成为同步下的两个并列子栏目。改动将两份表单分成保持挂载的标签页，修复实例卡片padding和表单间距，切换不保存名单。真实UI验收确认双标签可读可切换、当前范围默认折叠；草稿保留和键盘关系由合成测试支持，不混作全部真实交互已测。
+
+[查看依据：两类同步并列要求](history-event:EVT-c65481b741437769a9e0)
+
+[查看依据：Dashboard .1.5已部署、Engine修复尚未生效](history-event:EVT-3c3517af7d08578cc636)
+
+## 当前范围、独立安装和停止卡点
+
+检查发现activeScopes来自全部未关闭run，含等待恢复/隔离的历史记录，解释31条相同web/revision0范围铺开。修复使用已有RuntimeBroker在线判断，保留不同run和历史冻结快照；没有按显示文本假去重。前端只有数据库run状态，不能据此补出真实在线事实。因此Dashboard .1.5先折叠详情，Engine .39修复待正常切换才会影响实际数据。代码与定向回归结果见 [[IMP-sync-ui-release]]、[[VER-sync-ui-release]]。
+
+用户要求安装后，Engine .39严格校验归档路径/类型/hash并安装到独立目录，27个文件逐项核对，8份旧入口/配置备份且保持不变。当前引擎、lifecycle及attestation仍 .38，未进行热切换。公开主任务确认安装与激活分开，并要求通过Launcher正常停止实例后核对最终回执；现无已核验外部停止协议，不用直接shutdown、强杀、删锁或改数据库冒充正常停机。
+
+[查看依据：安装后仍 .38运行与正常停止卡点](history-event:EVT-b7f4dd3da81ed43b34ea)
+
+本次整理扩展同一来源索引至第5944行，之后的Bridge安装不凭推测写入SM事实；用户后续停止DSH不等于Engine已切换。旧段落描述的“待实现/未部署”保留当时语境，当前状态以新增implementation和verification为准。可选SM业务维护、Core运行时引用、Bridge通道与Vault真源仍各自拥有自己的职责。
+
+公开来源截点后的补充回执单独由 [[VER-sync-ui-release]] 记录：08:31插件安装校验通过但未激活；08:32正式Start在prepare阶段exit1/invalid-json，主任务只读排查，DSH仍stopped，Engine .38就绪。该补充来自准确安装回执及主任务提供的Launcher trace时间点，不伪造本索引范围内的history-event，也不把早先UI验收误写为这次新启动恢复成功。

@@ -6,7 +6,7 @@
     "locale": "zh-CN",
     "repository": {
       "url": "https://github.com/linmu115/dsh-session-maintenance",
-      "revision": "6e782f743023319c87b906a171f01c90145e15f6",
+      "revision": "06027da039a5d689ff8d2f90bf9d3da067f1b502",
       "link_mode": "local-only"
     }
   },
@@ -143,7 +143,7 @@
       "id": "launcher",
       "type": "backend",
       "label": "Provider / DSH 插件",
-      "sublabel": "启停 · persistence · 宿主桥",
+      "sublabel": "启动已核验 / 外部停止受限",
       "pos": [
         30.0,
         322.5
@@ -162,7 +162,7 @@
       "id": "dashboard",
       "type": "frontend",
       "label": "维护看板",
-      "sublabel": "问答过程 · 目录 · 状态",
+      "sublabel": "同步双栏目 / 扩展按插件",
       "pos": [
         1080.0,
         322.5
@@ -180,8 +180,8 @@
     {
       "id": "business",
       "type": "external",
-      "label": "外部 Suite / Core",
-      "sublabel": "引用事务 · 贴纸 · 笔记接入",
+      "label": "外部 Core / Bridge / 贴纸",
+      "sublabel": "独立业务通道 · SM可选",
       "pos": [
         30.0,
         577.5
@@ -288,7 +288,7 @@
       "id": "instance-scope",
       "type": "backend",
       "label": "实例分类工作区范围",
-      "sublabel": "下次启动策略 / run 快照",
+      "sublabel": "实例共享 / 下次启动快照",
       "pos": [
         292.5,
         810
@@ -309,6 +309,62 @@
       ],
       "size": [
         210,
+        84
+      ]
+    },
+    {
+      "id": "sync-maintenance",
+      "type": "frontend",
+      "label": "Maintenance工作区同步",
+      "sublabel": "分类工作区 / 草稿保留",
+      "pos": [
+        30,
+        1180
+      ],
+      "size": [
+        220,
+        84
+      ]
+    },
+    {
+      "id": "sync-codex",
+      "type": "frontend",
+      "label": "Codex项目同步",
+      "sublabel": "项目映射 / 独立名单",
+      "pos": [
+        310,
+        1180
+      ],
+      "size": [
+        220,
+        84
+      ]
+    },
+    {
+      "id": "plugin-data",
+      "type": "frontend",
+      "label": "插件内：扩展数据",
+      "sublabel": "各插件目录 / Obsidian系列",
+      "pos": [
+        590,
+        1180
+      ],
+      "size": [
+        220,
+        84
+      ]
+    },
+    {
+      "id": "plugin-info",
+      "type": "frontend",
+      "label": "插件内：信息与接入",
+      "sublabel": "同插件并列 / 业务动作",
+      "pos": [
+        870,
+        1180
+      ],
+      "size": [
+        220,
         84
       ]
     }
@@ -368,6 +424,24 @@
         "business-pages"
       ],
       "pad": 24
+    },
+    {
+      "kind": "region",
+      "label": "Dashboard · 同步的并列子栏目",
+      "wraps": [
+        "sync-maintenance",
+        "sync-codex"
+      ],
+      "pad": 20
+    },
+    {
+      "kind": "region",
+      "label": "Dashboard · 扩展 → 每插件的并列页面",
+      "wraps": [
+        "plugin-data",
+        "plugin-info"
+      ],
+      "pad": 20
     }
   ],
   "connections": [
@@ -672,6 +746,110 @@
       "from": "business",
       "to": "launcher",
       "label": "可选 Bridge 页面贡献"
+    },
+    {
+      "id": "dashboard-child-sync-maintenance",
+      "from": "dashboard",
+      "to": "sync-maintenance",
+      "label": "同步子栏目",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1420,
+          364.5
+        ],
+        [
+          1420,
+          1080
+        ],
+        [
+          140,
+          1080
+        ]
+      ],
+      "labelAt": [
+        140,
+        1065
+      ]
+    },
+    {
+      "id": "dashboard-child-sync-codex",
+      "from": "dashboard",
+      "to": "sync-codex",
+      "label": "同步子栏目",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1445,
+          364.5
+        ],
+        [
+          1445,
+          1100
+        ],
+        [
+          420,
+          1100
+        ]
+      ],
+      "labelAt": [
+        420,
+        1085
+      ]
+    },
+    {
+      "id": "dashboard-child-plugin-data",
+      "from": "dashboard",
+      "to": "plugin-data",
+      "label": "扩展 → 每插件",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1470,
+          364.5
+        ],
+        [
+          1470,
+          1120
+        ],
+        [
+          700,
+          1120
+        ]
+      ],
+      "labelAt": [
+        700,
+        1105
+      ]
+    },
+    {
+      "id": "dashboard-child-plugin-info",
+      "from": "dashboard",
+      "to": "plugin-info",
+      "label": "扩展 → 每插件",
+      "fromSide": "right",
+      "toSide": "top",
+      "via": [
+        [
+          1495,
+          364.5
+        ],
+        [
+          1495,
+          1140
+        ],
+        [
+          980,
+          1140
+        ]
+      ],
+      "labelAt": [
+        980,
+        1125
+      ]
     }
   ],
   "cards": [
@@ -686,11 +864,11 @@
     },
     {
       "dot": "cyan",
-      "title": "2026-09-18 实现边界",
+      "title": "2026-09-18 安装与验收边界",
       "items": [
-        "策略改变不改当前 run；保存供下次启动，旧 run 按快照完成写入。",
-        "公共页与业务数据 Adapter 独立；绑定真源仍由 Companion CAS 确认。",
-        "范围/快照已通过分组验证；公共页响应丢失重试修复与最终组合验证 pending。"
+        "Dashboard .1.5已静态部署：双同步栏目、卡片间距和默认折叠实际检查通过。",
+        "Engine .39独立安装未激活；RuntimeBroker在线过滤待正常切换，历史run不删除。",
+        "公开业务Adapter与页面注册独立；SM可选，当前Launcher无正式外部Stop/Restart。"
       ]
     }
   ]
