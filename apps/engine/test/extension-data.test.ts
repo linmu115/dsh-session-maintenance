@@ -28,10 +28,10 @@ describe("pluggable extension data",()=>{
   it("connects all six namespaces in the current graph session names cohort",async()=>{
     const f=await fixture(),service=f.make();
     const currentPlugins=[
-      ...["annotation-upstream","annotation-records","annotation-context"].map(namespace=>({namespace,pluginVersion:"0.3.12-rc2.12",writerId:"dsh-annotation-core"})),
-      {namespace:"stickers",pluginVersion:"0.7.3-rc2.18",writerId:"dsh-session-sticker-board"},
-      {namespace:"obsidian-links",pluginVersion:"0.6.4-rc2.6",writerId:"obsidian-deepharness-bridge"},
-      {namespace:"thoughtdag",pluginVersion:"0.4.14-rc2.13",writerId:"dsh-thoughtdag"},
+      ...["annotation-upstream","annotation-records","annotation-context"].map(namespace=>({namespace,pluginVersion:"0.3.12-rc2.19",writerId:"dsh-annotation-core"})),
+      {namespace:"stickers",pluginVersion:"0.7.4-rc2.3",writerId:"dsh-session-sticker-board"},
+      {namespace:"obsidian-links",pluginVersion:"0.7.0-rc2.1",writerId:"obsidian-deepharness-bridge"},
+      {namespace:"thoughtdag",pluginVersion:"0.4.14-rc2.14",writerId:"dsh-thoughtdag"},
     ];
     service.connect({...connect,plugins:currentPlugins});
     for(const plugin of currentPlugins)expect(service.panels().find(panel=>panel.scope.namespace===plugin.namespace)?.status).toBe("ready");
@@ -52,7 +52,7 @@ describe("pluggable extension data",()=>{
     expect(service.get(annotation.scope,"set-a").summary).toBe("1 条引用");
     expect(service.panels().map(p=>p.objectCount)).toEqual([1,1]);
     expect(tables.map(t=>f.db.prepare(`SELECT * FROM ${t}`).all())).toEqual(before);
-    expect(f.db.prepare("SELECT MAX(version) v FROM schema_migrations").get()?.v).toBe(24);
+    expect(f.db.prepare("SELECT MAX(version) v FROM schema_migrations").get()?.v).toBe(27);
   });
   it("keeps one current state on repeated saves and preserves it through disable, uninstall, missing adapter and restart",async()=>{
     const f=await fixture();let s=f.make();s.connect(connect);s.write(graph());
@@ -161,7 +161,8 @@ describe("pluggable extension data",()=>{
     const f=await fixture();
     f.db.exec("INSERT INTO logical_sessions(id,display_title,sync_mode,archived,labels_json,created_at) VALUES('source','untouched','continuation',0,'[]','2026-09-10')");
     const before=f.db.prepare("SELECT * FROM logical_sessions").all();
-    f.db.exec("DROP TABLE extension_object_owners; DROP TABLE context_read_executions; DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections; DELETE FROM schema_migrations WHERE version>=22");
+    // Recreate the actual schema-21 boundary, including objects introduced after 24.
+    f.db.exec("DROP TABLE projection_run_workspace_scopes; DROP TABLE instance_workspace_policies; DROP TRIGGER learning_body_revision; DROP TABLE learning_handoffs; DROP TABLE learning_bindings; DROP TABLE extension_object_owners; DROP TABLE context_read_executions; DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections; DELETE FROM schema_migrations WHERE version>=22");
     const upgraded=f.reopen();expect(upgraded.panels()).toEqual([]);expect(f.db.prepare("SELECT * FROM logical_sessions").all()).toEqual(before);
     upgraded.connect(connect);upgraded.write(graph());expect(f.reopen().get(scope,"canvas").object.revision).toBe(1);
   });

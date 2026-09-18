@@ -33,7 +33,7 @@ export const thoughtDagAdapter: ExtensionDataAdapter = {
     return graph.success ? { ownerSessionId: graph.data.ownerSessionId, kind: "graph", readOnly: true, reason: graph.data.ownerSessionId ? null : "待绑定主干会话" }
       : { ownerSessionId: null, kind: "legacy-graph", readOnly: true, reason: "旧图需要核验归属；不会把关联会话当作所有者" };
   },
-  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5", "0.4.14-rc2.6", "0.4.14-rc2.7", "0.4.14-rc2.8","0.4.14-rc2.9","0.4.14-rc2.10","0.4.14-rc2.11","0.4.14-rc2.12","0.4.14-rc2.13"], schemaVersions: [1, 2],
+  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5", "0.4.14-rc2.6", "0.4.14-rc2.7", "0.4.14-rc2.8","0.4.14-rc2.9","0.4.14-rc2.10","0.4.14-rc2.11","0.4.14-rc2.12","0.4.14-rc2.13","0.4.14-rc2.14"], schemaVersions: [1, 2],
   validate(content) {
     if (content.schemaVersion === 2 && typeof content.body === "object" && content.body !== null && "kind" in content.body && content.body.kind === "disclosure-log") {
       const log = graphDisclosureLogSchema.parse(content.body); unique(log.items.map(item => item.receiptId));
@@ -98,7 +98,7 @@ export const stickerAdapter: ExtensionDataAdapter = {
     return { ownerSessionId: value.logicalSessionId, kind: value.kind === "migration" ? "migration-receipt" : value.kind === "session" ? "session-sticker" : "annotation-sticker",
       readOnly: value.kind === "migration" };
   },
-  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10', '0.7.3-rc2.11', '0.7.3-rc2.12', '0.7.3-rc2.13', '0.7.3-rc2.14', '0.7.3-rc2.15', '0.7.3-rc2.16', '0.7.3-rc2.17', '0.7.3-rc2.18', '0.7.4-rc2.1', '0.7.4-rc2.2'], schemaVersions: [1],
+  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10', '0.7.3-rc2.11', '0.7.3-rc2.12', '0.7.3-rc2.13', '0.7.3-rc2.14', '0.7.3-rc2.15', '0.7.3-rc2.16', '0.7.3-rc2.17', '0.7.3-rc2.18', '0.7.3-rc2.19', '0.7.4-rc2.1', '0.7.4-rc2.2', '0.7.4-rc2.3'], schemaVersions: [1],
   validate(content) { stickerObjectSchema.parse(content.body); },
   summarize(body) { const value=stickerObjectSchema.parse(body);return value.kind==='session'?'独立会话入口':value.kind==='migration'?`迁移 · ${value.phase}`:'普通贴纸'; },
   preview(body) { const value=stickerObjectSchema.parse(body);return {kind:'rows',total:1,rows:[{label:value.kind==='session'?'目标会话':value.kind==='migration'?'迁移目标':'所属会话',text:value.logicalSessionId}]}; },

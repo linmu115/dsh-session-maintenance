@@ -9,6 +9,7 @@ import { dshRc2PackageMetadata } from "./dsh-rc2-bundle-plugin.mjs";
 import { deterministicTarGz, readTarGz, sha256, stableJson } from "./phase2-pack-lib.mjs";
 import { PHASE2_COMPONENT_PATHS, readDsh015HostProvenance } from "./phase2-release-contract.mjs";
 import { packagePluginDocumentation } from "./phase2-readme.mjs";
+import { writeBusinessPageDeclarations } from "../plugins/dsh-session-maintenance/scripts/business-pages-declarations.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
@@ -59,6 +60,13 @@ const plugin = join(staging, "plugin");
 const engine = join(staging, "engine", "dsh-session-maintenance");
 await mkdir(join(plugin, "lib", "client"), { recursive: true });
 await mkdir(join(engine, "engine", "adapters"), { recursive: true });
+await build({
+  absWorkingDir: root,
+  entryPoints: ["plugins/dsh-session-maintenance/src/business-pages-api.ts"],
+  outfile: join(plugin, "lib", "business-pages.js"),
+  bundle: true, format: "esm", platform: "neutral",
+});
+await writeBusinessPageDeclarations(root, join(plugin, "lib"));
 
 const pluginHost = await build({
   absWorkingDir: root,
@@ -219,7 +227,7 @@ if (pluginArchive !== undefined) {
   const entries = readTarGz(pluginBytes);
   const supplied = JSON.parse(entries.get("package/package.json").toString("utf8"));
   if (supplied.name !== sourcePluginManifest.name || supplied.version !== version) throw new Error("Supplied integration package identity differs");
-  for (const name of ["lib/index.js", "lib/client/index.js", "lib/dsh-015-host.js", "cordis.patch.yml", ...documentationFiles]) {
+  for (const name of ["lib/index.js", "lib/client/index.js", "lib/dsh-015-host.js", "lib/business-pages.js", "lib/business-pages.d.ts", "cordis.patch.yml", ...documentationFiles]) {
     if (!entries.get(`package/${name}`)?.equals(await readFile(join(plugin, name)))) throw new Error(`Supplied integration package differs: ${name}`);
   }
 }
