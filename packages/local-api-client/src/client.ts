@@ -1,4 +1,6 @@
 import { learningBindSchema, learningBindingSchema, learningDirectorySchema, type LearningBind } from "@linmu/dsh-session-contracts";
+import { instanceWorkspaceConfigurationSchema, instanceWorkspaceInstanceDirectorySchema, instanceWorkspacePolicyUpdateSchema,
+  instanceWorkspaceEffectiveScopeSchema, instanceSessionAvailabilitySchema, type InstanceWorkspacePolicyUpdate } from "@linmu/dsh-session-contracts";
 import type { ExtensionPanel, ExtensionScope, ExtensionConnect, ExtensionList, ExtensionPage, ExtensionDetail, ExtensionWrite, ExtensionWriteResult, ExtensionConflict } from "@linmu/dsh-session-contracts";
 import type { ExtensionBusinessPanel, ExtensionBusinessPanelQuery, ExtensionDirectoryQuery, ExtensionDirectoryPage, AnnotationMirrorSync, AnnotationMirrorSyncResult } from "@linmu/dsh-session-contracts";
 import type { UserRequestPage, UserRequestList } from "@linmu/dsh-session-contracts";
@@ -170,6 +172,22 @@ class ApiClient {
 
   async listIntegrations(signal?: AbortSignal): Promise<IntegrationDirectory> {
     return (await this.request("/v1/integrations", {}, z.strictObject({ directory: integrationDirectorySchema }), signal)).directory;
+  }
+
+  async listInstanceWorkspaceInstances(signal?: AbortSignal) {
+    return (await this.request("/v1/instances/workspace-sync", {}, z.strictObject({ directory: instanceWorkspaceInstanceDirectorySchema }), signal)).directory;
+  }
+  async getInstanceWorkspaceSync(instanceId: string, signal?: AbortSignal) {
+    return (await this.request(`/v1/instances/${encodeURIComponent(instanceId)}/workspace-sync`, {}, z.strictObject({ configuration: instanceWorkspaceConfigurationSchema }), signal)).configuration;
+  }
+  async saveInstanceWorkspaceSync(instanceId: string, input: InstanceWorkspacePolicyUpdate, signal?: AbortSignal) {
+    return (await this.request(`/v1/instances/${encodeURIComponent(instanceId)}/workspace-sync`, this.jsonPatch(instanceWorkspacePolicyUpdateSchema.parse(input)), z.strictObject({ configuration: instanceWorkspaceConfigurationSchema }), signal)).configuration;
+  }
+  async getInstanceWorkspaceScope(instanceId: string, profileId: string, signal?: AbortSignal) {
+    return (await this.request(`/v1/instances/${encodeURIComponent(instanceId)}/workspace-scope?${new URLSearchParams({ profileId })}`, {}, z.strictObject({ scope: instanceWorkspaceEffectiveScopeSchema }), signal)).scope;
+  }
+  async getInstanceSessionAvailability(instanceId: string, logicalSessionId: string, profileId: string, signal?: AbortSignal) {
+    return (await this.request(`/v1/instances/${encodeURIComponent(instanceId)}/sessions/${encodeURIComponent(logicalSessionId)}/availability?${new URLSearchParams({ profileId })}`, {}, z.strictObject({ availability: instanceSessionAvailabilitySchema }), signal)).availability;
   }
 
   async integrationAction(targetId: string, action: IntegrationAction, signal?: AbortSignal): Promise<IntegrationDirectory> {
@@ -709,13 +727,15 @@ class ApiClient {
 
   private async throwResponse(response: Response): Promise<never> {
     let message = `Maintenance API request failed with HTTP ${response.status}`;
+    let code: string | undefined;
     try {
       const parsed = apiErrorResponseSchema.parse(await response.json());
+      code = parsed.error.code;
       message = `${parsed.error.code}: ${parsed.error.message}`;
     } catch {
       // Keep the bounded status-only message; never include response bodies or the token.
     }
-    throw new Error(message.replaceAll(this.transport.secret, "[REDACTED]"));
+    throw Object.assign(new Error(message.replaceAll(this.transport.secret, "[REDACTED]")), { status: response.status, code: code?.replaceAll(this.transport.secret, "[REDACTED]") });
   }
 }
 

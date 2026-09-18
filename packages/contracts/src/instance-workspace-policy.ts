@@ -39,3 +39,17 @@ export const instanceSessionAvailabilitySchema = z.strictObject({
     ctx.addIssue({ code: "custom", path: ["nativeSessionId"], message: "An available session requires a verified native mapping" });
 });
 export type InstanceSessionAvailability = z.infer<typeof instanceSessionAvailabilitySchema>;
+export const instanceWorkspaceConfigurationSchema = z.strictObject({
+  policy: instanceWorkspacePolicySchema,
+  activeScopes: z.array(z.strictObject({ profileId: identity, runId: identity,
+    policyRevision: z.number().int().nonnegative(), selection: instanceWorkspaceSelectionSchema })),
+  workspaces: z.array(z.strictObject({ id: workspaceId, name: z.string(), deleted: z.boolean() })),
+  pendingActivation: z.boolean(),
+});
+export type InstanceWorkspaceConfiguration = z.infer<typeof instanceWorkspaceConfigurationSchema>;
+/** The provider lists trusted DSH instances, never Codex sources or integration target hashes. */
+export const instanceWorkspaceInstanceDirectorySchema = z.strictObject({
+  instances: z.array(z.strictObject({ instanceId: instanceWorkspaceInstanceIdSchema, name: z.string().min(1) }))
+    .refine(items => new Set(items.map(item => item.instanceId)).size === items.length, "Duplicate instance identity"),
+});
+export type InstanceWorkspaceInstanceDirectory = z.infer<typeof instanceWorkspaceInstanceDirectorySchema>;
