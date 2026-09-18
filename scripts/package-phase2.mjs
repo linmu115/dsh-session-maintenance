@@ -236,7 +236,16 @@ if (pluginArchive !== undefined) {
   const supplied = JSON.parse(entries.get("package/package.json").toString("utf8"));
   if (supplied.name !== sourcePluginManifest.name || supplied.version !== version) throw new Error("Supplied integration package identity differs");
   for (const name of ["lib/index.js", "lib/client/index.js", "lib/dsh-015-host.js", "lib/business-pages.js", "lib/business-pages.d.ts", "cordis.patch.yml", ...documentationFiles]) {
-    if (!entries.get(`package/${name}`)?.equals(await readFile(join(plugin, name)))) throw new Error(`Supplied integration package differs: ${name}`);
+    const suppliedBytes = entries.get(`package/${name}`), builtBytes = await readFile(join(plugin, name));
+    // Reusing an unchanged plugin preserves its original documentation source links.
+    // Only docs may differ by their source commit; executable JS remains byte-exact.
+    const comparable = bytes => {
+      if (!bytes) return undefined;
+      if (documentationFiles.includes(name)) return bytes.toString("utf8").replaceAll("\r\n", "\n").replace(/(https:\/\/github\.com\/linmu115\/dsh-session-maintenance\/blob\/)[a-f0-9]{40}(?=\/)/gu, "$1SOURCE_COMMIT");
+      if (name.endsWith(".d.ts") || name.endsWith(".yml")) return bytes.toString("utf8").replaceAll("\r\n", "\n");
+      return bytes.toString("base64");
+    };
+    if (comparable(suppliedBytes) !== comparable(builtBytes)) throw new Error(`Supplied integration package differs: ${name}`);
   }
 }
 await writeFile(join(engine, "engine", "dsh-session-maintenance.tgz"), pluginBytes);
