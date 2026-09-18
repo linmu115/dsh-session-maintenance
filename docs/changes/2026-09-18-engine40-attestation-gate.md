@@ -1,0 +1,9 @@
+# Engine .40 runtime attestation release gate
+
+2026-09-18. The installed .39 package omitted .39 from the RC2 runtime attestation version allowlist. A correctly updated engine pin would therefore fail before binding validation. Release .40 adds the exact .39 and .40 versions, preserving rejection of unknown versions and artifact hash checks. Existing .39 archive and directory remain unchanged for traceability. Dashboard stays .1.5; no shutdown endpoint was added.
+
+Validation: 32 synthetic tests passed in v3-runtime-attestation and integrations; Engine typecheck and build passed. The current-version assertion and explicit .39/.40 checks cover this release gate. No live profile, process or state was modified by the source change.
+
+Shutdown research: deployed .38 and .39 expose no Engine HTTP/IPC/CLI stop operation. serve accepts SIGINT/SIGTERM and drains HTTP/SSE, observers, jobs and writes before releasing ownership. Runtime broker drain/close routes and the external lifecycle runtime shutdown path close DSH runs, not the Engine. The main agent verified PID 40736 has no console; an isolated hidden-console SIGINT experiment passed, which is relevant only to future startup. A separate existing engine-startup graceful test could not start its synthetic bundle because ../package.json was absent; this is a harness packaging failure, not evidence that production drain succeeded or failed. No production termination occurred in this subtask.
+
+A future authenticated Engine stop needs a shared idempotent shutdown controller, owner identity check, admission gate, rejection while managed runs remain active, response-before-drain ordering, and a persisted completion receipt. Engine.close currently does not await continuation transport disposal; full stop acceptance should address that boundary. This release intentionally does not implement that feature.
