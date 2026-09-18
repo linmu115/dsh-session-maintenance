@@ -79,3 +79,7 @@ CPA并行任务报告运行进程诊断动态import导致DSH fatal退出。主�
 11项针对性测试、Dashboard类型检查及构建通过。当前Engine .40静态部署Dashboard .1.6，17个文件逐项哈希一致，旧静态资源备份并保留；未重启Engine或DSH，同一boot 5c70b708-f8f4-43e7-842d-9419ab58d142 / run-cf18aaf6-8b8f-4ef7-aba6-37fbca6859ca持续running，Engine PID51548。工作区范围、接入登记和Launcher hook内容未变。真实浏览器分别打开GPT、ThoughtDAG、Obsidian信息页以及Maintenance/Codex同步页，确认入口归属、两层底线导航和无外层卡片的正文切换；没有执行绑定、解除或保存名单。
 
 证据与备份：D:/AI/DeepSeekHarness-Plugin/artifacts/dashboard-0.1.6-navigation-20260918/installed.json及dashboard-before。两次部署脚本校验故障也保留说明：第一次Windows basename处理错误发生在覆盖前；第二次覆盖后误用inspect返回结构导致回执写入失败，随后按live.bootId/run.id完成独立哈希和持续运行核验。未用脚本成功代替视觉验收。用户本次要求不用子代理，收到后立即停止已派出的代理，后续代码、测试、安装与浏览器检查均由主任务完成。
+
+## 后续 UI 源码更新（本次未部署）
+
+编辑模式、固定底栏与减少常驻说明已实施并通过本地构建及合成组件验收，详见 [实施记录](../../../changes/2026-09-18-confirmed-ui-implementation.md)。此更新尚未安装，不改变本文此前安装版本与运行状态的历史证据。

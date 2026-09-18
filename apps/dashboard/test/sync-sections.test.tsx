@@ -40,11 +40,13 @@ it("shows peer tabs, reads each section on first visit, and retains both drafts 
   expect(panel(0).hidden).toBe(false); expect(panel(1).hidden).toBe(true);
   expect(api.getCodexProjectMapping).not.toHaveBeenCalled();
   const selectedOnly = panel(0).querySelectorAll<HTMLInputElement>('input[type="radio"]')[1]!;
+  await click([...panel(0).querySelectorAll("button")].find(button => button.textContent === "编辑")!);
   await click(selectedOnly);
-  expect(panel(0).textContent).toContain("有未保存的更改");
+  expect(panel(0).textContent).toContain("编辑同步范围");
   await click(tabs()[1]!);
   expect(panel(0).hidden).toBe(true); expect(panel(1).hidden).toBe(false);
   const project = panel(1).querySelector<HTMLInputElement>('input[type="checkbox"]')!;
+  await click([...panel(1).querySelectorAll("button")].find(button => button.textContent === "编辑")!);
   await click(project);
   await click(tabs()[0]!);
   expect(selectedOnly.checked).toBe(true);

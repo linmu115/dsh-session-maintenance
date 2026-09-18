@@ -419,3 +419,21 @@
 .extension-graph { margin: 16px 0; max-width: 900px; }
 .extension-graph svg { width: 100%; max-height: 520px; }
 .extension-editor pre { max-height: 320px; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* The editor scrolls independently; actions are always in view. */
+.sync-editor-layout { display:flex; flex-direction:column; min-height:0; max-height:calc(100dvh - 250px); }
+.sync-editor-scroll { overflow:auto; min-height:100px; flex:1 1 auto; padding-right:4px; scrollbar-width:thin; }
+.sync-fixed-actions { flex:none; padding:14px 0; background:var(--dsm-surface); border-top:1px solid var(--dsm-border); gap:10px; }
+.sync-fixed-actions > span { margin-right:auto; font-size:13px; }
+.mapping-runtime-details { margin:10px 0 18px; color:var(--dsm-muted); font-size:13px; }
+.mapping-runtime-details > summary { cursor:pointer; padding:5px 0; }
+.mapping-project { border-radius:0; box-shadow:none; }
+.mapping-project-choice { min-height:52px; }
+.mapping-project-choice strong { font-size:14px; }
+.mapping-project-detail details { font-size:13px; }
+.sync-section-panel .settings-content > p { font-size:14px; line-height:1.7; }
+@media(max-width:640px) { .sync-editor-layout { max-height:calc(100dvh - 220px); } .sync-fixed-actions { padding:12px 0; } }
+
+.instance-workspace-selection { border:0; border-radius:0; padding:0; }
+.instance-workspace-selection .sync-workspace { border:0; border-bottom:1px solid var(--dsm-border); border-radius:0; background:transparent; }
+.instance-workspace-selection .sync-workspaces { gap:0; }

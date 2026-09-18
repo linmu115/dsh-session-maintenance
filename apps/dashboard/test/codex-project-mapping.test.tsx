@@ -41,6 +41,7 @@ describe("Codex project mapping", () => {
     const legacy = vi.fn();
     const save = vi.fn(async (input: CodexProjectMappingUpdate) => ({ ...current, policy: { ...current.policy, revision: 5, projectKeys: input.projectKeys } }));
     await render({ getCodexProjectMapping: async () => current, saveCodexProjectMapping: save, getWorkspaceSync: legacy });
+    expect(checkbox("a").disabled).toBe(true);
     expect(checkbox("a").checked).toBe(false); expect(checkbox("b").checked).toBe(true);
     expect(container.querySelector('[aria-label="当前活跃名单"]')?.textContent).toContain("同名项目（1）");
     expect(container.querySelector('[aria-label="最新已保存名单"]')?.textContent).toContain("同名项目（2）");
@@ -51,11 +52,11 @@ describe("Codex project mapping", () => {
     expect(container.textContent).toContain("未来新增本地会话");
     expect(container.querySelector('.mapping-project-detail details')?.textContent).toContain("项目根路径（仅供查看）");
     expect(legacy).not.toHaveBeenCalled();
-    await click(checkbox("a")); await click(button("保存为最新映射名单"));
+    await click(button("编辑")); await click(checkbox("a")); await click(button("保存"));
     expect(save).toHaveBeenCalledWith({ revision: 4, projectKeys: ["fixture/b", "fixture/a"] }, expect.any(AbortSignal));
-    expect(container.querySelector('[role="status"]')?.textContent).toContain("下次启动 DSH 实例");
+    expect(container.querySelector('[role="status"]')?.textContent).toContain("下次启动");
     expect(container.querySelector('[aria-label="当前活跃名单"]')?.textContent).not.toContain("同名项目（2）");
-    expect(button("保存为最新映射名单").disabled).toBe(true);
+    expect(button("编辑").disabled).toBe(false);
   });
 
   it("shows project names by default and keeps full identifiers inside project details", async () => {
@@ -78,13 +79,13 @@ describe("Codex project mapping", () => {
   it("keeps selections while searching and cancels drafts or refreshes the complete directory", async () => {
     const current = fixture(); const get = vi.fn(async () => current);
     await render({ getCodexProjectMapping: get, saveCodexProjectMapping: vi.fn() });
-    await click(checkbox("a")); await search("fixture/b");
+    await click(button("编辑")); await click(checkbox("a")); await search("fixture/b");
     expect(container.querySelectorAll('.mapping-project')).toHaveLength(1);
     await search(""); expect(checkbox("a").checked).toBe(true);
     expect([...container.querySelectorAll(".mapping-project-choice strong")].map(item => item.textContent)).toEqual(["同名项目（1）", "同名项目（2）"]);
-    await click(button("取消更改")); expect(checkbox("a").checked).toBe(false);
-    await click(checkbox("a")); await click(button("刷新目录"));
-    expect(get).toHaveBeenCalledTimes(2); expect(checkbox("a").checked).toBe(false);
+    await click(button("撤销")); expect(checkbox("a").checked).toBe(false);
+    await click(button("编辑")); await click(checkbox("a")); await click(button("刷新目录"));
+    expect(get).toHaveBeenCalledTimes(2); expect(checkbox("a").checked).toBe(true);
     expect(container.querySelectorAll('.mapping-project')).toHaveLength(2);
   });
 
@@ -95,9 +96,10 @@ describe("Codex project mapping", () => {
     await render({ getCodexProjectMapping: async () => current, saveCodexProjectMapping: save });
     expect(container.querySelector('[aria-label="当前活跃名单"]')?.textContent).toContain("未配置");
     expect(checkbox("a").checked).toBe(false); expect(checkbox("b").checked).toBe(false);
-    expect(button("保存为最新映射名单").disabled).toBe(false);
-    expect(button("取消更改").disabled).toBe(true);
-    await click(button("保存为最新映射名单"));
+    await click(button("编辑"));
+    expect(button("保存").disabled).toBe(false);
+    expect(button("撤销").disabled).toBe(false);
+    await click(button("保存"));
     expect(save).toHaveBeenCalledWith({ revision: 4, projectKeys: [] }, expect.any(AbortSignal));
     expect(container.querySelector('[aria-label="最新已保存名单"]')?.textContent).toContain("不映射任何项目");
     expect(container.querySelector('[aria-label="当前活跃名单"]')?.textContent).toContain("未配置");
@@ -107,8 +109,8 @@ describe("Codex project mapping", () => {
     const current = fixture(); current.observer = { state: "error", lastSyncAt: null, lastError: "合成导入错误" };
     await render({ getCodexProjectMapping: async () => current, saveCodexProjectMapping: async () => { throw new Error("REVISION_CONFLICT: stale"); } });
     expect(container.textContent).toContain("上次映射更新未完成：合成导入错误");
-    await click(checkbox("a")); await click(button("保存为最新映射名单"));
-    expect(container.textContent).toContain("请刷新目录，重新核对勾选后再保存");
+    await click(button("编辑")); await click(checkbox("a")); await click(button("保存"));
+    expect(container.textContent).toContain("请先撤销编辑，再刷新目录核对最新名单");
     expect(checkbox("a").checked).toBe(true);
     expect(container.querySelector('[role="status"]')).toBeNull();
   });
@@ -121,7 +123,8 @@ describe("Codex project mapping", () => {
     await render({ getCodexProjectMapping: async () => current });
     expect(container.textContent).toContain("暂未发现 Codex 项目");
     expect(container.textContent).toContain("未提供保存项目映射名单的能力");
-    expect(button("保存为最新映射名单").disabled).toBe(true);
+    await click(button("编辑"));
+    expect(button("保存").disabled).toBe(true);
     expect(container.querySelector('[aria-label="当前活跃名单"]')?.textContent).toContain("不映射任何项目");
   });
 
@@ -132,9 +135,10 @@ describe("Codex project mapping", () => {
     await render({ getCodexProjectMapping: async () => current, saveCodexProjectMapping: vi.fn() });
     expect(checkbox("a").disabled).toBe(true);
     expect(container.textContent).toContain("缺少可靠项目归属");
+    await click(button("编辑"));
     const missing = container.querySelector('.mapping-missing input') as HTMLInputElement;
     expect(missing.checked).toBe(true); await click(missing); expect(missing.checked).toBe(false);
-    expect(button("保存为最新映射名单").disabled).toBe(false);
+    expect(button("保存").disabled).toBe(false);
   });
 
   it("ignores late requests from a replaced API", async () => {

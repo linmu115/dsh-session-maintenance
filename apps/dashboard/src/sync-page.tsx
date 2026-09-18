@@ -1,3 +1,4 @@
+import { useSyncEditorLayout } from "./sync-editor-layout.js";
 import { useEffect, useId, useRef, useState } from "react";
 import type { CodexProjectMappingConfiguration, CodexProjectMappingUpdate, WorkspaceSyncConfiguration, WorkspaceSyncUpdate } from "@linmu/dsh-session-contracts";
 import { Badge, Button, EmptyState, LoadingState, Surface } from "@linmu/dsh-session-ui";
@@ -108,12 +109,13 @@ export function NativeWorkspaceSyncPage({ api }: { readonly api: WorkspaceSyncAp
 
 function mappingError(reason: unknown, fallback: string): string {
   const message = reason instanceof Error ? reason.message : fallback;
-  if (/CONFLICT|STALE|HTTP 409|版本冲突/iu.test(message)) return "映射名单已被其他窗口更新。请刷新目录，重新核对勾选后再保存。";
+  if (/CONFLICT|STALE|HTTP 409|版本冲突/iu.test(message)) return "映射名单已被其他窗口更新。勾选已保留；请先撤销编辑，再刷新目录核对最新名单。";
   if (/NOT_FOUND|HTTP 404|HTTP 501/iu.test(message)) return "当前维护引擎未提供 Codex 项目映射功能，请更新引擎后重试。";
   return message;
 }
 
 export function SyncPage({ api }: { readonly api: WorkspaceSyncApi }) {
+  const editorLayout = useSyncEditorLayout();
   const [configuration, setConfiguration] = useState<CodexProjectMappingConfiguration>();
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [query, setQuery] = useState("");
@@ -121,28 +123,36 @@ export function SyncPage({ api }: { readonly api: WorkspaceSyncApi }) {
   const [notice, setNotice] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [editing, setEditingState] = useState(false);
+  const editingRef = useRef(false);
+  const setEditing = (value: boolean) => { editingRef.current = value; setEditingState(value); };
+  const [refreshing, setRefreshing] = useState(false);
   const [advanced, setAdvanced] = useState(false);
   const lifetime = useRef<AbortController | undefined>(undefined);
   useEffect(() => {
     const controller = new AbortController(); lifetime.current = controller;
-    setError(undefined); setConfiguration(undefined); setNotice(undefined); setBusy(false);
-    if (api.getCodexProjectMapping === undefined) setError("当前维护引擎未提供 Codex 项目映射功能，请更新引擎后重试。");
+    setError(undefined); setNotice(undefined); setRefreshing(true);
+    if (api.getCodexProjectMapping === undefined) { setError("当前维护引擎未提供 Codex 项目映射功能，请更新引擎后重试。"); setRefreshing(false); }
     else void api.getCodexProjectMapping(controller.signal).then((value) => {
-      if (!controller.signal.aborted) { setConfiguration(value); setSelected(new Set(value.policy.projectKeys)); }
-    }, (reason: unknown) => { if (!controller.signal.aborted) setError(mappingError(reason, "无法读取项目目录，请刷新重试。")); });
+      if (!controller.signal.aborted) {
+        setConfiguration(previous => editingRef.current && previous ? { ...value, policy: previous.policy } : value);
+        if (!editingRef.current) setSelected(new Set(value.policy.projectKeys));
+        setRefreshing(false);
+      }
+    }, (reason: unknown) => { if (!controller.signal.aborted) { setError(mappingError(reason, "无法读取项目目录，请刷新重试。")); setRefreshing(false); } });
     return () => controller.abort();
   }, [api, retry]);
   const draftChanged = configuration !== undefined && (selected.size !== configuration.policy.projectKeys.length || configuration.policy.projectKeys.some((key) => !selected.has(key)));
   const changed = configuration !== undefined && (!configuration.policy.configured || draftChanged);
   const save = async () => {
-    if (configuration === undefined || busy || api.saveCodexProjectMapping === undefined) return;
+    if (configuration === undefined || !editing || busy || refreshing || api.saveCodexProjectMapping === undefined) return;
     const signal = lifetime.current?.signal;
     setBusy(true); setError(undefined); setNotice(undefined);
     try {
       const value = await api.saveCodexProjectMapping({ revision: configuration.policy.revision, projectKeys: [...selected] }, signal);
       if (!signal?.aborted) {
-        setConfiguration(value); setSelected(new Set(value.policy.projectKeys));
-        setNotice(value.pendingActivation ? "最新映射名单已保存，将在下次启动 DSH 实例时生效。当前活跃名单保持不变。" : "最新映射名单已保存，与当前活跃名单一致。");
+        setConfiguration(value); setSelected(new Set(value.policy.projectKeys)); setEditing(false);
+        setNotice(value.pendingActivation ? "已保存 · 下次启动生效" : "已保存");
       }
     } catch (reason) { if (!signal?.aborted) setError(mappingError(reason, "保存失败，勾选已保留，请重试。")); }
     finally { if (!signal?.aborted) setBusy(false); }
@@ -159,17 +169,17 @@ export function SyncPage({ api }: { readonly api: WorkspaceSyncApi }) {
   };
   const scope = (configured: boolean, keys: readonly string[]) => !configured ? <p>未配置</p> : keys.length === 0 ? <p>不映射任何项目</p> : <ul>{keys.map((key) => <li key={key}>{nameFor(key)}{configuration?.projects.some((project) => project.key === key) ? null : <details><summary>项目详情</summary><code>{key}</code></details>}</li>)}</ul>;
   const visible = configuration?.projects.filter((project) => `${project.name} ${project.instanceId} ${project.projectId} ${project.key}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) ?? [];
-  const missing = configuration?.policy.projectKeys.filter((key) => !configuration.projects.some((project) => project.key === key)) ?? [];
+  const missing = [...new Set([...(configuration?.policy.projectKeys ?? []), ...selected])].filter((key) => !configuration?.projects.some((project) => project.key === key)) ?? [];
   return <>
     <div className="dsm-page-heading"><div><h2>Codex 项目映射</h2><p>按 Codex 侧栏中的项目会话文件夹选择映射范围，包含所选项目未来新增的本地会话。</p></div><Badge>{configuration?.pendingActivation ? "已保存 · 待下次启动 DSH 实例生效" : "映射到 Maintenance"}</Badge></div>
-    <Surface title="项目映射名单" action={<Button disabled={busy} onClick={() => setRetry((value) => value + 1)}>刷新目录</Button>}>
-      <div className="settings-content">
+    <Surface title="项目映射名单" action={<Button disabled={busy || refreshing} onClick={() => setRetry((value) => value + 1)}>刷新目录</Button>}>
+      <div ref={editorLayout} className="settings-content sync-editor-layout"><div className="sync-editor-scroll">
         <p>保存后，下次启动 DSH 实例 将按最新名单映射。未选项目的会话会从 Maintenance 移除，并保留恢复点；Codex 源会话不会删除。</p>
-        <p className="muted">项目归属取自 Codex 的项目会话文件夹。项目根路径仅用于查看详情，不用于按工作目录（cwd）推断归属。</p>
+
         {error === undefined ? null : <p role="alert" className="inline-error">{error}</p>}
         {notice === undefined ? null : <p role="status">{notice}</p>}
         {configuration === undefined ? error === undefined ? <LoadingState label="正在读取 Codex 项目目录…" /> : null : <>
-          <div className="mapping-policy-status">
+          <details className="mapping-runtime-details"><summary>运行详情</summary><div className="mapping-policy-status">
             <section aria-label="当前活跃名单"><h3>当前活跃名单</h3>{scope(configuration.policy.activeConfigured, configuration.policy.activeProjectKeys)}<small>本次运行采用的名单 · 版本 {configuration.policy.activeRevision}</small></section>
             <section aria-label="最新已保存名单"><h3>最新已保存名单</h3>{scope(configuration.policy.configured, configuration.policy.projectKeys)}<small>{configuration.pendingActivation ? "下次启动 DSH 实例 生效" : configuration.policy.configured ? "与当前活跃配置一致" : "保存后将在下次启动 DSH 实例生效"} · 版本 {configuration.policy.revision}</small></section>
           </div>
@@ -178,25 +188,32 @@ export function SyncPage({ api }: { readonly api: WorkspaceSyncApi }) {
             <p className="muted">{configuration.observer.lastSyncAt === null ? "尚无成功更新记录" : `最近成功更新：${configuration.observer.lastSyncAt}`}</p>
             {configuration.observer.lastError === null ? null : <p role="alert" className="inline-error">上次映射更新未完成：{configuration.observer.lastError}。可刷新目录查看最新状态；仍可编辑并保存下次启动 DSH 实例采用的名单。</p>}
           </section>
+          </details>
           {configuration.issues.length === 0 ? null : <div className="capability-notice"><strong>目录提示</strong><ul>{configuration.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></div>}
           <label className="workspace-search"><input aria-label="搜索 Codex 项目" type="search" placeholder="搜索项目名称或项目标识" value={query} onChange={(event) => setQuery(event.target.value)} /></label>
-          <p className="muted">目录共 {configuration.projects.length} 个项目，当前显示 {visible.length} 个。同名项目用编号区分，展开项目详情可核对来源及项目标识。搜索不会改变勾选。刷新目录会取消未保存更改并重新读取已保存名单。</p>
+          <p className="muted">{visible.length} 个项目 · 已选 {selected.size} 个</p>
           {configuration.projects.length === 0 ? <EmptyState title="暂未发现 Codex 项目" description="请检查 Codex 本地接入和项目目录后刷新；也可以保存空名单，明确不映射任何项目。" /> : visible.length === 0 ? <EmptyState title="没有匹配的项目" description="调整搜索词可查看其他项目，已有勾选仍然保留。" /> : <div className="sync-workspaces">{visible.map((project) => <div key={project.key} className="mapping-project" data-selected={selected.has(project.key)}>
             <label className="mapping-project-choice">
-              <input aria-label={`映射 ${project.name} (${project.instanceId} / ${project.projectId})`} type="checkbox" checked={selected.has(project.key)} disabled={busy || (!project.eligible && !selected.has(project.key))} onChange={(event) => toggle(project.key, event.target.checked)} />
+              <input aria-label={`映射 ${project.name} (${project.instanceId} / ${project.projectId})`} type="checkbox" checked={selected.has(project.key)} disabled={!editing || busy || (!project.eligible && !selected.has(project.key))} onChange={(event) => toggle(project.key, event.target.checked)} />
               <span><strong>{nameFor(project.key)}</strong><small>{project.sessionCount} 个现有本地会话 · 包含未来新增本地会话</small></span>
               <Badge>{project.kind === "mixed" ? "混合项目 · 仅本地会话" : project.eligible ? "本地项目" : "暂不可选"}</Badge>
             </label>
             <div className="mapping-project-detail">
-              <small>当前活跃：{!configuration.policy.activeConfigured ? "未配置" : configuration.policy.activeProjectKeys.includes(project.key) ? "已映射" : "未映射"} · 最新已保存：{!configuration.policy.configured ? "未配置" : configuration.policy.projectKeys.includes(project.key) ? "已选" : "未选"}</small>
+
               {project.issues.length === 0 ? null : <ul>{project.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul>}
               <details><summary>项目详情</summary><p>来源实例：{project.instanceId}</p><p>Codex 项目标识：{project.projectId}</p><p>稳定项目标识：<code>{project.key}</code></p><p>项目根路径（仅供查看）：{project.roots.length === 0 ? "未提供" : project.roots.join("、")}</p></details>
             </div>
           </div>)}</div>}
-          {missing.length === 0 ? null : <div className="mapping-missing"><p>以下已保存项目暂不在目录中；可保留勾选，或取消后保存：</p>{missing.map((key, index) => <div key={key}><label><input type="checkbox" disabled={busy} checked={selected.has(key)} onChange={(event) => toggle(key, event.target.checked)} /> 暂不可见的已保存项目（{index + 1}）</label><details><summary>项目详情</summary><code>{key}</code></details></div>)}</div>}
-          <div className="sync-save-row"><Button tone="primary" disabled={busy || !changed || api.saveCodexProjectMapping === undefined} onClick={() => void save()}>{busy ? "正在保存…" : "保存为最新映射名单"}</Button><Button disabled={busy || !draftChanged} onClick={() => { setSelected(new Set(configuration.policy.projectKeys)); setError(undefined); setNotice(undefined); }}>取消更改</Button><span className="muted">{selected.size === 0 ? "未勾选项目：保存后不映射任何项目" : `已勾选 ${selected.size} 个项目`}{changed ? " · 尚未保存" : " · 与已保存名单一致"}</span></div>
+          {missing.length === 0 ? null : <div className="mapping-missing"><p>以下已保存项目暂不在目录中；可保留勾选，或取消后保存：</p>{missing.map((key, index) => <div key={key}><label><input type="checkbox" disabled={!editing || busy} checked={selected.has(key)} onChange={(event) => toggle(key, event.target.checked)} /> 暂不可见的已保存项目（{index + 1}）</label><details><summary>项目详情</summary><code>{key}</code></details></div>)}</div>}
+
           {api.saveCodexProjectMapping === undefined ? <p role="alert">当前维护引擎未提供保存项目映射名单的能力，请更新引擎。</p> : null}
         </>}
+        </div>
+        {configuration && <div className="sync-save-row sync-fixed-actions">
+          <span className="muted">{selected.size} 个已选{configuration.pendingActivation && !editing ? ' · 下次启动生效' : ''}</span>
+          {editing ? <><Button disabled={busy || refreshing} onClick={() => { setSelected(new Set(configuration.policy.projectKeys)); setEditing(false); setError(undefined); setNotice(undefined); }}>撤销</Button>
+          <Button tone="primary" disabled={busy || refreshing || !changed || api.saveCodexProjectMapping === undefined} onClick={() => void save()}>{busy ? "正在保存…" : "保存"}</Button></> : <Button disabled={refreshing} onClick={() => setEditing(true)}>编辑</Button>}
+        </div>}
       </div>
     </Surface>
     <details className="mapping-advanced" onToggle={(event) => setAdvanced(event.currentTarget.open)}><summary>高级：历史工作区原生回写配置</summary>{advanced ? <NativeWorkspaceSyncPage api={api} /> : null}</details>

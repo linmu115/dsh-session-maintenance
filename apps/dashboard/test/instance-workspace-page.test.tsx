@@ -17,13 +17,13 @@ async function submit() { await act(async () => { container.querySelector("form"
 it("saves explicit empty selection without rewriting current active scope", async () => {
   const save = vi.fn(async (id, input) => ({ ...configuration(id, 2), policy: { ...configuration(id, 2).policy, selection: input.selection } }));
   await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async id => configuration(id), saveInstanceWorkspaceSync: save });
-  await click("仅同步以下选择");
+  await click("编辑"); await click("仅同步以下选择");
   expect(container.textContent).toContain("下次启动不向此实例同步任何会话");
   await submit();
   expect(save).toHaveBeenCalledWith("one", { expectedRevision: 1, selection: { kind: "ids", workspaceIds: [], includeUnassigned: false } }, expect.any(AbortSignal));
   expect(container.textContent).toContain("生效修订 1");
   expect(container.textContent).toContain("等待下次启动");
-  expect(container.textContent).toContain("当前运行范围保持不变");
+  expect(container.textContent).toContain("已保存 · 下次启动生效");
 });
 it("keeps distinct online runs visible even when profile, revision and scope match", async () => {
   const value = configuration("one");
@@ -40,10 +40,11 @@ it("keeps distinct online runs visible even when profile, revision and scope mat
 it("reloads a 409 policy conflict and requires a fresh choice before another save", async () => {
   let reads = 0;
   await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async id => configuration(id, ++reads), saveInstanceWorkspaceSync: async () => { throw Object.assign(new Error("名单冲突"), { status: 409 }); } });
-  await click("仅同步以下选择"); await submit();
+  await click("编辑"); await click("仅同步以下选择"); await submit();
   expect(reads).toBe(2); expect(container.textContent).toContain("已重新读取最新范围");
   expect(container.textContent).toContain("修订 2");
-  expect([...container.querySelectorAll("button")].find(button => button.textContent === "保存下次启动范围")!.disabled).toBe(true);
+  expect(container.querySelectorAll<HTMLInputElement>('input[type="radio"]')[1]!.checked).toBe(true);
+  expect(container.textContent).toContain("你的勾选已保留");
 });
 it("aborts and ignores a late response when the user selects a different instance", async () => {
   let resolve!: (value: InstanceWorkspaceConfiguration) => void, oldSignal: AbortSignal | undefined;
@@ -53,14 +54,14 @@ it("aborts and ignores a late response when the user selects a different instanc
   expect(oldSignal?.aborted).toBe(true);
   await act(async () => resolve(configuration("one")));
   expect(container.querySelector("select")!.value).toBe("two");
-  await click("仅同步以下选择"); expect(container.textContent).toContain("工作区-two"); expect(container.textContent).not.toContain("工作区-one");
+  await click("编辑"); await click("仅同步以下选择"); expect(container.textContent).toContain("工作区-two"); expect(container.textContent).not.toContain("工作区-one");
 });
 it("saves unassigned-only explicitly and discards an old-instance save response after navigation", async () => {
   let resolve!: (value: InstanceWorkspaceConfiguration) => void, saveSignal: AbortSignal | undefined;
   const pending = new Promise<InstanceWorkspaceConfiguration>(done => { resolve = done; });
   const save = vi.fn(async (_id, _update, signal) => { saveSignal = signal; return pending; });
   await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async id => configuration(id), saveInstanceWorkspaceSync: save });
-  await click("仅同步以下选择"); await click("包含未分组会话"); await submit();
+  await click("编辑"); await click("仅同步以下选择"); await click("包含未分组会话"); await submit();
   expect(save.mock.calls[0]?.[1]).toEqual({ expectedRevision: 1, selection: { kind: "ids", workspaceIds: [], includeUnassigned: true } });
   await act(async () => { const select = container.querySelector("select")!; select.value = "two"; select.dispatchEvent(new Event("change", { bubbles: true })); });
   expect(saveSignal?.aborted).toBe(true);

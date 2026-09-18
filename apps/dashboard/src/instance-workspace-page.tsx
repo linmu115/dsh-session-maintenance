@@ -1,3 +1,4 @@
+import { useSyncEditorLayout } from "./sync-editor-layout.js";
 import { useEffect, useRef, useState } from "react";
 import type { InstanceWorkspaceConfiguration, InstanceWorkspaceInstanceDirectory, InstanceWorkspacePolicyUpdate, InstanceWorkspaceSelection, LogicalWorkspaceId } from "@linmu/dsh-session-contracts";
 import { Badge, Button, EmptyState, LoadingState, Surface } from "@linmu/dsh-session-ui";
@@ -15,10 +16,12 @@ function summary(selection: InstanceWorkspaceSelection, configuration: InstanceW
   return names.length ? names.join("、") : "不向此实例同步任何会话";
 }
 function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instanceId: string }) {
+  const editorLayout = useSyncEditorLayout<HTMLFormElement>();
   const [configuration, setConfiguration] = useState<InstanceWorkspaceConfiguration>();
   const [selection, setSelection] = useState<InstanceWorkspaceSelection>({ kind: "all" });
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reload, setReload] = useState(0);
   const lifetime = useRef<AbortController | undefined>(undefined);
@@ -36,12 +39,12 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
     return () => controller.abort();
   }, [api, instanceId, reload]);
   const save = async () => {
-    if (!configuration || busy || !api.saveInstanceWorkspaceSync) return;
+    if (!configuration || !editing || busy || !api.saveInstanceWorkspaceSync) return;
     const signal = lifetime.current!.signal;
     setBusy(true); setError(undefined); setNotice(undefined);
     try {
       const value = await api.saveInstanceWorkspaceSync(instanceId, { expectedRevision: configuration.policy.revision, selection }, signal);
-      if (!signal.aborted) { install(value); setNotice("范围已保存，将在此实例下次启动时使用。当前运行范围保持不变。"); }
+      if (!signal.aborted) { install(value); setEditing(false); setNotice("已保存 · 下次启动生效"); }
     } catch (reason) {
       if (signal.aborted) return;
       const failure = reason as { status?: number; code?: string };
@@ -49,7 +52,7 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
       if (failure?.status === 409 || failure?.code === "INSTANCE_WORKSPACE_POLICY_CONFLICT") {
         try {
           const latest = await api.getInstanceWorkspaceSync!(instanceId, signal);
-          if (!signal.aborted) { install(latest); setNotice("已重新读取最新范围。请核对选择后再次保存。"); }
+          if (!signal.aborted) { setConfiguration(latest); setNotice("已重新读取最新范围；你的勾选已保留，请核对后再保存。"); }
         } catch (refreshError) { if (!signal.aborted) setError(`${message(reason)} 重新读取失败：${message(refreshError)}`); }
       }
     } finally { if (!signal.aborted) setBusy(false); }
@@ -64,7 +67,7 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
     {error ? <p role="alert">{error}</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
     {!configuration ? <>{!error ? <LoadingState label="正在读取实例范围…" /> : null}<Button onClick={() => setReload(value => value + 1)}>重新读取范围</Button></> : <>
-      <div className="mapping-policy-status instance-workspace-status">
+      <details className="mapping-runtime-details"><summary>运行详情</summary><div className="mapping-policy-status instance-workspace-status">
         <section aria-label="当前运行范围"><h3>当前运行范围</h3>
           {configuration.activeScopes.length ? <>
             <details className="instance-scope-details"><summary>查看 {configuration.activeScopes.length} 条运行范围</summary>
@@ -78,8 +81,9 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
           {configuration.pendingActivation ? <p><Badge tone="warning">有保存的更改等待下次启动</Badge></p> : null}
         </section>
       </div>
-      <form onSubmit={event => { event.preventDefault(); void save(); }}>
-        <fieldset className="instance-workspace-selection" disabled={busy}><legend>此实例下次启动时同步</legend>
+      </details>
+      <form ref={editorLayout} className="sync-editor-layout" onSubmit={event => { event.preventDefault(); void save(); }}>
+        <div className="sync-editor-scroll"><fieldset className="instance-workspace-selection" disabled={busy || !editing}><legend>此实例下次启动时同步</legend>
           <label className="sync-workspace"><input type="radio" name="instance-selection" checked={selection.kind === "all"} onChange={() => setSelection({ kind: "all" })} />全部工作区及未分组会话</label>
           <label className="sync-workspace"><input type="radio" name="instance-selection" checked={selection.kind === "ids"} onChange={() => setSelection({ kind: "ids", workspaceIds: [], includeUnassigned: false })} />仅同步以下选择</label>
           {selection.kind === "ids" ? <div className="sync-workspaces">
@@ -93,8 +97,10 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
           </div> : null}
         </fieldset>
         <p className="muted">同一实例的所有配置与已绑定 Vault 共用此范围。所选工作区未来新增的会话也包含在内。取消选择保留历史与链接。</p>
-        <div className="sync-save-row"><Button type="submit" tone="primary" disabled={!changed || busy || !api.saveInstanceWorkspaceSync}>{busy ? "正在保存…" : "保存下次启动范围"}</Button><Button disabled={busy} onClick={() => setReload(value => value + 1)}>重新读取范围</Button><span className="muted">{changed ? "有未保存的更改" : "与已保存范围一致"}</span></div>
-        <p className="muted">重新读取范围会取消未保存的更改。</p>
+        </div><div className="sync-save-row sync-fixed-actions">
+          <span className="muted">{editing ? '编辑同步范围' : configuration.pendingActivation ? '下次启动生效' : '同步范围'}</span>
+          {editing ? <><Button disabled={busy} onClick={() => { setSelection(configuration.policy.selection); setEditing(false); setError(undefined); setNotice(undefined); }}>撤销</Button><Button type="submit" tone="primary" disabled={!changed || busy || !api.saveInstanceWorkspaceSync}>{busy ? "正在保存…" : "保存"}</Button></> : <Button onClick={() => setEditing(true)}>编辑</Button>}
+        </div>
       </form>
     </>}
   </div>;
