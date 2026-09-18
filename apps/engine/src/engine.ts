@@ -1,3 +1,5 @@
+import type { LogicalSessionId } from "@linmu/dsh-session-contracts";
+import { resolveDerivedReference } from "./derived-reference.js";
 import { LearningService } from "./learning-service.js";
 import type { CodexContinuationTarget, LearningCodexPort } from "@linmu/dsh-session-contracts";
 import type { ExtensionDataService } from "./extensions/service.js";
@@ -467,11 +469,23 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     if (resolution.logicalSessionId !== null && resolution.status === "resolved"
       && adapter?.manifest.capabilities.includes("verified-anchor-resolution")) {
       try {
-        const native = await adapter.resolveReference({
+        let native = await adapter.resolveReference({
           logicalSessionId: resolution.logicalSessionId,
           logicalAnchorId: input.logicalAnchorId ?? input.legacyNativeAnchorId,
           legacyNativeSessionId: resolution.nativeSessionId,
         }, run, new JsonProjectionDirectory(projectionRootFor(this.projectionRuntimeRoot, run.id)));
+        const anchor = input.logicalAnchorId ?? input.legacyNativeAnchorId;
+        if (native.status !== "resolved" && anchor && anchor !== "@session" && input.referenceType === "obsidian-reference") {
+          const descendant = await resolveDerivedReference(this.repository.database, run.id, resolution.logicalSessionId,
+            async (logicalId, nativeId) => {
+              const candidate = await adapter.resolveReference({ logicalSessionId: logicalId as LogicalSessionId,
+                logicalAnchorId: anchor, legacyNativeSessionId: nativeId as NativeSessionId }, run,
+                new JsonProjectionDirectory(projectionRootFor(this.projectionRuntimeRoot, run.id)));
+              return candidate.status === "resolved";
+            });
+          if (descendant) native = { ...native, ...descendant, nativeSessionId: descendant.nativeSessionId as NativeSessionId,
+            logicalSessionId: descendant.logicalSessionId as LogicalSessionId, nativeAnchorId: anchor, status: "resolved" };
+        }
         resolution = { ...resolution, ...native, logicalAnchorId: input.logicalAnchorId };
         if (resolution.status !== "resolved") {
           await this.statusLog.fail(span, {

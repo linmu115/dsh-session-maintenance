@@ -111,6 +111,22 @@ describe("business extension directory", () => {
 });
 
 describe("Annotation metadata mirrors", () => {
+  it("moves a submitted mirror only after message verification and accepts an identical restored export", async () => {
+    const f = await fixture();
+    await f.service.syncAnnotation(sync(), f.fake);
+    f.fake.resolveStableReference = async () => ({ status: "resolved", logicalSessionId: "source" }) as any;
+    const submitted = { ...entry(), state: "sent" as const, targetMessageId: "message" };
+    const moved = await f.service.syncAnnotation(sync([submitted], 4), f.fake);
+    expect(moved.items[0]?.status).toBe("saved");
+    // Read using the fixture scope from the saved object metadata.
+    const previous = f.service.directory({ ...query, level: "objects", ownerSessionId: "target" });
+    expect(previous.items).toHaveLength(0);
+    expect(f.service.directory({ ...query, level: "objects", ownerSessionId: "source" }).items).toHaveLength(1);
+    expect((await f.service.syncAnnotation(sync([submitted], 1), f.fake)).items[0]?.status).toBe("unchanged");
+    f.fake.resolveStableReference = async () => ({ status: "unavailable", logicalSessionId: null }) as any;
+    expect((await f.service.syncAnnotation(sync([{ ...submitted, referenceId: "unresolved" }]), f.fake)).items[0]?.status).toBe("deferred");
+  });
+
   it("resolves native identities on Engine, fences old revisions and supports idempotent pages without deleting absent entries", async () => {
     const f = await fixture(); const first = await f.service.syncAnnotation(sync(), f.fake);
     expect(first.items[0]).toMatchObject({ status: "saved", sourceRevision: 1 });

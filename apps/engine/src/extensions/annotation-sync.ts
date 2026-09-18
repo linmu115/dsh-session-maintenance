@@ -21,15 +21,28 @@ export async function synchronizeAnnotationMirrors(store: SqliteExtensionReposit
   const scope = { instanceId: run.instanceId, profileId: run.profileId, namespace: ANNOTATION_RECORDS_NAMESPACE };
   const writerId = requireWriter(scope);
   if (writerId !== "dsh-annotation-core") throw new ExtensionDataError("EXTENSION_WRITER_CONFLICT", "引用镜像只能由 Annotation Core 同步。", 409);
-  const target = await engine.sessionGraph.resolve(q.runId, { nativeSessionId: q.nativeSessionId }, true);
+  const initialTarget = await engine.sessionGraph.resolve(q.runId, { nativeSessionId: q.nativeSessionId }, true);
   const items: AnnotationMirrorReceipt[] = [];
   for (const entry of q.entries) {
+    let target = initialTarget;
+    if (entry.targetMessageId) {
+      const verified = await engine.resolveStableReference({ referenceType: "obsidian-reference",
+        targetInstanceId: run.instanceId, targetProfileId: run.profileId,
+        logicalSessionId: target.logicalSessionId as never, logicalAnchorId: entry.targetMessageId,
+        legacyNativeSessionId: q.nativeSessionId as never, legacyNativeAnchorId: entry.targetMessageId });
+      if (verified.status !== "resolved" || !verified.logicalSessionId) {
+        items.push({ referenceId: entry.referenceId, objectId: "unresolved", revision: 0, sourceRevision: q.sourceRevision,
+          status: "deferred", reason: "Submitted reference target message is not yet verified" });
+        continue;
+      }
+      target = { ...target, logicalSessionId: verified.logicalSessionId };
+    }
     const objectId = `reference-${createHash("sha256").update(JSON.stringify([scope, target.logicalSessionId, entry.referenceId])).digest("hex")}`;
     const current = store.get(scope, objectId);
     const old = current ? annotationMirrorRecordSchema.parse(current.content.body) : undefined;
     const receipt = (status: AnnotationMirrorReceipt["status"], reason?: string): AnnotationMirrorReceipt => ({ referenceId: entry.referenceId,
       objectId, revision: current?.revision ?? 0, sourceRevision: old?.sourceRevision ?? q.sourceRevision, status, ...(reason ? { reason } : {}) });
-    if (old && q.sourceRevision < old.sourceRevision) { items.push(receipt("stale")); continue; }
+
     let source: AnnotationMirrorRecord["source"] = { ...entry.source };
     if (entry.state === "deleted" && old) source = { ...old.source, ...source };
     if (source.nativeSessionId && !(entry.state === "deleted" && old?.source.logicalSessionId)) {
@@ -37,7 +50,11 @@ export async function synchronizeAnnotationMirrors(store: SqliteExtensionReposit
       catch { items.push(receipt("deferred", "来源会话的逻辑身份尚未就绪，请保留本页并重试。")); continue; }
     }
     const record = annotationMirrorRecordSchema.parse({ ...entry, source, kind: "reference-record", targetSessionId: target.logicalSessionId, sourceRevision: q.sourceRevision });
-    if (old && old.sourceRevision === q.sourceRevision && stable(old) !== stable(record)) {
+    const sameContent = old && stable({ ...old, sourceRevision: 0, ...(record.targetMessageId ? { targetMessageId: record.targetMessageId } : {}) }) === stable({ ...record, sourceRevision: 0 });
+    if (old && q.sourceRevision < old.sourceRevision) {
+      items.push(receipt(entry.targetMessageId && sameContent ? "unchanged" : "stale")); continue;
+    }
+    if (old && old.sourceRevision === q.sourceRevision && !sameContent) {
       items.push(receipt("conflict", "同一来源修订的条目内容不同；保留 Core 原记录并重新核对。")); continue;
     }
     const result = store.transaction(() => {
@@ -45,6 +62,18 @@ export async function synchronizeAnnotationMirrors(store: SqliteExtensionReposit
       requireWriter(scope);
       const content = { schemaVersion: 1, title: (source.title || (entry.sourceType === "obsidian-note" ? "Obsidian 引用" : "会话引用")).slice(0, 500),
         body: record as unknown as JsonValue, references: [...new Set([target.logicalSessionId, ...(source.logicalSessionId ? [source.logicalSessionId] : [])])].map(logicalSessionId => ({ logicalSessionId })) };
+      if (entry.targetMessageId && target.logicalSessionId !== initialTarget.logicalSessionId) {
+        const obsoleteId = `reference-${createHash("sha256").update(JSON.stringify([scope, initialTarget.logicalSessionId, entry.referenceId])).digest("hex")}`;
+        const obsolete = store.get(scope, obsoleteId);
+        if (obsolete && !obsolete.deleted) {
+          const previous = annotationMirrorRecordSchema.parse(obsolete.content.body);
+          if (previous.setId !== entry.setId || previous.referenceId !== entry.referenceId)
+            throw new Error("Reference relocation identity mismatch");
+          const moved = store.write({ scope, writerId, objectId: obsoleteId, expectedRevision: obsolete.revision,
+            deleted: true, content: obsolete.content });
+          if (moved.status === "conflict") return moved;
+        }
+      }
       let revision = current?.revision ?? 0;
       // A first-seen positive deletion fences older exports too, without deleting absent peers.
       if (!current && entry.state === "deleted") {

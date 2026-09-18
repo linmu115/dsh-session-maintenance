@@ -52,6 +52,7 @@ const source = z.strictObject({
   vaultId: id.optional(), noteId: id.optional(), notePath: z.string().max(2048).optional(), anchorId: id.optional(),
 });
 export const annotationMirrorEntrySchema = z.strictObject({
+  targetMessageId: id.optional(),
   referenceId: id, setId: id, sourceType: z.enum(["dsh-message", "obsidian-note"]),
   state: z.enum(["pending", "committing", "sent", "failed", "deleted"]),
   selectedText: z.string().max(4000), userComment: z.string().max(2000),
