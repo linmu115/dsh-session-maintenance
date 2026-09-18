@@ -38,3 +38,5 @@
 用户确认 GPT 压缩改为 DSH 原生事件轨迹。Engine 0.1.33-rc2.37 将 GPT 0.5.0-dev.8 加入 extension-gpt-compat 验证名单；保持既有 context 操作、结果和 checkpoint 格式、回收及投影规则不变。GPT 提供的界面投影不写入模型消息。10 项格式适配测试及引擎类型检查通过。此前来源索引对应前一阶段；本次依据当前任务确认与验证结果补充。
 
 部署验收：旧运行正常退出并 recovered，升级 Engine .37、独立格式 worker 和绑定工厂，刷新 19 项完整性回执并通过官方 repair 更新启动绑定；副本 connected 且 issues 为空。GPT 实际会话 4 条历史轨迹刷新后仍可见。仅升级 GPT，保留并行任务已部署的 Core .19、Sidechat、Sticker 和 ThoughtDAG。
+
+交付记录（2026-09-18）：Engine 0.1.33-rc2.37 已启用，Maintenance 插件保持 0.2.26-rc2.28；兼容提交 47cc1c0a73cbb1079d8c480d965d4a5696a1a98f 已推送至 codex/image-startup-recovery-20260917 并核对远端。部署时旧运行 run-96283763-d6f6-4d4d-9935-29456a9877e8 已回收，新运行 run-91ff1a36-7421-4021-a1d7-76d9e98a783b 已启动。用户要求本轮仅补开发日志，未修改功能文档或代码。
