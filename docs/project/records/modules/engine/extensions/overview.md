@@ -28,3 +28,7 @@ Adapter ownership 解释所属会话，目录索引可重建而不改对象 revi
 [ExtensionDataService](../../../../../../apps/engine/src/extensions/service.ts)、[目录服务](../../../../../../apps/engine/src/extensions/directory.ts)、[镜像同步](../../../../../../apps/engine/src/extensions/annotation-sync.ts)为实现。合同 [[IF-extension]]，接入目录 [[INT-business-directory]]。
 
 GPT 扩展 gpt-compat 由已提交会话版本建立只读索引，按实例/Profile 和所属会话隔离。相同版本不重复生成修订，密文保留在原始会话而不进入索引正文；见 [[INT-gpt-format]]。
+
+## 注册汇总与绑定登记（待实现）
+
+新增 [[IF-extension-pages]] 要求每个贡献方只维护自己的登记，由公共注册器汇总完整名单；保留现有 namespace、writer、schema 与领域写限制。Obsidian 绑定信息是 Bridge 确认后的维护登记，不能用实例分区中的两条普通对象代替 Vault 唯一绑定校验。

@@ -7,6 +7,10 @@ summary: 看板通过 Engine API 读取和提交维护意图，不直接访问�
 relations:
 - relation: consumes
   to:
+    record_id: IF-extension-pages
+  reason: 计划装载业务页与栏目
+- relation: consumes
+  to:
     record_id: IF-extension
   reason: 分页目录和受限对象操作
 - relation: implements
@@ -32,3 +36,7 @@ HTTP 使用回环绑定、Bearer 或 UI cookie/CSRF/Origin 校验，浏览器不
 ## 学习双向维护实验栏目
 
 源码新增独立栏目，管理显式确认的双端绑定、同步、回收和冲突提示。入口与首版重启约束见 [[IMP-learning-roundtrip]]，真实部署状态见 [[VER-learning-roundtrip]]。
+
+## 业务扩展信息页（待实现）
+
+[[REQ-extension-pages]] 要求公开插件栏目注册。Dashboard 按 [[IF-extension-pages]] 装载页面，提供标准目录与局部失败状态；绑定、状态和同步栏目由业务扩展贡献。绑定目录属于实例级信息，不强塞入所属会话树；实例可用范围统一消费 [[IF-instance-workspace-scope]]。

@@ -5,6 +5,10 @@ title: 业务插件／扩展数据适配器
 status: current
 summary: 解释插件 schema、归属、面板及扩展事件；宿主 framing 和迁移仍由 Harness 负责。
 relations:
+- relation: provides
+  to:
+    record_id: IF-extension-pages
+  reason: 计划中的公开扩展贡献入口
 - relation: implements
   to:
     record_id: REQ-adapter-families
@@ -24,3 +28,7 @@ ExtensionDataAdapter 声明 namespace、支持插件/schema 版本、校验、�
 Obsidian 系列面板聚合多个 namespace，ThoughtDAG 聚合主干与附属日志；面板数量不等于平台 Adapter 数。另一责任分支 [平台适配](../harness/overview.md) 不共享业务写权限。
 
 GPT 兼容插件是第三类面板，见 [[INT-gpt-format]]；其原生扩展事件解析与宿主 codec 组合，不新增 Harness 身份。
+
+## 公开页面与栏目贡献（待实现）
+
+[[REQ-extension-pages]] 与 [[IF-extension-pages]] 将业务扩展注册公开给插件，支持各自信息页和栏目；数据目录是可复用栏目。每个插件注册自己的贡献，由宿主汇总完整接入名单，避免单插件上报清掉其他参与者。当前 Engine 可信数据 Adapter 注册继续保留，页面贡献不扩大写入权限。

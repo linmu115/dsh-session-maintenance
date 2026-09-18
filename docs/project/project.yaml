@@ -28,6 +28,12 @@ sources:
 - source_id: source-native-space
   path: ../superpowers/specs/2026-09-10-persistent-native-session-space.md
   format: markdown
+- source_id: extension-pages-design
+  path: ../superpowers/specs/2026-09-18-extension-pages-and-instance-scope.md
+  format: markdown
+- source_id: extension-pages-design-report
+  path: ../reports/2026-09-18-extension-pages-vault-binding-design.md
+  format: markdown
 bindings:
 - id: REQ-product
   kind: requirement
@@ -127,6 +133,37 @@ bindings:
   heading: 目标与本次范围
   status: current
   summary: 沿用持久空间要求，原文保留RC1基线，当前RC2实现另查。
+- id: REQ-extension-pages
+  kind: requirement
+  title: 业务插件自主信息页与共享实例范围
+  source_id: extension-pages-design
+  heading: 已确认需求
+  status: current
+  progress: planned
+  summary: 插件贡献页面栏目，目录可复用；可选 Bridge 集成与实例同步范围保持独立归属。
+- id: IF-extension-pages
+  kind: interface
+  title: 公开业务页面与栏目注册合同草案
+  source_id: extension-pages-design
+  heading: 公开扩展注册合同草案
+  status: proposed
+  progress: planned
+  summary: 插件只注册自己的贡献，Maintenance 汇总名单；数据与页面能力可独立提供。
+- id: IF-instance-workspace-scope
+  kind: interface
+  title: 实例有效工作区与会话范围合同草案
+  source_id: extension-pages-design
+  heading: 实例有效范围合同草案
+  status: proposed
+  progress: planned
+  summary: 所有绑定 Vault 复用实例范围，未同步保留旧链接，提交时再次校验。
+- id: VER-extension-pages-design
+  kind: verification
+  title: 公开扩展页设计的文档检查
+  source_id: extension-pages-design-report
+  heading: 验证结果
+  status: current
+  summary: 仅有文档与地图检查；实际同步范围接入和产品组合尚未验收。
 archify:
   architecture:
     source: diagrams/architecture.json
@@ -153,18 +190,23 @@ archify:
       reader:
       - MOD-reader
       launcher:
+      - IF-extension-pages
       - MOD-host
       dashboard:
+      - REQ-extension-pages
+      - IF-extension-pages
       - MOD-dashboard
       business:
       - INT-annotation
       - INT-stickers
       - INT-obsidian
       business-adapter:
+      - IF-extension-pages
       - INT-gpt-format
       - MOD-business
       - INT-business-directory
       extension-store:
+      - IF-instance-workspace-scope
       - MOD-extension-store
       - IF-extension
       - OBJ-extension

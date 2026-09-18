@@ -37,3 +37,7 @@ writerId 和 expectedRevision 必须匹配，references 不是归属。停用/�
 Harness 负责宿主实例迁移和 framing，扩展 Adapter 负责插件字段语义；添加 checkpoint/replay 事件不产生新的 Harness ID。只读索引可按实例/Profile/逻辑会话建立，原始事件仍保留在版本真源，索引不能成为另一套重放状态。
 
 实例见 [[INT-gpt-format]]。新增接入必须验证栏目和所有权、启停、旧事件恢复、密文往返、非法引用、并发修订及宿主身份不变。
+
+## 公开业务信息页的后续合同
+
+当前数据读写 DTO 与领域限制保持。已确认待实现的页面／栏目注册见 [[IF-extension-pages]]，实例工作区与会话可用性查询见 [[IF-instance-workspace-scope]]；这些草案不代表已有公共方法，也不把每个 namespace 强制变成一页。
