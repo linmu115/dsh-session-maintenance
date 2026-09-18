@@ -29,8 +29,8 @@ describe("pluggable extension data",()=>{
     const f=await fixture(),service=f.make();
     const currentPlugins=[
       ...["annotation-upstream","annotation-records","annotation-context"].map(namespace=>({namespace,pluginVersion:"0.3.12-rc2.19",writerId:"dsh-annotation-core"})),
-      {namespace:"stickers",pluginVersion:"0.7.4-rc2.3",writerId:"dsh-session-sticker-board"},
-      {namespace:"obsidian-links",pluginVersion:"0.7.0-rc2.1",writerId:"obsidian-deepharness-bridge"},
+      {namespace:"stickers",pluginVersion:"0.7.4-rc2.5",writerId:"dsh-session-sticker-board"},
+      {namespace:"obsidian-links",pluginVersion:"0.7.0-rc2.3",writerId:"obsidian-deepharness-bridge"},
       {namespace:"thoughtdag",pluginVersion:"0.4.14-rc2.14",writerId:"dsh-thoughtdag"},
     ];
     service.connect({...connect,plugins:currentPlugins});

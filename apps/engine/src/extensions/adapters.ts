@@ -86,7 +86,7 @@ export const obsidianLinksAdapter: ExtensionDataAdapter = {
     return link.success ? { ownerSessionId: link.data.logicalSessionId, kind: "note-link" }
       : { ownerSessionId: null, kind: "legacy-note-links", readOnly: true, reason: "旧链接可能包含多个目标，需明确所属会话" };
   },
-  namespace: "obsidian-links", label: "知识链接", pluginVersions: ["0.3.23", "0.6.4-rc2.4", "0.6.4-rc2.5", "0.6.4-rc2.6", "0.6.4-rc2.7", "0.7.0-rc2.1"], schemaVersions: [1, 2],
+  namespace: "obsidian-links", label: "知识链接", pluginVersions: ["0.3.23", "0.6.4-rc2.4", "0.6.4-rc2.5", "0.6.4-rc2.6", "0.6.4-rc2.7", "0.7.0-rc2.1", "0.7.0-rc2.3"], schemaVersions: [1, 2],
   validate(content) { (content.schemaVersion === 2 ? knowledgeLinkSchema : knowledgeLink).parse(content.body); },
   summarize(body) { const managed=knowledgeLinkSchema.safeParse(body);if(managed.success)return `${managed.data.note.notePath} · ${managed.data.syncState}`;const link = knowledgeLink.parse(body); return `${link.notePath} · ${link.links.length} 条链接`; },
   preview(body) { const managed=knowledgeLinkSchema.safeParse(body);if(managed.success)return {kind:'rows',total:1,rows:[{label:managed.data.note.notePath,text:managed.data.logicalSessionId}]};const link=knowledgeLink.parse(body);return {kind:"rows",total:link.links.length,rows:link.links.slice(0,100).map(l=>({label:l.target,text:l.relation==="backlink"?"双链":"引用"}))}; },
@@ -98,7 +98,7 @@ export const stickerAdapter: ExtensionDataAdapter = {
     return { ownerSessionId: value.logicalSessionId, kind: value.kind === "migration" ? "migration-receipt" : value.kind === "session" ? "session-sticker" : "annotation-sticker",
       readOnly: value.kind === "migration" };
   },
-  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10', '0.7.3-rc2.11', '0.7.3-rc2.12', '0.7.3-rc2.13', '0.7.3-rc2.14', '0.7.3-rc2.15', '0.7.3-rc2.16', '0.7.3-rc2.17', '0.7.3-rc2.18', '0.7.3-rc2.19', '0.7.4-rc2.1', '0.7.4-rc2.2', '0.7.4-rc2.3'], schemaVersions: [1],
+  capabilities, namespace: 'stickers', label: '会话贴纸', pluginVersions: ['0.7.3-rc2.9', '0.7.3-rc2.10', '0.7.3-rc2.11', '0.7.3-rc2.12', '0.7.3-rc2.13', '0.7.3-rc2.14', '0.7.3-rc2.15', '0.7.3-rc2.16', '0.7.3-rc2.17', '0.7.3-rc2.18', '0.7.3-rc2.19', '0.7.4-rc2.1', '0.7.4-rc2.2', '0.7.4-rc2.3', '0.7.4-rc2.5'], schemaVersions: [1],
   validate(content) { stickerObjectSchema.parse(content.body); },
   summarize(body) { const value=stickerObjectSchema.parse(body);return value.kind==='session'?'独立会话入口':value.kind==='migration'?`迁移 · ${value.phase}`:'普通贴纸'; },
   preview(body) { const value=stickerObjectSchema.parse(body);return {kind:'rows',total:1,rows:[{label:value.kind==='session'?'目标会话':value.kind==='migration'?'迁移目标':'所属会话',text:value.logicalSessionId}]}; },
