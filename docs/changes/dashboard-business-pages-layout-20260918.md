@@ -22,3 +22,13 @@
 - `dist/build-hashes.json` 保存本次 HTML 与全部 assets 的 SHA-256/字节数。入口 `index.html` 为 `d0b0c1cd853a12024f04220d115cdcffb15b456c3dae45cc8faf72c6d7632a7d`。
 
 本任务没有启动或停止真实实例、部署构件、绑定 Vault、读取/修改用户历史或调用模型。真实 Edge/BrowserUse 鉴权、桌面及窄屏 scrollWidth、暗色主题和控件视觉核验由主任务在独立部署记录中补充；DOM 单元测试不证明实际布局无溢出。
+
+## 主任务部署与浏览器补验
+
+2026-09-18 主任务已将 Dashboard 0.1.3 热更新到当前 Engine release 的 dashboard 目录。更新前完整备份原静态目录，先添加新哈希资源再切换入口，保留旧资源；HTTP 返回字节与构建哈希一致。Engine 入口哈希未变，未重启 DSH 或 Engine，当前 run 与 boot 保持不变。
+
+Browser Use 已刷新真实维护页，检查“数据目录”和“插件信息与接入”的切换与卡片视觉。宽窗口 clientWidth/scrollWidth 均为 1103，窄窗口均为 640，所检查元素无横向溢出，浏览器无 error 日志。已还原临时窗口尺寸；本轮未验证暗色主题，未执行绑定操作。
+
+Edge 访问问题另已确认为新浏览器无登录 Cookie：裸地址 401，完整 Launcher 登录入口 303 并签发 Cookie，带 Cookie 首页 200。主任务通过新 Open-DSH 命令执行了 Edge 打开请求；Edge 自动化连接不可用，未声称完成 Edge 内视觉验收。
+
+本机部署与验收回执分别位于 `D:/AI/DeepSeekHarness-Plugin/artifacts/single-bridge-20260918/dashboard-ui-hotfix-installed.json` 与 `dashboard-ui-hotfix-acceptance.json`，不含认证令牌或会话正文。
