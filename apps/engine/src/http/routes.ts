@@ -1,3 +1,5 @@
+import { routeVaultBindingRequest } from "./vault-binding-routes.js";
+import type { VaultBindingManager } from "../vault-bindings.js";
 import { routeBusinessPageRequest } from "./business-page-routes.js";
 import { routeInstanceWorkspaceRequest } from "./instance-workspace-routes.js";
 import { routeLearning } from "./learning-routes.js";
@@ -65,6 +67,7 @@ import {
 } from "./dashboard.js";
 
 export interface RouteContext {
+  readonly vaultBindings?: VaultBindingManager;
   readonly engine: SessionMaintenanceEngine;
   readonly jobs: JobRunner;
   readonly jobStore: JobStore;
@@ -275,6 +278,7 @@ export async function routeRequest(
   }
 
   try {
+    if (await routeVaultBindingRequest(request, response, url, context.vaultBindings)) return;
     if (await routeLearning(request, response, url, context.engine)) return;
     if (await routeRetentionRequest(request, response, url, context.engine.retention)) return;
     if (await routeIntegrationRequest(request, response, url, context.engine)) return;

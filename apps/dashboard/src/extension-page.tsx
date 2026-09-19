@@ -1,3 +1,4 @@
+import { VaultBindingPage, type VaultBindingApi } from "./vault-binding-page.js";
 import { useEffect, useMemo, useState } from "react";
 import { Button, Surface, LoadingState, EmptyState } from "@linmu/dsh-session-ui";
 import { managedGraphSchema, type ExtensionBusinessPanel, type BusinessPage, type ExtensionPanel, type ExtensionScope, type ExtensionList, type ExtensionPage, type ExtensionDetail, type ExtensionWrite, type ExtensionWriteResult, type ExtensionConflict, type ExtensionCapabilities, type ExtensionPreview, type JsonValue } from "@linmu/dsh-session-contracts";
@@ -7,7 +8,7 @@ import { NativeContextDetail } from "./native-context-detail.js";
 import { extensionCategories, extensionRegisteredViews, type ExtensionCategory } from "./extension-navigation.js";
 import { BusinessPages, type BusinessPagesApi } from "./business-pages.js";
 
-export interface ExtensionPageApi extends BusinessPagesApi {
+export interface ExtensionPageApi extends BusinessPagesApi, VaultBindingApi {
   listExtensionBusinessPanels?: ExtensionBusinessApi["listExtensionBusinessPanels"];
   listExtensionDirectory?: ExtensionBusinessApi["listExtensionDirectory"];
   listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]>;
@@ -63,6 +64,7 @@ export function ExtensionPageView({api,onOpenSession}:{api:ExtensionPageApi;onOp
     return () => { abort.abort(); clearInterval(timer); };
   }, [api, revision]);
   const categories = extensionCategories(panels ?? [], pages);
+  if (api.listVaultBindingInstances && !categories.some(category => category.id === "obsidian-series")) categories.push({ id: "obsidian-series", adapterId: "obsidian-series", label: "Obsidian Bridge", pages: [] });
   const active = categories.find(item => item.id === selected) ?? categories[0];
   const renderDetail: Parameters<typeof ExtensionBusinessDirectory>[0]["renderDetail"] = (object, member, onChanged) => <ObjectEditor key={`${scopeKey(object.scope)}:${object.objectId}:${object.revision}`} api={api} scope={object.scope} capabilities={member.capabilities!} id={object.objectId} readOnly={object.readOnly} onChanged={onChanged} onOpenSession={onOpenSession}/>;
   return <div className="page-stack extension-page">
@@ -82,8 +84,9 @@ function ExtensionCategoryView({api, category, revision, onRefresh, onOpenSessio
   renderDetail: Parameters<typeof ExtensionBusinessDirectory>[0]["renderDetail"];
 }) {
   const [view, setView] = useState("directory");
-  const registeredViews = extensionRegisteredViews(category.pages);
-  const activeView = registeredViews.some(item => item.id === view) ? view : "directory";
+  const independentBinding = category.id === "obsidian-series" && !!api.listVaultBindingInstances;
+  const registeredViews = extensionRegisteredViews(independentBinding ? category.pages.filter(page => !(page.owner.namespace === "obsidian-bridge" && page.owner.providerId === "vault-bindings")) : category.pages);
+  const activeView = independentBinding && view === "vault-bindings" || registeredViews.some(item => item.id === view) ? view : "directory";
   const adapterId = category.adapterId;
   const scopedApi = useMemo(() => ({
     ...api,
@@ -100,8 +103,10 @@ function ExtensionCategoryView({api, category, revision, onRefresh, onOpenSessio
   return <section className="page-stack extension-category" aria-label={category.label}>
     <nav className="extension-view-switch" aria-label={category.label + "子栏目"}>
       <button type="button" aria-current={activeView === "directory" ? "page" : undefined} onClick={() => setView("directory")}>扩展数据</button>
+      {independentBinding ? <button type="button" aria-current={activeView === "vault-bindings" ? "page" : undefined} onClick={() => setView("vault-bindings")}>Vault 绑定</button> : null}
       {registeredViews.map(item => <button key={item.id} type="button" aria-current={activeView === item.id ? "page" : undefined} onClick={() => setView(item.id)}>{item.label}</button>)}
     </nav>
+    {independentBinding && activeView === "vault-bindings" ? <VaultBindingPage api={api}/> : null}
     <div className="extension-content" hidden={activeView !== "directory"}>
       {!adapterId ? <p className="muted">此插件尚未注册扩展数据适配器。</p> : api.listExtensionBusinessPanels && api.listExtensionDirectory
         ? <ExtensionBusinessDirectory api={scopedApi as ExtensionBusinessApi} hideAdapterNavigation onOpenSession={onOpenSession} renderDetail={renderDetail}/>

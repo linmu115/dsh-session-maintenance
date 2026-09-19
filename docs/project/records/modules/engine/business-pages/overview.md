@@ -24,3 +24,7 @@ Dashboard 使用通用摘要、状态、键值、目录入口和声明动作表�
 
 
 Dashboard .1.6导航只依据实际注册的业务页生成可选子目录；只有数据页是每个Adapter固定入口。公共API存在不构成某个Adapter已注册信息页。namespace/provider标识同一页面类型，不同instance/profile的快照在该页内按原owner分别展示与执行；普通自定义页面使用注册标题。Obsidian现有提供方保留“插件信息与接入”名称。
+
+## 2026-09-19 Vault绑定入口修订
+
+[[REQ-offline-vault-binding]]替代必须有在线DSH提供方才能管理绑定的旧前置条件。Vault绑定子栏目由Maintenance独立提供，列表读取持久登记，动作按[[IF-offline-vault-binding]]交Obsidian桥唯一写入方；其他插件的公开业务页协议保持原样。候选实现与部署边界见[[HIST-offline-vault-binding]]。

@@ -1,3 +1,4 @@
+import { vaultBindingInstancesSchema, managedVaultsSchema, vaultBindingResultSchema, type VaultBindingAction } from "@linmu/dsh-session-contracts";
 import { learningBindSchema, learningBindingSchema, learningDirectorySchema, type LearningBind } from "@linmu/dsh-session-contracts";
 import { instanceWorkspaceConfigurationSchema, instanceWorkspaceInstanceDirectorySchema, instanceWorkspacePolicyUpdateSchema,
   instanceWorkspaceEffectiveScopeSchema, instanceSessionAvailabilitySchema, type InstanceWorkspacePolicyUpdate } from "@linmu/dsh-session-contracts";
@@ -723,6 +724,11 @@ class ApiClient {
   private jsonPatch(value: unknown): RequestInit {
     return { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(value) };
   }
+
+  async listVaultBindingInstances(signal?: AbortSignal) { return this.request("/v1/vault-bindings/instances", {}, vaultBindingInstancesSchema, signal); }
+  async listManagedVaults(target: {instanceId: string; profileId: string}, signal?: AbortSignal) { return this.request("/v1/vault-bindings/vaults?" + new URLSearchParams({instanceId:target.instanceId,profileId:target.profileId}), {}, managedVaultsSchema, signal); }
+  async createVaultBinding(input: VaultBindingAction, signal?: AbortSignal) { return this.request("/v1/vault-bindings/create", this.jsonPost(input), vaultBindingResultSchema, signal); }
+  async removeVaultBinding(input: VaultBindingAction, signal?: AbortSignal) { return this.request("/v1/vault-bindings/unbind", this.jsonPost(input), vaultBindingResultSchema, signal); }
 
   protected async request<T>(path: string, init: RequestInit, schema: ZodType<T>, signal?: AbortSignal): Promise<T> {
     const response = await this.fetchImpl(`${this.origin}${path}`, this.transport.decorate({

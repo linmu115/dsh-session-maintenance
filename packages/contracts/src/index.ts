@@ -42,3 +42,5 @@ export * from "./gpt-extension.js";
 export * from "./learning.js";
 export * from "./instance-workspace-policy.js";
 export * from "./business-pages.js";
+
+export * from "./vault-bindings.js";

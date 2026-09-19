@@ -1,3 +1,4 @@
+import { VaultBindingManager } from "../vault-bindings.js";
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { rename, rm, writeFile } from "node:fs/promises";
@@ -54,6 +55,7 @@ export async function startMaintenanceServer(input: {
   const host = input.host ?? "127.0.0.1";
   if (host !== "127.0.0.1") throw new SessionMaintenanceError("LOOPBACK_ONLY", `Refusing non-loopback host: ${host}`);
   const token = randomBytes(32).toString("base64url");
+  const vaultBindings = new VaultBindingManager({ stateRoot: input.stateRoot, token });
   const jobStore = input.engine.jobStore;
   const jobs = input.engine.jobs;
   const uiSessions = new UiSessionManager();
@@ -64,7 +66,7 @@ export async function startMaintenanceServer(input: {
     response.once("close", () => responses.delete(response));
     void (async () => {
       if (input.dashboardRoot !== undefined && await serveDashboardAsset(request, response, input.dashboardRoot)) return;
-      await routeRequest(request, response, { engine: input.engine, jobs, jobStore, token, origin, uiSessions });
+      await routeRequest(request, response, { engine: input.engine, jobs, jobStore, token, origin, uiSessions, vaultBindings });
     })().catch(() => {
       if (!response.headersSent) response.writeHead(500, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       if (!response.writableEnded) response.end(JSON.stringify({ error: { code: "INTERNAL_ERROR" } }));

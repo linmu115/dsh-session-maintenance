@@ -35,6 +35,9 @@
 
 ## 当前实现与验收边界
 
+Vault绑定不依赖DSH启动的新要求与候选实现：[[REQ-offline-vault-binding]]、[[IF-offline-vault-binding]]、[[HIST-offline-vault-binding]]。已完成源码和合成验收，尚未部署。
+
+
 2026-09-19 真源名单显示改进：[[REQ-maintenance-source-list]]；实现与合成浏览器验收见 [[HIST-maintenance-source-list]]。此改动尚未安装到当前运行的 Maintenance。
 
 
