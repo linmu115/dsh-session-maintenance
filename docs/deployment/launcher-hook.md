@@ -14,12 +14,14 @@ This is a host-driven command, not a manual import command. The host must send t
 
 | Phase | Request fields in addition to `schemaVersion: 1` and `phase` | Responsibility |
 | --- | --- | --- |
+| `recoverBeforeStart` (opt-in) | `instanceId`, `profileId` | Recover proven-exited prior runs before preparing a new launch |
+| `started` (opt-in) | `handle`, `processId` | Verify and persist process identity after spawn |
 | `prepare` | `instanceId`, `profileId`, `runtimeVersion`, `web` | Prepare Canonical runtime projection and return launch configuration/handle |
 | `beforeStop` | `handle`, `runtimeUrl` (nullable) | Request graceful runtime drain before the host stops its child |
 | `afterExit` | `handle`, `exitCode` (nullable), `requestedStop`, `forced` | Finalize or recover after child exit |
 | `abort` | `handle`, `reason: "spawn-failed"` | Recover preparation when child launch failed |
 
-The current Provider accepts `0.1.2-alpha.2` and `0.1.2-rc.1`; an RC2 Adapter elsewhere in the repository does not extend that allowlist. Protocol versions and required persistence capabilities must match; config alone cannot override these conditions.
+The deployed startup-recovery Provider accepts the registered `0.1.2-alpha.2`, `0.1.2-rc.1` and `0.1.5-rc.2` runtime families; RC2 additionally requires a verified integration and matching artifact attestation. Protocol versions and required persistence capabilities must match; config alone cannot override these conditions.
 
 `prepare` consumes existing Canonical state. The current composition additionally synchronizes Codex catalog titles before preparation, but does not fully import Codex message bodies. Import progress, projection preparation and runtime append acknowledgements are separate facts. During a run, the DSH plugin communicates directly with Engine.
 
@@ -28,3 +30,9 @@ The current Provider accepts `0.1.2-alpha.2` and `0.1.2-rc.1`; an RC2 Adapter el
 Use marked synthetic state and projection directories. Verify Hook disabled, normal start/stop, prepare timeout, child exit, spawn failure, repeated notifications, incompatible protocol and recovery followed by restart. Preserve the handle and pending-write evidence until the Engine has acknowledged finalization. Do not infer that a timeout cancelled Engine work or that an exited child guarantees a closed run.
 
 Provider timeouts and startup behavior are implementation details of the matched build; inspect source when changing host deadlines. The current Provider allows longer preparation/finalization than ordinary Broker requests. Release records must include the Launcher revision and local patch state, not just its profile JSON.
+
+## Startup recovery deployment
+
+The matched Launcher enables the two optional phases through `runtime-lifecycle.startup-recovery.json` with schemaVersion 1 and enabled true. Keep the original Hook configuration schema unchanged so old providers remain compatible. Root PID disappearance alone does not prove the process tree exited. Recovery requires reliable OS boot/exit evidence and a formal Broker cleanup receipt; failures keep the old run recoverable.
+
+After a Launcher binary upgrade, revalidate its capability digest, retain verified plugin pins, and run the formal integration repair before starting. Production Cargo builds must enable `tauri/custom-protocol`. See the [2026-09-19 activation evidence](../reports/2026-09-19-startup-recovery-activation.md). These phases do not create an external Stop/Restart command.

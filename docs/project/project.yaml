@@ -265,6 +265,8 @@ archify:
       - MOD-canonical
       - OBJ-session
       prepare:
+      - REQ-startup-recovery
+      - IMP-startup-recovery
       - MOD-runtime
       - OBJ-runtime
       - MOD-instance-workspace
@@ -294,5 +296,8 @@ archify:
       close:
       - MOD-runtime
       recover:
+      - IMP-startup-recovery
+      - VER-startup-recovery
+      - HIST-startup-recovery
       - MOD-runtime
       - OBJ-runtime

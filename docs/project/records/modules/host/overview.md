@@ -34,7 +34,7 @@ sources:
 
 # 宿主接入：Provider、插件与桥
 
-**启停边界**：本仓 ExternalLifecycleProvider 响应 Launcher Hook 的 prepare/beforeStop/afterExit/abort 时机，准备空间、排空和恢复；Hook 自身属于外部 Launcher，配置不能补出缺失能力。
+**启停边界**：本仓 ExternalLifecycleProvider 在匹配版本中响应 Launcher Hook 的 recoverBeforeStart/prepare/started/beforeStop/afterExit/abort 时机，准备空间、排空和恢复；Hook 自身属于外部 Launcher，配置不能补出缺失能力。
 
 **运行边界**：DSH 插件 attach 官方 persistence seam，按需加载并直接向 Engine 追加，取得回执才确认。凭据在宿主，浏览器不能持有 Engine token。
 
@@ -52,4 +52,4 @@ sources:
 
 双击/命令启动需发现当前配置、检查已有Engine并复用；状态核验通过稳定instance/profile/实际home及本次boot/run，不固定端口。2026-09-18工作区包装命令只有Status/Start已核验；当前Launcher没有正式外部停止入口，Stop/Restart必须在任何退出前拒绝。Tauri内部IPC方法不是CLI，直接runtime shutdown会缺少beforeStop停止意图并走恢复路径，不能当正常停止。必须正常flush/drain/close并核对run=closed、handle=finalized、finalReceipt=closed后才能重启。
 
-Engine .39已独立安装，但.38仍运行，未热替换Engine路径、lifecycle或attestation。正常切换时要共同更新Launcher入口、Engine版本/path/hash pin与双击启动发行目录；不能把静态Dashboard .1.5的成功误报为Engine .39已激活。安装与切换边界见 [[IMP-sync-ui-release]]、[[VER-sync-ui-release]]。
+2026-09-19 已部署匹配的 Launcher 与 .41 startup-recovery 修订。启动先检查旧运行，有退出证明才走正式恢复；新进程启动后保存身份。升级 Launcher 后必须重新核验能力回执及接入绑定，保持 Engine 入口、构件 pin 和双击启动目录一致。当前部署及边界见 [[IMP-startup-recovery]]、[[VER-startup-recovery]]；.38/.39 状态作为历史保留。

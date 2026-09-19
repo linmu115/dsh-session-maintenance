@@ -867,7 +867,7 @@
       "title": "2026-09-18 安装与验收边界",
       "items": [
         "Dashboard .1.5已静态部署：双同步栏目、卡片间距和默认折叠实际检查通过。",
-        "Engine .39独立安装未激活；RuntimeBroker在线过滤待正常切换，历史run不删除。",
+        "已激活 .41 startup-recovery 修订；旧运行有退出证明才正式恢复，历史数据保留。",
         "公开业务Adapter与页面注册独立；SM可选，当前Launcher无正式外部Stop/Restart。"
       ]
     }

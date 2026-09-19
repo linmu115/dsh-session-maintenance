@@ -151,8 +151,8 @@
       "lane": "engine",
       "col": 4,
       "type": "backend",
-      "label": "中断恢复核对",
-      "sublabel": "原 run 快照 / WAL / 回执",
+      "label": "中断与启动前恢复",
+      "sublabel": "确认退出 → 正式恢复 → 允许启动",
       "width": 190,
       "yOffset": 125
     }
@@ -291,7 +291,7 @@
       "items": [
         "Status/Start已有核验；Stop/Restart在正式Launcher协议接通前拒绝。",
         "直接runtime shutdown缺beforeStop意图，会进入恢复；不能替代正常flush/drain/close。",
-        "同步策略保存只影响下次实例启动；.39独立安装也不等于当前Engine已切换。"
+        "已激活 .41 启动恢复修订；确认退出并取得正式回执后继续启动。"
       ]
     }
   ]

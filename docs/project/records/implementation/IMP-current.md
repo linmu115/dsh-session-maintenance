@@ -36,3 +36,5 @@ sources:
 本次纠正 [[INT-gpt-format]]：GPT 属于扩展数据，独立注册解析器和业务面板；宿主保留 dsh-0.1.5 身份。源码版本 Engine 0.1.33-rc2.30 / 插件 0.2.26-rc2.24。过程见 [[HIST-gpt-extension-boundary]]，实际部署证据另见本轮报告。
 
 新增实验性学习双向维护源码见 [[IMP-learning-roundtrip]]，仅完成隔离验收，未部署或接管真实会话。
+
+2026-09-19 启动恢复的独立部署已验收：[[IMP-startup-recovery]] 与 [[VER-startup-recovery]]。上述旧版未复验说明不覆盖这次已经验证的启动链；也不能反过来用这次启动成功证明全部旧功能和真实模型交互通过。

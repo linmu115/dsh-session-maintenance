@@ -71,7 +71,7 @@ try {
         if ($null -ne $ready) {
             Write-Host "Session Maintenance is ready (PID $($ready.pid), port $($ready.port))."
             Write-Host 'You can now start the DSH instance in Launcher.'
-            Write-Host 'If Launcher still reports an unrecovered session, that run needs separate recovery.'
+            Write-Host 'Launcher checks for recoverable previous runs before starting; uncertain exits still require review.'
             exit 0
         }
         $child.Refresh()
