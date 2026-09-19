@@ -48,3 +48,5 @@ Vault绑定不依赖DSH启动的新要求与候选实现：[[REQ-offline-vault-b
 早先 .38/.39 与 prepare 失败的记录属于历史截点，保留在 [[IMP-sync-ui-release]]、[[VER-sync-ui-release]]，不再作为当前安装状态。当前 Launcher 外部 Stop/Restart 仍不可用；正常停止要求 closed，启动自动恢复路径接受正式 recovered，均不得强杀、删锁或改数据库状态。
 
 当前安装与推送收尾：Engine **0.1.33-rc2.45**、Dashboard **0.1.7**、Obsidian Companion **0.7.0-rc2.4**。扩展目录已解除无关GPT索引等待，真实返回三个业务栏目；独立绑定管理可在DSH停止时读取现有Vault。备份、正常退出、保留其他插件和只读检查见 [本次激活报告](../reports/2026-09-19-engine45-binding-activation.md)及 [[HIST-offline-vault-binding]]。Launcher已打开；DSH实例未启动，安装版UI、真实绑定写入仍未验收。
+
+最新前端覆盖版本为 **Dashboard 0.1.8**（Engine仍为.45）：实例列表和绑定弹窗按工作台风格重新排布，已备份安装并完成实际浏览器的列表、弹窗、刷新/关闭及浅深色检查。此前“安装版UI未验收”是.1.7安装时点记录，本次已补查这两处；真实绑定写入和系统目录选择仍未执行。参见 [[HIST-offline-vault-binding]] 和 [布局报告](../changes/2026-09-19-vault-binding-layout.md)。

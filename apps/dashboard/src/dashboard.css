@@ -448,12 +448,69 @@
 .maintenance-source-list .workspace-search { margin-top: 6px; }
 .maintenance-source-list .instance-workspace-selection > p { margin: 8px 0; }
 
-.vault-binding-instances { display: grid; gap: 10px; }
-.vault-binding-instances > button { display: flex; justify-content: space-between; padding: 16px; border: 1px solid var(--dsm-border); border-radius: 8px; background: var(--dsm-surface, white); color: inherit; cursor: pointer; }
-.vault-binding-card { width: min(760px, calc(100vw - 40px)); max-height: 85dvh; padding: 24px; border: 1px solid var(--dsm-border); border-radius: 12px; color: var(--dsm-text, #18202a); background: var(--dsm-surface, white); }
-.vault-binding-card::backdrop { background: #0006; }
-.vault-binding-card header, .vault-binding-toolbar, .vault-binding-rows > li { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.vault-binding-toolbar { margin-top: 20px; }
-.vault-binding-rows { padding: 0; list-style: none; }
-.vault-binding-rows > li { padding: 16px 0; border-bottom: 1px solid var(--dsm-border); }
-.vault-binding-rows small { display: block; color: var(--dsm-muted); overflow-wrap: anywhere; margin-top: 6px; }
+/* Vault management shares the workbench palette and uses a single compact list. */
+.vault-binding-page { max-width: 1000px; padding: 24px 0; }
+.vault-binding-page-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 22px; }
+.vault-binding-page-heading h2 { margin: 0; font-size: 18px; line-height: 1.5; font-weight: 600; }
+.vault-binding-page-heading p { margin: 6px 0 0; color: var(--dsm-muted); font-size: 13px; line-height: 1.6; }
+.vault-binding-page .dsm-button, .vault-binding-card .dsm-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 32px; padding: 6px 11px; font-size: 12px; white-space: nowrap; }
+.vault-binding-instance-list { overflow: hidden; border: 1px solid var(--dsm-border); border-radius: 9px; background: var(--dsm-surface); }
+.vault-binding-columns, .vault-binding-instance { display: grid; grid-template-columns: minmax(0, 1fr) 100px 100px; align-items: center; gap: 16px; padding: 0 18px; }
+.vault-binding-columns { min-height: 38px; color: var(--dsm-muted); background: var(--dsm-soft-surface); font-size: 12px; }
+.vault-binding-instance { width: 100%; min-height: 66px; border: 0; border-top: 1px solid var(--dsm-border); color: var(--dsm-text); background: transparent; text-align: left; cursor: pointer; }
+.vault-binding-instance:hover { background: var(--dsm-hover); }
+.vault-binding-instance:focus-visible { position: relative; outline-offset: -3px; }
+.vault-binding-instance-name { display: flex; min-width: 0; align-items: center; gap: 12px; }
+.vault-binding-instance-name strong { overflow-wrap: anywhere; font-size: 14px; font-weight: 550; }
+.vault-binding-icon { display: flex; flex: none; width: 32px; height: 32px; align-items: center; justify-content: center; border-radius: 7px; color: var(--dsm-muted); background: var(--dsm-soft-surface); }
+.vault-binding-profile { justify-self: start; flex: none; padding: 2px 7px; border: 1px solid var(--dsm-border); border-radius: 5px; color: var(--dsm-muted); background: var(--dsm-soft-surface); font-size: 11px; line-height: 1.5; }
+.vault-binding-instance-action { display: flex; align-items: center; justify-content: flex-end; gap: 8px; color: var(--dsm-muted); font-size: 12px; white-space: nowrap; }
+.vault-binding-instance:hover .vault-binding-instance-action { color: var(--dsm-text); }
+.vault-binding-count { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; margin-left: 7px; padding: 0 5px; border-radius: 5px; color: var(--dsm-muted); background: var(--dsm-hover); font-size: 11px; line-height: 20px; font-weight: 500; }
+.vault-binding-card { width: min(640px, calc(100vw - 32px)); max-height: min(720px, calc(100dvh - 48px)); margin: auto; padding: 0; overflow: hidden; border: 1px solid var(--dsm-border); border-radius: 12px; color: var(--dsm-text); background: var(--dsm-surface); box-shadow: 0 20px 80px #0003; }
+.vault-binding-card[open] { display: flex; flex-direction: column; }
+.vault-binding-card::backdrop { background: #11182766; }
+.vault-binding-card-heading { display: flex; flex: none; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px 24px 18px; border-bottom: 1px solid var(--dsm-border); }
+.vault-binding-eyebrow { margin: 0 0 5px; color: var(--dsm-muted); font-size: 12px; }
+.vault-binding-title { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.vault-binding-title h2 { margin: 0; font-size: 18px; line-height: 1.5; font-weight: 600; overflow-wrap: anywhere; }
+.vault-binding-icon-button { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: 6px; color: var(--dsm-muted); background: transparent; cursor: pointer; }
+.vault-binding-icon-button:hover:not(:disabled) { color: var(--dsm-text); background: var(--dsm-hover); }
+.vault-binding-icon-button:disabled, .vault-binding-unbind:disabled { opacity: .45; cursor: not-allowed; }
+.vault-binding-card-body { min-height: 0; overflow-y: auto; padding: 18px 24px 22px; }
+.vault-binding-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.vault-binding-toolbar h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.vault-binding-actions { display: flex; align-items: center; gap: 7px; }
+.vault-binding-rows { margin: 0; padding: 0; list-style: none; border: 1px solid var(--dsm-border); border-radius: 8px; }
+.vault-binding-rows > li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 15px 14px; }
+.vault-binding-rows > li + li { border-top: 1px solid var(--dsm-border); }
+.vault-binding-vault-info { min-width: 0; }
+.vault-binding-vault-name { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; }
+.vault-binding-vault-name strong { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+.vault-binding-status { display: inline-flex; align-items: center; gap: 5px; color: var(--dsm-muted); font-size: 11px; white-space: nowrap; }
+.vault-binding-status::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+.vault-binding-status[data-state="ready"] { color: var(--dsm-success); }
+.vault-binding-status[data-state="attention"] { color: var(--dsm-warning); }
+.vault-binding-path { display: block; margin-top: 4px; color: var(--dsm-muted); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; }
+.vault-binding-detail { display: block; margin-top: 6px; color: var(--dsm-muted); font-size: 12px; line-height: 1.5; }
+.vault-binding-unbind { padding: 5px 8px; border: 1px solid var(--dsm-border); border-radius: 6px; color: var(--dsm-muted); background: var(--dsm-surface); font-size: 12px; cursor: pointer; }
+.vault-binding-unbind:hover:not(:disabled) { color: var(--dsm-danger); border-color: var(--dsm-danger-border); background: var(--dsm-danger-surface); }
+.vault-binding-card-note { display: flex; flex: none; align-items: flex-start; gap: 8px; padding: 12px 24px; border-top: 1px solid var(--dsm-border); color: var(--dsm-muted); background: var(--dsm-soft-surface); }
+.vault-binding-card-note svg { flex: none; margin-top: 2px; }
+.vault-binding-card-note p { margin: 0; font-size: 12px; line-height: 1.6; }
+.vault-binding-feedback { margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; color: var(--dsm-muted); background: var(--dsm-soft-surface); font-size: 12px; line-height: 1.6; }
+.vault-binding-feedback[role="alert"] { color: var(--dsm-danger); background: var(--dsm-danger-surface); }
+.vault-binding-feedback .dsm-button { margin: 6px 0 0 8px; }
+@media (max-width: 560px) {
+  .vault-binding-page { padding-block: 18px; }
+  .vault-binding-page-heading { gap: 12px; }
+  .vault-binding-columns, .vault-binding-instance { grid-template-columns: minmax(0, 1fr) 52px 24px; gap: 10px; padding-inline: 12px; }
+  .vault-binding-instance-action { font-size: 0; gap: 0; }
+  .vault-binding-instance-name { gap: 8px; }
+  .vault-binding-instance-name .vault-binding-icon { display: none; }
+  .vault-binding-card-heading { padding: 18px 16px 15px; }
+  .vault-binding-card-body { padding: 16px; }
+  .vault-binding-card-note { padding: 12px 16px; }
+  .vault-binding-rows > li { grid-template-columns: minmax(0, 1fr) auto; gap: 10px; padding: 12px; }
+  .vault-binding-rows > li > .vault-binding-icon { display: none; }
+}
