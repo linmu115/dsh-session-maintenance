@@ -17,4 +17,4 @@
 
 开发历程草稿：从用户反馈与真实只读 API 比对定位到目录来源错误，而不是 Launcher 丢失名称；改为当前目录与历史展示分离。来源索引待绑定。构建、测试和实际安装结果将在交付记录中补充。
 
-实现验证已完成：22 项针对性测试与 32 项发行接入测试通过，生产构建/打包成功；真实只读预览返回 4 个当前 Launcher 名称及 3 个历史/未关联项。Engine rc2.54 / Dashboard 0.1.14 尚未替换运行版本，等待副本通过 Launcher 正常停止。详见 `docs/reports/2026-09-19-launcher-sync-instance-names.md`；UI 实机未验收。
+实现与部署验证已完成：22 项针对性测试与 32 项发行接入测试通过，生产构建/打包成功。用户确认停止后核验副本 closed、handle finalized / closed；旧 Engine 正常 drain / owner-release 后，完成备份并激活 Engine rc2.54 / Dashboard 0.1.14。运行接口返回 4 个当前 Launcher 名称及 3 个历史/未关联项，接入 connected，原同步策略与历史主记录不变，DSH 仍停止。浏览器工具阻断本机一次性登录入口，新版认证同步页 UI 实机未验收。详见 `docs/reports/2026-09-19-launcher-sync-instance-names.md`。
