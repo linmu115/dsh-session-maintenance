@@ -35,6 +35,22 @@ async function fixture() {
   return {root,db,writes,objects,online,runtime,policies,service,source,engine,run};
 }
 
+it('uses Launcher names for current instances and retains historical configuration without creating runs',async()=>{
+  const f=await fixture();f.run('old','closed');
+  f.policies.updatePolicy('i-one',{expectedRevision:0,selection:{kind:'ids',workspaceIds:[],includeUnassigned:false}});
+  let launcher: {instanceId:string;name:string}[] | null=[{instanceId:'i-one',name:'副本'},{instanceId:'new',name:'测试'}];
+  const service=new InstanceWorkspaceRuntime(f.db,[],f.writes,()=>false,async()=>launcher).createService();
+  expect(await service.listInstances()).toEqual({instances:launcher,historicalInstances:[]});
+  expect((await service.get('new')).policy.instanceId).toBe('new');
+  launcher=[{instanceId:'new',name:'改名后的测试'}];
+  expect(await service.listInstances()).toEqual({instances:launcher,historicalInstances:[{instanceId:'i-one',name:'i-one'}]});
+  expect((await service.get('i-one')).policy.selection).toEqual({kind:'ids',workspaceIds:[],includeUnassigned:false});
+  expect(f.db.prepare('SELECT COUNT(*) AS count FROM projection_runs').get()).toMatchObject({count:1});
+  launcher=null;
+  expect(await service.listInstances()).toMatchObject({instances:[],historicalInstances:[{instanceId:'i-one'}],notice:expect.any(String)});
+  expect((await service.get('i-one')).policy.revision).toBe(1);
+});
+
 it('freezes scope before projection; later saves affect only the next run, with empty and unassigned selections',async()=>{
   const f=await fixture();
   f.policies.updatePolicy('i-one',{expectedRevision:0,selection:{kind:'ids',workspaceIds:['a' as never],includeUnassigned:false}});

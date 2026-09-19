@@ -63,6 +63,7 @@ import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
 import { InstanceIntegrationService } from "./integrations/service.js";
 import { WorkspaceSyncPolicyService } from "./integrations/sync-policy.js";
 import { discoverLauncherIntegrations } from "./integrations/launcher-discovery.js";
+import { readLauncherInstanceDirectory } from "./integrations/launcher-instance-directory.js";
 import { registerCodexSource, withDefaultCodexSource } from "./integrations/codex-sources.js";
 import type { IntegrationInstallOptions } from "./integrations/launcher-install.js";
 import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
@@ -234,7 +235,8 @@ async function createComposition(
   const projectionRunRepository = coordinateAsyncMethods(new SqliteProjectionRunRepository(repository.database), ["createProjectionRun", "setProjectionRunState", "setProjectionRunCheckpoint", "upsertProjectionSession", "saveOperationReceipt"], writes, "projection-state");
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
   let composedEngine: SessionMaintenanceEngine | undefined;
-  const instanceWorkspaceRuntime = new InstanceWorkspaceRuntime(repository.database, instances, writes, runId => composedEngine?.runtimeBroker.isRunActive(runId) ?? false);
+  const instanceWorkspaceRuntime = new InstanceWorkspaceRuntime(repository.database, instances, writes, runId => composedEngine?.runtimeBroker.isRunActive(runId) ?? false,
+    () => readLauncherInstanceDirectory(options.integrationEnvironment?.launcherDataRoot ?? join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "in.dsh-plug.dsh-launcher")));
   const graphLifecycle = new SessionGraphStore(repository.database);
   await writes.run("graph-archive-reconcile", () => {
     const rows = repository.database.prepare(`SELECT id,archived_at FROM logical_sessions s WHERE s.tombstoned_at IS NULL

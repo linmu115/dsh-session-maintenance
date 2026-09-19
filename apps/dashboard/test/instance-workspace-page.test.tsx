@@ -70,6 +70,24 @@ it("saves unassigned-only explicitly and discards an old-instance save response 
   expect(container.querySelector("select")!.value).toBe("two");
 });
 
+it("shows Launcher names, collapses legacy identities, and keeps historical scopes accessible", async () => {
+  const save=vi.fn();
+  await render({listInstanceWorkspaceInstances:async()=>({instances:[{instanceId:'one',name:'0.1.5-rc.2 副本'},{instanceId:'two',name:'0.1.5-rc.2 测试'}],historicalInstances:[{instanceId:'legacy',name:'旧手工登记'}]}),getInstanceWorkspaceSync:async id=>configuration(id),saveInstanceWorkspaceSync:save});
+  const labels=[...container.querySelectorAll('select option')].map(item=>item.textContent);
+  expect(labels).toContain('0.1.5-rc.2 副本');expect(labels).toContain('0.1.5-rc.2 测试');expect(labels).not.toContain('旧手工登记');
+  const history=container.querySelector<HTMLDetailsElement>('.historical-instance-list')!;
+  expect(history.open).toBe(false);
+  await act(async()=>{history.open=true;});await click('旧手工登记');
+  await click('编辑');await click('仅同步以下选择');expect(container.textContent).toContain('工作区-legacy');
+  expect(save).not.toHaveBeenCalled();
+});
+
+it("disambiguates duplicate Launcher names by stable identity", async () => {
+  await render({listInstanceWorkspaceInstances:async()=>({instances:[{instanceId:'one',name:'测试'},{instanceId:'two',name:'测试'}]}),getInstanceWorkspaceSync:async id=>configuration(id)});
+  const labels=[...container.querySelectorAll('select option')].map(item=>item.textContent);
+  expect(labels).toContain('测试 · one');expect(labels).toContain('测试 · two');
+});
+
 it("starts collapsed, keeps a draft when collapsed, and changes all to an explicit Maintenance list", async () => {
   const save = vi.fn(async (id, input) => ({ ...configuration(id, 2), policy: { ...configuration(id, 2).policy, selection: input.selection } }));
   await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async id => configuration(id), saveInstanceWorkspaceSync: save });

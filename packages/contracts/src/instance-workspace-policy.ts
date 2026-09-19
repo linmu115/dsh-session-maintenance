@@ -51,5 +51,10 @@ export type InstanceWorkspaceConfiguration = z.infer<typeof instanceWorkspaceCon
 export const instanceWorkspaceInstanceDirectorySchema = z.strictObject({
   instances: z.array(z.strictObject({ instanceId: instanceWorkspaceInstanceIdSchema, name: z.string().min(1) }))
     .refine(items => new Set(items.map(item => item.instanceId)).size === items.length, "Duplicate instance identity"),
-});
+  historicalInstances: z.array(z.strictObject({ instanceId: instanceWorkspaceInstanceIdSchema, name: z.string().min(1) })).optional(),
+  notice: z.string().optional(),
+}).refine(value => {
+  const ids = [...value.instances, ...(value.historicalInstances ?? [])].map(item => item.instanceId);
+  return new Set(ids).size === ids.length;
+}, "Duplicate instance identity across directories");
 export type InstanceWorkspaceInstanceDirectory = z.infer<typeof instanceWorkspaceInstanceDirectorySchema>;

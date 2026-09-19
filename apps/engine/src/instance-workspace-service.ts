@@ -21,7 +21,8 @@ export class InstanceWorkspaceService {
   }
   private async requireInstance(instanceId: string): Promise<void> {
     instanceWorkspaceInstanceIdSchema.parse(instanceId);
-    if (!(await this.listInstances()).instances.some(item => item.instanceId === instanceId))
+    const directory = await this.listInstances();
+    if (![...directory.instances, ...(directory.historicalInstances ?? [])].some(item => item.instanceId === instanceId))
       throw new IntegrationError("INSTANCE_WORKSPACE_INSTANCE_UNKNOWN", "未找到已登记的 DSH 实例，请重新读取实例目录。", 404);
   }
   async get(instanceId: string): Promise<InstanceWorkspaceConfiguration> {

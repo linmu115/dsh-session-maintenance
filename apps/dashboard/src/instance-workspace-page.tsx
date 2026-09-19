@@ -131,14 +131,16 @@ export function InstanceWorkspacePage({ api }: { api: InstanceWorkspaceApi }) {
     const controller = new AbortController(); setDirectory(undefined); setError(undefined);
     if (!api.listInstanceWorkspaceInstances) setError("当前维护引擎未提供 DSH 实例同步配置。");
     else void api.listInstanceWorkspaceInstances(controller.signal).then(value => {
-      if (!controller.signal.aborted) { setDirectory(value); setInstanceId(current => value.instances.some(item => item.instanceId === current) ? current : value.instances[0]?.instanceId ?? ""); }
+      if (!controller.signal.aborted) { setDirectory(value); setInstanceId(current => [...value.instances, ...(value.historicalInstances ?? [])].some(item => item.instanceId === current) ? current : value.instances[0]?.instanceId ?? ""); }
     }, reason => { if (!controller.signal.aborted) setError(message(reason)); });
     return () => controller.abort();
   }, [api, reload]);
   return <Surface title="DSH 实例同步范围" action={<Button onClick={() => setReload(value => value + 1)}>刷新实例</Button>}>
     <div className="settings-content instance-workspace-intro"><p>为每个 DSH 实例选择与真源双向同步的 Maintenance 工作区。保存后在实例下次启动时生效。</p>
-      {error ? <p role="alert">{error}</p> : !directory ? <LoadingState label="正在读取 DSH 实例…" /> : !directory.instances.length ? <EmptyState title="没有可配置的 DSH 实例" description="请先在设置中接入 DSH 实例。" /> : <label className="field">DSH 实例<select value={instanceId} onChange={event => setInstanceId(event.currentTarget.value)}>{directory.instances.map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}</option>)}</select></label>}
+      {error ? <p role="alert">{error}</p> : !directory ? <LoadingState label="正在读取 DSH 实例…" /> : !directory.instances.length ? <EmptyState title="没有当前 Launcher 实例" description="在 Launcher 新建实例后刷新此列表。" /> : <label className="field">DSH 实例<select value={directory.instances.some(item => item.instanceId === instanceId) ? instanceId : ""} onChange={event => setInstanceId(event.currentTarget.value)}><option value="" disabled>请选择 Launcher 实例</option>{directory.instances.map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}{directory.instances.filter(item => item.name === instance.name).length > 1 ? ` · ${instance.instanceId}` : ""}</option>)}</select></label>}
+      {directory?.notice ? <p role="status">{directory.notice}</p> : null}
+      {directory?.historicalInstances?.length ? <details className="historical-instance-list"><summary>历史及未关联实例（{directory.historicalInstances.length}）</summary><p>这些条目来自历史运行或手工登记，不在当前 Launcher 实例列表中。保留其同步配置和历史记录。</p>{directory.historicalInstances.map(instance => <div key={instance.instanceId}><Button aria-pressed={instanceId === instance.instanceId} onClick={() => setInstanceId(instance.instanceId)}>{instance.name}</Button>{instance.name !== instance.instanceId ? <small>{instance.instanceId}</small> : null}</div>)}</details> : null}
     </div>
-    {directory && instanceId && directory.instances.some(item => item.instanceId === instanceId) ? <InstanceEditor key={instanceId} api={api} instanceId={instanceId} /> : null}
+    {directory && instanceId && [...directory.instances, ...(directory.historicalInstances ?? [])].some(item => item.instanceId === instanceId) ? <InstanceEditor key={instanceId} api={api} instanceId={instanceId} /> : null}
   </Surface>;
 }

@@ -12,7 +12,8 @@ const openStates = "'preparing','running','draining','verifying','recovery-requi
 export class InstanceWorkspaceRuntime {
   readonly policies: SqliteInstanceWorkspacePolicyRepository;
   constructor(private readonly database: DatabaseSync, private readonly instances: readonly RegisteredInstance[],
-    private readonly writes: MaintenanceWriteScope, private readonly isRunOnline: (runId: RunId) => boolean = () => false) {
+    private readonly writes: MaintenanceWriteScope, private readonly isRunOnline: (runId: RunId) => boolean = () => false,
+    private readonly readLauncherInstances?: () => Promise<readonly { instanceId: string; name: string }[] | null>) {
     this.policies = new SqliteInstanceWorkspacePolicyRepository(database);
   }
 
@@ -49,12 +50,16 @@ export class InstanceWorkspaceRuntime {
   createService(): InstanceWorkspaceService {
     return new InstanceWorkspaceService({
       listInstances: async () => {
-        // Launcher-prepared targets are authoritative even before an optional
-        // read-only source registration is added to Engine configuration.
+        // Run history retains identities for recovery; it is not the current Launcher catalog.
         const rows = this.database.prepare("SELECT DISTINCT instance_id FROM projection_runs").all() as {instance_id:string}[];
         const names = new Map(rows.map(row => [row.instance_id,row.instance_id]));
         for (const instance of this.instances) if (instance.platform === "dsh") names.set(instance.id,instance.displayName);
-        return {instances:[...names].map(([instanceId,name])=>({instanceId,name}))};
+        const known = [...names].map(([instanceId,name])=>({instanceId,name}));
+        if (!this.readLauncherInstances) return { instances: known };
+        const launcher = await this.readLauncherInstances();
+        const currentIds = new Set((launcher ?? []).map(item => item.instanceId));
+        return { instances: [...(launcher ?? [])], historicalInstances: known.filter(item => !currentIds.has(item.instanceId)),
+          ...(launcher === null ? { notice: "未找到 Launcher 实例目录。历史及未关联实例仍可查看，原同步配置未改变。" } : {}) };
       },
       readConfiguration: async instanceId => {
         const policy = this.policies.getPolicy(instanceId);
