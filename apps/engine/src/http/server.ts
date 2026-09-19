@@ -61,7 +61,10 @@ export async function startMaintenanceServer(input: {
   const uiSessions = new UiSessionManager();
   let origin = "";
   const responses = new Set<import("node:http").ServerResponse>();
-  const server: Server = createServer((request, response) => {
+  // Loopback cookies are shared across ports. DSH runtime login cookies can
+  // exceed Node's default 16 KiB even though this API query is small. Keep a
+  // bounded allowance; origin, session and CSRF checks still run unchanged.
+  const server: Server = createServer({ maxHeaderSize: 64 * 1024 }, (request, response) => {
     responses.add(response);
     response.once("close", () => responses.delete(response));
     void (async () => {

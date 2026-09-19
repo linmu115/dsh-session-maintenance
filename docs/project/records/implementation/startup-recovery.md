@@ -29,3 +29,5 @@ sources:
 2026-09-19 已安装 Maintenance `b7af3b8`（.41 兼容组合的 startup-recovery 修订）和 Launcher `3ee0c44`。该本地部署来自 `codex/startup-recovery-20260919`，不能把另一工作树的 HEAD 当作已安装源码。Dashboard 及其他 26 个发行文件保持原哈希，引用、贴纸、思维图、BetterSidebar 和业务 Adapter 功能未改动。验收见 [[VER-startup-recovery]]，过程见 [[HIST-startup-recovery]]。
 
 正常停止仍需 flush/drain/close 与 closed 回执；外部 Stop/Restart 入口仍未开放。自动恢复路径允许正式 recovered 回执，不改变正常停止标准。
+
+2026-09-19 后续：原b7af3b8已通过3d96036合回Vault绑定/UI所在的发行分支，并随Engine .46激活；详情 [[HIST-recovery-regression]]。

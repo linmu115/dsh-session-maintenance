@@ -60,3 +60,23 @@ describe("Dashboard UI session boundary", () => {
     expect(unknownLaunchField.status).toBe(400);
   });
 });
+
+
+it("accepts accumulated loopback cookies without relaxing dashboard authentication", async () => {
+  const fixture = await createEngineFixture("ui-large-loopback-cookies"); cleanups.push(fixture.cleanupAll);
+  const server = await fixture.startServer();
+  const trusted = new MaintenanceClient({origin: server.origin, token: server.token});
+  const launch = await trusted.createDashboardLaunchCode();
+  const unrelatedCookies = Array.from({length: 100}, (_, i) => `dsh-auth-synthetic-${i}=${"x".repeat(220)}`).join("; ");
+  const claim = await fetch(launch.url, {redirect: "manual", headers: {cookie: unrelatedCookies}});
+  expect(claim.status).toBe(303);
+  const ownCookie = claim.headers.get("set-cookie")!.split(";", 1)[0]!;
+  const headers = {cookie: unrelatedCookies + "; " + ownCookie, origin: server.origin};
+  const session = await fetch(`${server.origin}/v1/ui/session`, {headers});
+  expect(session.status).toBe(200);
+  const {session: {csrfToken}} = await session.json() as {session: {csrfToken: string}};
+  expect((await fetch(`${server.origin}/v1/extensions/business-panels`, {headers: {...headers, "x-dsh-csrf": csrfToken}})).status).toBe(200);
+  expect((await fetch(`${server.origin}/v1/extensions/business-panels`, {headers})).status).toBe(403);
+  expect((await fetch(`${server.origin}/v1/ui/session`, {headers: {...headers, origin: "https://untrusted.invalid"}})).status).toBe(403);
+  expect((await fetch(`${server.origin}/v1/health`, {headers: {cookie: "oversized=" + "x".repeat(70 * 1024)}})).status).toBe(431);
+});

@@ -83,3 +83,20 @@ it("loads disclosure records beneath their graph only after expanding the disclo
     expect(view.element.textContent).toContain("读取位置记录"); expect(get).toHaveBeenCalledTimes(1);
   } finally {await view.close();}
 });
+
+
+it("replaces expansion guidance on failure and retries the failed directory", async () => {
+  const {api, list} = fixture();
+  list.mockRejectedValueOnce(new Error("Maintenance API request failed with HTTP 431"));
+  const view = await mount(api);
+  try {
+    expect(view.element.textContent).toContain("工作区目录加载失败");
+    expect(view.element.textContent).toContain("这与 DSH 实例是否启动无关");
+    expect(view.element.textContent).not.toContain("展开左侧工作区和会话");
+    await view.click("重试加载");
+    expect(view.element.textContent).toContain("研究工作区");
+    expect(view.element.textContent).not.toContain("工作区目录加载失败");
+    await view.click("研究工作区");
+    expect(view.element.textContent).toContain("接收会话 Y");
+  } finally { await view.close(); }
+});
