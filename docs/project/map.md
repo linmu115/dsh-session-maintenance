@@ -35,14 +35,16 @@
 
 ## 当前实现与验收边界
 
-Vault绑定不依赖DSH启动的新要求与候选实现：[[REQ-offline-vault-binding]]、[[IF-offline-vault-binding]]、[[HIST-offline-vault-binding]]。已完成源码和合成验收，尚未部署。
+Vault绑定不依赖DSH启动的新要求与候选实现：[[REQ-offline-vault-binding]]、[[IF-offline-vault-binding]]、[[HIST-offline-vault-binding]]。已随 Engine .45 / Dashboard .1.7 与 Obsidian桥 .4 安装激活，真实绑定写入和安装版UI未验收。
 
 
-2026-09-19 真源名单显示改进：[[REQ-maintenance-source-list]]；实现与合成浏览器验收见 [[HIST-maintenance-source-list]]。此改动尚未安装到当前运行的 Maintenance。
+2026-09-19 真源名单显示改进：[[REQ-maintenance-source-list]]；实现与合成浏览器验收见 [[HIST-maintenance-source-list]]。此改动已安装到当前 Engine .45 / Dashboard .1.7；安装版视觉尚未验收。
 
 
 [[MOD-instance-workspace]] 提供Maintenance自身分类工作区策略、每实例共享范围、run快照及可选host有效范围；配置保存后下次启动生效，当前run不换范围。Codex项目映射在同步的另一同级子栏目。[[MOD-business-pages]] 提供公开贡献注册、结构化栏目与持久动作回执，Dashboard按“扩展→业务插件→插件内数据/信息页”组织；SM是外部业务的可选维护能力。
 
-截至 2026-09-19，本地部署为 Maintenance .41 兼容组合的 startup-recovery 修订（`b7af3b8`），配合 Launcher `3ee0c44`。已完成真实旧运行正式恢复、生产包安装、接入重新校验及新实例启动，新增进程身份记录。现有 UI、插件文件、同步名单与其他绑定保持不变。实现及验收见 [[IMP-startup-recovery]]、[[VER-startup-recovery]]；恢复进度视觉仍未单独验收。
+2026-09-19 早先激活截点：本地部署为 Maintenance .41 兼容组合的 startup-recovery 修订（`b7af3b8`），配合 Launcher `3ee0c44`。已完成真实旧运行正式恢复、生产包安装、接入重新校验及新实例启动，新增进程身份记录。现有 UI、插件文件、同步名单与其他绑定保持不变。实现及验收见 [[IMP-startup-recovery]]、[[VER-startup-recovery]]；恢复进度视觉仍未单独验收。
 
 早先 .38/.39 与 prepare 失败的记录属于历史截点，保留在 [[IMP-sync-ui-release]]、[[VER-sync-ui-release]]，不再作为当前安装状态。当前 Launcher 外部 Stop/Restart 仍不可用；正常停止要求 closed，启动自动恢复路径接受正式 recovered，均不得强杀、删锁或改数据库状态。
+
+当前安装与推送收尾：Engine **0.1.33-rc2.45**、Dashboard **0.1.7**、Obsidian Companion **0.7.0-rc2.4**。扩展目录已解除无关GPT索引等待，真实返回三个业务栏目；独立绑定管理可在DSH停止时读取现有Vault。备份、正常退出、保留其他插件和只读检查见 [本次激活报告](../reports/2026-09-19-engine45-binding-activation.md)及 [[HIST-offline-vault-binding]]。Launcher已打开；DSH实例未启动，安装版UI、真实绑定写入仍未验收。
