@@ -3,35 +3,55 @@ import { execFile } from 'node:child_process';
 import { open, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, join } from 'node:path';
 import { z } from 'zod';
-// Fixed script only: selected paths never become executable PowerShell text.
-export const FOLDER_PICKER_SCRIPT = `
-$ErrorActionPreference = 'Stop'
-[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
-Add-Type -AssemblyName System.Windows.Forms
-$dialog = [System.Windows.Forms.FolderBrowserDialog]::new()
-$dialog.Description = '选择已安装 Obsidian Bridge 的 Vault 文件夹'
-$dialog.ShowNewFolderButton = $false
-try {
-  if ($dialog.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {
-    @{ path = $dialog.SelectedPath } | ConvertTo-Json -Compress
-  } else { @{ path = $null } | ConvertTo-Json -Compress }
-} finally { $dialog.Dispose() }
-`;
+import { FOLDER_PICKER_READY, FOLDER_PICKER_SCRIPT } from './vault-folder-script.js';
+export { FOLDER_PICKER_SCRIPT } from './vault-folder-script.js';
 export type VaultFolderPicker = (signal: AbortSignal) => Promise<string | null>;
-export function createWindowsVaultFolderPicker(options: { platform?: string; timeoutMs?: number; execute?: typeof execFile } = {}): VaultFolderPicker {
+export function createWindowsVaultFolderPicker(options: { platform?: string; timeoutMs?: number; selectionTimeoutMs?: number; execute?: typeof execFile } = {}): VaultFolderPicker {
   return async signal => {
     signal.throwIfAborted();
     if ((options.platform ?? process.platform) !== 'win32') throw new IntegrationError("VAULT_FOLDER_INVALID", '选择文件夹功能需要 Windows 本机桌面');
-    const deadline = AbortSignal.any([signal, AbortSignal.timeout(options.timeoutMs ?? 60_000)]);
-    const output = await new Promise<string>((resolve, reject) => {
-      (options.execute ?? execFile)('powershell.exe', ['-NoLogo', '-NoProfile', '-STA', '-NonInteractive', '-EncodedCommand', Buffer.from(FOLDER_PICKER_SCRIPT, 'utf16le').toString('base64')],
-        { windowsHide: true, encoding: 'utf8', maxBuffer: 32_768, signal: deadline }, (error, stdout) => {
-          if (error) reject(new IntegrationError("VAULT_FOLDER_INVALID", deadline.aborted ? '选择文件夹已取消或超时，请重新操作' : '无法打开 Windows 文件夹选择框'));
-          else resolve(String(stdout));
+    const abort = new AbortController();
+    let stage: 'opening' | 'selecting' = 'opening';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const cancel = () => abort.abort(signal.reason);
+    signal.addEventListener('abort', cancel, { once: true });
+    const arm = (ms: number) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => abort.abort(new Error('picker timeout')), ms);
+      timer.unref();
+    };
+    arm(options.timeoutMs ?? 20_000);
+    try {
+      const output = await new Promise<string>((resolve, reject) => {
+        const child = (options.execute ?? execFile)('powershell.exe', ['-NoLogo', '-NoProfile', '-STA', '-NonInteractive', '-EncodedCommand', Buffer.from(FOLDER_PICKER_SCRIPT, 'utf16le').toString('base64')],
+          { windowsHide: true, encoding: 'utf8', maxBuffer: 32_768, signal: abort.signal }, (error, stdout) => {
+            if (error || abort.signal.aborted) {
+              const message = signal.aborted ? '已取消选择文件夹'
+                : abort.signal.aborted ? stage === 'opening'
+                  ? 'Windows 文件夹窗口未能及时打开，已取消本次选择。请重试。'
+                  : '选择文件夹等待超时，窗口已关闭。请重新选择。'
+                : '无法打开 Windows 文件夹选择框';
+              reject(new IntegrationError("VAULT_FOLDER_INVALID", message));
+            } else resolve(String(stdout));
+          });
+        let pending = '';
+        child.stderr?.on('data', (chunk: Buffer | string) => {
+          pending += String(chunk);
+          const lines = pending.split(/\r?\n/u);
+          pending = lines.pop()!.slice(-256);
+          if (!abort.signal.aborted && stage === 'opening' && lines.includes(FOLDER_PICKER_READY)) {
+            stage = 'selecting';
+            arm(options.selectionTimeoutMs ?? 600_000);
+          }
         });
-    });
-    deadline.throwIfAborted();
-    return z.object({ path: z.string().min(1).max(32_768).nullable() }).strict().parse(JSON.parse(output.trim())).path;
+      });
+      signal.throwIfAborted();
+      try { return z.object({ path: z.string().min(1).max(32_768).nullable() }).strict().parse(JSON.parse(output.trim())).path; }
+      catch { throw new IntegrationError("VAULT_FOLDER_INVALID", '文件夹选择结果无效，请重新选择'); }
+    } finally {
+      clearTimeout(timer);
+      signal.removeEventListener('abort', cancel);
+    }
   };
 }
 
