@@ -1,4 +1,18 @@
-export type ExternalLifecyclePhase = "prepare" | "beforeStop" | "afterExit" | "abort";
+export type ExternalLifecyclePhase = "prepare" | "recoverBeforeStart" | "started" | "beforeStop" | "afterExit" | "abort";
+
+export interface ExternalLifecycleRecoveryRequest {
+  readonly schemaVersion: 1;
+  readonly phase: "recoverBeforeStart";
+  readonly instanceId: string;
+  readonly profileId: string;
+}
+
+export interface ExternalLifecycleStartedRequest {
+  readonly schemaVersion: 1;
+  readonly phase: "started";
+  readonly handle: string;
+  readonly processId: number;
+}
 
 export interface ExternalLifecyclePrepareRequest {
   readonly schemaVersion: 1;
@@ -36,6 +50,8 @@ export interface ExternalLifecycleAbortRequest {
 
 export type ExternalLifecycleRequest =
   | ExternalLifecyclePrepareRequest
+  | ExternalLifecycleRecoveryRequest
+  | ExternalLifecycleStartedRequest
   | ExternalLifecycleBeforeStopRequest
   | ExternalLifecycleAfterExitRequest
   | ExternalLifecycleAbortRequest;

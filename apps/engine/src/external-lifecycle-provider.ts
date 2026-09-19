@@ -1,7 +1,8 @@
 import { maintenanceRequired } from "./integrations/maintenance-policy.js";
 import { startManagedEngine, type EngineStartupMonitor } from "./engine-startup.js";
 import { randomBytes } from "node:crypto";
-import { open, mkdir, readFile, rename } from "node:fs/promises";
+import { open, mkdir, readFile, rename, readdir } from "node:fs/promises";
+import { canRecoverAfterReboot, recoverySystemEvidence, scopedRecoveryRuns, type RuntimeProcessIdentity } from "./lifecycle-recovery.js";
 import { dirname, isAbsolute, join } from "node:path";
 
 import type {
@@ -81,6 +82,8 @@ const abortRequestSchema = z.strictObject({
   reason: z.literal("spawn-failed"),
 });
 const requestSchema = z.discriminatedUnion("phase", [
+  z.strictObject({ schemaVersion: z.literal(1), phase: z.literal("recoverBeforeStart"), instanceId: idSchema, profileId: idSchema }),
+  z.strictObject({ schemaVersion: z.literal(1), phase: z.literal("started"), handle: handleSchema, processId: z.number().int().positive() }),
   prepareRequestSchema,
   beforeStopRequestSchema,
   afterExitRequestSchema,
@@ -102,6 +105,10 @@ interface StoredFinalReceipt {
 }
 
 interface StoredLifecycleHandle {
+  readonly instanceId?: string | undefined;
+  readonly profileId?: string | undefined;
+  readonly processIdentity?: RuntimeProcessIdentity | undefined;
+  readonly exitObservedAt?: string | undefined;
   readonly schemaVersion: 1;
   readonly handle: string;
   readonly ownerClientId: string;
@@ -122,6 +129,10 @@ interface StoredLifecycleHandle {
 }
 
 const storedHandleSchema: z.ZodType<StoredLifecycleHandle> = z.strictObject({
+  instanceId: idSchema.optional(),
+  profileId: idSchema.optional(),
+  processIdentity: z.strictObject({ pid: z.number().int().positive(), startedAt: z.string().datetime({ offset: true }), bootedAt: z.string().datetime({ offset: true }) }).optional(),
+  exitObservedAt: z.iso.datetime().optional(),
   schemaVersion: z.literal(1),
   handle: handleSchema,
   ownerClientId: idSchema,
@@ -142,6 +153,8 @@ const storedHandleSchema: z.ZodType<StoredLifecycleHandle> = z.strictObject({
 });
 
 export interface ExternalLifecycleProviderDependencies {
+  readonly recoveryRuns?: typeof scopedRecoveryRuns;
+  readonly systemEvidence?: typeof recoverySystemEvidence;
   /** New onboarding always installs this scoped mode; legacy hand-configured hooks retain their old contract until adopted. */
   readonly requireBinding?: boolean;
   readonly fetch?: typeof globalThis.fetch;
@@ -199,12 +212,16 @@ export class MaintenanceExternalLifecycleProvider {
   private readonly startEngine: (stateRoot: string) => Promise<EngineStartupMonitor | void>;
   private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly requireBinding: boolean;
+  private readonly recoveryRuns: typeof scopedRecoveryRuns;
+  private readonly systemEvidence: typeof recoverySystemEvidence;
 
   constructor(
     readonly stateRoot: string,
     dependencies: ExternalLifecycleProviderDependencies = {},
   ) {
     this.requireBinding = dependencies.requireBinding ?? false;
+    this.recoveryRuns = dependencies.recoveryRuns ?? scopedRecoveryRuns;
+    this.systemEvidence = dependencies.systemEvidence ?? recoverySystemEvidence;
     this.fetchImpl = dependencies.fetch ?? globalThis.fetch;
     this.clock = dependencies.clock ?? (() => new Date().toISOString());
     this.randomId = dependencies.randomId ?? (() => randomBytes(24).toString("base64url"));
@@ -225,11 +242,65 @@ export class MaintenanceExternalLifecycleProvider {
       );
     }
     switch (request.phase) {
+      case "recoverBeforeStart": return this.recoverBeforeStart(request.instanceId, request.profileId);
+      case "started": {
+        const stored = await this.readHandle(request.handle);
+        if (stored.finalReceipt !== null || stored.exitObservedAt !== undefined) throw new ProviderError("HANDLE_FINALIZED", "运行已经退出，不能重新登记进程。", false);
+        const evidence = await this.systemEvidence(request.processId);
+        if (evidence.process === null) throw new ProviderError("PROCESS_UNAVAILABLE", "新运行进程已退出，无法登记进程身份。", true);
+        if (stored.processIdentity && JSON.stringify(stored.processIdentity) !== JSON.stringify(evidence.process)) throw new ProviderError("PROCESS_CONFLICT", "运行进程身份发生冲突。", false);
+        await this.writeHandle({ ...stored, processIdentity: evidence.process });
+        return { schemaVersion: 1, ok: true };
+      }
       case "prepare": return this.prepare(request);
       case "beforeStop": return this.beforeStop(request);
       case "afterExit": return this.afterExit(request);
       case "abort": return this.abort(request);
     }
+  }
+
+  private async recoverBeforeStart(instanceId: string, profileId: string): Promise<ExternalLifecycleAcknowledgement> {
+    const runs = new Map((await this.recoveryRuns(this.stateRoot, instanceId, profileId)).map(run => [run.id, run]));
+    if (runs.size === 0) return { schemaVersion: 1, ok: true };
+    const names = await readdir(join(this.stateRoot, HANDLE_DIRECTORY)).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return []; throw error;
+    });
+    const handled = new Set<string>();
+    for (const name of names) {
+      if (!name.endsWith(".json")) continue;
+      const raw = JSON.parse(await readFile(join(this.stateRoot, HANDLE_DIRECTORY, name), "utf8"));
+      const run = runs.get(raw.runId);
+      if (!run) continue;
+      const stored = storedHandleSchema.parse(raw);
+      if (name !== `${stored.handle}.json` || (stored.instanceId !== undefined && stored.instanceId !== instanceId)
+        || (stored.profileId !== undefined && stored.profileId !== profileId)) throw new ProviderError("HANDLE_SCOPE_CONFLICT", "旧运行的实例身份不一致，已保留数据。", false);
+      handled.add(run.id);
+      if (stored.finalReceipt !== null) {
+        if (!["closed", "recovered"].includes(run.state)) throw new ProviderError("RECEIPT_CONFLICT", "旧运行状态与收尾回执不一致。", false);
+        continue;
+      }
+      // These terminal states are committed only after projection cleanup. A lost
+      // provider response can therefore be reconciled without replaying the data writes.
+      if (run.state === "closed" || run.state === "recovered") {
+        await this.writeHandle({ ...stored, state: "finalized", finalReceipt: { disposition: run.state, finalizedAt: this.clock() }, lastError: null });
+        continue;
+      }
+      if (stored.exitObservedAt === undefined) {
+        const evidence = await this.systemEvidence(stored.processIdentity?.pid);
+        const sameProcess = stored.processIdentity && evidence.process
+          && Date.parse(stored.processIdentity.startedAt) === Date.parse(evidence.process.startedAt);
+        if (sameProcess) throw new ProviderError("RUNTIME_STILL_RUNNING", "上次实例仍在运行，请先正常停止。", true);
+        if (!canRecoverAfterReboot(stored.createdAt, run.startedAt, evidence.bootedAt, this.clock())) {
+          throw new ProviderError("RUNTIME_EXIT_UNCONFIRMED",
+            "无法确认上次运行及其子进程已经退出，已保留数据；请正常退出旧实例，或重启电脑后再次启动。", true);
+        }
+      }
+      await this.finalize(stored, "recovery");
+    }
+    if ([...runs.values()].some(run => !["closed", "recovered"].includes(run.state) && !handled.has(run.id))) {
+      throw new ProviderError("RECOVERY_HANDLE_MISSING", "旧运行缺少正式恢复凭据，已保留数据。", false);
+    }
+    return { schemaVersion: 1, ok: true };
   }
 
   private async prepare(request: ExternalLifecyclePrepareRequest): Promise<ExternalLifecyclePrepareResponse> {
@@ -249,6 +320,7 @@ export class MaintenanceExternalLifecycleProvider {
       projectSelection: { kind: "all" } as const,
     };
     const connection = await this.ensureConnection();
+    await this.recoverBeforeStart(request.instanceId, request.profileId);
     const nonce = this.randomId();
     if (!/^[A-Za-z0-9_-]{16,128}$/u.test(nonce)) throw new ProviderError("RANDOM_ID_INVALID", "Provider random ID is invalid", false);
     const handle = `maintenance-${nonce}`;
@@ -320,6 +392,8 @@ export class MaintenanceExternalLifecycleProvider {
       ...(run.nativeMode ? { nativeMode: run.nativeMode } : {}),
     };
     const stored: StoredLifecycleHandle = {
+      instanceId: request.instanceId,
+      profileId: request.profileId,
       schemaVersion: 1,
       handle,
       ownerClientId,
@@ -432,13 +506,17 @@ export class MaintenanceExternalLifecycleProvider {
     const normalCloseWasAuthorized = request.requestedStop
       && !request.forced
       && stored.shutdownAcceptedAt !== null;
-    return this.finalize(stored, normalCloseWasAuthorized ? "normal" : "recovery");
+    const exited = { ...stored, exitObservedAt: this.clock() };
+    await this.writeHandle(exited);
+    return this.finalize(exited, normalCloseWasAuthorized ? "normal" : "recovery");
   }
 
   private async abort(request: ExternalLifecycleAbortRequest): Promise<ExternalLifecycleAcknowledgement> {
     const stored = await this.readHandle(request.handle);
     if (stored.finalReceipt !== null) return { schemaVersion: 1, ok: true };
-    return this.finalize(stored, "recovery");
+    const exited = { ...stored, exitObservedAt: this.clock() };
+    await this.writeHandle(exited);
+    return this.finalize(exited, "recovery");
   }
 
   private async finalize(
@@ -464,7 +542,7 @@ export class MaintenanceExternalLifecycleProvider {
       }
     }
     const disposition = closed.run.state === "closed" && reason === "normal" ? "closed" : "recovered";
-    if (closed.run.removedProjection !== true) {
+    if (closed.run.removedProjection !== true || !["closed", "recovered"].includes(String(closed.run.state))) {
       await this.writeHandle({ ...stored, state: "recovery-required", lastError: "Broker did not confirm projection cleanup" });
       throw new ProviderError("BROKER_CLOSE_INVALID", "Runtime Broker did not confirm projection cleanup", true);
     }
