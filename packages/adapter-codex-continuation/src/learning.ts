@@ -3,6 +3,7 @@ import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import type { CodexContinuationTarget, LearningCodexPort, LearningCursor, LearningMessage, LearningSnapshot } from "@linmu/dsh-session-contracts";
 import { LEARNING_SKIPPED_IMAGE_TEXT, ExtensionDataError } from "@linmu/dsh-session-contracts";
+import { activeCodexEnvelopes, visibleUserText, type CodexEnvelope } from "@linmu/dsh-adapter-codex-read";
 import { StdioAppServerTransport } from "./transport.js";
 import type { AppServerTransportFactory, AppServerTransport } from "./types.js";
 
@@ -27,14 +28,18 @@ export function parseLearningLog(text: string, after?: LearningCursor): Learning
   }
   const messages: LearningMessage[] = [];
   current = undefined;
-  for (const [index, row] of rows.entries()) {
+  // Initial association sees the same active history as ordinary Codex import.
+  // Incremental handoffs retain raw indices and reject any new compaction.
+  const active = after ? rows.map((envelope, sourceIndex) => ({ envelope, sourceIndex })) : activeCodexEnvelopes(rows as CodexEnvelope[]);
+  for (const { sourceIndex: index, envelope: row } of active) {
     const p = row.payload ?? {};
     if (row.type === "event_msg" && p.type === "task_started") current = p.turn_id;
-    if (index < (after?.count ?? 0)) continue;
+    if (after && typeof index === "number" && index < after.count) continue;
     if (after && (row.type === "compacted" || p.type === "thread_rolled_back" || p.type === "turn_aborted")) return fail("Codex 历史经过压缩、回滚或中断，需重新核对边界");
     if (row.type !== "response_item") continue;
     if (after && !["message", "reasoning"].includes(String(p.type))) return fail("新增内容含工具执行，当前仅支持纯学习问答");
-    if (p.type !== "message" || !["user", "assistant"].includes(p.role) || ["analysis", "commentary"].includes(p.channel) || p.phase === "commentary") continue;
+    if (p.type !== "message" || !["user", "assistant"].includes(p.role) || p.channel === "analysis") continue;
+    if (["visible-record", "metadata-record"].includes(p.dsh_import?.mode)) continue;
     if (!Array.isArray(p.content)) return fail("消息正文格式不受支持");
     let skippedImages = 0;
     let body = p.content.flatMap((c: any) => {
@@ -45,13 +50,9 @@ export function parseLearningLog(text: string, after?: LearningCursor): Learning
     }).join("\n");
     // Match the Codex read adapter's public text boundary; these are host envelopes,
     // not learner turns. Retain the actual request in a mixed envelope/message.
-    if (p.role === "user") {
-      const originalBody = body;
-      for (const tag of ["codex_internal_context", "in-app-browser-context", "environment_context", "recommended_plugins", "system-reminder", "app-context"]) {
-        body = body.replace(new RegExp(`<${tag}\\b[^>]*>[\\s\\S]*?</${tag}>`, "giu"), "");
-      }
-      body = body.replace(/^(?:\s*&#x0*20;)+/iu, "");
-      if (body !== originalBody) body = body.trim();
+    if (p.role === "user" && !p.dsh_import) {
+      const visible = visibleUserText(body).text;
+      if (visible !== body.trim()) body = visible;
     }
     if (!body.trim() && skippedImages) body = LEARNING_SKIPPED_IMAGE_TEXT;
     if (!body.trim()) continue;

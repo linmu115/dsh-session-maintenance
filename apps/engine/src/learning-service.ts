@@ -13,7 +13,9 @@ interface Stored extends Omit<LearningBinding, "revision" | "blockedReason"> {
   syncedMessages: { role: string; textHash: string }[]; handoffId: string | null;
 }
 interface Handoff { revision: number; cursor: LearningCursor; sentAt: string; endpointDigest: string; consumed: boolean }
-const contents = (messages: readonly LearningMessage[]) => messages.map(({ role, text }) => ({ role, textHash: hash(text) }));
+// Ordinary Codex import trims the outer whitespace of user messages. Compare
+// that same boundary without rewriting native text or touching internal spaces.
+const contents = (messages: readonly LearningMessage[]) => messages.map(({ role, text }) => ({ role, textHash: hash(role === "user" ? text.trim() : text) }));
 const prefix = (a: readonly unknown[], b: readonly unknown[]) => a.length <= b.length && hash(a) === hash(b.slice(0, a.length));
 const imageCount = (messages: readonly LearningMessage[]) => messages.reduce((n, m) => n + (m.skippedImages ?? 0), 0);
 const imageCheckNotice = (dsh: readonly LearningMessage[], codex: readonly LearningMessage[]) =>
@@ -121,7 +123,7 @@ export class LearningService {
       if (!run || !p) return fail("DSH 投影已失效");
       const data: Stored = { id: randomUUID(), logicalSessionId: q.logicalSessionId, title: candidate.title, targetPresetId: q.targetPresetId,
         codexThreadId: q.codexThreadId, codexInstanceId: target.codexInstanceId, dshInstanceId: run.instanceId, dshProfileId: run.profileId,
-        dshNativeSessionId: p.native_session_id, dshRunId: q.dshRunId, state: "ready", message: "已确认关联，等待同步", sentAt: null,
+        dshNativeSessionId: p.native_session_id, dshRunId: q.dshRunId, state: "ready", message: "已确认关联，已自动解除普通 Codex 同步，等待学习交接", sentAt: null,
         collectedAt: null, endpointDigest: this.endpoint(target), cursor: { count: 0, digest: "" }, syncedMessages: [], handoffId: null };
       this.check(data);
       const dsh = await this.projection(data), codex = await this.codex.read(target, q.codexThreadId);
@@ -151,7 +153,9 @@ export class LearningService {
       const before = await this.codex.read(target, data.codexThreadId, data.cursor);
       if (before.busy || before.messages.length) return fail("Codex 有未回收内容或正在生成，禁止覆盖其进度");
       const delta = p.prepared.messages.slice(data.syncedMessages.length);
-      if (JSON.stringify(p.prepared.messages).length > target.contextWindowTokens * target.inputBudgetRatio) return fail("交接内容超过保守预算，请先核对学习范围；不会静默截断");
+      // The existing prefix is already in Codex. Only the new injection consumes
+      // this handoff's input allowance; do not charge the shared history again.
+      if (delta.length && JSON.stringify(delta).length > target.contextWindowTokens * target.inputBudgetRatio) return fail("本次新增内容超过保守预算，请先核对学习范围；不会静默截断");
       const handoffId = randomUUID(), started = this.now();
       data.imageNotice = `本次同步跳过 ${imageCount(delta)} 张图片，仅发送文字；原图片保留。`;
       data.state = "sending"; data.message = "正在确认 Codex 接收"; data.handoffId = handoffId;
@@ -167,7 +171,9 @@ export class LearningService {
         if (this.row(id).revision !== revision) return fail("同步期间 DSH 已变化");
         const sentAt = this.now();
         const handoff: Handoff = { revision, cursor: received.cursor, sentAt, endpointDigest: data.endpointDigest, consumed: false };
-        data.cursor = received.cursor; data.syncedMessages = full; data.state = "sent"; data.sentAt = sentAt; data.message = "已送达；请重新启动 Codex 后继续原任务，确保桌面加载最新上下文";
+        data.cursor = received.cursor; data.syncedMessages = full; data.state = "sent"; data.sentAt = sentAt;
+        data.message = delta.length ? `已追加 ${delta.length} 条消息；请重新启动 Codex 后继续原任务，确保桌面加载最新上下文`
+          : "两端文字已一致，无需追加；已记录交接边界，可在 Codex 原任务继续学习，完成后回收";
         this.db.exec("BEGIN IMMEDIATE");
         try { this.db.prepare("UPDATE learning_handoffs SET data_json=? WHERE id=?").run(JSON.stringify(handoff), handoffId); this.save(data); this.db.exec("COMMIT"); }
         catch (error) { this.db.exec("ROLLBACK"); throw error; }

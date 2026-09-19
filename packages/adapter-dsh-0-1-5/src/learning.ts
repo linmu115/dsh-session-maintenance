@@ -64,22 +64,28 @@ export async function appendLearningV3(item: CanonicalProjectionSessionInput, ru
   const tail: SessionFormatEvent[] = [];
   let turn = Math.max(0, ...artifact.events.map(e => Number(record(e.data).turn) || 0));
   let open = false;
+  let answered = false, step = 1;
   const emit = (type: string, data: JsonValue, surface = false) => tail.push({ type, data, seq: artifact.events.length + tail.length,
     time: Date.parse(at), ...(surface ? { surfaceOp: "append" as const } : {}) });
+  const finish = () => {
+    if (!answered) throw new Error("Codex 回答尚未完成");
+    emit("turn/end", { turn, reason: { kind: "completed" } }); open = false;
+  };
   for (const m of messages) {
     const id = `learning:${digest([operationId, m.id]).slice(7)}`;
     if (m.role === "user") {
-      if (open) throw new Error("Codex 问答顺序不完整");
-      turn++; open = true; emit("turn/start", { turn }); emit("step/start", { turn, step: 1 });
+      if (open) finish();
+      turn++; open = true; answered = false; step = 1; emit("turn/start", { turn }); emit("step/start", { turn, step });
       emit("user/message", { id, role: "user", source: { kind: "user" }, content: [{ type: "text", text: m.text }] }, true);
     } else {
       if (!open) throw new Error("Codex 回答缺少本次问题");
-      emit("assistant/message", { turn, step: 1, message: { id, role: "assistant", source: { kind: "model", provider: "codex", model: "imported" },
+      if (answered) { step++; emit("step/start", { turn, step }); }
+      emit("assistant/message", { turn, step, message: { id, role: "assistant", source: { kind: "model", provider: "codex", model: "imported" },
         content: [{ type: "text", text: m.text }] }, stream: [] }, true);
-      emit("step/end", { turn, step: 1 }); emit("turn/end", { turn, reason: { kind: "completed" } }); open = false;
+      emit("step/end", { turn, step }); answered = true;
     }
   }
-  if (open) throw new Error("Codex 回答尚未完成");
+  if (open) finish();
   const combined = validateV3({ ...artifact, events: [...artifact.events, ...tail] }); visibleContext(combined);
   const operation: NativeAppendOperation = { runId: run.id, operationId: operationId as never,
     nativeSessionId: nativeSessionId as never, nativeRevision: combined.events.length, observedAt: at,

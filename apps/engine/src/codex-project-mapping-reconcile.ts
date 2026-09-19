@@ -18,17 +18,18 @@ export function assertMappingRunsStopped(database: DatabaseSync): void {
 /** Only the explicit Codex selection grants automatic restoration eligibility. */
 function selectedMappingKeepSet(database: DatabaseSync, selection: MappingRetentionSelection): Set<string> {
   const keep = new Set<string>();
+  const learning = new Set((database.prepare("SELECT logical_session_id FROM learning_bindings").all() as unknown as Array<{ logical_session_id: string }>).map(row => row.logical_session_id));
   const bindings = database.prepare("SELECT logical_session_id, instance_id, session_id FROM platform_bindings WHERE platform='codex'").all() as unknown as Array<{ logical_session_id: string; instance_id: string; session_id: string }>;
-  for (const row of bindings) if (selection.sourceKeys.has(codexSourceKey(row.instance_id, row.session_id))) keep.add(row.logical_session_id);
+  for (const row of bindings) if (!learning.has(row.logical_session_id) && selection.sourceKeys.has(codexSourceKey(row.instance_id, row.session_id))) keep.add(row.logical_session_id);
   // A native DSH conversation in an explicitly selected project is owned by
   // Maintenance. Mirror grouping is never trusted here: it may predate strict mapping.
   const natives = database.prepare("SELECT s.id, m.project_id FROM logical_sessions s JOIN project_memberships m ON m.logical_session_id=s.id WHERE s.origin_kind='maintenance-native'").all() as unknown as Array<{ id: string; project_id: string }>;
-  for (const row of natives) if (selection.projectIds.has(row.project_id)) keep.add(row.id);
+  for (const row of natives) if (!learning.has(row.id) && selection.projectIds.has(row.project_id)) keep.add(row.id);
   const derivations = database.prepare("SELECT child_session_id, parent_session_id FROM session_derivations").all() as unknown as Array<{ child_session_id: string; parent_session_id: string }>;
   let changed = true;
   while (changed) {
     changed = false;
-    for (const row of derivations) if (keep.has(row.parent_session_id) && !keep.has(row.child_session_id)) { keep.add(row.child_session_id); changed = true; }
+    for (const row of derivations) if (!learning.has(row.child_session_id) && keep.has(row.parent_session_id) && !keep.has(row.child_session_id)) { keep.add(row.child_session_id); changed = true; }
   }
   return keep;
 }
@@ -49,6 +50,11 @@ function withActiveLocalDsh(database: DatabaseSync, selected: ReadonlySet<string
       AND s.origin_kind='codex-derived' AND s.tombstoned_at IS NULL
       AND NOT EXISTS(SELECT 1 FROM session_tombstones t WHERE t.logical_session_id=s.id AND t.restored_at IS NULL)`)
     .all() as unknown as Array<{ child_session_id: string; parent_session_id: string }>;
+  // Learning owns its source independently of the ordinary project selection.
+  // Preserve existing progress only; never revive a user-deleted binding.
+  for (const row of database.prepare(`SELECT s.id FROM learning_bindings l JOIN logical_sessions s ON s.id=l.logical_session_id
+    WHERE s.tombstoned_at IS NULL AND NOT EXISTS(SELECT 1 FROM session_tombstones t WHERE t.logical_session_id=s.id AND t.restored_at IS NULL)`)
+    .all() as unknown as Array<{ id: string }>) local.add(row.id);
   let changed = true;
   while (changed) {
     changed = false;

@@ -16,6 +16,7 @@ export const codexProjectMappingUpdateSchema = z.strictObject({
 export const codexMappingProjectSchema = z.strictObject({
   key, instanceId: key, projectId: key, name: z.string(),
   roots: z.array(z.string()), sessionCount: z.number().int().nonnegative(),
+  learningManagedCount: z.number().int().nonnegative().optional(),
   kind: z.enum(["local", "mixed", "unknown"]), eligible: z.boolean(), issues: z.array(z.string()),
 });
 export const codexProjectMappingConfigurationSchema = z.strictObject({

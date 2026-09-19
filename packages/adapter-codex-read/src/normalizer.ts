@@ -112,7 +112,7 @@ interface VisibleUserText {
   readonly transportWhitespacePrefixRemoved: boolean;
 }
 
-function visibleUserText(value: string): VisibleUserText {
+export function visibleUserText(value: string): VisibleUserText {
   let visible = value
     .replace(/<codex_internal_context\b[^>]*>[\s\S]*?<\/codex_internal_context>/giu, "")
     .replace(/<in-app-browser-context\b[^>]*>[\s\S]*?<\/in-app-browser-context>/giu, "")
@@ -272,7 +272,7 @@ interface IndexedCodexEnvelope {
  * the rollout for audit, but replaying them as active messages defeats Codex's
  * compaction and can make the first DSH continuation exceed the model window.
  */
-function activeCodexEnvelopes(envelopes: readonly CodexEnvelope[]): readonly IndexedCodexEnvelope[] {
+export function activeCodexEnvelopes(envelopes: readonly CodexEnvelope[]): readonly IndexedCodexEnvelope[] {
   let compactedIndex = -1;
   for (const [index, envelope] of envelopes.entries()) {
     if (envelope.type === "compacted" && Array.isArray(envelope.payload.replacement_history)) {

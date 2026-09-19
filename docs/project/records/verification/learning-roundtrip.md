@@ -3,7 +3,7 @@ id: VER-learning-roundtrip
 kind: verification
 title: 学习交接闭环与 Codex 上下文验证
 status: current
-summary: 215 项相关回归通过，19 项专项通过，CLI 真实协议配合本地模拟模型确认注入内容进入下一次请求；真实桌面和真实会话尚未验收。
+summary: 相关测试 71 项及发行检查通过；真实目标关联、历史不变和普通同步排除通过，真实新增问答往返未验收。
 relations:
 - relation: verifies
   to:
@@ -11,6 +11,8 @@ relations:
 ---
 
 # 学习交接闭环与 Codex 上下文验证
+
+2026-09-19 当前状态：.53/.13 已部署。真实“机试DeepLearning”49 条有效消息核对通过并完成关联，自动退出普通 Codex 同步，原历史及既有派生数不变。空增量只保存交接边界，不向 Codex 重复注入，也不以整段历史拦截发送预算；新增问答仍按边界追加，按钮不会自动跳转或触发回答。以下更早状态为历史记录。见 [本轮修复报告](../../../reports/2026-09-19-learning-prefix-and-sync.md)。
 
 2026-09-19 后续图片过滤：.50/.11 已安装，相关测试覆盖 34 项，发行检查 32 项、portable 43 文件通过；真实 CLI legacy 与 paginated 临时会话均通过注入/重开/后续上下文/回收，真实模型调用 0。真实会话两端各 2 张图片可跳过，但剩余共同前缀预检未通过；未绑定。见 [图片过滤报告](../../../reports/2026-09-19-learning-images.md)。
 

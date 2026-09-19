@@ -4,6 +4,21 @@ const at = "2026-09-17T00:01:00Z";
 const row = (type: string, payload: unknown, timestamp = at) => JSON.stringify({ type, payload, timestamp }) + "\n";
 const msg = (role: string, text: string) => row("response_item", { type: "message", id: role, role, content: [{ type: role === "user" ? "input_text" : "output_text", text }], internal_chat_message_metadata_passthrough: { turn_id: "turn" } });
 describe("Codex learning log boundary", () => {
+  it("uses the latest replacement history and shared annotation/delegation normalization without losing public progress", () => {
+    const message = (role: string, text: string, extra = {}) => ({ type: "message", role, content: [{ type: "input_text", text }], ...extra });
+    const compact = (text: string) => row("compacted", { replacement_history: [
+      { type: "compaction", encrypted_content: "private" }, message("developer", "internal"),
+      message("user", `<codex_delegation><input>${text}</input></codex_delegation>\n# Response annotations:\nprivate\n</response-annotations>`),
+      message("assistant", "public progress", { channel: "commentary" }), message("assistant", "answer"),
+    ] });
+    const log = msg("user", "old history") + compact("old summary") + compact("current summary") + msg("user", "next");
+    const result = parseLearningLog(log);
+    expect(result.messages.map(m => m.text)).toEqual(["current summary", "public progress", "answer", "next"]);
+    expect(result.cursor.count).toBe(4);
+    expect(() => parseLearningLog(log.replace("old history", "rewritten old history"), result.cursor)).toThrow("历史发生变化");
+    expect(() => parseLearningLog(log + compact("new summary"), result.cursor)).toThrow("压缩");
+    expect(parseLearningLog(log + msg("assistant", "new answer"), result.cursor).messages.map(m => m.text)).toEqual(["new answer"]);
+  });
   it("excludes runtime environment envelopes while retaining a mixed user request", () => {
     const result = parseLearningLog(msg("user", "<environment_context>runtime</environment_context>")
       + msg("user", "<environment_context>runtime</environment_context>\nQuestion"));

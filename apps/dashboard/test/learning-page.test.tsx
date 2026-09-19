@@ -25,6 +25,7 @@ it("shows recoverable errors and disables duplicate actions during collection", 
   await act(async () => collect.click()); expect(collect.disabled).toBe(true); expect(learningAction).toHaveBeenCalledTimes(1);
   await act(async () => reject(new Error("DSH 已变化，禁止追加")));
   expect(container.querySelector('[role="alert"]')!.textContent).toContain("DSH 已变化"); expect(collect.disabled).toBe(false);
+  expect(collect.closest("article")!.querySelector('[role="alert"]')!.textContent).toContain("DSH 已变化");
 });
 it("blocks actions on an active DSH and never auto-binds candidates", async () => {
   const bindLearning = vi.fn(), learningAction = vi.fn();

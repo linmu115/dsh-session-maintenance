@@ -132,6 +132,9 @@ importers:
 
   packages/adapter-codex-continuation:
     dependencies:
+      '@linmu/dsh-adapter-codex-read':
+        specifier: workspace:*
+        version: link:../adapter-codex-read
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts

@@ -195,7 +195,7 @@ export function SyncPage({ api }: { readonly api: WorkspaceSyncApi }) {
           {configuration.projects.length === 0 ? <EmptyState title="暂未发现 Codex 项目" description="请检查 Codex 本地接入和项目目录后刷新；也可以保存空名单，明确不映射任何项目。" /> : visible.length === 0 ? <EmptyState title="没有匹配的项目" description="调整搜索词可查看其他项目，已有勾选仍然保留。" /> : <div className="sync-workspaces">{visible.map((project) => <div key={project.key} className="mapping-project" data-selected={selected.has(project.key)}>
             <label className="mapping-project-choice">
               <input aria-label={`映射 ${project.name} (${project.instanceId} / ${project.projectId})`} type="checkbox" checked={selected.has(project.key)} disabled={!editing || busy || (!project.eligible && !selected.has(project.key))} onChange={(event) => toggle(project.key, event.target.checked)} />
-              <span><strong>{nameFor(project.key)}</strong><small>{project.sessionCount} 个现有本地会话 · 包含未来新增本地会话</small></span>
+              <span><strong>{nameFor(project.key)}</strong><small>{project.sessionCount} 个现有本地会话 · 包含未来新增本地会话</small>{project.learningManagedCount ? <small>{project.learningManagedCount} 个会话由学习双向维护管理，已排除普通同步</small> : null}</span>
               <Badge>{project.kind === "mixed" ? "混合项目 · 仅本地会话" : project.eligible ? "本地项目" : "暂不可选"}</Badge>
             </label>
             <div className="mapping-project-detail">

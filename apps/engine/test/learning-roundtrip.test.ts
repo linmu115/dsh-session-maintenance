@@ -47,6 +47,56 @@ async function setup(withImages = false) {
   return { ...f, db, runs, port, service, bind, target };
 }
 describe("learning roundtrip", () => {
+  it("budgets only the new injection when the existing common history is large", async () => {
+    const f = await setup();
+    // Full four-message payload is larger than this allowance; the two new
+    // messages fit, so the existing Codex prefix must not be charged twice.
+    f.target.contextWindowTokens = 400;
+    const b = await f.bind();
+    expect((await f.service.send(b.id)).state).toBe("sent");
+    expect(f.port.injections).toBe(1); expect(f.port.all.map(m => m.text)).toEqual(["A?", "A!", "B?", "B!"]);
+  });
+  it("records an unchanged-history handoff without injection or a false full-history budget failure, then collects only new turns", async () => {
+    const f = await setup();
+    f.target.contextWindowTokens = 1;
+    f.port.all.push(message("b-u", "user", "B?"), message("b-a", "assistant", "B!"));
+    const b = await f.bind();
+    const cursor = f.port.cursor();
+    const sent = await f.service.send(b.id);
+    expect(sent.state).toBe("sent"); expect(sent.message).toContain("两端文字已一致，无需追加");
+    expect(f.port.injections).toBe(0); expect(f.port.cursor()).toEqual(cursor);
+    await f.service.send(b.id); expect(f.db.prepare("SELECT COUNT(*) n FROM learning_handoffs").get()!.n).toBe(1);
+    f.port.all.push(message("next-u", "user", "Next?"), message("next-a", "assistant", "Next!"));
+    expect((await f.service.collect(b.id)).state).toBe("collected");
+    expect(f.db.prepare("SELECT COUNT(*) n FROM session_derivations").get()!.n).toBe(0);
+  });
+  it("retains the budget rejection when there actually are new DSH messages to send", async () => {
+    const f = await setup(); f.target.contextWindowTokens = 1; const b = await f.bind();
+    await expect(f.service.send(b.id)).rejects.toThrow("保守预算");
+    expect(f.port.injections).toBe(0); expect(f.service.directory().bindings[0]!.state).toBe("ready");
+    expect(f.db.prepare("SELECT COUNT(*) n FROM learning_handoffs").get()!.n).toBe(0);
+  });
+  it("matches imported user boundary whitespace but rejects actual text differences and leaves ordinary ownership on failure", async () => {
+    const f = await setup();
+    f.port.all[0] = { ...f.port.all[0]!, text: "  A ?\n" };
+    await expect(f.bind()).rejects.toThrow("共同前缀");
+    expect(f.db.prepare("SELECT COUNT(*) n FROM learning_bindings").get()!.n).toBe(0);
+    expect((await f.engine.canonicalEngine.store.getSession("learning" as never))!.session.authorityScope).toBe("codex");
+    f.port.all[0] = { ...f.port.all[0]!, text: "  A?\n" };
+    expect((await f.bind()).state).toBe("ready");
+    expect(f.port.all[0].text).toBe("  A?\n");
+  });
+  it("preserves multiple public assistant messages per completed turn across collect and revalidate", async () => {
+    const f = await setup(), b = await f.bind(); await f.service.send(b.id);
+    f.port.all.push(message("c-u", "user", "C?"), message("c-progress", "assistant", "Working through C"), message("c-a", "assistant", "C!"), message("d-u", "user", "D?"), message("d-a", "assistant", "D!"));
+    expect((await f.service.collect(b.id)).state).toBe("collected");
+    const snapshot = (await f.engine.canonicalEngine.store.getSession("learning" as never))!;
+    const head = (await f.engine.canonicalEngine.store.getVersion(snapshot.headVersionId!))!;
+    const prepared = await prepareLearningV3({ session: snapshot.session, events: head.events, workspaceId: null }, (await f.runs.getProjectionRun("learning-run" as never))!);
+    expect(prepared.messages.map(m => m.text)).toEqual(f.port.all.map(m => m.text));
+    expect((await f.service.revalidate(b.id)).state).toBe("ready");
+    expect(f.db.prepare("SELECT COUNT(*) n FROM session_derivations").get()!.n).toBe(0);
+  });
   it('binds and exchanges text while counting skipped images and preserving original DSH images',async()=>{
     const f=await setup(true);f.port.all[0]={...f.port.all[0]!,skippedImages:1};
     const before=await f.engine.canonicalEngine.store.getSession('learning' as never);
@@ -161,10 +211,12 @@ describe("learning roundtrip", () => {
     expect(f.db.prepare("SELECT COUNT(*) n FROM session_derivations").get()!.n).toBe(0);
     const { applyCodexCanonicalImportPlan } = await import("../src/codex-canonical-import.js");
     const projectPort = { ensureWorkspace: vi.fn(), recordAssignment: vi.fn() };
-    const scanned = await applyCodexCanonicalImportPlan({ canonicalEngine: f.engine.canonicalEngine, projectPort,
-      plan: { scanned: 1, retried: 0, projectAssignments: [], sessions: [{ logicalSessionId: "learning", sourceSessionId: "thread",
+    const projectScope = vi.fn(() => { throw new Error("old ordinary scope invalid after binding"); });
+    const scanned = await applyCodexCanonicalImportPlan({ canonicalEngine: f.engine.canonicalEngine, projectPort, projectScope,
+      plan: { sourceInstance: {}, scanned: 1, retried: 0, projectAssignments: [], sessions: [{ logicalSessionId: "learning", sourceSessionId: "thread",
         authorityBinding: { key: { instanceId: "codex-fixture" } } }] } } as never);
     expect(scanned.noop).toBe(1); expect(projectPort.ensureWorkspace).not.toHaveBeenCalled(); expect(projectPort.recordAssignment).not.toHaveBeenCalled();
+    expect(projectScope).not.toHaveBeenCalled();
   });
   it("exposes authenticated API only and keeps title-only changes outside the body lock", async () => {
     const f = await setup(), b = await f.bind(); await f.service.send(b.id);

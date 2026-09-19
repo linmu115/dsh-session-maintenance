@@ -601,13 +601,15 @@ export async function applyCodexCanonicalImportPlan(input: {
         ...(input.signal === undefined ? {} : { signal: input.signal }),
       });
     };
-    await assertScope();
+    // A plan captured before learning association can still reach the writer.
+    // Ownership takes precedence over its now-obsolete ordinary sync scope.
     if (await input.canonicalEngine.store.learningSourceOwner?.(item.authorityBinding.key.instanceId, item.sourceSessionId)) {
       counts.noop += 1;
       await input.onStatus?.({ stage: "canonical.import", state: "succeeded", instanceId: input.plan.instanceId,
         sessionId: item.sourceSessionId, logicalSessionId: item.logicalSessionId, outcome: "noop", detail: "学习绑定由显式交接维护" });
       continue;
     }
+    await assertScope();
     await input.projectPort.ensureWorkspace(item.assignment);
     const canonicalEvents: CanonicalEventV1[] = [];
     for (const event of item.normalized.events) {

@@ -33,6 +33,36 @@ async function fixture() {
 }
 
 describe("Codex project mapping policy and recoverable scope activation", () => {
+  it("automatically excludes existing learning bindings from scans and startup requirements while retaining them outside project selection", async () => {
+    const f = await fixture();
+    try {
+      const before = await hashTree(f.codexHome);
+      await f.service.save({ revision: 0, projectKeys: [f.key] });
+      await f.service.activateForStartup(async () => {});
+      expect((await f.service.readScope(f.instance))!.directory.assignments["thread-fixture"]).toBeDefined();
+      f.database.prepare("INSERT INTO learning_bindings(id,logical_session_id,codex_instance_id,codex_thread_id,data_json) VALUES('learning',?,?,?,'{}')").run(f.sourceId, f.instance.id, "thread-fixture");
+      f.database.prepare("UPDATE logical_sessions SET authority_scope='maintenance',origin_kind='maintenance-native' WHERE id=?").run(f.sourceId);
+      const service = f.make(); // Existing bindings work after restart without a new bind/migration.
+      const scope = (await service.readScope(f.instance))!;
+      expect(scope.directory.assignments["thread-fixture"]).toBeUndefined();
+      expect(scope.directory.projects[0]!.memberThreadIds).toEqual([]);
+      expect((await service.get()).projects[0]).toMatchObject({ sessionCount: 0, learningManagedCount: 1 });
+      await expect(service.activateForStartup(async () => {})).resolves.toMatchObject({ removed: 0 });
+      await service.save({ revision: 1, projectKeys: [] });
+      for (let pass = 0; pass < 2; pass++) {
+        await service.activateForStartup(async () => {});
+        expect(f.state(f.sourceId).tombstoned_at).toBeNull();
+      }
+      // Stopping learning must not implicitly return ownership to the mirror.
+      f.database.prepare("UPDATE learning_bindings SET data_json=? WHERE id='learning'").run(JSON.stringify({ state: "disabled" }));
+      expect((await service.get()).projects[0]).toMatchObject({ sessionCount: 0, learningManagedCount: 1 });
+      // Explicitly deleted learning records are never restored by project selection.
+      f.database.prepare("UPDATE logical_sessions SET tombstoned_at='2026-09-19' WHERE id=?").run(f.sourceId);
+      await service.activateForStartup(async () => {});
+      expect(f.state(f.sourceId).tombstoned_at).not.toBeNull();
+      expect(await hashTree(f.codexHome)).toBe(before);
+    } finally { await f.cleanupAll(); }
+  });
   it("preserves active Maintenance projects and DSH descendants across repeated empty Codex selection without reviving old removals", async () => {
     const f = await fixture();
     try {

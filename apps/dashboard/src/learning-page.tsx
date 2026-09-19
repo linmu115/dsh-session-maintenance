@@ -10,6 +10,7 @@ const stateNames: Record<LearningBinding["state"], string> = { ready: "待同步
 export function LearningPage({ api }: { readonly api: LearningApi }) {
   const [directory, setDirectory] = useState<LearningDirectory>();
   const [error, setError] = useState<string>();
+  const [errorOwner, setErrorOwner] = useState<string>();
   const [busy, setBusy] = useState<string>();
   const [selected, setSelected] = useState("");
   const [targetId, setTargetId] = useState("");
@@ -25,7 +26,7 @@ export function LearningPage({ api }: { readonly api: LearningApi }) {
     return () => controller.abort();
   }, [api, revision]);
   const perform = async (id: string, action: () => Promise<unknown>) => {
-    setBusy(id); setError(undefined);
+    setBusy(id); setError(undefined); setErrorOwner(id);
     try { await action(); setConfirmed(false); }
     catch (e) { setError(e instanceof Error ? e.message : "操作未完成"); }
     finally { setBusy(undefined); setRevision(v => v + 1); }
@@ -37,8 +38,9 @@ export function LearningPage({ api }: { readonly api: LearningApi }) {
   return <div className="page-stack">
     <div className="dsm-page-heading"><div><h2>学习会话双向维护 <Badge tone="warning">实验</Badge></h2><p>在 DSH 和 Codex 轮流学习，回收新增问答到原会话。</p></div></div>
     <Surface title="使用方式"><div className="settings-content"><p>首次关联、同步和回收前，都要先通过 Launcher 正常停止对应 DSH 实例，等待写入收尾，再刷新状态。同步成功后重新启动 Codex，再继续绑定的任务；回收完成后重新启动 DSH。两端发生差异会阻止追加。</p><p>问答及引用上下文会送入 Codex。Codex 页面可能不显示导入的历史，DSH 完整记录仍会保留。</p></div></Surface>
-    {error ? <p className="inline-error" role="alert">{error}</p> : null}
+    {error && (!directory || !errorOwner) ? <p className="inline-error" role="alert">{error}</p> : null}
     <p>学习交接仅保留文字，图片会跳过并显示数量；纯图片消息保留“[图片已跳过]”占位。原会话中的图片不变。</p>
+    <p>加入双向维护后，该会话自动退出普通 Codex 项目同步，由学习交接维护。停用关联也不会自动恢复普通同步，以免覆盖学习进度。</p>
     <Surface title="已确认关联的会话" action={<Button disabled={!!busy} onClick={() => { setError(undefined); setRevision(v => v + 1); }}>刷新状态</Button>}>
       {!directory && !error ? <LoadingState label="正在读取学习关联…" /> : null}
       {directory?.bindings.length === 0 ? <EmptyState title="尚未关联学习会话" description="只会加入你明确确认的双端会话，不按标题自动匹配。" /> : null}
@@ -56,6 +58,7 @@ export function LearningPage({ api }: { readonly api: LearningApi }) {
           <Button disabled={!!busy || binding.state === "disabled"} onClick={() => void perform(binding.id, () => api.learningAction(binding.id, "disable"))}>停用关联</Button>
         </div>
         {busy === binding.id ? <p role="status">正在处理，请等待本次结果…</p> : null}
+        {error && errorOwner === binding.id ? <p className="inline-error" role="alert">{error}</p> : null}
         <details><summary>关联信息</summary><p>DSH：{binding.dshInstanceId} / {binding.dshProfileId}</p><p>Codex：{binding.codexThreadId}</p><p>逻辑会话：{binding.logicalSessionId}</p></details>
       </article>)}
     </Surface>
@@ -69,6 +72,7 @@ export function LearningPage({ api }: { readonly api: LearningApi }) {
         {bindBlockedReason ? <p role="status">{bindBlockedReason}</p> : null}
         <label className="toggle-field"><input type="checkbox" checked={confirmed} disabled={!!busy || loading || !candidate || !target || !!bindBlockedReason} onChange={e => setConfirmed(e.target.checked)} />我确认两端属于同一条学习会话，由 Maintenance 维护主线</label>
         <Button disabled={!!busy || loading || !candidate || !target || !confirmed || !!bindBlockedReason} onClick={() => { if (candidate) void perform("bind", () => api.bindLearning({ logicalSessionId: candidate.logicalSessionId, codexThreadId: candidate.codexThreadId, dshRunId: candidate.dshRunId, targetPresetId: targetId, confirmed: true })); }}>{busy === "bind" ? "正在核对关联…" : "核对并加入"}</Button>
+        {error && directory && errorOwner === "bind" ? <p className="inline-error" role="alert">{error}</p> : null}
       </div></div>
     </Surface>
   </div>;
