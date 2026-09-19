@@ -21,6 +21,8 @@ RuntimeWorkspaceRegistration 优先使用明确工作区、已登记实例/项�
 
 InstanceWorkspaceRuntime 提供配置、有效范围和会话可用性；session-store policy repository 保存策略及 run 快照。CanonicalProjectionSource 按该快照过滤会话并保留选中工作区的祖先标题；persistent cache 配置包含实例/profile/branch 及 scope revision。Canonical commit 在异步对象落盘后、事务内再次核对快照范围、当前成员关系与删除状态，失败不推进 head 或 receipt。
 
+2026-09-20 的恢复路径也按准备时的 scope revision 校验缓存身份。旧版已产生的空登记可通过限定操作工具补齐工作区后走正式恢复，前提是核验实例退出并备份；工具不修改正文、WAL、head 或运行状态。已在本机升级中恢复两条同项目的新会话，见 [部署与恢复验证](../../../../../changes/2026-09-20-runtime-workspace-activation.md)。
+
 Host maintenanceInstanceIdentity/maintenanceInstanceWorkspace 绑定实际实例/profile，只提供无 Engine 凭据的有效范围与 availability。not-found、deleted、not-synced、offline、mapping-pending、available 分开；Bridge 可选消费，不另存 Vault 工作区名单。
 
 权威实现：apps/engine/src/instance-workspace-runtime.ts、instance-workspace-service.ts；packages/session-store/src/instance-workspace-policy-repository.ts、canonical-projection-source.ts、canonical-engine-store.ts；plugins/dsh-session-maintenance/src/instance-workspace.ts。设计合同 [[IF-instance-workspace-scope]]，进展与验证 [[IMP-scope-business-pages]]、[[VER-scope-business-pages]]。

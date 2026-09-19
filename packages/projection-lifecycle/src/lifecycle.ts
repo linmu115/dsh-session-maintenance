@@ -882,7 +882,9 @@ export class ProjectionLifecycle {
       if (cacheManager === undefined) {
         throw new TypeError("Persistent projection recovery requires an incremental source and cache-capable Adapter");
       }
-      const identity = projectionCacheIdentity(this.adapter, configuration);
+      const scopeRevision = await this.source.scopeRevision?.(run) ?? 0;
+      const identity = projectionCacheIdentity(this.adapter, scopeRevision === 0 ? configuration
+        : { configuration, instanceWorkspaceScopeRevision: scopeRevision });
       const expectedRoot = projectionCacheRootFor(
         this.runtimeRoot,
         this.adapter.manifest.id,

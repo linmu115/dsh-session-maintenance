@@ -1,0 +1,21 @@
+# Runtime workspace activation and legacy recovery
+
+The user stopped the RC2 test instance to activate the workspace registration fix. Launcher recorded the process exit, but the old run remained recovery-required because its first message had no workspace membership. No runtime remained alive; this is retained recovery work, not a running instance.
+
+An operator-only helper repairs an explicitly selected empty Maintenance-native registration after restart. It checks the failed run, deterministic native identity, original project membership, empty canonical head and unchanged base version. It uses the new workspace registration service and existing session maintenance command; retry reuses the registration intent. It does not rewrite messages, WAL entries, heads, or run states. Ordinary provider recovery remains responsible for committing messages and finalizing the run. Operators must first verify process exit and back up state.
+
+The synthetic RC2 upgrade test additionally exposed recovery computing an unscoped cache identity even though preparation included the scope revision. Recovery now uses the same initial scope revision as preparation. The test reproduces the old null-workspace registration and failed first append, restarts the engine, repairs membership, retries the repair, then recovers the original two events with a durable receipt and a recovered run. Active and already recovered runs are rejected by the repair helper.
+
+Validation: the RC2 upgrade test and three persistent-cache tests passed; Engine and projection lifecycle type checks passed.
+
+## Live activation
+
+Activated on 2026-09-20 (Asia/Shanghai). The installed engine is an engine-only local patch of 0.1.33-rc2.55, built from source commit `6d9d03b44671445276d40fe1a54d94eb0c1de327`; schema is now 28. Release directory: `D:/AI/DSH-Plugin-Releases/maintenance/engine-0.1.33-rc2.55-runtime-workspaces-20260920`. Engine SHA-256: `417f809dd9f8ae587f00896f4f3f0239c6bdba84309d69f345f15df52b1e9cd4`. All 55 other base-release files retain their original hashes. Existing unrelated documentation edits were excluded from the commits.
+
+Deployment evidence and backup: `D:/AI/DeepSeekHarness-Plugin/artifacts/runtime-workspace-20260920/`. The backup includes configuration, integration attestations, the maintenance database, failed run/WAL, lifecycle handles, and referenced recovery materials. The normal stop guard originally rejected recovery-required as an active run. A deployment-local preflight allowed only the exact retained failed run after checking the Launcher's recorded process exit, dead PID and zero active jobs; the original SIGINT, process identity checks, exclusive console check, drain and owner-release checks were retained. No forced exit, lock deletion, or artificial run-state rewrite was used.
+
+Two empty registrations in the stopped run were affected, not just the initially reported session. Both had verified original empty heads and the same project; the helper assigned both to the same new workspace. The first recovery identified the second affected registration and kept its evidence intact. After both were repaired, the formal `recoverBeforeStart` provider returned success. Run `run-a695bf13-1b23-4f43-ad82-a00d52f12872` is `recovered`; its lifecycle handle is `finalized`, with disposition `recovered` and no last error.
+
+Final Engine PID 53696 was verified against the installed entry path and hash, and health was ready. Formal integration repair reports both RC2 test and copy targets connected. Eight protected configuration files and all unrelated canonical heads remained unchanged. The original includeUnassigned=false rule remains. The test instance is still stopped, with no active run or job. A new real model turn was not sent as part of activation.
+
+Task history: user confirmed the new registration rule, implementation was committed as fe27e6e, then user reported stopping the instance. The normal stop preflight correctly found the retained failed run. Investigation verified the Launcher exit receipt and preserved the pending message evidence. Recovery was tested on marked synthetic fixtures before any live repair. No native transcript source index was added.
