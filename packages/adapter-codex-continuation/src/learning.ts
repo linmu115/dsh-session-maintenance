@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative } from "node:path";
 import type { CodexContinuationTarget, LearningCodexPort, LearningCursor, LearningMessage, LearningSnapshot } from "@linmu/dsh-session-contracts";
+import { LEARNING_SKIPPED_IMAGE_TEXT, ExtensionDataError } from "@linmu/dsh-session-contracts";
 import { StdioAppServerTransport } from "./transport.js";
 import type { AppServerTransportFactory, AppServerTransport } from "./types.js";
 
@@ -34,8 +35,14 @@ export function parseLearningLog(text: string, after?: LearningCursor): Learning
     if (row.type !== "response_item") continue;
     if (after && !["message", "reasoning"].includes(String(p.type))) return fail("新增内容含工具执行，当前仅支持纯学习问答");
     if (p.type !== "message" || !["user", "assistant"].includes(p.role) || ["analysis", "commentary"].includes(p.channel) || p.phase === "commentary") continue;
-    if (!Array.isArray(p.content) || p.content.some((c: any) => (!["input_text", "output_text"].includes(c.type) || typeof c.text !== "string"))) return fail("消息包含图片或其它材料，尚不能完整交接");
-    let body = p.content.map((c: any) => c.text).join("\n");
+    if (!Array.isArray(p.content)) return fail("消息正文格式不受支持");
+    let skippedImages = 0;
+    let body = p.content.flatMap((c: any) => {
+      if (c?.type === "input_image" || c?.type === "output_image") { skippedImages++; return []; }
+      if (!["input_text", "output_text"].includes(c?.type) || typeof c?.text !== "string")
+        throw new ExtensionDataError("LEARNING_UNSUPPORTED_CONTENT", "Codex 消息包含尚不支持的非文本材料；当前仅跳过图片", 409);
+      return [c.text];
+    }).join("\n");
     // Match the Codex read adapter's public text boundary; these are host envelopes,
     // not learner turns. Retain the actual request in a mixed envelope/message.
     if (p.role === "user") {
@@ -46,10 +53,11 @@ export function parseLearningLog(text: string, after?: LearningCursor): Learning
       body = body.replace(/^(?:\s*&#x0*20;)+/iu, "");
       if (body !== originalBody) body = body.trim();
     }
-    if (typeof body !== "string" || !body.trim()) continue;
+    if (!body.trim() && skippedImages) body = LEARNING_SKIPPED_IMAGE_TEXT;
+    if (!body.trim()) continue;
     const turn = p.internal_chat_message_metadata_passthrough?.turn_id ?? current;
     messages.push({ id: p.id ?? `row-${index}`, role: p.role, text: body,
-      startedAt: starts.get(turn) ?? null, completedAt: ends.get(turn) ?? null });
+      startedAt: starts.get(turn) ?? null, completedAt: ends.get(turn) ?? null, ...(skippedImages ? { skippedImages } : {}) });
   }
   return { cursor: { count: lines.length, digest: digest(lines) }, messages, busy, name: "" };
 }
@@ -71,7 +79,7 @@ export class CodexLearningAdapter implements LearningCodexPort {
   }
   private async readWith(t: AppServerTransport, target: CodexContinuationTarget, threadId: string, after?: LearningCursor) {
     const { thread } = await t.request<{ thread: { id: string; path: string; name?: string; historyMode: string; status: { type: string } } }>("thread/read", { threadId, includeTurns: false });
-    if (thread.id !== threadId || thread.historyMode !== "legacy") return fail("此 Codex 历史格式尚未通过学习交接验证");
+    if (thread.id !== threadId || !["legacy", "paginated"].includes(thread.historyMode)) return fail("此 Codex 历史格式尚未通过学习交接验证");
     if (!target.codexHome || !thread.path) return fail("Codex 来源位置不可核验");
     const root = await realpath(target.codexHome), path = await realpath(thread.path), child = relative(root, path);
     if (!child || child.startsWith("..") || isAbsolute(child)) return fail("任务日志不在已登记的 Codex 来源中");
@@ -88,7 +96,7 @@ export class CodexLearningAdapter implements LearningCodexPort {
     return this.using(target, async t => {
       const initial = await this.readWith(t, target, threadId);
       if (initial.busy || JSON.stringify(initial.cursor) !== JSON.stringify(before)) return fail("Codex 在同步前已变化");
-      await t.request("thread/resume", { threadId });
+      await t.request("thread/resume", { threadId, excludeTurns: true });
       const resumed = await this.readWith(t, target, threadId, before);
       if (resumed.busy || resumed.messages.length) return fail("Codex 在加载过程中有新问答");
       const marker = `[maintenance-learning:${operationId}] Imported learning history follows. Preserve its user/assistant roles as historical context; do not answer it again.`;

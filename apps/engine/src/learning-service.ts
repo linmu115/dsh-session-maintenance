@@ -15,6 +15,9 @@ interface Stored extends Omit<LearningBinding, "revision" | "blockedReason"> {
 interface Handoff { revision: number; cursor: LearningCursor; sentAt: string; endpointDigest: string; consumed: boolean }
 const contents = (messages: readonly LearningMessage[]) => messages.map(({ role, text }) => ({ role, textHash: hash(text) }));
 const prefix = (a: readonly unknown[], b: readonly unknown[]) => a.length <= b.length && hash(a) === hash(b.slice(0, a.length));
+const imageCount = (messages: readonly LearningMessage[]) => messages.reduce((n, m) => n + (m.skippedImages ?? 0), 0);
+const imageCheckNotice = (dsh: readonly LearningMessage[], codex: readonly LearningMessage[]) =>
+  `按文字核对，DSH 历史跳过 ${imageCount(dsh)} 张图片，Codex 历史跳过 ${imageCount(codex)} 张图片；原图片保留。`;
 
 /** One controlled owner for the experimental binding. Mutations share the Engine writer queue. */
 export class LearningService {
@@ -124,7 +127,8 @@ export class LearningService {
       const dsh = await this.projection(data), codex = await this.codex.read(target, q.codexThreadId);
       if (codex.busy) return fail("Codex 仍在回答，请完成后再关联");
       if (!prefix(contents(codex.messages), contents(dsh.prepared.messages))) return fail("双端已有问答不构成共同前缀，禁止按同名关联或合并");
-      data.cursor = codex.cursor; data.syncedMessages = contents(codex.messages); this.check(data);
+      data.cursor = codex.cursor; data.syncedMessages = contents(codex.messages);
+      data.imageNotice = imageCheckNotice(dsh.prepared.messages, codex.messages); this.check(data);
       this.db.exec("BEGIN IMMEDIATE");
       try {
         this.db.prepare("INSERT INTO learning_bindings(id,logical_session_id,codex_instance_id,codex_thread_id,data_json) VALUES(?,?,?,?,?)")
@@ -149,6 +153,7 @@ export class LearningService {
       const delta = p.prepared.messages.slice(data.syncedMessages.length);
       if (JSON.stringify(p.prepared.messages).length > target.contextWindowTokens * target.inputBudgetRatio) return fail("交接内容超过保守预算，请先核对学习范围；不会静默截断");
       const handoffId = randomUUID(), started = this.now();
+      data.imageNotice = `本次同步跳过 ${imageCount(delta)} 张图片，仅发送文字；原图片保留。`;
       data.state = "sending"; data.message = "正在确认 Codex 接收"; data.handoffId = handoffId;
       this.db.exec("BEGIN IMMEDIATE");
       try {
@@ -203,6 +208,7 @@ export class LearningService {
           receipt: { outcome: "advanced", operationId: null, logicalSessionId: p.snapshot.session.id, versionId: version.id, tombstoneState: null, committedAt: at } });
         h.consumed = true; this.db.prepare("UPDATE learning_handoffs SET data_json=? WHERE id=?").run(JSON.stringify(h), data.handoffId);
         data.cursor = delta.cursor; data.syncedMessages = [...data.syncedMessages, ...contents(delta.messages)]; data.state = "collected"; data.collectedAt = at;
+        data.imageNotice = `本次回收跳过 ${imageCount(delta.messages)} 张图片，仅回收文字；原图片保留在 Codex。`;
         data.message = `已回收 ${delta.messages.length} 条问答，重新启动 DSH 后继续原会话`; this.save(data); this.db.exec("COMMIT");
       } catch (error) { this.db.exec("ROLLBACK"); throw error; }
       return this.public(id);
@@ -242,6 +248,7 @@ export class LearningService {
       const p = await this.projection(data), observed = await this.codex.read(target, data.codexThreadId);
       if (observed.busy || !prefix(contents(observed.messages), contents(p.prepared.messages))) return fail("双端历史已有分歧，请先核对内容；不会自动合并");
       data.cursor = observed.cursor; data.syncedMessages = contents(observed.messages); data.handoffId = null;
+      data.imageNotice = imageCheckNotice(p.prepared.messages, observed.messages);
       data.state = "ready"; data.message = "关联已重新核验，旧交接失效，请重新同步"; this.save(data);
       return this.public(id);
     }, signal);

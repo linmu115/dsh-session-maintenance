@@ -20,13 +20,22 @@ describe("Codex learning log boundary", () => {
     expect(result.busy).toBe(false); expect(result.messages.map(m => m.text)).toEqual(["question", "answer"]);
     expect(result.messages.every(m => m.startedAt === at && m.completedAt === "2026-09-17T00:02:00Z")).toBe(true);
   });
-  it("rejects rewritten prefixes, partial writes, rollback, tool execution and images", () => {
+  it("rejects rewritten prefixes, partial writes, rollback, tool execution and non-image attachments", () => {
     const base = row("session_meta", { id: "fixture" }), cursor = parseLearningLog(base).cursor;
     expect(() => parseLearningLog(base.replace("fixture", "changed"), cursor)).toThrow("历史发生变化");
     expect(() => parseLearningLog(base.slice(0, -1))).toThrow("仍在写入");
     expect(() => parseLearningLog(base + row("compacted", {}), cursor)).toThrow("压缩");
     expect(() => parseLearningLog(base + row("response_item", { type: "function_call", name: "tool" }), cursor)).toThrow("工具执行");
-    expect(() => parseLearningLog(base + row("response_item", { type: "message", role: "user", content: [{ type: "input_image", image_url: "fixture" }] }))).toThrow("图片");
+    expect(() => parseLearningLog(base + row("response_item", { type: "message", role: "user", content: [{ type: "input_audio", audio: "fixture" }] }))).toThrow("非文本材料");
+  });
+  it('skips image payloads on both mixed and image-only turns while still protecting raw history',()=>{
+    const imageMessage=(content:unknown[])=>row('response_item',{type:'message',role:'user',content});
+    const log=imageMessage([{type:'input_text',text:'  question'},{type:'input_image',image_url:'private-image'},{type:'input_text',text:'details\n'}])
+      +imageMessage([{type:'input_image',image_url:'private-image'},{type:'input_text',text:'<environment_context>runtime</environment_context>'}]);
+    const result=parseLearningLog(log);
+    expect(result.messages.map(m=>m.text)).toEqual(['  question\ndetails\n','[图片已跳过]']);
+    expect(result.messages.map(m=>m.skippedImages)).toEqual([1,1]);expect(JSON.stringify(result)).not.toContain('private-image');
+    expect(()=>parseLearningLog(log.replace('private-image','changed-image'),result.cursor)).toThrow('历史发生变化');
   });
   it("does not mistake imported messages without a generation for new completed turns", () => {
     const result = parseLearningLog(msg("user", "imported") + msg("assistant", "imported answer"));

@@ -1,18 +1,21 @@
 import type { CanonicalProjectionSessionInput, JsonValue, ProjectionRun, LearningMessage, NativeAppendOperation } from "@linmu/dsh-session-contracts";
+import { LEARNING_SKIPPED_IMAGE_TEXT, ExtensionDataError } from "@linmu/dsh-session-contracts";
 import type { SessionFormatArtifact, SessionFormatEvent } from "@deepseek-ai/dsh-session-format";
 import { materializeV3 } from "./materialize.js";
 import { normalizeV3Append } from "./normalize-append.js";
 import { record, isRecord, digest } from "./common.js";
 import { validateV3, visibleContext } from "./official.js";
 
-function textContent(value: JsonValue, allowToolCalls = false): string {
+function textContent(value: JsonValue, images: { count: number }, allowToolCalls = false): string {
   if (typeof value === "string") return value;
   if (!Array.isArray(value)) throw new Error("学习消息正文格式不受支持");
-  return value.map(block => {
+  return value.flatMap(block => {
     const b = record(block);
-    if (allowToolCalls && b.type === "tool-call") return "";
-    if (!["text", "input_text", "output_text"].includes(String(b.type)) || typeof b.text !== "string") throw new Error("学习消息包含非文本材料，不能静默过滤");
-    return b.text;
+    if (b.type === "image") { images.count++; return []; }
+    if (allowToolCalls && b.type === "tool-call") return [];
+    if (!["text", "input_text", "output_text"].includes(String(b.type)) || typeof b.text !== "string")
+      throw new ExtensionDataError("LEARNING_UNSUPPORTED_CONTENT", "学习消息包含尚不支持的非文本材料；当前仅跳过图片", 409);
+    return [b.text];
   }).join("\n");
 }
 /** Read exactly the native messages that DSH folds; keep native envelopes inside the adapter. */
@@ -37,16 +40,19 @@ export function learningMessagesFromV3(artifact: SessionFormatArtifact): Learnin
     const d = record(e.data);
     if (e.type === "user/message" || e.type === "assistant/message") {
       const m = e.type === "user/message" ? d : record(d.message);
-      const text = textContent(m.content ?? [], e.type === "assistant/message");
+      const images = { count: 0 }, body = textContent(m.content ?? [], images, e.type === "assistant/message");
+      const text = !body.trim() && images.count ? LEARNING_SKIPPED_IMAGE_TEXT : body;
       if (text.trim()) messages.push({ id: String(m.id), role: e.type === "user/message" ? "user" : "assistant", text,
-        startedAt: null, completedAt: null });
+        startedAt: null, completedAt: null, ...(images.count ? { skippedImages: images.count } : {}) });
     } else if (e.type === "tool/result") {
       const meta = isRecord(d.presentationMeta) ? d.presentationMeta : isRecord(d.meta) ? d.meta : {};
       if (isRecord(meta.nativeContext)) {
         const message = record(d.message), content = message.content;
         if (!Array.isArray(content)) throw new Error("引用上下文无法解析");
-        const text = content.map(block => textContent(record(block).content ?? [])).join("\n");
-        messages.push({ id: `context-${e.seq}`, role: "user", text: `[引用上下文快照]\n${text}`, startedAt: null, completedAt: null });
+        const images = { count: 0 }, body = content.map(block => textContent(record(block).content ?? [], images)).join("\n");
+        const text = !body.trim() && images.count ? LEARNING_SKIPPED_IMAGE_TEXT : body;
+        messages.push({ id: `context-${e.seq}`, role: "user", text: `[引用上下文快照]\n${text}`, startedAt: null, completedAt: null,
+          ...(images.count ? { skippedImages: images.count } : {}) });
       }
     }
   }

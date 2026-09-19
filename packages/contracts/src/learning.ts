@@ -2,8 +2,9 @@ import { z } from "zod";
 import type { CodexContinuationTarget } from "./continuations.js";
 
 const id = z.string().min(1).max(256);
+export const LEARNING_SKIPPED_IMAGE_TEXT = "[图片已跳过]";
 export const learningMessageSchema = z.object({ id, role: z.enum(["user", "assistant"]), text: z.string().min(1),
-  startedAt: z.string().nullable(), completedAt: z.string().nullable() });
+  startedAt: z.string().nullable(), completedAt: z.string().nullable(), skippedImages: z.number().int().nonnegative().optional() });
 export type LearningMessage = z.infer<typeof learningMessageSchema>;
 export interface LearningCursor { readonly count: number; readonly digest: string }
 export interface LearningSnapshot {
@@ -24,7 +25,7 @@ export type LearningBind = z.infer<typeof learningBindSchema>;
 export const learningBindingSchema = z.object({ id, logicalSessionId: id, title: z.string(), targetPresetId: id,
   codexThreadId: id, dshInstanceId: id, dshProfileId: id, dshNativeSessionId: id,
   state: z.enum(["ready", "sending", "sent", "collected", "conflict", "uncertain", "disabled"]),
-  message: z.string(), sentAt: z.string().nullable(), collectedAt: z.string().nullable(), revision: z.number().int(),
+  message: z.string(), imageNotice: z.string().optional(), sentAt: z.string().nullable(), collectedAt: z.string().nullable(), revision: z.number().int(),
   blockedReason: z.string().nullable() });
 export type LearningBinding = z.infer<typeof learningBindingSchema>;
 export const learningDirectorySchema = z.object({ bindings: z.array(learningBindingSchema),

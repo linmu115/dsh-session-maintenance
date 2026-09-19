@@ -38,12 +38,14 @@ export function LearningPage({ api }: { readonly api: LearningApi }) {
     <div className="dsm-page-heading"><div><h2>学习会话双向维护 <Badge tone="warning">实验</Badge></h2><p>在 DSH 和 Codex 轮流学习，回收新增问答到原会话。</p></div></div>
     <Surface title="使用方式"><div className="settings-content"><p>首次关联、同步和回收前，都要先通过 Launcher 正常停止对应 DSH 实例，等待写入收尾，再刷新状态。同步成功后重新启动 Codex，再继续绑定的任务；回收完成后重新启动 DSH。两端发生差异会阻止追加。</p><p>问答及引用上下文会送入 Codex。Codex 页面可能不显示导入的历史，DSH 完整记录仍会保留。</p></div></Surface>
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
+    <p>学习交接仅保留文字，图片会跳过并显示数量；纯图片消息保留“[图片已跳过]”占位。原会话中的图片不变。</p>
     <Surface title="已确认关联的会话" action={<Button disabled={!!busy} onClick={() => { setError(undefined); setRevision(v => v + 1); }}>刷新状态</Button>}>
       {!directory && !error ? <LoadingState label="正在读取学习关联…" /> : null}
       {directory?.bindings.length === 0 ? <EmptyState title="尚未关联学习会话" description="只会加入你明确确认的双端会话，不按标题自动匹配。" /> : null}
       {directory?.bindings.map(binding => <article key={binding.id} className="settings-content" aria-busy={busy === binding.id}>
         <h3>{binding.title} <Badge>{stateNames[binding.state]}</Badge></h3>
         <p role="status">{binding.message}</p>
+        {binding.imageNotice ? <p>{binding.imageNotice}</p> : null}
         {binding.blockedReason ? <p>{binding.blockedReason}</p> : null}
         <p>{binding.sentAt ? `上次同步：${new Date(binding.sentAt).toLocaleString()}` : "尚未同步"}{binding.collectedAt ? ` · 上次回收：${new Date(binding.collectedAt).toLocaleString()}` : ""}</p>
         <div className="deleted-session-actions">

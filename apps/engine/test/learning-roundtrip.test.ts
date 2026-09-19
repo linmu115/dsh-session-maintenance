@@ -24,12 +24,12 @@ class FakeCodex implements LearningCodexPort {
     this.injections++; this.all.push(...messages); return this.read(null, "thread");
   }
 }
-async function setup() {
+async function setup(withImages = false) {
   const f = await createEngineFixture("learning-roundtrip"); cleanups.push(f.stop);
   const db = f.engine.repository.database;
   const input = [message("u", "user", "A?"), message("a", "assistant", "A!"), message("b-u", "user", "B?"), message("b-a", "assistant", "B!")];
   const events = withPlannedConversationTopology(input.map((m, i): CanonicalEventV1 => ({ schemaVersion: 1, id: m.id, logicalSessionId: "learning" as never, sequence: i,
-    kind: m.role === "user" ? "user-message" : "assistant-message", role: m.role, content: { text: m.text, attachments: [] }, contentDigest: sha256Canonical({ text: m.text, attachments: [] }),
+    kind: m.role === "user" ? "user-message" : "assistant-message", role: m.role, content: { text: m.text, attachments: withImages && m.role==='user' ? [{url:'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a1e0AAAAASUVORK5CYII='}] : [] }, contentDigest: sha256Canonical({ text: m.text, attachments: [] }),
     source: { platform: "codex", instanceId: "codex-fixture", sessionId: "thread", eventId: m.id, cursor: String(i) }, rawPayload: null, extensions: {} }))).events;
   await f.engine.canonicalEngine.observeCodex({ logicalSessionId: "learning" as never, title: "Synthetic learning", tags: [], archivedAt: null, workspaceId: null, events, observedAt: at, sourceCursor: null });
   db.prepare("INSERT INTO platform_bindings VALUES('learning-codex','learning','codex','codex-fixture','thread','{}',NULL,'read-only')").run();
@@ -47,6 +47,21 @@ async function setup() {
   return { ...f, db, runs, port, service, bind, target };
 }
 describe("learning roundtrip", () => {
+  it('binds and exchanges text while counting skipped images and preserving original DSH images',async()=>{
+    const f=await setup(true);f.port.all[0]={...f.port.all[0]!,skippedImages:1};
+    const before=await f.engine.canonicalEngine.store.getSession('learning' as never);
+    const original=await f.engine.canonicalEngine.store.getVersion(before!.headVersionId!);
+    const b=await f.bind();expect(b.imageNotice).toContain('DSH 历史跳过 2 张图片');expect(b.imageNotice).toContain('Codex 历史跳过 1 张图片');
+    expect((await f.service.send(b.id)).imageNotice).toContain('本次同步跳过 1 张图片');
+    f.port.all.push({...message('image-u','user','[图片已跳过]'),skippedImages:1},message('image-a','assistant','Image answer'));
+    expect((await f.service.collect(b.id)).imageNotice).toContain('本次回收跳过 1 张图片');
+    const after=await f.engine.canonicalEngine.store.getSession('learning' as never),version=await f.engine.canonicalEngine.store.getVersion(after!.headVersionId!);
+    expect(version!.events.slice(0,original!.events.length)).toEqual(original!.events);
+    const prepared=await prepareLearningV3({session:after!.session,events:version!.events,workspaceId:null},(await f.runs.getProjectionRun('learning-run' as never))!);
+    expect(prepared.messages.slice(-2).map(m=>m.text)).toEqual(['[图片已跳过]','Image answer']);
+    expect(prepared.messages.reduce((n,m)=>n+(m.skippedImages??0),0)).toBe(2);
+    expect((await f.service.collect(b.id)).state).toBe('collected');
+  });
   it("does not release an already-started writer when the caller disconnects", async () => {
     const f = await setup();
     let entered!: () => void;

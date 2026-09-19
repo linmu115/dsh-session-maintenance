@@ -13,6 +13,10 @@ async function mount(api: LearningApi) {
   await act(async () => root.render(<LearningPage api={api} />)); return container;
 }
 const directory: LearningDirectory = { targets: [], candidates: [], bindings: [{ id: "b", logicalSessionId: "l", title: "Synthetic lesson", targetPresetId: "t", codexThreadId: "c", dshInstanceId: "d", dshProfileId: "web", dshNativeSessionId: "n", state: "sent", message: "等待回收", sentAt: null, collectedAt: null, revision: 0, blockedReason: null }] };
+it('shows the image filtering policy and the stored skipped-image count',async()=>{
+  const container=await mount({learningDirectory:async()=>({...directory,bindings:[{...directory.bindings[0]!,imageNotice:'本次同步跳过 2 张图片，仅发送文字；原图片保留。'}]}),bindLearning:vi.fn(),learningAction:vi.fn()});
+  expect(container.textContent).toContain('本次同步跳过 2 张图片');expect(container.textContent).toContain('[图片已跳过]');
+});
 it("shows recoverable errors and disables duplicate actions during collection", async () => {
   let reject!: (e: Error) => void;
   const learningAction = vi.fn(() => new Promise<never>((_, r) => { reject = r; }));
