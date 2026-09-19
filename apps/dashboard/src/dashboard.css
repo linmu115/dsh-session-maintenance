@@ -437,3 +437,13 @@
 .instance-workspace-selection { border:0; border-radius:0; padding:0; }
 .instance-workspace-selection .sync-workspace { border:0; border-bottom:1px solid var(--dsm-border); border-radius:0; background:transparent; }
 .instance-workspace-selection .sync-workspaces { gap:0; }
+
+.maintenance-source-list > summary { cursor: pointer; padding: 16px 0; border-bottom: 1px solid var(--dsm-border); }
+.maintenance-source-list > summary > span { display: block; margin: 6px 0 0 20px; font-size: 13px; overflow-wrap: anywhere; }
+.maintenance-source-list .workspace-search { margin-top: 16px; }
+
+.maintenance-source-list .instance-workspace-selection { margin-top: 12px; }
+.maintenance-source-list .instance-workspace-selection > .sync-workspace { display: inline-flex; min-height: 32px; padding: 6px 12px 6px 0; border: 0; margin: 0; }
+.maintenance-source-list .instance-workspace-selection > .sync-workspace + .sync-workspace { margin-top: 0; }
+.maintenance-source-list .workspace-search { margin-top: 6px; }
+.maintenance-source-list .instance-workspace-selection > p { margin: 8px 0; }

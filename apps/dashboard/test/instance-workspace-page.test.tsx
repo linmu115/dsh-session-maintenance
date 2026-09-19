@@ -69,3 +69,22 @@ it("saves unassigned-only explicitly and discards an old-instance save response 
   expect(container.textContent).not.toContain("修订 9");
   expect(container.querySelector("select")!.value).toBe("two");
 });
+
+it("starts collapsed, keeps a draft when collapsed, and changes all to an explicit Maintenance list", async () => {
+  const save = vi.fn(async (id, input) => ({ ...configuration(id, 2), policy: { ...configuration(id, 2).policy, selection: input.selection } }));
+  await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async id => configuration(id), saveInstanceWorkspaceSync: save });
+  const list = container.querySelector<HTMLDetailsElement>(".maintenance-source-list")!;
+  expect(list.open).toBe(false);
+  await act(async () => { list.open = true; list.dispatchEvent(new Event("toggle")); });
+  await click("编辑");
+  const workspace = container.querySelector<HTMLInputElement>('[aria-label="同步 工作区-one"]')!;
+  expect(workspace.checked).toBe(true);
+  await act(async () => workspace.click());
+  expect(workspace.checked).toBe(false);
+  await act(async () => { list.open = false; list.dispatchEvent(new Event("toggle")); });
+  expect(list.querySelector("summary")!.textContent).toContain("有未保存的更改");
+  expect(save).not.toHaveBeenCalled();
+  await act(async () => { list.open = true; list.dispatchEvent(new Event("toggle")); });
+  await submit();
+  expect(save).toHaveBeenCalledWith("one", { expectedRevision: 1, selection: { kind: "ids", workspaceIds: [], includeUnassigned: true } }, expect.any(AbortSignal));
+});

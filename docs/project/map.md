@@ -35,6 +35,9 @@
 
 ## 当前实现与验收边界
 
+2026-09-19 真源名单显示改进：[[REQ-maintenance-source-list]]；实现与合成浏览器验收见 [[HIST-maintenance-source-list]]。此改动尚未安装到当前运行的 Maintenance。
+
+
 [[MOD-instance-workspace]] 提供Maintenance自身分类工作区策略、每实例共享范围、run快照及可选host有效范围；配置保存后下次启动生效，当前run不换范围。Codex项目映射在同步的另一同级子栏目。[[MOD-business-pages]] 提供公开贡献注册、结构化栏目与持久动作回执，Dashboard按“扩展→业务插件→插件内数据/信息页”组织；SM是外部业务的可选维护能力。
 
 截至 2026-09-19，本地部署为 Maintenance .41 兼容组合的 startup-recovery 修订（`b7af3b8`），配合 Launcher `3ee0c44`。已完成真实旧运行正式恢复、生产包安装、接入重新校验及新实例启动，新增进程身份记录。现有 UI、插件文件、同步名单与其他绑定保持不变。实现及验收见 [[IMP-startup-recovery]]、[[VER-startup-recovery]]；恢复进度视觉仍未单独验收。
