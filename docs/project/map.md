@@ -18,7 +18,7 @@
 | 接业务插件 | [业务数据适配](records/modules/adapters/business/overview.md) → [对象合同](records/modules/adapters/business/contract.md) → [业务已知接入](records/modules/adapters/business/connected.md) |
 | 主干、引用与释放怎样协作 | [主干与固定引用](records/modules/engine/graph/contract.md)、[原生上下文释放](records/modules/engine/native-context/contract.md) |
 | GPT 插件接入与本次误解 | [[INT-gpt-format]]、[[HIST-gpt-extension-boundary]] |
-| 学习会话双端交接（实验，待实现） | [[REQ-learning-roundtrip]]、[[HIST-learning-roundtrip]] |
+| 学习会话双端交接（实验，已部署并关联） | [[REQ-learning-roundtrip]]、[[IMP-learning-roundtrip]]、[[VER-learning-roundtrip]]；修复过程 [[HIST-learning-association-repair]] |
 | 业务插件信息页与实例分类工作区范围（本地实现与验证完成） | [[REQ-extension-pages]]、[[IF-extension-pages]]、[[IF-instance-workspace-scope]]；历程 [[HIST-extension-pages-vault-binding]] |
 | 跨项目完整确认稿 | [DSH–Obsidian 与 Maintenance 完整需求](../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-dsh-obsidian-confirmed-requirements.md)；外部提供方维护自己的合同；SM本轮真实状态见 [[IMP-sync-ui-release]] 与 [[VER-sync-ui-release]]。 |
 | 同步与扩展层级、安装后哪些生效 | [[REQ-sync-extension-navigation]]、[[IMP-sync-ui-release]]、[[VER-sync-ui-release]]；这些是旧版验收；当前部署见 [[VER-startup-recovery]]。 |
@@ -35,6 +35,10 @@
 
 ## 当前实现与验收边界
 
+当前维护引擎为 **0.1.33-rc2.53**，Dashboard **0.1.13**。学习双向维护已完成真实关联、自动退出普通 Codex 同步与零增量交接；发送按新增消息计算预算，不自动跳转或发起回答。2026-09-19 18:20 正常重启后接入 connected，交接仍为等待回收，历史与派生数不变。真实新增问答完整往返仍未验收。当前用法见 [[IMP-learning-roundtrip]]，证据见 [[VER-learning-roundtrip]]。
+
+以下版本为各项能力当时的安装与检查时点，不替代上述当前引擎版本。
+
 Vault绑定不依赖DSH启动的新要求与候选实现：[[REQ-offline-vault-binding]]、[[IF-offline-vault-binding]]、[[HIST-offline-vault-binding]]。已随 Engine .45 / Dashboard .1.7 与 Obsidian桥 .4 安装激活，真实绑定写入和安装版UI未验收。
 
 
@@ -47,9 +51,9 @@ Vault绑定不依赖DSH启动的新要求与候选实现：[[REQ-offline-vault-b
 
 早先 .38/.39 与 prepare 失败的记录属于历史截点，保留在 [[IMP-sync-ui-release]]、[[VER-sync-ui-release]]，不再作为当前安装状态。当前 Launcher 外部 Stop/Restart 仍不可用；正常停止要求 closed，启动自动恢复路径接受正式 recovered，均不得强杀、删锁或改数据库状态。
 
-当前安装与推送收尾：Engine **0.1.33-rc2.45**、Dashboard **0.1.7**、Obsidian Companion **0.7.0-rc2.4**。扩展目录已解除无关GPT索引等待，真实返回三个业务栏目；独立绑定管理可在DSH停止时读取现有Vault。备份、正常退出、保留其他插件和只读检查见 [本次激活报告](../reports/2026-09-19-engine45-binding-activation.md)及 [[HIST-offline-vault-binding]]。Launcher已打开；DSH实例未启动，安装版UI、真实绑定写入仍未验收。
+此前安装与推送收尾：Engine **0.1.33-rc2.45**、Dashboard **0.1.7**、Obsidian Companion **0.7.0-rc2.4**。扩展目录已解除无关GPT索引等待，真实返回三个业务栏目；独立绑定管理可在DSH停止时读取现有Vault。备份、正常退出、保留其他插件和只读检查见 [本次激活报告](../reports/2026-09-19-engine45-binding-activation.md)及 [[HIST-offline-vault-binding]]。Launcher已打开；DSH实例未启动，安装版UI、真实绑定写入仍未验收。
 
-最新前端覆盖版本为 **Dashboard 0.1.8**（Engine仍为.45）：实例列表和绑定弹窗按工作台风格重新排布，已备份安装并完成实际浏览器的列表、弹窗、刷新/关闭及浅深色检查。此前“安装版UI未验收”是.1.7安装时点记录，本次已补查这两处；真实绑定写入和系统目录选择仍未执行。参见 [[HIST-offline-vault-binding]] 和 [布局报告](../changes/2026-09-19-vault-binding-layout.md)。
+此前前端覆盖版本为 **Dashboard 0.1.8**（Engine仍为.45）：实例列表和绑定弹窗按工作台风格重新排布，已备份安装并完成实际浏览器的列表、弹窗、刷新/关闭及浅深色检查。此前“安装版UI未验收”是.1.7安装时点记录，本次已补查这两处；真实绑定写入和系统目录选择仍未执行。参见 [[HIST-offline-vault-binding]] 和 [布局报告](../changes/2026-09-19-vault-binding-layout.md)。
 
 2026-09-19 升级回归修复：Engine .46 / Dashboard .1.9 已激活，恢复此前遗漏的 Launcher 启动恢复协议，正式 Start 与内置浏览器扩展目录展开通过；外部431已加入有界兼容处理，原始页面复测未验收。见 [[HIST-recovery-regression]]。
 

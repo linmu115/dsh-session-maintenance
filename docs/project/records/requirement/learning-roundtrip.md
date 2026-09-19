@@ -26,9 +26,9 @@ relations:
 
 2026-09-17 用户明确：作为 Session Maintenance 测试性功能，完整看板独立增加栏目；只纳入确认双端关联的会话，首个目标为“机试DeepLearning”。仅处理轮流使用 DSH 与 Codex 的学习型问答，不扩展至开发执行环境同步。来源与修正过程见 [[HIST-learning-roundtrip]]。
 
-2026-09-17 已完成受控首版代码及隔离验证，见 [[IMP-learning-roundtrip]]、[[VER-learning-roundtrip]]；尚未部署或绑定真实“机试DeepLearning”。本记录仍保留完整目标，未把首版限制改写为用户要求。
+2026-09-19 已部署受控首版及后续修复，真实首个目标完成关联、普通同步排除与零增量交接。实现和验收分别见 [[IMP-learning-roundtrip]]、[[VER-learning-roundtrip]]；真实新增问答往返仍待验收。首版历史见 [[HIST-learning-roundtrip-implementation]]，本轮修复见 [[HIST-learning-association-repair]]。
 
-首版需要停止 DSH 后交接、同步成功后重启 Codex，再继续原任务；不能热更新已加载的桌面上下文。仅验证 RC2 与 Codex CLI 0.153.4 的 legacy 历史。已有共同前缀不一致、图片、上下文替换、回收增量含工具执行时阻断；跨 DSH 实例重新选端点仍待实现。同一来源路径迁移可显式重新核对，使旧交接失效。
+当前交接需要先正常停止 DSH；确有新增内容送达后重启 Codex，再继续原任务，不能热更新已加载的桌面上下文。已验证 RC2 与 Codex CLI 0.153.4 的 legacy/paginated 历史。用户授权跳过图片；真正正文分歧、上下文替换和回收增量中的工具执行仍阻断。跨 DSH 实例重选端点待实现，同一来源路径迁移可显式重新核对并使旧交接失效。
 
 ## 使用入口
 
