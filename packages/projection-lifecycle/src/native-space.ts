@@ -258,12 +258,15 @@ export class NativeSessionSpace {
     }
     const files: Record<string, FileState> = {};
     const artifacts = await this.codec.inspect(this.reference.root);
+    const registered = artifacts.filter(artifact => metadata.has(artifact.nativeSessionId));
     for (const artifact of artifacts) {
       const item = metadata.get(artifact.nativeSessionId);
       let digest: string | null = null;
       let resources: JsonValue | undefined;
       if (!item) {
-        if (!this.codec.isPreparationOnly(artifact.events)) throw new Error(`Unregistered native history requires recovery: ${artifact.nativeSessionId}`);
+        const preparation = this.codec.isPreparationArtifact
+          ? this.codec.isPreparationArtifact(artifact, registered) : this.codec.isPreparationOnly(artifact.events);
+        if (!preparation) throw new Error(`Unregistered native history requires recovery: ${artifact.nativeSessionId}`);
       } else {
         const payload = obj(await directory.readSession(artifact.nativeSessionId));
         resources=this.codec.resourceManifest?.(payload);

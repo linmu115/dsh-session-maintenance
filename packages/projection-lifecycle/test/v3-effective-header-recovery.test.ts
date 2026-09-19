@@ -50,10 +50,25 @@ async function fixture() {
   const recover=async()=>lifecycle().recover(prepared.run.id,async({sessions})=>recoverV3RuntimeTail({runId:prepared.run.id,persistenceRoot:prepared.nativeSpace!.root,observedAt:at,
     sessions:sessions.map(s=>({nativeSessionId:s.projection.nativeSessionId,logicalSessionId:s.projection.logicalSessionId,baseVersionId:s.projection.baseVersionId,
       nativeRevision:s.projection.nativeRevision,header:s.header,committedEvents:s.committedEvents,adapterMetadata:s.adapterMetadata,instanceId:prepared.run.instanceId}))}));
-  return {root,item,originalSource,runs,appendDsh,observedHeaders,prepared,directory,payload,catalog,effective,artifact,file,recover,nativeId};
+  return {root,item,originalSource,runs,appendDsh,observedHeaders,prepared,directory,payload,catalog,effective,artifact,file,recover,nativeId,close:()=>initial.closeRun(prepared)};
 }
 
 describe('V3 persisted effective native header recovery',()=>{
+  it.each(['preparation','normal-close','new-content','changed-prefix','unknown-parent'] as const)('checks inherited unregistered fork lineage: %s',async variant=>{
+    const f=await fixture(),before=await readFile(f.file),prefix=structuredClone(f.artifact.events) as any[];
+    if(variant==='changed-prefix')prefix[0]={...prefix[0],time:prefix[0].time+1};
+    const fork={header:{...f.effective as object,id:'synthetic-inherited-fork',isSeeded:true,
+      parentSession:variant==='unknown-parent'?'unregistered-parent':f.nativeId},inheritedEventCount:prefix.length,
+      events:[...prefix,{type:'session/end-seed',seq:prefix.length,time:40,data:{inherited:true}},
+        ...(variant==='new-content'?[{type:'dsh-runtime/detail',seq:prefix.length+1,time:41,data:{kind:'synthetic-new-content'},ignorable:true}]:[])]} as JsonValue;
+    const description=await v3NativeSessionCodec.describe(fork,f.prepared.nativeSpace!.root),forkPath=join(f.prepared.nativeSpace!.root,description.relativePath);
+    await mkdir(dirname(forkPath),{recursive:true});const bytes=v3NativeSessionCodec.encode(fork,description);await writeFile(forkPath,bytes);
+    if(variant==='preparation'||variant==='normal-close'){
+      expect((await (variant==='normal-close'?f.close():f.recover())).state).toBe(variant==='normal-close'?'closed':'recovered');
+      expect(JSON.parse(await readFile(join(dirname(f.prepared.nativeSpace!.root),'space.json'),'utf8')).state).toBe('clean');
+    }else await expect(f.recover()).rejects.toThrow('Unmapped native history');
+    expect(f.appendDsh).not.toHaveBeenCalled();expect(await readFile(f.file)).toEqual(before);expect(await readFile(forkPath)).toEqual(bytes);
+  });
   it('checkpoints a cold-open preparation tail without committing a continuation',async()=>{
     const f=await fixture(),prefix=f.payload.events as JsonValue[];
     const value={...f.payload,events:[...prefix,{type:'session/end-seed',seq:prefix.length,time:40,data:{inherited:false}}]};

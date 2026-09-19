@@ -1,5 +1,24 @@
 # 学习关联持续等待：排查、修复与部署边界
 
+## 最终现场状态（2026-09-19 17:05）
+
+Engine **0.1.33-rc2.49** / Dashboard **0.1.10** 已激活；Launcher 接入 `connected`。用户正常停止 DSH 后，本次 run 已通过正式 Broker 恢复为 `recovered`，Launcher handle 为 `finalized`、最终回执为 `recovered`，native space 为 `clean`。DSH 保持停止，未自动重启。
+
+现场学习目录有 34 个候选，运行状态阻塞数从 34 降为 **0**；无效身份探测 226ms 返回 409 `LEARNING_CONFLICT`，未进入无限等待，也没有创建绑定。浏览器正式重新登录后已实际打开“学习双向维护”栏目，候选与 Codex 目标正常加载。**真实会话绑定、共同前缀核验及后续同步/回收未验收**；关联数仍为 0。
+
+恢复和升级前后，native 历史文件逐文件校验一致，canonical 会话 head 摘要一致；现有 Vault 数据、同步名单和其他插件 1,165 个文件校验保持一致。备份与脱敏验收分别位于 `D:/AI/DeepSeekHarness-Plugin/artifacts/learning-recovery-20260919`、`D:/AI/DeepSeekHarness-Plugin/artifacts/learning-quarantine-20260919`。本报告下面 .46/.47 状态为早先排查阶段，不代表当前安装。
+
+## 停止后发现的两个阻塞及修复
+
+1. **本次停止收尾失败。** `session-7367f343-d43c-4a08-9e53-cc2a6ff76ca3` 继承注册父会话的 326 个事件，只增加一条 `session/end-seed`，继承内容逐条一致，没有新增业务内容。旧恢复代码把继承历史也当作未登记新历史，因此将 run 隔离；不是用户选错 ID。V3 codec 现在对带继承内容的空分支核对完整性、明确父身份、已登记父会话、继承前缀及准备事件后缀。正常 checkpoint 和故障恢复使用同一规则；未知父、改写前缀或新增业务内容仍拒绝。
+2. **历史隔离记录永久误拦截。** 当前 run 恢复后，9 月 13、14 日的 5 条旧隔离记录仍被旧学习服务算作活动运行。现在仅当同一 instance/profile 的同一 logical session 有更晚且 `closed/recovered` 的投影时，旧隔离记录不再阻塞当前关联；旧记录保留不变。活动 run、待恢复 run、最新隔离 run、其他端点的未解决隔离以及未提交操作仍阻塞。无关会话的后续成功运行不能解锁本会话。
+
+隔离记录按设计不会被 `recoverBeforeStart` 自动重试，因此第一次调用虽返回 ok，数据库仍为 quarantined；验收及时发现，未将其当成成功。随后在备份和退出凭据核实后，经正式 Broker `close(reason=recovery)` 恢复本次 run，再调用 provider 对账最终回执。没有修改数据库状态、删除锁或伪造退出通知。
+
+本次增加 5 项空分支回归（含正常关闭及拒绝路径）和 5 项隔离范围回归。相关恢复/学习集合 38 项通过，后续学习集合扩充至 20 项通过；发行接入 32 项、Engine 构建及 43 文件 portable 校验通过。最终包 `.artifacts/learning-quarantine-20260919/dsh-session-maintenance-engine-0.1.33-rc2.49.tgz`，SHA-256 `8bdeaff71b80e72ebb5d12afb176d0f32222f65ca931f51d9ac3a8a793ab0fb0`。
+
+这两个停止后的阻塞已有直接证据；初始运行时占住写队列的具体操作仍未知，不把空分支故障冒充初始等待的唯一根因。此前 .47 的排队取消、客户端超时和预检查修复均已随 .49 安装。
+
 ## 问题与现场证据
 
 来源：用户在本次 Codex 任务 `01a0b8bb-ae8e-7202-af8d-ed8d46b04487` 反馈，选好会话和 Codex 目标后点击“核对并加入”一直显示“正在核对关联”。最初“失败”的描述经用户纠正为持续等待；不能将认证过期或活动实例保护直接当成本次卡住的根因。
@@ -26,7 +45,7 @@
 - 正式 package:phase2 生成待部署引擎包（含 Dashboard .10），43 个包内文件通过 portable 检查，包含 Engine/Adapter 可执行探测。
 - 产物：`.artifacts/learning-bind-20260919/dsh-session-maintenance-engine-0.1.33-rc2.47.tgz`。该目录清单记录打包时的基线提交及工作树状态；包内容构建自本轮修复。
 
-## 未完成与安全边界
+## 首轮部署前边界（历史状态，已由上方最终状态更新）
 
 新引擎/看板未激活；新 UI 的真实浏览器交互未验收，仅组件与合成后端验收。没有绑定真实会话、同步/回收正文、修改 Vault 或同步名单。当前实际运行版仍是 .46 / Dashboard .9，不能写成现场故障已修复。
 

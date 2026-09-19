@@ -112,6 +112,25 @@ describe("learning roundtrip", () => {
     f.db.prepare("UPDATE projection_runs SET state='closed'").run();
     expect(f.service.directory().candidates[0]!.blockedReason).toBeNull();
   });
+  it.each(['quarantined','running','recovery-required'] as const)("handles an older %s run without treating isolation as an active lease", async state => {
+    const f=await setup(),current=(await f.runs.getProjectionRun('learning-run' as never))!;
+    await f.runs.createProjectionRun({...current,id:'older-run' as never,leaseId:'older-lease' as never,state,startedAt:'2026-09-16T00:00:00.000Z'});
+    const projection=(await f.runs.listProjectionSessions(current.id))[0]!;
+    await f.runs.upsertProjectionSession({...projection,runId:'older-run' as never});
+    if(state==='quarantined'){
+      expect(f.service.directory().candidates[0]!.blockedReason).toBeNull();expect((await f.bind()).state).toBe('ready');
+      expect((await f.runs.getProjectionRun('older-run' as never))!.state).toBe('quarantined');
+    }else await expect(f.bind()).rejects.toThrow('正常停止');
+  });
+  it.each([false,true])('does not ignore the latest quarantined run, with session registration=%s',async registered=>{
+    const f=await setup(),current=(await f.runs.getProjectionRun('learning-run' as never))!;
+    await f.runs.createProjectionRun({...current,id:'newer-quarantine' as never,leaseId:'newer-lease' as never,state:'quarantined',startedAt:'2026-09-18T00:00:00.000Z'});
+    if(registered)await f.runs.upsertProjectionSession({...((await f.runs.listProjectionSessions(current.id))[0]!),runId:'newer-quarantine' as never});
+    await f.runs.createProjectionRun({...current,id:'unrelated-completed-run' as never,leaseId:'unrelated-lease' as never,state:'closed',startedAt:'2026-09-19T00:00:00.000Z'});
+    expect(f.service.directory().candidates[0]!.blockedReason).toContain('隔离运行');
+    const candidate=f.service.directory().candidates[0]!;
+    await expect(f.service.bind({logicalSessionId:candidate.logicalSessionId,codexThreadId:candidate.codexThreadId,dshRunId:candidate.dshRunId,targetPresetId:f.target.id,confirmed:true})).rejects.toThrow('隔离运行');
+  });
   it("keeps ordinary DSH continuation on the owned identity and skips scanner reassignment", async () => {
     const f = await setup(), b = await f.bind();
     const snapshot = (await f.engine.canonicalEngine.store.getSession("learning" as never))!;

@@ -32,4 +32,7 @@ export interface NativeSessionCodec {
   /** Strictly validates native layout and decodes all records, including complete zstd frames. */
   inspect(persistenceRoot: string): Promise<readonly NativeSessionArtifact[]>;
   isPreparationOnly(events: readonly JsonValue[]): boolean;
+  /** Admit an unregistered preparation artifact only against this run's registered
+   * native parents. The codec verifies platform-specific inherited lineage. */
+  isPreparationArtifact?(artifact: NativeSessionArtifact, registered: readonly NativeSessionArtifact[]): boolean;
 }

@@ -32,9 +32,19 @@ export class LearningService {
   private sessionBlocked(data: Pick<Stored, "logicalSessionId" | "dshInstanceId" | "dshProfileId">) {
     const s = this.db.prepare("SELECT archived_at,tombstoned_at FROM logical_sessions WHERE id=?").get(data.logicalSessionId) as { archived_at: string | null; tombstoned_at: string | null } | undefined;
     if (!s || s.archived_at || s.tombstoned_at) return "会话已归档或删除，请先恢复并重新核对关联";
-    if (this.db.prepare(`SELECT 1 FROM projection_runs r WHERE r.instance_id=? AND r.profile_id=? AND r.state NOT IN ('closed','recovered')`).get(data.dshInstanceId, data.dshProfileId))
+    if (this.db.prepare(`SELECT 1 FROM projection_runs r WHERE r.instance_id=? AND r.profile_id=? AND r.state NOT IN ('closed','recovered','quarantined')`).get(data.dshInstanceId, data.dshProfileId))
       return "对应 DSH 实例仍在运行或尚未完成收尾，请先通过 Launcher 正常停止，再刷新状态进行关联、同步或回收";
-    if (this.db.prepare(`SELECT 1 FROM projection_runs r JOIN projection_sessions p ON p.run_id=r.id WHERE p.logical_session_id=? AND r.state NOT IN ('closed','recovered')`).get(data.logicalSessionId)) return "同一会话仍在其它 DSH 实例运行，请先正常停止";
+    if (this.db.prepare(`SELECT 1 FROM projection_runs r JOIN projection_sessions p ON p.run_id=r.id WHERE p.logical_session_id=? AND r.state NOT IN ('closed','recovered','quarantined')`).get(data.logicalSessionId)) return "同一会话仍在其它 DSH 实例运行，请先正常停止";
+    // Quarantine is isolated, not an active lease. Only a later completed run of
+    // this exact session on the same endpoint supersedes its association blocker.
+    if (this.db.prepare(`SELECT 1 FROM projection_runs r
+      LEFT JOIN projection_sessions p ON p.run_id=r.id AND p.logical_session_id=?
+      WHERE r.state='quarantined' AND ((r.instance_id=? AND r.profile_id=?) OR p.logical_session_id IS NOT NULL)
+      AND NOT EXISTS(SELECT 1 FROM projection_runs newer JOIN projection_sessions np ON np.run_id=newer.id
+        WHERE newer.instance_id=r.instance_id AND newer.profile_id=r.profile_id AND newer.started_at>r.started_at
+        AND newer.state IN ('closed','recovered') AND np.logical_session_id=?)`)
+      .get(data.logicalSessionId, data.dshInstanceId, data.dshProfileId, data.logicalSessionId))
+      return "对应会话仍有尚未恢复的隔离运行，请先完成运行恢复，再刷新状态进行关联、同步或回收";
     if (this.db.prepare("SELECT 1 FROM run_operations WHERE logical_session_id=? AND status<>'committed'").get(data.logicalSessionId)) return "仍有未完成写入，请先完成运行恢复";
     return null;
   }
