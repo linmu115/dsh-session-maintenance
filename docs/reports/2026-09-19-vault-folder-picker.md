@@ -18,9 +18,11 @@ Engine 0.1.33-rc2.55 使用 Windows 原生 Common Item Dialog 的文件夹模式
 - Engine TypeScript 编译通过。
 - 本机新选择器两次初始化分别 1304 ms、1065 ms；第二次辅助进程主窗口句柄非零且 Responding 为 true。检查后主动中止本次独立辅助进程，无绑定写入。主窗口句柄不等于前台位置或视觉验收。
 - 真实用户选择目录、取消按钮、窗口前台位置及最终绑定 UI **未验收**。
-- 当前仍运行旧 Engine .54；只读停止预检发现 1 个活动托管运行，未发停止信号。需要用户经 Launcher 正常停止实例，再备份配置与维护数据，按正式 drain / owner-release 流程切换。实际安装及新版绑定尚未验收。
+- 用户确认通过 Launcher 正常停止测试实例后，核验 run `run-9d6f26bd-dfe4-4b6a-aa7f-b6cf54d3449b` 为 closed、handle finalized / closed、原进程退出、活动 run/job 均为 0。旧 Engine PID 32440 正常 drain / owner-release 退出。已备份配置、两实例构件回执、维护数据库、生命周期句柄及投影运行数据，再切换 .55。
+- 新 Engine PID 26652 就绪；测试与副本均经正式 repair 验证为 connected，10 个配置文件校验不变，canonical heads 及学习绑定计数不变。DSH 实例保持停止。真实浏览器已打开新版“0.1.5-rc.2 测试”的 Vault 绑定面板，“新建绑定”可用、绑定数 0。未代用户选择目录或提交 Vault 绑定。
+- 部署证据与备份：DSH 工作区 `.artifacts/vault-picker-20260919/`；实际入口 SHA-256：`d219c47f405ec0d554c44060d4c1c20ea21825347e68d508b077a8a2758e8f5a`。
 
-发行构建完成，额外 32 项接入/实际构件回执测试通过，与针对性测试合计 49 项。Engine 归档 SHA-256：`e5e31fff7138946956efcb5cc90224f08a39cdf4cecd2297bbc14bf87cf610e4`。源码提交 `6b76900`，候选包已独立解包，尚未安装或修改当前生命周期配置。未修改用户 Vault 绑定、同步范围、历史会话或笔记。
+发行构建完成，额外 32 项接入/实际构件回执测试通过，与针对性测试合计 49 项。Engine 归档 SHA-256：`e5e31fff7138946956efcb5cc90224f08a39cdf4cecd2297bbc14bf87cf610e4`。源码提交 `6b76900`，发行包已独立解包并激活，仅更新 Launcher 的 Engine 指向及两个 RC2 实例的对应构件回执，通过正式接入修复更新登记。未修改用户 Vault 绑定、同步范围、历史会话或笔记。
 
 ## 开发历程草稿
 
