@@ -1,6 +1,7 @@
 import { mkdtemp, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import ts from "typescript";
 import { expect, it } from "vitest";
 import { writeBusinessPageDeclarations } from "../scripts/business-pages-declarations.mjs";
@@ -8,7 +9,7 @@ it("publishes dependency-free types generated from shared contracts without star
   const temporary = await mkdtemp(join(tmpdir(), "dsm-business-api-"));
   await writeFile(join(temporary, ".synthetic-fixture"), "business page declaration test");
   try {
-    await writeBusinessPageDeclarations(resolve("."), temporary);
+    await writeBusinessPageDeclarations(fileURLToPath(new URL("../../../", import.meta.url)), temporary);
     const declarations = await readFile(join(temporary, "business-pages.d.ts"), "utf8");
     expect(declarations).not.toMatch(/import\(|from ["']|EngineConnection|token/);
     const consumer = join(temporary, "consumer.ts");

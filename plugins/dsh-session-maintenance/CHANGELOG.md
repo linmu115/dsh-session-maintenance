@@ -1,3 +1,9 @@
+# 0.2.26-rc2.33 — 2026-09-19
+
+- Rebuild the complete plugin from current tracked sources for migration to a new RC2 test instance. The frontend keeps the full Dashboard entry already present in source; this release replaces the older rc2.29 archive instead of distributing an installed-file overlay.
+- Publish a distinct package version for traceable server, client and Core host artifacts. Existing running instances remain on their installed versions until a normal stop and separately verified activation.
+- Package migration preserves the destination instance identity and does not copy source session history, Vault bindings or runtime journals. See `docs/reports/2026-09-19-plugin-package-migration.md` in the repository for verification scope.
+
 # 0.2.26-rc2.12 — 2026-09-15
 
 - Pair with Engine 0.1.33-rc2.16, ThoughtDAG 0.4.14-rc2.6, Annotation Core 0.3.12-rc2.8 and Sticker Board 0.7.3-rc2.14 on DSH 0.1.5-rc.2.
