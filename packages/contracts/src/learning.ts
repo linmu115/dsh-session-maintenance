@@ -28,7 +28,7 @@ export const learningBindingSchema = z.object({ id, logicalSessionId: id, title:
   blockedReason: z.string().nullable() });
 export type LearningBinding = z.infer<typeof learningBindingSchema>;
 export const learningDirectorySchema = z.object({ bindings: z.array(learningBindingSchema),
-  targets: z.array(z.object({ id, label: z.string() })),
+  targets: z.array(z.object({ id, label: z.string(), codexInstanceId: id.optional() })),
   candidates: z.array(z.object({ logicalSessionId: id, title: z.string(), codexThreadId: id, codexInstanceId: id,
-    dshRunId: id, dshLabel: z.string() })) });
+    dshRunId: id, dshLabel: z.string(), blockedReason: z.string().nullable().optional() })) });
 export type LearningDirectory = z.infer<typeof learningDirectorySchema>;

@@ -15,9 +15,13 @@ export function LearningPage({ api }: { readonly api: LearningApi }) {
   const [targetId, setTargetId] = useState("");
   const [confirmed, setConfirmed] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [loading, setLoading] = useState(true);
   useEffect(() => {
     const controller = new AbortController();
-    void api.learningDirectory(controller.signal).then(setDirectory).catch((e: unknown) => { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "读取失败"); });
+    setLoading(true);
+    void api.learningDirectory(controller.signal).then(value => { if (!controller.signal.aborted) setDirectory(value); })
+      .catch((e: unknown) => { if (!controller.signal.aborted) { setDirectory(undefined); setError(previous => [previous, e instanceof Error ? e.message : "读取失败"].filter(Boolean).join(" ")); } })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => controller.abort();
   }, [api, revision]);
   const perform = async (id: string, action: () => Promise<unknown>) => {
@@ -27,9 +31,12 @@ export function LearningPage({ api }: { readonly api: LearningApi }) {
     finally { setBusy(undefined); setRevision(v => v + 1); }
   };
   const candidate = directory?.candidates.find(c => `${c.logicalSessionId}:${c.dshRunId}` === selected);
+  const target = directory?.targets.find(t => t.id === targetId);
+  const bindBlockedReason = candidate?.blockedReason || (candidate && target?.codexInstanceId && target.codexInstanceId !== candidate.codexInstanceId
+    ? "所选 Codex 目标与会话来源不一致，请选择对应的目标" : null);
   return <div className="page-stack">
     <div className="dsm-page-heading"><div><h2>学习会话双向维护 <Badge tone="warning">实验</Badge></h2><p>在 DSH 和 Codex 轮流学习，回收新增问答到原会话。</p></div></div>
-    <Surface title="使用方式"><div className="settings-content"><p>先正常停止对应 DSH 实例，等待写入收尾，再同步或回收。同步成功后重新启动 Codex，再继续绑定的任务；回收完成后重新启动 DSH。两端发生差异会阻止追加。</p><p>问答及引用上下文会送入 Codex。Codex 页面可能不显示导入的历史，DSH 完整记录仍会保留。</p></div></Surface>
+    <Surface title="使用方式"><div className="settings-content"><p>首次关联、同步和回收前，都要先通过 Launcher 正常停止对应 DSH 实例，等待写入收尾，再刷新状态。同步成功后重新启动 Codex，再继续绑定的任务；回收完成后重新启动 DSH。两端发生差异会阻止追加。</p><p>问答及引用上下文会送入 Codex。Codex 页面可能不显示导入的历史，DSH 完整记录仍会保留。</p></div></Surface>
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
     <Surface title="已确认关联的会话" action={<Button disabled={!!busy} onClick={() => { setError(undefined); setRevision(v => v + 1); }}>刷新状态</Button>}>
       {!directory && !error ? <LoadingState label="正在读取学习关联…" /> : null}
@@ -57,8 +64,9 @@ export function LearningPage({ api }: { readonly api: LearningApi }) {
         <label className="field"><span>已配置的 Codex 目标</span><select value={targetId} disabled={!!busy} onChange={e => { setTargetId(e.target.value); setConfirmed(false); }}><option value="">选择目标</option>{directory?.targets.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}</select></label>
         {directory?.targets.length === 0 ? <p>尚未配置 Codex 目标。请先在 Maintenance 中登记本机 Codex 目标。</p> : null}
         {candidate ? <p>将关联 Codex 任务：{candidate.codexThreadId}</p> : null}
-        <label className="toggle-field"><input type="checkbox" checked={confirmed} disabled={!!busy || !candidate || !targetId} onChange={e => setConfirmed(e.target.checked)} />我确认两端属于同一条学习会话，由 Maintenance 维护主线</label>
-        <Button disabled={!!busy || !candidate || !targetId || !confirmed} onClick={() => { if (candidate) void perform("bind", () => api.bindLearning({ logicalSessionId: candidate.logicalSessionId, codexThreadId: candidate.codexThreadId, dshRunId: candidate.dshRunId, targetPresetId: targetId, confirmed: true })); }}>{busy === "bind" ? "正在核对关联…" : "核对并加入"}</Button>
+        {bindBlockedReason ? <p role="status">{bindBlockedReason}</p> : null}
+        <label className="toggle-field"><input type="checkbox" checked={confirmed} disabled={!!busy || loading || !candidate || !target || !!bindBlockedReason} onChange={e => setConfirmed(e.target.checked)} />我确认两端属于同一条学习会话，由 Maintenance 维护主线</label>
+        <Button disabled={!!busy || loading || !candidate || !target || !confirmed || !!bindBlockedReason} onClick={() => { if (candidate) void perform("bind", () => api.bindLearning({ logicalSessionId: candidate.logicalSessionId, codexThreadId: candidate.codexThreadId, dshRunId: candidate.dshRunId, targetPresetId: targetId, confirmed: true })); }}>{busy === "bind" ? "正在核对关联…" : "核对并加入"}</Button>
       </div></div>
     </Surface>
   </div>;

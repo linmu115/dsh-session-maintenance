@@ -47,6 +47,71 @@ async function setup() {
   return { ...f, db, runs, port, service, bind, target };
 }
 describe("learning roundtrip", () => {
+  it("does not release an already-started writer when the caller disconnects", async () => {
+    const f = await setup();
+    let entered!: () => void;
+    let release!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    const read = f.port.read.bind(f.port);
+    f.port.read = async (...args) => { entered(); await hold; return read(...args); };
+    const controller = new AbortController();
+    const bind = f.service.bind({ logicalSessionId: "learning", codexThreadId: "thread", dshRunId: "learning-run", targetPresetId: f.target.id, confirmed: true }, controller.signal);
+    await started;
+    let nextRan = false;
+    const next = f.engine.runWrite("fixture-next", () => { nextRan = true; });
+    controller.abort();
+    vi.useFakeTimers();
+    try { await vi.advanceTimersByTimeAsync(6_000); expect(nextRan).toBe(false); }
+    finally { vi.useRealTimers(); release(); }
+    expect((await bind).state).toBe("ready"); await next;
+    expect(nextRan).toBe(true);
+  });
+  it("cancels a timed-out queued bind and never creates a delayed binding", async () => {
+    const f = await setup();
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const held = f.engine.writes!.run("fixture-held-writer", async () => { entered(); await new Promise<void>(resolve => { release = resolve; }); });
+    await started;
+    vi.useFakeTimers();
+    try {
+      const result = expect(f.bind()).rejects.toMatchObject({ code: "LEARNING_QUEUE_TIMEOUT" });
+      await vi.advanceTimersByTimeAsync(5_001);
+      await result;
+    } finally { vi.useRealTimers(); release(); await held; }
+    await f.engine.runWrite("fixture-drained", () => undefined);
+    expect(f.service.directory().bindings).toHaveLength(0);
+    expect((await f.engine.canonicalEngine.store.getSession("learning" as never))!.session.authorityScope).not.toBe("maintenance");
+    expect((await f.bind()).state).toBe("ready");
+  });
+  it("cancels a disconnected queued bind without affecting the writer", async () => {
+    const f = await setup();
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const held = f.engine.writes!.run("fixture-held-writer", async () => { entered(); await new Promise<void>(resolve => { release = resolve; }); });
+    await started;
+    const controller = new AbortController();
+    const result = f.service.bind({ logicalSessionId: "learning", codexThreadId: "thread", dshRunId: "learning-run", targetPresetId: f.target.id, confirmed: true }, controller.signal);
+    controller.abort(new Error("fixture-disconnected"));
+    try { await expect(result).rejects.toThrow("fixture-disconnected"); } finally { release(); await held; }
+    await f.engine.runWrite("fixture-drained", () => undefined);
+    expect(f.service.directory().bindings).toHaveLength(0);
+  });
+  it("reports candidate blockers before submission while still checking at commit", async () => {
+    const f = await setup();
+    expect(f.service.directory().targets[0]).toMatchObject({ codexInstanceId: "codex-fixture" });
+    expect(f.service.directory().candidates[0]!.blockedReason).toBeNull();
+    f.db.prepare("UPDATE projection_runs SET state='running'").run();
+    expect(f.service.directory().candidates[0]!.blockedReason).toContain("正常停止");
+    const enqueue = vi.spyOn(f.engine.writes!, "run");
+    await expect(f.bind()).rejects.toThrow("正常停止");
+    expect(enqueue).not.toHaveBeenCalled(); enqueue.mockRestore();
+    expect(f.service.directory().bindings).toHaveLength(0);
+    f.db.prepare("UPDATE projection_runs SET state='closed'").run();
+    expect(f.service.directory().candidates[0]!.blockedReason).toBeNull();
+  });
   it("keeps ordinary DSH continuation on the owned identity and skips scanner reassignment", async () => {
     const f = await setup(), b = await f.bind();
     const snapshot = (await f.engine.canonicalEngine.store.getSession("learning" as never))!;

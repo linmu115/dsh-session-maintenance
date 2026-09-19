@@ -220,9 +220,25 @@ class ApiClient {
     return (await this.request("/v1/workspace-sync", this.jsonPatch(workspaceSyncUpdateSchema.parse(input)), z.strictObject({ configuration: workspaceSyncConfigurationSchema }), signal)).configuration;
   }
 
-  learningDirectory(signal?: AbortSignal) { return this.request("/v1/learning", {}, learningDirectorySchema, signal); }
-  bindLearning(input: LearningBind, signal?: AbortSignal) { return this.request("/v1/learning", this.jsonPost(learningBindSchema.parse(input)), learningBindingSchema, signal); }
-  learningAction(id: string, action: "send" | "collect" | "disable" | "verifySend" | "revalidate", signal?: AbortSignal) { return this.request(`/v1/learning/${encodeURIComponent(id)}/${action}`, this.jsonPost({}), learningBindingSchema, signal); }
+  learningDirectory(signal?: AbortSignal) { return this.learningRequest("/v1/learning", {}, learningDirectorySchema, signal); }
+  bindLearning(input: LearningBind, signal?: AbortSignal) { return this.learningRequest("/v1/learning", this.jsonPost(learningBindSchema.parse(input)), learningBindingSchema, signal); }
+  learningAction(id: string, action: "send" | "collect" | "disable" | "verifySend" | "revalidate", signal?: AbortSignal) { return this.learningRequest(`/v1/learning/${encodeURIComponent(id)}/${action}`, this.jsonPost({}), learningBindingSchema, signal); }
+
+  private async learningRequest<T>(path: string, init: RequestInit, schema: ZodType<T>, signal?: AbortSignal): Promise<T> {
+    const controller = new AbortController();
+    const abort = () => controller.abort(signal?.reason);
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
+    const timeout = setTimeout(() => controller.abort(new Error(init.method === "POST"
+      ? "等待维护引擎响应超时，操作结果尚未确认。请刷新状态核对；同步结果不明时使用“核验同步结果”，不要重复同步。"
+      : "读取学习关联超时，请稍后刷新状态。")), 45_000);
+    try {
+      return await this.request(path, init, schema, controller.signal);
+    } catch (error) {
+      if (controller.signal.aborted) throw controller.signal.reason;
+      throw error;
+    } finally { clearTimeout(timeout); signal?.removeEventListener("abort", abort); }
+  }
 
   async listSessions(query: SessionQuery = {}, signal?: AbortSignal): Promise<Page<SessionSummary>> {
     const search = new URLSearchParams();

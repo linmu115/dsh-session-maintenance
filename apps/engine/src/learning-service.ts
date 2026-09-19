@@ -29,13 +29,18 @@ export class LearningService {
     return { data: JSON.parse(row.data_json) as Stored, revision: row.body_revision };
   }
   private save(data: Stored) { this.db.prepare("UPDATE learning_bindings SET data_json=? WHERE id=?").run(JSON.stringify(data), data.id); }
-  private blocked(data: Stored) {
+  private sessionBlocked(data: Pick<Stored, "logicalSessionId" | "dshInstanceId" | "dshProfileId">) {
     const s = this.db.prepare("SELECT archived_at,tombstoned_at FROM logical_sessions WHERE id=?").get(data.logicalSessionId) as { archived_at: string | null; tombstoned_at: string | null } | undefined;
     if (!s || s.archived_at || s.tombstoned_at) return "会话已归档或删除，请先恢复并重新核对关联";
     if (this.db.prepare(`SELECT 1 FROM projection_runs r WHERE r.instance_id=? AND r.profile_id=? AND r.state NOT IN ('closed','recovered')`).get(data.dshInstanceId, data.dshProfileId))
-      return "请先正常停止对应 DSH 实例，等待会话写入收尾，再进行同步或回收";
+      return "对应 DSH 实例仍在运行或尚未完成收尾，请先通过 Launcher 正常停止，再刷新状态进行关联、同步或回收";
     if (this.db.prepare(`SELECT 1 FROM projection_runs r JOIN projection_sessions p ON p.run_id=r.id WHERE p.logical_session_id=? AND r.state NOT IN ('closed','recovered')`).get(data.logicalSessionId)) return "同一会话仍在其它 DSH 实例运行，请先正常停止";
     if (this.db.prepare("SELECT 1 FROM run_operations WHERE logical_session_id=? AND status<>'committed'").get(data.logicalSessionId)) return "仍有未完成写入，请先完成运行恢复";
+    return null;
+  }
+  private blocked(data: Stored) {
+    const reason = this.sessionBlocked(data);
+    if (reason) return reason;
     const target = this.targets.find(t => t.id === data.targetPresetId);
     if (!target || this.endpoint(target) !== data.endpointDigest) return "迁移后 Codex 端点已变化，旧交接失效，请重新核对关联";
     return null;
@@ -50,14 +55,16 @@ export class LearningService {
   directory(): LearningDirectory {
     const ids = this.db.prepare("SELECT id FROM learning_bindings ORDER BY id").all() as { id: string }[];
     const candidates = this.db.prepare(`SELECT s.id AS logicalSessionId,s.display_title AS title,b.session_id AS codexThreadId,b.instance_id AS codexInstanceId,
-      r.id AS dshRunId,r.instance_id || ' / ' || r.profile_id AS dshLabel
+      r.id AS dshRunId,r.instance_id || ' / ' || r.profile_id AS dshLabel,r.instance_id AS dshInstanceId,r.profile_id AS dshProfileId
       FROM logical_sessions s JOIN platform_bindings b ON b.logical_session_id=s.id AND b.platform='codex'
       JOIN projection_sessions p ON p.logical_session_id=s.id JOIN projection_runs r ON r.id=p.run_id
       WHERE s.tombstoned_at IS NULL AND s.archived_at IS NULL AND r.dsh_version='0.1.5-rc.2'
       AND NOT EXISTS(SELECT 1 FROM learning_bindings l WHERE l.logical_session_id=s.id)
       AND r.started_at=(SELECT MAX(r2.started_at) FROM projection_runs r2 JOIN projection_sessions p2 ON p2.run_id=r2.id WHERE p2.logical_session_id=s.id)
-      ORDER BY s.updated_at DESC LIMIT 200`).all() as unknown as LearningDirectory["candidates"];
-    return { bindings: ids.map(({ id }) => this.public(id)), targets: this.targets.map(t => ({ id: t.id, label: t.id })), candidates };
+      ORDER BY s.updated_at DESC LIMIT 200`).all() as unknown as (LearningDirectory["candidates"][number] & { dshInstanceId: string; dshProfileId: string })[];
+    return { bindings: ids.map(({ id }) => this.public(id)), targets: this.targets.map(t => ({ id: t.id, label: t.id, codexInstanceId: t.codexInstanceId })),
+      candidates: candidates.map(({ dshInstanceId, dshProfileId, ...candidate }) => ({ ...candidate,
+        blockedReason: this.sessionBlocked({ logicalSessionId: candidate.logicalSessionId, dshInstanceId, dshProfileId }) })) };
   }
   private async projection(data: Stored) {
     const latest = this.db.prepare(`SELECT r.id,p.native_session_id FROM projection_runs r JOIN projection_sessions p ON p.run_id=r.id
@@ -72,12 +79,25 @@ export class LearningService {
     const item: CanonicalProjectionSessionInput = { session: snapshot.session, events: version.events, workspaceId: snapshot.workspaceId };
     return { item, run, snapshot, version, prepared: await prepareLearningV3(item, run) };
   }
-  private async write<T>(operation: () => Promise<T>) {
+  private async write<T>(operation: () => Promise<T>, signal?: AbortSignal) {
     if (!this.engine.writes) return fail("学习交接需要 Maintenance 独占写入协调器");
-    return this.engine.writes.run("learning-roundtrip", operation);
+    const queued = new AbortController();
+    const timeout = setTimeout(() => queued.abort(new ExtensionDataError("LEARNING_QUEUE_TIMEOUT",
+      "维护写入队列繁忙，本次操作尚未开始并已取消。请稍后刷新状态重试；持续出现时需检查维护引擎。", 503)), 5_000);
+    const pendingSignal = signal ? AbortSignal.any([queued.signal, signal]) : queued.signal;
+    try {
+      // Only queued work is cancellable. Never release the writer while an
+      // already-started operation may still be committing or injecting history.
+      return await this.engine.writes.run("learning-roundtrip", () => { clearTimeout(timeout); return operation(); }, pendingSignal);
+    } finally { clearTimeout(timeout); }
   }
-  async bind(input: LearningBind): Promise<LearningBinding> {
+  async bind(input: LearningBind, signal?: AbortSignal): Promise<LearningBinding> {
     const q = learningBindSchema.parse(input);
+    // Read-only rejection does not need to wait behind a busy writer. Repeat
+    // identity and lifecycle validation inside the queue before any mutation.
+    const preview = this.directory().candidates.find(c => c.logicalSessionId === q.logicalSessionId && c.codexThreadId === q.codexThreadId && c.dshRunId === q.dshRunId);
+    if (!preview) return fail("请选择已核对的现有双端会话");
+    if (preview.blockedReason) return fail(preview.blockedReason);
     return this.write(async () => {
       const candidate = this.directory().candidates.find(c => c.logicalSessionId === q.logicalSessionId && c.codexThreadId === q.codexThreadId && c.dshRunId === q.dshRunId);
       if (!candidate) return fail("请选择已核对的现有双端会话");
@@ -104,9 +124,9 @@ export class LearningService {
         this.db.exec("COMMIT");
       } catch (error) { this.db.exec("ROLLBACK"); throw error; }
       return this.public(data.id);
-    });
+    }, signal);
   }
-  async send(id: string): Promise<LearningBinding> {
+  async send(id: string, signal?: AbortSignal): Promise<LearningBinding> {
     return this.write(async () => {
       const { data, revision } = this.row(id); this.check(data);
       if (data.state === "sent") return this.public(id);
@@ -138,9 +158,9 @@ export class LearningService {
         catch (error) { this.db.exec("ROLLBACK"); throw error; }
       } catch (error) { data.state = "uncertain"; data.message = error instanceof Error ? error.message : "同步结果待核验"; this.save(data); throw error; }
       return this.public(id);
-    });
+    }, signal);
   }
-  async collect(id: string): Promise<LearningBinding> {
+  async collect(id: string, signal?: AbortSignal): Promise<LearningBinding> {
     return this.write(async () => {
       const { data, revision } = this.row(id); this.check(data);
       if (data.state === "collected") return this.public(id);
@@ -176,12 +196,12 @@ export class LearningService {
         data.message = `已回收 ${delta.messages.length} 条问答，重新启动 DSH 后继续原会话`; this.save(data); this.db.exec("COMMIT");
       } catch (error) { this.db.exec("ROLLBACK"); throw error; }
       return this.public(id);
-    });
+    }, signal);
   }
-  async disable(id: string) {
-    return this.write(async () => { const { data } = this.row(id); data.state = "disabled"; data.message = "已停用，学习正文及历史交接记录保留"; this.save(data); return this.public(id); });
+  async disable(id: string, signal?: AbortSignal) {
+    return this.write(async () => { const { data } = this.row(id); data.state = "disabled"; data.message = "已停用，学习正文及历史交接记录保留"; this.save(data); return this.public(id); }, signal);
   }
-  async verifySend(id: string) {
+  async verifySend(id: string, signal?: AbortSignal) {
     return this.write(async () => {
       const { data, revision } = this.row(id); this.check(data);
       if (!["sending", "uncertain"].includes(data.state) || !data.handoffId) return fail("没有需要核验的同步");
@@ -198,9 +218,9 @@ export class LearningService {
       try { this.db.prepare("UPDATE learning_handoffs SET data_json=? WHERE id=?").run(JSON.stringify(h), data.handoffId); this.save(data); this.db.exec("COMMIT"); }
       catch (error) { this.db.exec("ROLLBACK"); throw error; }
       return this.public(id);
-    });
+    }, signal);
   }
-  async revalidate(id: string) {
+  async revalidate(id: string, signal?: AbortSignal) {
     return this.write(async () => {
       const { data } = this.row(id), target = this.target(data.targetPresetId);
       // Explicit revalidation invalidates the old handoff; no archived/deleted source is revived.
@@ -214,6 +234,6 @@ export class LearningService {
       data.cursor = observed.cursor; data.syncedMessages = contents(observed.messages); data.handoffId = null;
       data.state = "ready"; data.message = "关联已重新核验，旧交接失效，请重新同步"; this.save(data);
       return this.public(id);
-    });
+    }, signal);
   }
 }
