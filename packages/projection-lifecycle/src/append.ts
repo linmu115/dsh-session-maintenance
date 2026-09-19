@@ -400,6 +400,9 @@ export async function commitProjectionAppend(input: {
     });
     return receipt;
   } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "SESSION_NOT_SYNCED") {
+      error = new ProjectionAppendError(error.code, error.message, { cause: error });
+    }
     if (evidenceSpan !== undefined) {
       await input.statusLog.fail(evidenceSpan, { errorCode: "ADAPTER_EVIDENCE_FAILED" });
     }

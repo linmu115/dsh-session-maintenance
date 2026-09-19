@@ -198,7 +198,7 @@ describe("migration 017", () => {
     await f.engine.retitleCodexMirror({ logicalSessionId: id, title: "Current", appliedAt: originAt });
     f.database.exec(`DROP TRIGGER session_version_metadata_created;
       DROP TRIGGER version_metadata_immutable; DROP TABLE version_metadata_snapshots;
-      DROP TABLE projection_run_workspace_scopes; DROP TABLE instance_workspace_policies;
+      DROP TABLE runtime_workspace_registrations; DROP TABLE runtime_workspace_bindings; DROP TABLE projection_run_workspace_scopes; DROP TABLE instance_workspace_policies;
       DROP TRIGGER learning_body_revision; DROP TABLE learning_handoffs; DROP TABLE learning_bindings; DROP TABLE extension_object_owners; DROP TABLE context_read_executions;
       DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections;
       DROP TABLE codex_project_mapping_removals; DROP TABLE codex_project_mapping_policy;

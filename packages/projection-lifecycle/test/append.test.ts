@@ -96,7 +96,7 @@ function session(logicalSessionId: string) {
 }
 
 describe("ProjectionLifecycle.append", () => {
-  it("keeps a projection-applied WAL pending when Maintenance fails, then retries idempotently", async () => {
+  it.each([false, true])("keeps a projection-applied WAL pending and preserves scope errors (%s), then retries idempotently", async (scopeFailure) => {
     const root = await mkdtemp(join(tmpdir(), "dsh-sm-append-"));
     roots.push(root);
     const runRepository = new MemoryRuns();
@@ -105,7 +105,7 @@ describe("ProjectionLifecycle.append", () => {
     let nextId = 0;
     let unavailable = true;
     const appendDsh = vi.fn(async (input: { readonly projection: { readonly operationId: OperationId; readonly nativeRevision: number }; readonly logicalSessionId: string }) => {
-      if (unavailable) throw new Error("Maintenance temporarily unavailable");
+      if (unavailable) throw scopeFailure ? Object.assign(new Error("Workspace is not synced"), { code: "SESSION_NOT_SYNCED" }) : new Error("Maintenance temporarily unavailable");
       return {
         outcome: "advanced" as const,
         operationId: input.projection.operationId,
@@ -172,7 +172,9 @@ describe("ProjectionLifecycle.append", () => {
     await expect(lifecycle.append(handle, invalidRevision)).rejects.toMatchObject({ code: "NATIVE_REVISION_MISMATCH" });
     expect(await new ProjectionWriteAheadLog(handle.projectionRoot).get(invalidRevision.operationId)).toBeUndefined();
 
-    await expect(lifecycle.append(handle, operation)).rejects.toMatchObject({ code: "MAINTENANCE_APPEND_FAILED" });
+    await expect(lifecycle.append(handle, operation)).rejects.toMatchObject(scopeFailure
+      ? { code: "SESSION_NOT_SYNCED", message: "Workspace is not synced" }
+      : { code: "MAINTENANCE_APPEND_FAILED" });
     expect(appendDsh).toHaveBeenLastCalledWith(expect.objectContaining({ title: "Restored projection title" }));
     const wal = new ProjectionWriteAheadLog(handle.projectionRoot);
     expect(await wal.get(operation.operationId)).toMatchObject({ state: "pending", projectionApplied: true });

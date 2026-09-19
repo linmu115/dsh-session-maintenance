@@ -57,6 +57,7 @@ import {
   readProjectionRecoveryDescriptor,
 } from "@linmu/dsh-session-projection-lifecycle";
 import type { StatusLog, StatusSpanHandle } from "@linmu/dsh-session-status-log";
+import type { RuntimeWorkspaceRegistration } from "./runtime-workspace-registration.js";
 
 
 export type RuntimeBrokerLifecycleFactory = (input: {
@@ -150,6 +151,7 @@ export class ProjectionRuntimeBroker {
   private readonly selectAdapter: RuntimeBrokerAdapterSelector;
   private readonly statusLog: StatusLog;
   private readonly projectResolver: RuntimeProjectResolver;
+  private readonly workspaceRegistration: Pick<RuntimeWorkspaceRegistration, "resolve"> | undefined;
   private readonly clock: () => string;
   private readonly runs = new Map<RunId, BrokerRun>();
 
@@ -158,12 +160,14 @@ export class ProjectionRuntimeBroker {
     readonly selectAdapter: RuntimeBrokerAdapterSelector;
     readonly statusLog: StatusLog;
     readonly projectResolver: RuntimeProjectResolver;
+    readonly workspaceRegistration?: Pick<RuntimeWorkspaceRegistration, "resolve">;
     readonly clock?: () => string;
   }) {
     this.lifecycleFactory = input.lifecycleFactory;
     this.selectAdapter = input.selectAdapter;
     this.statusLog = input.statusLog;
     this.projectResolver = input.projectResolver;
+    this.workspaceRegistration = input.workspaceRegistration;
     this.clock = input.clock ?? (() => new Date().toISOString());
   }
 
@@ -301,12 +305,16 @@ export class ProjectionRuntimeBroker {
     const logicalSessionId = `logical-dsh-${createHash("sha256")
       .update(`${run.prepared.run.instanceId}\0${input.nativeSessionId}`)
       .digest("hex").slice(0, 32)}` as LogicalSessionId;
+    const workspaceId = this.workspaceRegistration?.resolve({
+      run: run.prepared.run, nativeSessionId: input.nativeSessionId, projectId,
+      ...(input.workspaceId === undefined ? {} : { workspaceId: input.workspaceId }),
+    }) ?? null;
     const projection = await run.lifecycle.registerNativeSession(run.active, {
       nativeSessionId: input.nativeSessionId,
       logicalSessionId,
       header: input.header,
       title: input.title,
-      workspaceId: null,
+      workspaceId,
       projectId,
       ...(input.adapterMetadata === undefined ? {} : { adapterMetadata: input.adapterMetadata }),
     });

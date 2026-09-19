@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createFixtureSandbox } from "../../../packages/test-support/src/index.js";
-import { openMaintenanceDatabase, SqliteExtensionRepository } from "@linmu/dsh-session-store";
+import { openMaintenanceDatabase, SqliteExtensionRepository, MAINTENANCE_SCHEMA_VERSION } from "@linmu/dsh-session-store";
 import type { ExtensionWrite, ExtensionScope } from "@linmu/dsh-session-contracts";
 import { ExtensionDataService } from "../src/extensions/service.js";
 import { builtInExtensionAdapters } from "../src/extensions/adapters.js";
@@ -52,7 +52,7 @@ describe("pluggable extension data",()=>{
     expect(service.get(annotation.scope,"set-a").summary).toBe("1 条引用");
     expect(service.panels().map(p=>p.objectCount)).toEqual([1,1]);
     expect(tables.map(t=>f.db.prepare(`SELECT * FROM ${t}`).all())).toEqual(before);
-    expect(f.db.prepare("SELECT MAX(version) v FROM schema_migrations").get()?.v).toBe(27);
+    expect(f.db.prepare("SELECT MAX(version) v FROM schema_migrations").get()?.v).toBe(MAINTENANCE_SCHEMA_VERSION);
   });
   it("keeps one current state on repeated saves and preserves it through disable, uninstall, missing adapter and restart",async()=>{
     const f=await fixture();let s=f.make();s.connect(connect);s.write(graph());
@@ -162,7 +162,7 @@ describe("pluggable extension data",()=>{
     f.db.exec("INSERT INTO logical_sessions(id,display_title,sync_mode,archived,labels_json,created_at) VALUES('source','untouched','continuation',0,'[]','2026-09-10')");
     const before=f.db.prepare("SELECT * FROM logical_sessions").all();
     // Recreate the actual schema-21 boundary, including objects introduced after 24.
-    f.db.exec("DROP TABLE projection_run_workspace_scopes; DROP TABLE instance_workspace_policies; DROP TRIGGER learning_body_revision; DROP TABLE learning_handoffs; DROP TABLE learning_bindings; DROP TABLE extension_object_owners; DROP TABLE context_read_executions; DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections; DELETE FROM schema_migrations WHERE version>=22");
+    f.db.exec("DROP TABLE runtime_workspace_registrations; DROP TABLE runtime_workspace_bindings; DROP TABLE projection_run_workspace_scopes; DROP TABLE instance_workspace_policies; DROP TRIGGER learning_body_revision; DROP TABLE learning_handoffs; DROP TABLE learning_bindings; DROP TABLE extension_object_owners; DROP TABLE context_read_executions; DROP TABLE extension_conflicts; DROP TABLE extension_objects; DROP TABLE extension_connections; DELETE FROM schema_migrations WHERE version>=22");
     const upgraded=f.reopen();expect(upgraded.panels()).toEqual([]);expect(f.db.prepare("SELECT * FROM logical_sessions").all()).toEqual(before);
     upgraded.connect(connect);upgraded.write(graph());expect(f.reopen().get(scope,"canvas").object.revision).toBe(1);
   });

@@ -151,6 +151,7 @@ const runtimeBrokerRegisterSessionSchema = z.strictObject({
   schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
   runId: runtimeBrokerIdSchema, nativeSessionId: runtimeBrokerIdSchema,
   header: z.unknown(), title: z.string().max(500), adapterMetadata: z.unknown().optional(),
+  workspaceId: runtimeBrokerIdSchema.optional(),
 });
 const runtimeBrokerFlushSchema = z.strictObject({
   schemaVersion: z.literal(1), clientId: runtimeBrokerIdSchema,
@@ -768,6 +769,9 @@ export async function routeRequest(
       send(response, 503, errorBody("WRITER_QUEUE_FULL", "Write queue is full; retry after pending commits drain"));
     }
     else if (error instanceof ProjectionRuntimeStreamError) send(response, 422, errorBody(error.code, error.message));
+    else if (error instanceof Error && "code" in error && error.code === "SESSION_NOT_SYNCED") {
+      send(response, 409, errorBody(error.code, error.message));
+    }
     else if (domainError !== undefined) {
       const status = domainError.code === "CAPABILITY_NOT_AVAILABLE"
         ? 501

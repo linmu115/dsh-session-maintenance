@@ -129,6 +129,7 @@ import { SessionMaintenanceCommands } from "./session-maintenance-commands.js";
 import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
 import { ProjectionRuntimeBroker } from "./runtime-broker.js";
 import { SqliteRuntimeProjectResolver } from "./runtime-project-resolver.js";
+import { RuntimeWorkspaceRegistration } from "./runtime-workspace-registration.js";
 import type { InstanceIntegrationService } from "./integrations/service.js";
 import type { WorkspaceSyncPolicyService } from "./integrations/sync-policy.js";
 
@@ -346,6 +347,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       lifecycleFactory: input.projectionLifecycleFactory,
       statusLog: this.statusLog,
       projectResolver: new SqliteRuntimeProjectResolver(input.repository.database),
+      workspaceRegistration: new RuntimeWorkspaceRegistration(input.repository.database),
       selectAdapter: async (request) => (await this.adapterRegistry.select({
         environment: {
           dshVersion: request.dshVersion,

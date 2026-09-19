@@ -2,6 +2,7 @@ import type {
   AdapterId,
   BranchId,
   LogicalProjectId,
+  LogicalWorkspaceId,
   NativeSessionId,
   RunId,
   SessionVersionId,
@@ -81,6 +82,8 @@ export interface RuntimeBrokerRegisterSessionRequest {
   /** Exact immutable SessionHeader observed from DSH. */
   readonly header: JsonValue;
   readonly title: string;
+  /** Explicit Maintenance workspace chosen by the host, when available. */
+  readonly workspaceId?: LogicalWorkspaceId;
   /** Opaque metadata passed only to the selected Adapter. */
   readonly adapterMetadata?: JsonValue;
 }

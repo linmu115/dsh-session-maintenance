@@ -1,8 +1,10 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import { REQUIRED_CAPABILITIES } from "@linmu/dsh-session-adapter-0-1-5";
 import type { JsonValue, RuntimeBrokerPrepareRunRequest, RuntimeBrokerPreparedRun } from "@linmu/dsh-session-contracts";
 import { JsonProjectionDirectory } from "@linmu/dsh-session-projection-lifecycle";
+import { SqliteInstanceWorkspacePolicyRepository } from "@linmu/dsh-session-store";
 import { rc1NativeSessionCodec } from "../../../packages/adapter-dsh-rc1/src/index.js";
 import { codexProjectKey } from "../src/codex-project-mapping.js";
 import { createEngineFixture, hashTree } from "./helpers.js";
@@ -29,6 +31,10 @@ describe("live DSH sessions in new local workspaces", () => {
       const sourceHash = await hashTree(f.codexHome);
       const cwd = join(f.root, "new-dsh-workspace");
       await mkdir(cwd);
+      const policies = new SqliteInstanceWorkspacePolicyRepository(f.engine.repository.database);
+      f.engine.repository.database.prepare("INSERT INTO logical_workspaces(id,parent_id,name,sort_key,created_at,updated_at) VALUES ('existing-selected',NULL,'Existing','Existing',?,?)").run(at,at);
+      policies.updatePolicy(request.instanceId, { expectedRevision: 0,
+        selection: { kind: "ids", workspaceIds: ["existing-selected" as never], includeUnassigned: false } });
       run = await f.engine.prepareProjectionRuntimeRun(request);
       await mkdir(run.persistenceRoot, { recursive: true });
       await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at, nativeMode: run.nativeMode });
@@ -38,8 +44,14 @@ describe("live DSH sessions in new local workspaces", () => {
       await expect(f.engine.registerProjectionRuntimeSession({ ...registration, clientId: "another-runtime" })).rejects.toThrow("capability does not match");
       await expect(f.engine.registerProjectionRuntimeSession({ ...registration, header: { ...registration.header, cwd: join(run.persistenceRoot, "unknown-temporary-project") } })).rejects.toThrow("no canonical project root");
       expect(f.engine.repository.database.prepare("SELECT count(*) n FROM logical_projects WHERE source_platform='maintenance'").get()).toEqual({ n: 0 });
+      const importFailure = vi.spyOn(f.engine.canonicalEngine, "importDshNative").mockRejectedValueOnce(new Error("synthetic registration interruption"));
+      await expect(f.engine.registerProjectionRuntimeSession(registration)).rejects.toThrow("synthetic registration interruption");
+      importFailure.mockRestore();
       const registered = await f.engine.registerProjectionRuntimeSession(registration);
       const database = f.engine.repository.database;
+      const workspace = database.prepare("SELECT workspace_id FROM workspace_memberships WHERE logical_session_id=?").get(registered.logicalSessionId)!;
+      expect(workspace.workspace_id).toEqual(expect.any(String));
+      expect(policies.isWorkspaceSelected(request.instanceId, workspace.workspace_id as never)).toBe(true);
       const membership = database.prepare(`SELECT p.id,p.name,p.source_platform,p.source_project_id,r.root_path FROM project_memberships m
         JOIN logical_projects p ON p.id=m.project_id JOIN project_roots r ON r.project_id=p.id WHERE m.logical_session_id=?`).get(registered.logicalSessionId)!;
       expect(membership).toMatchObject({ name: "new-dsh-workspace", source_platform: "maintenance", source_project_id: null, root_path: cwd });
@@ -76,4 +88,48 @@ describe("live DSH sessions in new local workspaces", () => {
       } finally { await f.cleanupAll(); }
     }
   });
+});
+
+it("commits RC2 v3 first-turn events with unassigned sessions disabled", async () => {
+  const f = await createEngineFixture("runtime-v3-created-workspace");
+  try {
+    const request: RuntimeBrokerPrepareRunRequest = {
+      schemaVersion: 1, client: { kind: "launcher", id: "fixture-v3-launcher" }, runtimeClientId: "fixture-v3-runtime",
+      instanceId: "fixture-v3", profileId: "web", dshVersion: "0.1.5-rc.2", maintenanceEndpoint: "http://127.0.0.1:41781",
+      branchId: "main" as never, pinnedAdapterId: "dsh-0.1.5" as never, projectSelection: { kind: "all" },
+      environment: { runtimeCapabilities: [...REQUIRED_CAPABILITIES], packageVersions: Object.fromEntries(
+        ["@deepseek-ai/dsh-session", "@deepseek-ai/dsh-session-persistence", "@deepseek-ai/dsh-session-format-catalog"].map(name => [name, "0.1.5-rc.2"])) },
+    };
+    new SqliteInstanceWorkspacePolicyRepository(f.engine.repository.database).updatePolicy(request.instanceId, {
+      expectedRevision: 0, selection: { kind: "ids", workspaceIds: [], includeUnassigned: false },
+    });
+    const run = await f.engine.prepareProjectionRuntimeRun(request);
+    await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId,
+      temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at, nativeMode: run.nativeMode });
+    const nativeSessionId = "native-v3-created" as never;
+    const header = { version: 3, id: nativeSessionId, cwd: join(f.root, "v3-project"), createdAt: Date.parse(at), isSeeded: false, agentPreset: "standard", delegationDepth: 0 };
+    const registered = await f.engine.registerProjectionRuntimeSession({ schemaVersion: 1, clientId: request.runtimeClientId,
+      runId: run.runId, nativeSessionId, header, title: "V3 created workspace" });
+    const events = [
+      { type: "agent/inbox/spliced", seq: 0, time: Date.parse(at), data: { target: "next-turn", start: 0, inserted: [{ source: { kind: "user" }, content: [{ type: "text", text: "hello" }], role: "user", id: "fixture-input" }] } },
+      { type: "turn/start", seq: 1, time: Date.parse(at), data: { turn: 1 } },
+    ];
+    const operation = { runId: run.runId, nativeSessionId, operationId: "v3-created-first-message" as never,
+      nativeRevision: events.length, observedAt: at, payload: { logicalSessionId: registered.logicalSessionId, instanceId: request.instanceId, header, inheritedEventCount: 0, events } };
+    const receipt = await f.engine.appendProjectionRuntimeEvent(request.runtimeClientId, operation);
+    expect(receipt.status).toBe("committed");
+    expect(await f.engine.appendProjectionRuntimeEvent(request.runtimeClientId, operation)).toEqual(receipt);
+    expect((await f.engine.canonicalEngine.store.getVersion(receipt.canonicalVersionId!))?.events).toHaveLength(2);
+    const detail = await f.engine.canonicalEngine.store.getSession(registered.logicalSessionId as never);
+    expect(detail?.workspaceId).not.toBeNull();
+    f.engine.repository.database.prepare("INSERT INTO logical_workspaces(id,parent_id,name,sort_key,created_at,updated_at) VALUES ('excluded',NULL,'Excluded','Excluded',?,?)").run(at,at);
+    const server = await f.startServer();
+    const rejected = await fetch(`${server.origin}/v1/runtime-broker/runs/${run.runId}/sessions`, {
+      method: "POST", headers: { authorization: `Bearer ${server.token}`, "content-type": "application/json" },
+      body: JSON.stringify({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, nativeSessionId: "explicit-excluded",
+        header: { ...header, id: "explicit-excluded" }, title: "Excluded", workspaceId: "excluded" }),
+    });
+    expect(rejected.status).toBe(409);
+    expect(await rejected.json()).toMatchObject({ error: { code: "SESSION_NOT_SYNCED", message: expect.stringContaining("同步范围") } });
+  } finally { await f.cleanupAll(); }
 });

@@ -197,6 +197,7 @@ describe("ProjectionRuntimeBroker", () => {
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
+      workspaceRegistration: { resolve: () => "workspace-live" as never },
       projectResolver: {
         resolveProject: async () => "project-deepseek",
         assignProject: async (logicalSessionId: string, projectId: string) => { assignments.push({ logicalSessionId, projectId }); },
@@ -227,7 +228,7 @@ describe("ProjectionRuntimeBroker", () => {
       logicalSessionId: registered.logicalSessionId,
       header,
       title: "DSH live-created session",
-      workspaceId: null,
+      workspaceId: "workspace-live",
       projectId: "project-deepseek",
       adapterMetadata: { inheritedEventCount: 0 },
     })]);

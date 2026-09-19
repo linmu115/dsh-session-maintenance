@@ -28,7 +28,7 @@ describe("instance workspace policy repository", () => {
   it("upgrades schema 25 without changing canonical memberships and reopens the current schema idempotently", async () => {
     const { db, path } = await fixture();
     const before = db.prepare("SELECT * FROM workspace_memberships ORDER BY logical_session_id").all();
-    db.exec("DROP TABLE projection_run_workspace_scopes; DROP TABLE instance_workspace_policies; DELETE FROM schema_migrations WHERE version>=26");
+    db.exec("DROP TABLE runtime_workspace_registrations; DROP TABLE runtime_workspace_bindings; DROP TABLE projection_run_workspace_scopes; DROP TABLE instance_workspace_policies; DELETE FROM schema_migrations WHERE version>=26");
     db.close(); databases.splice(databases.indexOf(db), 1);
     const upgraded = openMaintenanceDatabase(path); databases.push(upgraded);
     expect(upgraded.prepare("SELECT MAX(version) AS version FROM schema_migrations").get()).toMatchObject({ version: MAINTENANCE_SCHEMA_VERSION });

@@ -50,6 +50,33 @@ export class SqliteInstanceWorkspacePolicyRepository {
   }
 
   workspaceSelected(policy: InstanceWorkspacePolicy, workspaceId: LogicalWorkspaceId | null): boolean { return selected(policy, workspaceId); }
+  /** A live creation extends content, not the cache identity established at prepare time. */
+  cacheRevisionForRun(run: Pick<ProjectionRun, "id" | "instanceId" | "profileId" | "state">): number {
+    const policy = this.policyForRun(run);
+    const row = this.database.prepare("SELECT cache_revision FROM projection_run_workspace_scopes WHERE run_id=?").get(run.id);
+    return typeof row?.cache_revision === "number" ? row.cache_revision : policy.revision;
+  }
+  /** Enrol only a newly created workspace; do not activate unrelated pending edits. */
+  enrollCreatedWorkspace(run: Pick<ProjectionRun, "id" | "instanceId" | "profileId" | "state">, workspaceId: LogicalWorkspaceId): void {
+    const active = this.policyForRun(run);
+    const previous = this.getPolicy(run.instanceId);
+    const saved = selected(previous, workspaceId) ? previous : this.updatePolicy(run.instanceId, {
+      expectedRevision: previous.revision,
+      selection: previous.selection.kind === "all" ? previous.selection : {
+        ...previous.selection, workspaceIds: [...previous.selection.workspaceIds, workspaceId],
+      },
+    });
+    const effective = { ...active,
+      revision: active.revision === previous.revision ? saved.revision : active.revision,
+      selection: active.selection.kind === "all" ? active.selection : {
+        ...active.selection, workspaceIds: [...new Set([...active.selection.workspaceIds, workspaceId])].sort(),
+      },
+    };
+    const cacheRevision = this.cacheRevisionForRun(run);
+    this.database.prepare(`INSERT INTO projection_run_workspace_scopes(run_id,instance_id,policy_json,cache_revision) VALUES (?,?,?,?)
+      ON CONFLICT(run_id) DO UPDATE SET policy_json=excluded.policy_json,cache_revision=excluded.cache_revision WHERE instance_id=excluded.instance_id`)
+      .run(run.id, run.instanceId, JSON.stringify(effective), cacheRevision);
+  }
   updatePolicy(instanceId: string, input: InstanceWorkspacePolicyUpdate): InstanceWorkspacePolicy {
     instanceWorkspaceInstanceIdSchema.parse(instanceId);
     const update = instanceWorkspacePolicyUpdateSchema.parse(input);

@@ -63,7 +63,7 @@ export class SqliteCanonicalProjectionSource implements IncrementalCanonicalProj
   }
 
   async scopeRevision(run: ProjectionRun): Promise<number> {
-    return new SqliteInstanceWorkspacePolicyRepository(this.database).policyForRun(run).revision;
+    return new SqliteInstanceWorkspacePolicyRepository(this.database).cacheRevisionForRun(run);
   }
 
   async loadVersionEvents(logicalSessionId: LogicalSessionId, versionId: SessionVersionId): Promise<readonly CanonicalEventV1[]> {
