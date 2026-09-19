@@ -44,8 +44,10 @@ it.each([undefined, "new-unmapped-native", "previous-run-native"])("opens the fu
   const tree = SessionMaintenanceSettingsSection({ actions: f.actions, currentSessionId });
   const button = buttons(tree).find(item => item.props.children === "打开完整看板")!;
   expect(button).toBeDefined();
+  expect(buttons(tree)).toHaveLength(1);
+  expect(f.calls).toEqual([]);
   button.props.onClick();
-  await vi.waitFor(() => expect(feedback.at(-1)).not.toBe("正在执行…"));
+  await vi.waitFor(() => expect(feedback.at(-1)).toBe("已打开会话维护看板"));
   expect(feedback.at(-1)).toBe("已打开会话维护看板");
   expect(f.open).toHaveBeenCalledWith("http://127.0.0.1:43123/launch?code=synthetic", "_blank", "noopener,noreferrer");
   expect(f.calls).toEqual(["/v1/ui/launch-code"]);

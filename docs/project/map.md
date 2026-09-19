@@ -52,3 +52,5 @@ Vault绑定不依赖DSH启动的新要求与候选实现：[[REQ-offline-vault-b
 最新前端覆盖版本为 **Dashboard 0.1.8**（Engine仍为.45）：实例列表和绑定弹窗按工作台风格重新排布，已备份安装并完成实际浏览器的列表、弹窗、刷新/关闭及浅深色检查。此前“安装版UI未验收”是.1.7安装时点记录，本次已补查这两处；真实绑定写入和系统目录选择仍未执行。参见 [[HIST-offline-vault-binding]] 和 [布局报告](../changes/2026-09-19-vault-binding-layout.md)。
 
 2026-09-19 升级回归修复：Engine .46 / Dashboard .1.9 已激活，恢复此前遗漏的 Launcher 启动恢复协议，正式 Start 与内置浏览器扩展目录展开通过；外部431已加入有界兼容处理，原始页面复测未验收。见 [[HIST-recovery-regression]]。
+
+2026-09-19 DSH 设置面板仅保留“打开完整看板”；旧维护偏好和操作已移除，客户端热更新及HTTP资源已核验，详见 [[HIST-settings-entry]]。

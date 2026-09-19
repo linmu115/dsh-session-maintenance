@@ -1,18 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { ClientSlots, MaintenanceActions, SettingsSectionRegistration } from "../src/client/context.js";
-import { PANEL_FIELDS, registerSettingsSection, SETTINGS_SECTION_REGISTRATION } from "../src/client/settings-actions.js";
+import { registerSettingsSection, SETTINGS_SECTION_REGISTRATION } from "../src/client/settings-actions.js";
 import { ENTRY_STYLES } from "../src/client/styles.js";
 
 describe("native DSH settings section", () => {
-  it("contains registered IDs and policies but no filesystem roots or capability", () => {
-    expect(PANEL_FIELDS).toContain("codexInstanceId");
-    expect(PANEL_FIELDS).toContain("dshInstanceId");
-    expect(PANEL_FIELDS).toContain("workspaceMappingId");
-    expect(PANEL_FIELDS).not.toContain("root" as never);
-    expect(JSON.stringify(PANEL_FIELDS)).not.toMatch(/token|capability|path|home/iu);
-  });
-
   it("registers through the official settings.section slot and disposes with the plugin fiber", () => {
     let registration: SettingsSectionRegistration | undefined;
     let component: unknown;
