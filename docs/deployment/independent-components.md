@@ -1,6 +1,6 @@
 # 独立组件安装、配置与使用（2026-09-20 候选）
 
-本教程对应 Engine 0.1.33-rc2.56、接入插件 0.2.26-rc2.34、Core 0.3.12-rc2.20、Bridge 0.4.1-rc2.4、普通贴纸 0.7.4-rc2.6、ThoughtDAG 0.4.14-rc2.16、Companion 0.7.0-rc2.5。它们是本轮源码候选，不表示已发布到 npm 或已安装到任何用户实例。标准宿主 adapter 针对 DSH 0.1.5-rc.2；不声称兼容任意 DSH。
+本教程对应 Engine 0.1.33-rc2.57、接入插件 0.2.26-rc2.35、Core 0.3.12-rc2.21、Bridge 0.4.1-rc2.4、普通贴纸 0.7.4-rc2.6、ThoughtDAG 0.4.14-rc2.17、Companion 0.7.0-rc2.5。它们是本轮源码候选，不表示已发布到 npm 或已安装到任何用户实例。标准宿主 adapter 针对 DSH 0.1.5-rc.2；不声称兼容任意 DSH。
 
 ## 选择组合
 
@@ -39,7 +39,7 @@ node $dshBin --profile web --dump-config
 按上表只安装所需的包，以下以 Core 为例；包名在 `BUILD-INFO.json` 的 `packages` 中：
 
 ```powershell
-node $dshBin plugin --profile web add (Join-Path $release 'packages/dsh-annotation-core-0.3.12-rc2.20.tgz')
+node $dshBin plugin --profile web add (Join-Path $release 'packages/dsh-annotation-core-0.3.12-rc2.21.tgz')
 ```
 
 随后安装 DAG，或 Bridge、Sticker。安装顺序为 Core → Bridge → Sticker，DAG 在 Core 之后。检查 `$DSH_HOME/profiles/web/package.json` 的 `dsh.profile.bundles`：应保留原来的官方 Web bundle，并包含刚安装的插件包名；某项尚未列出时在数组末尾手动补入，保留其他项目。插件的 `cordis.patch.yml` 随包提供，不需要用户手写插件内部对象。
@@ -56,7 +56,7 @@ node $dshBin plugin --profile web add (Join-Path $release 'packages/dsh-annotati
 
 ## 三、可选的 Maintenance 接入（无 Launcher）
 
-先通过上面的官方命令安装 `dsh-session-maintenance-0.2.26-rc2.34.tgz` 并在 bundles 中启用。安装接入插件本身不等于注册。
+先通过上面的官方命令安装 `dsh-session-maintenance-0.2.26-rc2.35.tgz` 并在 bundles 中启用。安装接入插件本身不等于注册。
 
 初始化一次并启动 Engine：
 
@@ -108,7 +108,7 @@ node $engine --state-root $state dashboard
 ```powershell
 $profile = Join-Path $env:DSH_HOME 'profiles/web'
 $verify = Join-Path $profile 'node_modules/dsh-session-maintenance/lib/verify-installation.mjs'
-node $verify --config '.\instance.json' --engine $engine --engine-version '0.1.33-rc2.56' --out-dir $profile
+node $verify --config '.\instance.json' --engine $engine --engine-version '0.1.33-rc2.57' --out-dir $profile
 node $engine --state-root $state managed-instance register --file '.\instance.json'
 node $engine --state-root $state managed-instance list
 ```
@@ -145,7 +145,7 @@ node $engine --state-root $state managed-instance unregister --target '<目标ID
 
 ## 四、可选业务 adapter
 
-发行包 `adapters/knowledge` 包含 Core、Bridge、Sticker 的独立命名空间。首次部署在 Engine 停止时，将整个 `knowledge` 文件夹复制到 `$state/adapters/knowledge`。仅复制/发现不会执行模块；按需启用：
+发行包 `adapters/knowledge` 包含 Core、Bridge、Sticker、ThoughtDAG 的独立命名空间。首次部署在 Engine 停止时，将整个 `knowledge` 文件夹复制到 `$state/adapters/knowledge`。仅复制/发现不会执行模块；按需启用：
 
 ```powershell
 node $engine --state-root $state adapter list --json
@@ -154,11 +154,12 @@ node $engine --state-root $state adapter enable annotation-records
 node $engine --state-root $state adapter enable annotation-context
 node $engine --state-root $state adapter enable obsidian-links
 node $engine --state-root $state adapter enable stickers
+node $engine --state-root $state adapter enable thoughtdag
 ```
 
-CLI 修改启停配置使用离线写入锁，Engine 正在运行时使用看板的 adapter 目录设置。启停后重启 Engine 和受管实例，停用不删除数据。命名空间安装但未启用时不会回退到内置同名实现。旧部署的内置 adapter 保留兼容；DAG 的 Maintenance adapter 迁移仍按已确认范围暂缓。
+CLI 修改启停配置使用离线写入锁，Engine 正在运行时使用看板的 adapter 目录设置。启停后重启 Engine 和受管实例，停用不删除数据。命名空间安装但未启用时不会回退到内置同名实现。旧部署的内置 adapter 保留兼容；ThoughtDAG 的同步入口现通过统一会话数据接口接入，DAG 自身不调用 Maintenance 图存储。
 
-还需在 DSH 接入插件的 `extensionPlugins` 配置中声明实际安装的成员，例如 `namespace: annotation-upstream, pluginVersion: 0.3.12-rc2.20, writerId: my-core`；同理可声明 `annotation-records`、`annotation-context`、`stickers`、`obsidian-links`。命名空间属于哪个插件，就填写哪个插件的真实版本。完整 DTO、启停及作者规范见随包 `ADAPTER-AUTHORING.md`。
+还需在 DSH 接入插件的 `extensionPlugins` 配置中声明实际安装的成员，例如 `namespace: annotation-upstream, pluginVersion: 0.3.12-rc2.21, writerId: my-core`；同理可声明 `annotation-records`、`annotation-context`、`stickers`、`obsidian-links`。命名空间属于哪个插件，就填写哪个插件的真实版本。完整 DTO、启停及作者规范见随包 `ADAPTER-AUTHORING.md`。
 
 ## 五、Codex 与 Launcher 都是可选项
 
@@ -171,3 +172,18 @@ CLI 修改启停配置使用离线写入锁，Engine 正在运行时使用看板
 普通模式分别验证 Core 独立引用、DAG 保存后重开、Bridge 多 Vault 连接和断开后历史保留、无 CLI 时基础跳转、Sticker 的最小依赖组合。受管模式增加：服务未启动时拒绝启动、运行中失联停写、恢复后不重复提交、正常退出、重启恢复、解除注册前阻止未收尾运行。
 
 本轮自动验证使用合成会话、临时 Vault 与测试页面；没有修改实际 Home、Vault 或 Launcher。宿主版本、模块、Node、CLI 或安装位置变化后，重新生成回执并用 `managed-instance check --target <ID>` 复核。完成新环境的实际交互验收后再用于真实数据。回退保留旧程序及备份，不能以旧程序直接覆盖已产生的新数据结构。
+
+
+### 会话图的可选同步与恢复
+
+只安装 Core + ThoughtDAG 即可使用图。安装 Maintenance 不会改变 DAG 的数据读取接口。
+要同步图，在上面的知识扩展包中启用 `thoughtdag`，并在接入插件的 `extensionPlugins` 中加入
+`namespace: thoughtdag, pluginVersion: 0.4.14-rc2.17, writerId: dsh-thoughtdag`，保留其它成员，然后重启受管实例。
+
+已同步的图在打开所属会话时由 adapter 恢复到宿主会话扩展数据层，再交给 DAG 读取。
+旧 schema 2 主干会自动转换逻辑会话身份；首次新保存使用 schema 3，旧对象原件保留，之后优先读取新格式对象。
+不删除旧库、不手工复制图文件，也不需要 LLM 修改配置。多个旧主干、无法映射的来源、同修订不同内容会明确报错并保留原件，不创建空图覆盖。
+未绑定的历史草稿不会被任意分配给某个会话，仍保留在维护历史中。
+
+未配置该 adapter 时，图按本地能力使用；停用同步不删除本地或真源的数据。重新启用时如两侧各有修改，需要先核对差异，系统不会擅自覆盖。
+实例已经注册 Maintenance 时，发送和图的持久修改仍受统一在线许可约束。同步失败保留本地编辑；重新读取会先核对已确认的远端修订。

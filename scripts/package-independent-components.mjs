@@ -91,7 +91,7 @@ for (const item of packages) {
 // The knowledge pack has independently switchable namespaces; it owns no database.
 const knowledge = join(out, 'adapters', 'knowledge'); await mkdir(knowledge, { recursive: true });
 const entries = [];
-for (const [name, namespace] of [['upstreamAdapter','annotation-upstream'],['annotationRecordsAdapter','annotation-records'],['nativeContextAdapter','annotation-context'],['obsidianLinksAdapter','obsidian-links'],['stickerAdapter','stickers']]) {
+for (const [name, namespace] of [['thoughtDagAdapter','thoughtdag'],['upstreamAdapter','annotation-upstream'],['annotationRecordsAdapter','annotation-records'],['nativeContextAdapter','annotation-context'],['obsidianLinksAdapter','obsidian-links'],['stickerAdapter','stickers']]) {
   const engine = `${namespace}.mjs`;
   await nodeBuild(undefined, join(knowledge, engine), { stdin: { contents: `export { ${name} as adapter } from './packages/extension-knowledge/src/index.ts';`, resolveDir: root, sourcefile: `${namespace}.ts` } });
   entries.push({ kind: 'business', id: namespace, namespace, engine });

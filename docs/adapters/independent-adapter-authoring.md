@@ -84,3 +84,13 @@ Engine 实例对象遵循 `DshSessionAdapterV1`，用 `defineDshSessionAdapter` 
 `SessionExtensionData` v1 提供 `get/list/write(expectedRevision)`，按 sessionId/namespace/objectId 分区，含删除标记。DAG 只通过该端口操作图，不创建私有图数据库。插件若另有业务数据，其业务合法性依旧由该插件校验。
 
 第三方接入应覆盖：未知 schema/缺失 adapter、来源固定版本与授权边界、修订冲突、重复操作、停用后数据保留、运行中断连、恢复时未完成操作、正常收尾。Launcher Hook 和新格式 adapter 属于可借助 LLM 的开发工作；安装现有发行包和日常连接不依赖 LLM。
+
+
+## 可选会话数据同步端口
+
+`sessionExtensionSync` v1 声明所支持的 `namespaces`，提供 `read(namespace, sessionId?)` 和 `commit(value)`。
+DTO 定义在 contracts 的 `session-extension-sync.ts`。记录包含 sessionId、namespace、objectId、revision、deleted、content。
+没有 sessionId 的 read 只检查该命名空间可用性；指定会话时返回完整的该会话数据（包括删除标记）。
+宿主的 `SessionExtensionData.ready(namespace, sessionId?)` 在打开会话前恢复数据并检查修订。
+Adapter 不持有私有数据库，不自定冲突胜方；commit 必须取得持久回执才返回成功。
+同修订不同内容、本地修订高于远端且缺少可证明的继承关系时，保留两侧并提示核对，不按文件时间猜测覆盖。

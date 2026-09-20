@@ -26,6 +26,9 @@ export class MaintenanceExtensionBridge {
   }
   async connect(signal?: AbortSignal): Promise<void> { await this.connectPanels(signal); }
   connectPanels(signal?: AbortSignal): Promise<ExtensionPanel[]> { return this.request("connect",{...this.scope,plugins:this.plugins},signal); }
+  async scopedPanels(): Promise<ExtensionPanel[]> {
+    return (await this.connectPanels()).filter(panel => panel.scope.instanceId === this.scope.instanceId && panel.scope.profileId === this.scope.profileId);
+  }
   panels(signal?: AbortSignal): Promise<ExtensionPanel[]> { return this.request('panels', undefined, signal); }
   async get(namespace: string, objectId: string): Promise<ExtensionDetail> {
     this.configured(namespace);return this.request(`object?${new URLSearchParams({...this.scope,namespace,objectId})}`);

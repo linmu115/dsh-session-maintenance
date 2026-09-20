@@ -23,18 +23,33 @@ const referenceSet = z.object({
 function unique(ids: string[]): void {
   if (new Set(ids).size !== ids.length) throw new ExtensionDataError("EXTENSION_INVALID_OBJECT", "对象中存在重复身份。",422);
 }
+const sessionGraphReplica = z.strictObject({
+  sessionId: id, namespace: z.literal('thoughtdag'), objectId: id,
+  revision: z.number().int().positive(), deleted: z.boolean(),
+  content: z.strictObject({ title: z.string().max(500), graph: managedGraphSchema }),
+});
+function unwrapSessionGraph(body: import('@linmu/dsh-session-contracts').JsonValue) {
+  const parsed = sessionGraphReplica.safeParse(body);
+  return parsed.success ? parsed.data.content.graph as import('@linmu/dsh-session-contracts').JsonValue : body;
+}
 export const thoughtDagAdapter: ExtensionDataAdapter = {
   capabilities,
   panelAdapter: { id: "thoughtdag", label: "ThoughtDAG" },
   ownership(content) {
+    if (content.schemaVersion === 3) { const value = sessionGraphReplica.parse(content.body); return { ownerSessionId: value.sessionId, kind: "graph", readOnly: true }; }
     const log = graphDisclosureLogSchema.safeParse(content.body);
     if (log.success) return { ownerSessionId: log.data.ownerSessionId, kind: "disclosure-log", parentObjectId: log.data.graphObjectId, readOnly: true };
     const graph = managedGraphSchema.safeParse(content.body);
     return graph.success ? { ownerSessionId: graph.data.ownerSessionId, kind: "graph", readOnly: true, reason: graph.data.ownerSessionId ? null : "待绑定主干会话" }
       : { ownerSessionId: null, kind: "legacy-graph", readOnly: true, reason: "旧图需要核验归属；不会把关联会话当作所有者" };
   },
-  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5", "0.4.14-rc2.6", "0.4.14-rc2.7", "0.4.14-rc2.8","0.4.14-rc2.9","0.4.14-rc2.10","0.4.14-rc2.11","0.4.14-rc2.12","0.4.14-rc2.13","0.4.14-rc2.14", "0.4.14-rc2.15", "0.4.14-rc2.16"], schemaVersions: [1, 2],
+  namespace: "thoughtdag", label: "ThoughtDAG", pluginVersions: ["0.4.11", "0.4.14-rc2.1", "0.4.14-rc2.2", "0.4.14-rc2.3", "0.4.14-rc2.4", "0.4.14-rc2.5", "0.4.14-rc2.6", "0.4.14-rc2.7", "0.4.14-rc2.8","0.4.14-rc2.9","0.4.14-rc2.10","0.4.14-rc2.11","0.4.14-rc2.12","0.4.14-rc2.13","0.4.14-rc2.14", "0.4.14-rc2.15", "0.4.14-rc2.16", "0.4.14-rc2.17"], schemaVersions: [1, 2, 3],
   validate(content) {
+    if (content.schemaVersion === 3) {
+      const value = sessionGraphReplica.parse(content.body);
+      if (value.sessionId !== value.content.graph.ownerSessionId) throw new ExtensionDataError("EXTENSION_INVALID_OBJECT", "Graph owner differs from session", 422);
+      return;
+    }
     if (content.schemaVersion === 2 && typeof content.body === "object" && content.body !== null && "kind" in content.body && content.body.kind === "disclosure-log") {
       const log = graphDisclosureLogSchema.parse(content.body); unique(log.items.map(item => item.receiptId));
       if (Buffer.byteLength(JSON.stringify(content.body)) > 262144) throw new ExtensionDataError("EXTENSION_TOO_LARGE", "读取记录超过容量上限", 413);
@@ -49,12 +64,14 @@ export const thoughtDagAdapter: ExtensionDataAdapter = {
     if (result.edges.some(e=>!ids.has(e.source)||!ids.has(e.target))) throw new ExtensionDataError("EXTENSION_INVALID_OBJECT", "画布连线引用了不存在的节点。",422);
   },
   summarize(body) {
+    body = unwrapSessionGraph(body);
     const log = graphDisclosureLogSchema.safeParse(body);
     if (log.success) return `${log.data.items.length} 条读取位置${log.data.trimmed ? " · 早期记录已裁剪" : ""}`;
     const value = canvas.parse(body); const graph = managedGraphSchema.safeParse(body);
     return `${graph.success ? `${graph.data.archivedAt ? "已随会话归档 · " : ""}主干 ${graph.data.ownerSessionId ?? "待绑定"} · ` : "旧图待核验 · "}${value.nodes.length} 个节点 · ${value.edges.length} 条连线`;
   },
   preview(body) {
+    body = unwrapSessionGraph(body);
     const log = graphDisclosureLogSchema.safeParse(body);
     if (log.success) return { kind: "rows", total: log.data.items.length, rows: log.data.items.slice(-100).map(item => ({
       label: `${item.operation} · ${item.delivery} · ${item.referenceId}`,
@@ -106,14 +123,14 @@ export const stickerAdapter: ExtensionDataAdapter = {
 export const upstreamAdapter: ExtensionDataAdapter = {
   panelAdapter: obsidianPanel,
   ownership(content) { const record = sessionContextRecordSchema.parse(content.body); return { ownerSessionId: record.targetSessionId, kind: "upstream-reference", readOnly: true }; },
-  capabilities,namespace:SESSION_CONTEXT_NAMESPACE,label:"跨会话上游引用",pluginVersions:["0.3.12-rc2.1","0.3.12-rc2.2","0.3.12-rc2.3","0.3.12-rc2.4","0.3.12-rc2.5","0.3.12-rc2.6","0.3.12-rc2.7","0.3.12-rc2.8","0.3.12-rc2.9","0.3.12-rc2.10","0.3.12-rc2.11","0.3.12-rc2.12","0.3.12-rc2.19", "0.3.12-rc2.20"],schemaVersions:[1],
+  capabilities,namespace:SESSION_CONTEXT_NAMESPACE,label:"跨会话上游引用",pluginVersions:["0.3.12-rc2.1","0.3.12-rc2.2","0.3.12-rc2.3","0.3.12-rc2.4","0.3.12-rc2.5","0.3.12-rc2.6","0.3.12-rc2.7","0.3.12-rc2.8","0.3.12-rc2.9","0.3.12-rc2.10","0.3.12-rc2.11","0.3.12-rc2.12","0.3.12-rc2.19", "0.3.12-rc2.20", "0.3.12-rc2.21"],schemaVersions:[1],
   validate(content){sessionContextRecordSchema.parse(content.body);},
   summarize(body){const r=sessionContextRecordSchema.parse(body);return `${r.sourceTitle} · ${{pending:'待发送',sent:'已发送',revoked:'已解除'}[r.state]}`;},
   preview(body){const r=sessionContextRecordSchema.parse(body);return {kind:"rows",total:1,rows:[{label:r.sourceTitle,text:r.selectedText.slice(0,2000)}]};},
 };
 export const annotationRecordsAdapter: ExtensionDataAdapter = {
   namespace: ANNOTATION_RECORDS_NAMESPACE, label: "引用条目", panelAdapter: obsidianPanel,
-  pluginVersions: ["0.3.12-rc2.9", "0.3.12-rc2.10","0.3.12-rc2.11","0.3.12-rc2.12","0.3.12-rc2.19", "0.3.12-rc2.20"], schemaVersions: [1],
+  pluginVersions: ["0.3.12-rc2.9", "0.3.12-rc2.10","0.3.12-rc2.11","0.3.12-rc2.12","0.3.12-rc2.19", "0.3.12-rc2.20", "0.3.12-rc2.21"], schemaVersions: [1],
   capabilities: { ...capabilities, write: false, delete: false, restore: false },
   validate(content) { annotationMirrorRecordSchema.parse(content.body); },
   ownership(content) { const record = annotationMirrorRecordSchema.parse(content.body); return { ownerSessionId: record.targetSessionId,
@@ -131,7 +148,7 @@ export const annotationRecordsAdapter: ExtensionDataAdapter = {
 };
 export const nativeContextAdapter: ExtensionDataAdapter = {
   namespace: NATIVE_CONTEXT_NAMESPACE, label: "上下文管理", panelAdapter: obsidianPanel,
-  pluginVersions: ["0.3.12-rc2.11","0.3.12-rc2.12","0.3.12-rc2.19", "0.3.12-rc2.20"], schemaVersions: [1],
+  pluginVersions: ["0.3.12-rc2.11","0.3.12-rc2.12","0.3.12-rc2.19", "0.3.12-rc2.20", "0.3.12-rc2.21"], schemaVersions: [1],
   capabilities: { ...capabilities, write: false, delete: false, restore: false },
   validate(content) { const state=nativeContextStateSchema.parse(content.body);unique(state.sources.map(s=>s.referenceId));
     unique(state.materials.map(m=>m.materialId));unique(state.operations.map(op=>op.operationId)); },

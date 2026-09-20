@@ -1,4 +1,5 @@
 import { retryExtensionConnect } from './retry-extension-connect.js';
+import { GraphDataAdapter } from './graph-data-adapter.js';
 import { registerMaintenanceBusinessPages } from "./business-pages.js";
 import { registerMaintenanceInstanceWorkspace } from "./instance-workspace.js";
 import { bindRc2ProjectionContext, rc2RuntimeHeader } from './rc2-persistence.js';
@@ -139,6 +140,9 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     });
     if (config.extensionPlugins !== undefined) {
       const extensions = new MaintenanceExtensionBridge(connection,{instanceId:config.dshInstanceId,profileId:config.profileId},config.extensionPlugins);
+      if (config.extensionPlugins.some(plugin => plugin.namespace === 'thoughtdag')) {
+        (ctx as unknown as Context).provide('sessionExtensionSync' as never, new GraphDataAdapter(extensions, graph) as never);
+      }
       {
         // Publish instance-bound capabilities independently of Engine availability.
         // Each operation still goes through the authoritative Engine and its guards.
