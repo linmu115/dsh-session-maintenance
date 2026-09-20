@@ -53,3 +53,4 @@ export * from './runtime-adapter.js';
 export * from "./integration-error.js";
 export * from "./host-integration.js";
 export * from './session-extension-sync.js';
+export * from './host-plugin-compatibility.js';

@@ -1,6 +1,6 @@
 # 独立组件安装、配置与使用（2026-09-20 候选）
 
-本教程对应 Engine 0.1.33-rc2.57、接入插件 0.2.26-rc2.35、Core 0.3.12-rc2.21、Bridge 0.4.1-rc2.4、普通贴纸 0.7.4-rc2.6、ThoughtDAG 0.4.14-rc2.17、Companion 0.7.0-rc2.5。它们是本轮源码候选，不表示已发布到 npm 或已安装到任何用户实例。标准宿主 adapter 针对 DSH 0.1.5-rc.2；不声称兼容任意 DSH。
+本教程对应 Engine 0.1.33-rc2.58、接入插件 0.2.26-rc2.36、Core 0.3.12-rc2.21、Bridge 0.4.1-rc2.4、普通贴纸 0.7.4-rc2.6、ThoughtDAG 0.4.14-rc2.17、Companion 0.7.0-rc2.5。它们是本轮源码候选，不表示已发布到 npm 或已安装到任何用户实例。标准宿主 adapter 针对 DSH 0.1.5-rc.2；不声称兼容任意 DSH。
 
 ## 选择组合
 
@@ -56,7 +56,7 @@ node $dshBin plugin --profile web add (Join-Path $release 'packages/dsh-annotati
 
 ## 三、可选的 Maintenance 接入（无 Launcher）
 
-先通过上面的官方命令安装 `dsh-session-maintenance-0.2.26-rc2.35.tgz` 并在 bundles 中启用。安装接入插件本身不等于注册。
+先通过上面的官方命令安装 `dsh-session-maintenance-0.2.26-rc2.36.tgz` 并在 bundles 中启用。安装接入插件本身不等于注册。
 
 初始化一次并启动 Engine：
 
@@ -108,7 +108,7 @@ node $engine --state-root $state dashboard
 ```powershell
 $profile = Join-Path $env:DSH_HOME 'profiles/web'
 $verify = Join-Path $profile 'node_modules/dsh-session-maintenance/lib/verify-installation.mjs'
-node $verify --config '.\instance.json' --engine $engine --engine-version '0.1.33-rc2.57' --out-dir $profile
+node $verify --config '.\instance.json' --engine $engine --engine-version '0.1.33-rc2.58' --out-dir $profile
 node $engine --state-root $state managed-instance register --file '.\instance.json'
 node $engine --state-root $state managed-instance list
 ```

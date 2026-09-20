@@ -12,6 +12,7 @@ export async function readStandaloneInstances(root: string): Promise<StandaloneI
 }
 export async function saveStandaloneInstance(root: string, config: StandaloneInstance): Promise<DiscoveredIntegration> {
   const input = standaloneInstanceSchema.parse(config), checked = await inspectConfiguredInstance(root, input);
+  if (!checked.pluginReady && checked.pluginIssue) throw new IntegrationError(checked.pluginIssue.code, checked.pluginIssue.message);
   if (checked.target.status === 'unsupported' || !checked.pluginReady) throw new IntegrationError('INSTANCE_NOT_READY', [...checked.target.issues, ...(!checked.pluginReady ? ['请先安装并启用实例接入插件。'] : [])].join(' '));
   const configs = await readStandaloneInstances(root);
   await writeJsonAtomically(join(root, 'standalone-instances.json'), [...configs.filter(item => item.instanceId !== input.instanceId || item.profileId !== input.profileId), input]);

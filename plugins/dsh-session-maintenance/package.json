@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-maintenance",
-  "version": "0.2.26-rc2.35",
+  "version": "0.2.26-rc2.36",
   "description": "DSH 0.1.5-rc.2 entry for Maintenance-backed canonical sessions and V3 projections",
   "type": "module",
   "license": "MIT",
@@ -164,5 +164,24 @@
   "engines": {
     "node": ">=24.7.0"
   },
-  "packageManager": "pnpm@11.19.0"
+  "packageManager": "pnpm@11.19.0",
+  "dshMaintenanceIntegration": {
+    "schemaVersion": 1,
+    "protocol": {
+      "id": "maintenance-dsh-integration",
+      "version": 1
+    },
+    "adapterId": "dsh-0.1.5",
+    "hostVersions": [
+      "0.1.5-rc.2"
+    ],
+    "sessionFormats": [
+      "dsh-0.1.5-v3-jsonl-zstd-v1"
+    ],
+    "capabilities": [
+      "canonical-session-projection",
+      "managed-write-access",
+      "durable-close"
+    ]
+  }
 }

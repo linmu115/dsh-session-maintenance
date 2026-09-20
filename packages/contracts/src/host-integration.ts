@@ -11,6 +11,7 @@ export interface DiscoveredIntegration {
   readonly cliPath: string | null;
   readonly packageVersions: Readonly<Record<string, string>>;
   readonly pluginReady: boolean;
+  readonly pluginIssue?: import('./host-plugin-compatibility.js').HostPluginIssue;
   readonly runtimeCapabilities?: readonly string[];
   readonly coreBinding?: {readonly path:string;readonly sha256:string};
   readonly codexSource?: RegisteredInstance;

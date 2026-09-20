@@ -1,3 +1,5 @@
+import { checkDshPluginDeclaration } from './plugin-compatibility.js';
+import type { HostPluginIssue } from '@linmu/dsh-session-contracts';
 import { supportsPluginVersion } from "@linmu/dsh-session-extension-gpt-compat";
 import { verifyDsh015RuntimeAttestation } from "./runtime-attestation.js";
 import { createHash } from "node:crypto";
@@ -41,9 +43,6 @@ async function packageVersion(path: string): Promise<string | null> {
   if (value === undefined) return null;
   const parsed = z.object({ version: z.string().min(1) }).safeParse(value);
   return parsed.success ? parsed.data.version : null;
-}
-function compatiblePlugin(version: string | null): boolean {
-  return ["0.2.19","0.2.20","0.2.24","0.2.25-rc2.1","0.2.25-rc2.2","0.2.26-rc2.1","0.2.26-rc2.2","0.2.26-rc2.3","0.2.26-rc2.4","0.2.26-rc2.5","0.2.26-rc2.6","0.2.26-rc2.7","0.2.26-rc2.8","0.2.26-rc2.9","0.2.26-rc2.10","0.2.26-rc2.11","0.2.26-rc2.12","0.2.26-rc2.13","0.2.26-rc2.14","0.2.26-rc2.15","0.2.26-rc2.16","0.2.26-rc2.17","0.2.26-rc2.18","0.2.26-rc2.19","0.2.26-rc2.20","0.2.26-rc2.21","0.2.26-rc2.22","0.2.26-rc2.23","0.2.26-rc2.24","0.2.26-rc2.25","0.2.26-rc2.26", "0.2.26-rc2.27", "0.2.26-rc2.28", "0.2.26-rc2.29", "0.2.26-rc2.30", "0.2.26-rc2.31", "0.2.26-rc2.32", "0.2.26-rc2.33", "0.2.26-rc2.34"].includes(version ?? "");
 }
 
 function withinRoots(path: string, roots: readonly string[]): boolean {
@@ -95,6 +94,25 @@ async function resolveBundle(cliManifest: string, profileManifest: string, name:
     if (!Array.isArray(patches)) return null;
     return { ...selected, patchPath: path, patchDigest: fingerprint(text), patches };
   } catch { return null; }
+}
+
+/** Shared by the installed verifier and registration; no Launcher state required. */
+export async function inspectDshIntegrationPlugin(input: { cliManifest: string; profileManifest: string; roots: readonly string[]; hostVersion: string }) {
+  const { cliManifest, profileManifest, roots, hostVersion } = input;
+  const selected = await resolvePackageManifest(cliManifest, 'dsh-session-maintenance', roots) ?? await resolvePackageManifest(profileManifest, 'dsh-session-maintenance', roots);
+  const fail = (code: string, message: string) => ({ ready: false, issue: { code, message } as HostPluginIssue, plugin: selected });
+  if (!selected) return fail('INSTANCE_PLUGIN_MISSING', '未找到实例接入插件，请通过 DSH 官方插件命令安装。');
+  const metadata = await readJsonIfPresent(selected.path) as { version: string; dshMaintenanceIntegration?: unknown };
+  const compatibility = checkDshPluginDeclaration(metadata, hostVersion);
+  if (compatibility) return fail(compatibility.code, compatibility.message);
+  const profile = await readJsonIfPresent(profileManifest) as { dsh?: { profile?: { bundles?: unknown } } };
+  const bundles = profile?.dsh?.profile?.bundles;
+  if (!Array.isArray(bundles) || !bundles.includes('dsh-session-maintenance')) return fail('INSTANCE_PLUGIN_DISABLED', `已安装接入插件 ${selected.version}，但当前 profile 未启用其 bundle。`);
+  const plugin = await resolveBundle(cliManifest, profileManifest, 'dsh-session-maintenance', roots);
+  if (!plugin || !maintenanceIntegrationBundleReady(plugin.patches)) return fail('INSTANCE_PLUGIN_BUNDLE_INVALID', '接入插件 bundle 无法加载或缺少必要接入配置，请重新安装完整发行包。');
+  const runtime = await resolvePackage(cliManifest, 'dsh-session-maintenance', roots) ?? await resolvePackage(profileManifest, 'dsh-session-maintenance', roots);
+  if (runtime?.path !== plugin.path) return fail('INSTANCE_PLUGIN_RESOLUTION_MISMATCH', '接入插件运行入口与 bundle 解析位置不一致，或运行入口不存在。');
+  return { ready: true, issue: undefined, plugin };
 }
 
 /** Resolve through actual importers, including peer dependencies; never scan a pnpm store for a coincidental copy. */
@@ -185,13 +203,13 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
           const installed = versions[`@deepseek-ai/${name}`];
           if (installed !== version.version) issues.push(`${name} 未安装或与实例版本不一致。`);
         }
-        const plugin = await resolveBundle(join(cliRoot, "package.json"), join(profileRoot, "package.json"), "dsh-session-maintenance", packageRoots);
-        const pluginRuntime = await resolvePackage(join(cliRoot, "package.json"), "dsh-session-maintenance", packageRoots) ?? await resolvePackage(join(profileRoot, "package.json"), "dsh-session-maintenance", packageRoots);
+        const pluginCheck = await inspectDshIntegrationPlugin({ cliManifest: join(cliRoot, "package.json"), profileManifest: join(profileRoot, "package.json"), roots: packageRoots, hostVersion: version.version });
+        const plugin = pluginCheck.plugin;
         const pluginVersion = plugin?.version ?? null;
         const bundles = (profile as { dsh?: { profile?: { bundles?: unknown } } }).dsh?.profile?.bundles;
         const webApp = await resolveBundle(join(cliRoot, "package.json"), join(profileRoot, "package.json"), "@deepseek-ai/dsh-web-app", packageRoots);
-        if (!Array.isArray(bundles) || !bundles.includes("@deepseek-ai/dsh-web-app") || webApp?.version !== version.version) issues.push("此配置没有启用匹配版本的 Web 应用，Launcher 不会按 Web 实例启动。");
-        const pluginReady = (version.version === "0.1.5-rc.2" ? ["0.2.25-rc2.2","0.2.26-rc2.1","0.2.26-rc2.2","0.2.26-rc2.3","0.2.26-rc2.4","0.2.26-rc2.5","0.2.26-rc2.6","0.2.26-rc2.7","0.2.26-rc2.8","0.2.26-rc2.9","0.2.26-rc2.10","0.2.26-rc2.11","0.2.26-rc2.12","0.2.26-rc2.13","0.2.26-rc2.14","0.2.26-rc2.15","0.2.26-rc2.16","0.2.26-rc2.17","0.2.26-rc2.18","0.2.26-rc2.19","0.2.26-rc2.20","0.2.26-rc2.21","0.2.26-rc2.22","0.2.26-rc2.23","0.2.26-rc2.24","0.2.26-rc2.25","0.2.26-rc2.26", "0.2.26-rc2.27", "0.2.26-rc2.28", "0.2.26-rc2.29", "0.2.26-rc2.30", "0.2.26-rc2.31", "0.2.26-rc2.32", "0.2.26-rc2.33", "0.2.26-rc2.34"].includes(pluginVersion ?? "") : compatiblePlugin(pluginVersion)) && plugin !== null && pluginRuntime?.path === plugin.path && maintenanceIntegrationBundleReady(plugin.patches) && Array.isArray(bundles) && bundles.includes("dsh-session-maintenance");
+        if (!Array.isArray(bundles) || !bundles.includes("@deepseek-ai/dsh-web-app") || webApp?.version !== version.version) issues.push("此配置没有启用匹配版本的 Web 应用，无法按 Web 实例启动。");
+        const pluginReady = pluginCheck.ready;
         const extraBundles = [];
         if (Array.isArray(bundles)) for (const name of bundles) {
           if (name === "dsh-session-maintenance" || name === "@deepseek-ai/dsh-web-app") continue;
@@ -221,11 +239,11 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
           status: issues.length > 0 ? "unsupported" : "available", adapterId,
           capabilities: [
             { id: "projection", label: "会话读取与增量提交", status: issues.length > 0 ? "unavailable" : "supported", detail: issues.length > 0 ? "实例尚未通过版本与组件检查。" : "已识别经过验证的版本组合；接入时再执行 Adapter 检查。" },
-            { id: "plugin", label: "会话维护插件", status: pluginReady ? "supported" : "unavailable", detail: pluginReady ? `已安装 ${pluginVersion}` : "接入时由官方安装流程补齐。" },
+            { id: "plugin", label: "会话维护插件", status: pluginReady ? "supported" : "unavailable", detail: pluginReady ? `已安装 ${pluginVersion}` : pluginCheck.issue!.message },
             { id: "lifecycle", label: "随实例启动和收尾", status: "unchecked", detail: "完成实例绑定后启用。" },
           ], issues,
         };
-        targets.push({ target, instanceId: instance.id, launcherDataRoot: standalone ? null : canonicalLauncherRoot, homeRoot, versionRoot, profileRoot, cliPath, packageVersions: versions, pluginReady, runtimeCapabilities, ...(coreBinding?{coreBinding}:{}),
+        targets.push({ target, instanceId: instance.id, launcherDataRoot: standalone ? null : canonicalLauncherRoot, homeRoot, versionRoot, profileRoot, cliPath, packageVersions: versions, pluginReady, ...(pluginCheck.issue ? { pluginIssue: pluginCheck.issue } : {}), runtimeCapabilities, ...(coreBinding?{coreBinding}:{}),
           fingerprint: fingerprint([canonicalLauncherRoot, host.digest, attestationDigest, instance.id, home.id, version.id, homeRoot, versionRoot, profileRoot, actualVersion, versions, manifests, plugin, webApp, bundles, extraBundles, patchDigests, instance.env_overrides ?? {}]) });
         } catch {
           // A broken unrelated profile must not take down valid targets or scoped launches.

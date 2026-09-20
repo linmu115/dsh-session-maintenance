@@ -94,3 +94,31 @@ DTO 定义在 contracts 的 `session-extension-sync.ts`。记录包含 sessionId
 宿主的 `SessionExtensionData.ready(namespace, sessionId?)` 在打开会话前恢复数据并检查修订。
 Adapter 不持有私有数据库，不自定冲突胜方；commit 必须取得持久回执才返回成功。
 同修订不同内容、本地修订高于远端且缺少可证明的继承关系时，保留两侧并提示核对，不按文件时间猜测覆盖。
+
+
+## DSH 接入插件兼容声明
+
+从 0.2.26-rc2.36 起，DSH 插件的 `package.json` 提供 `dshMaintenanceIntegration`：
+
+```json
+{
+  "schemaVersion": 1,
+  "protocol": { "id": "maintenance-dsh-integration", "version": 1 },
+  "adapterId": "dsh-0.1.5",
+  "hostVersions": ["0.1.5-rc.2"],
+  "sessionFormats": ["dsh-0.1.5-v3-jsonl-zstd-v1"],
+  "capabilities": ["canonical-session-projection", "managed-write-access", "durable-close"]
+}
+```
+
+此声明描述 DSH 接入合同；与 `maintenance-adapter.json` 的清单协议、软件发布版本相互独立。
+`canonical-session-projection` 表示会话投影与增量提交，`managed-write-access` 表示受管在线写入许可，
+`durable-close` 表示正常停止需持久关闭回执。只有实现并验证这些能力后才能声明。
+实例 adapter 检查自身支持的协议、宿主及格式，Engine 只消费检查结果。
+同一协议下的补丁升级无需添加引擎白名单；协议不兼容时必须提升协议版本并提供匹配 adapter。
+
+安装验证与注册共用检查入口，检查实际解析包、bundle 启用状态和运行入口是否一致；
+实际宿主能力仍须通过合成会话操作和文件回执验证，不能仅靠清单宣称兼容。
+旧包仅通过冻结的历史兼容表识别（至 .35）；带有无效或未知声明的包不能回退到历史表。
+不支持的协议、宿主、格式、缺少能力、未安装、未启用和入口不一致分别返回明确诊断。
+升级必须保留旧回执后重新生成，并完成注册检查和正常启停验收。

@@ -9,6 +9,8 @@ import { collectDsh015CoreBindingReceipt } from '@linmu/dsh-core-extension';
 import { standaloneInstanceSchema } from '@linmu/dsh-session-contracts';
 import { REQUIRED_CAPABILITIES } from '../../../packages/adapter-dsh-0-1-5/src/probe.ts';
 
+import { inspectDshIntegrationPlugin } from '../../../packages/instance-integration-dsh/src/launcher-discovery.ts';
+
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i], value = process.argv[i + 1];
@@ -23,9 +25,13 @@ assert.equal(config.runtimeVersion, '0.1.5-rc.2', 'This adapter verifies DSH 0.1
 const homeRoot = await realpath(config.homeRoot), profileRoot = await realpath(join(homeRoot, 'profiles', config.profileId));
 const profile = await json(join(profileRoot, 'package.json'));
 if (profile.dsh?.profile?.bundles?.includes('dsh-gpt-compat')) throw new Error('This standard probe excludes experimental GPT Compat; use that extension\'s dedicated conformance suite.');
-const profileRequire = createRequire(join(profileRoot, 'package.json'));
+let cliRoot = join(config.versionRoot, 'apps', 'cli');
+try { await readFile(join(cliRoot, 'package.json')); } catch { cliRoot = join(config.versionRoot, 'node_modules', '@deepseek-ai', 'dsh'); }
+const pluginCheck = await inspectDshIntegrationPlugin({ cliManifest: join(cliRoot, 'package.json'), profileManifest: join(profileRoot, 'package.json'), roots: [homeRoot, config.versionRoot], hostVersion: config.runtimeVersion });
+if (!pluginCheck.ready) throw new Error(`${pluginCheck.issue.code}: ${pluginCheck.issue.message}`);
 // Match the installed plugin's actual importer, including its pnpm peer closure.
-const anchor = await realpath(profileRequire.resolve('dsh-session-maintenance')), require = createRequire(anchor);
+const selectedRequire = createRequire(pluginCheck.plugin.path);
+const anchor = await realpath(selectedRequire.resolve('dsh-session-maintenance')), require = createRequire(anchor);
 const entry = await realpath(require.resolve('@deepseek-ai/dsh-session-persistence-jsonl'));
 const backendRequire = createRequire(entry);
 const { Context } = await import(pathToFileURL(backendRequire.resolve('@deepseek-ai/cordis')).href);
@@ -61,14 +67,12 @@ try {
     catch (error) { if (error.code !== 'ENOENT') throw error; }
   }
   const bindingBytes = Buffer.from(JSON.stringify(binding, null, 2) + '\n');
-  let cliRoot = join(config.versionRoot, 'apps', 'cli');
-  try { await readFile(join(cliRoot, 'package.json')); } catch { cliRoot = join(config.versionRoot, 'node_modules', '@deepseek-ai', 'dsh'); }
   assert.equal((await json(join(cliRoot, 'package.json'))).version, config.runtimeVersion);
   const artifacts = { cli: join(cliRoot, 'lib', 'bin.js'), node: process.execPath,
     session: binding.packages['@deepseek-ai/dsh-session'].entryPath,
     sessionPersistence: binding.packages['@deepseek-ai/dsh-session-persistence'].entryPath,
     formatCatalog: binding.packages['@deepseek-ai/dsh-session-format-catalog'].entryPath,
-    maintenancePlugin: anchor, engine: resolve(options.get('--engine')) };
+    maintenancePlugin: anchor, maintenancePluginManifest: pluginCheck.plugin.path, engine: resolve(options.get('--engine')) };
   for (const [name, pin] of Object.entries(binding.packages)) { artifacts[`manifest:${name}`] = pin.manifestPath; artifacts[`entry:${name}`] = pin.entryPath; }
   const files = await Promise.all(Object.entries(artifacts).map(async ([role, value]) => { const path = await realpath(value); return { role, path, sha256: hash(await readFile(path)) }; }));
   files.push({ role: 'coreBindingReceipt', path: join(await realpath(out), 'maintenance-core-binding.json'), sha256: hash(bindingBytes) });

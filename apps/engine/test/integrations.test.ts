@@ -87,9 +87,9 @@ describe("instance onboarding", () => {
     expect(await readIntegrationBindings(f.stateRoot)).toEqual([]);
     await expect(readFile(join(f.dataRoot, 'config.json'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
-  it("accepts the current plugin declaration through the general release gate and rejects unlisted versions", async () => {
+  it("retains frozen earlier-host legacy releases and rejects undeclared future versions", async () => {
     const f = await fixture();
-    const version = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
+    const version = "0.2.26-rc2.35";
     const path = join(f.profileRoot, "node_modules", "dsh-session-maintenance", "package.json");
     const plugin = JSON.parse(await readFile(path, "utf8"));
     for (const released of ["0.2.26-rc2.28", "0.2.26-rc2.29", "0.2.26-rc2.30"]) {
@@ -122,7 +122,7 @@ describe("instance onboarding", () => {
     }
     const pluginPath = join(f.profileRoot, "node_modules", "dsh-session-maintenance", "package.json");
     const plugin = JSON.parse(await readFile(pluginPath, "utf8"));
-    await json(pluginPath, { ...plugin, version: pluginVersion });
+    await json(pluginPath, { ...plugin, version: pluginVersion, dshMaintenanceIntegration: JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).dshMaintenanceIntegration });
     const syntheticNode = join(f.sandbox.root, "synthetic-node"), coreBinding = join(f.sandbox.root, "synthetic-core-binding.json");
     await writeFile(syntheticNode, "synthetic node artifact"); await json(coreBinding, { synthetic: true });
     const paths = { cli: join(cliRoot, "lib", "bin.js"), node: syntheticNode, session: manifests.get("dsh-session")!,
@@ -184,7 +184,7 @@ describe("instance onboarding", () => {
     expect(upstream.target.status).toBe("unsupported");
     expect(upstream.runtimeCapabilities).toEqual([]);
     const currentVersion = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
-    await json(pluginPath, { ...plugin, version: currentVersion });
+    await json(pluginPath, { ...plugin, version: currentVersion, dshMaintenanceIntegration: JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).dshMaintenanceIntegration });
     const current = (await f.discover()).targets[0]!;
     expect(current.pluginReady).toBe(true);
     expect(current.target.status).toBe("unsupported");
