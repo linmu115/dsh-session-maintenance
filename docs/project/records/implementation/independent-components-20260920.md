@@ -30,3 +30,7 @@
 ## 接入兼容机制修正
 
 用户确认后，接入判断改用包内协议、宿主、格式和能力声明，旧版本表冻结至 .35。安装校验与注册复用检查入口；诊断区分未安装、未启用和不兼容。Engine .58 / 接入 .36 已通过真实注册、启动、DAG 保存/刷新和正常停止；继续安装 Bridge 后，因教程缺少已注册实例更新复核闭环而停止，详见 docs/changes/2026-09-20-plugin-compatibility.md。
+
+## 最新交接方向
+
+Maintenance 的普通插件组合门禁与未知类型保留登记为后续事项，暂停实现；用户要求转为关闭引擎的其他插件独立验收。此前对普通插件变化要求手工 revalidate 的建议已被替代。详见 docs/handoffs/2026-09-20-maintenance-and-independent-acceptance.md 及对应 issues 文档。
