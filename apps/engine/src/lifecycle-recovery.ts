@@ -26,7 +26,7 @@ export async function scopedRecoveryRuns(stateRoot: string, instanceId: string, 
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
   const database = new DatabaseSync(activeDatabasePath(stateRoot, config), { readOnly: true });
   try {
-    return database.prepare("SELECT id,state,started_at AS startedAt FROM projection_runs WHERE instance_id=? AND profile_id=? AND state!='quarantined'")
+    return database.prepare("SELECT id,state,started_at AS startedAt FROM projection_runs WHERE instance_id=? AND profile_id=?")
       .all(instanceId, profileId) as unknown as RecoveryRun[];
   } finally { database.close(); }
 }

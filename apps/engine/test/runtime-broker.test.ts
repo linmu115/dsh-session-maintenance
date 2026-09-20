@@ -1,3 +1,5 @@
+import { adapter as alpha2 } from '@linmu/dsh-session-adapter-alpha2';
+import { adapter as rc1 } from '@linmu/dsh-session-adapter-rc1';
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -51,6 +53,8 @@ describe("ProjectionRuntimeBroker", () => {
       }),
     };
     const broker = new ProjectionRuntimeBroker({
+      resolveAdapter: id => id === rc1.manifest.id ? rc1 : id === alpha2.manifest.id ? alpha2 : undefined,
+      readRun: async () => undefined,
       lifecycleFactory: ({ adapterId }) => {
         expect(adapterId).toBe("dsh-rc1");
         return lifecycle as never;
@@ -88,6 +92,8 @@ describe("ProjectionRuntimeBroker", () => {
       },
     };
     const broker = new ProjectionRuntimeBroker({
+      resolveAdapter: id => id === rc1.manifest.id ? rc1 : id === alpha2.manifest.id ? alpha2 : undefined,
+      readRun: async () => undefined,
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
@@ -129,6 +135,8 @@ describe("ProjectionRuntimeBroker", () => {
       closeRun: async () => { calls.push("checkpoint-cleanup"); return { state: "closed", removedProjection: true }; },
     };
     const broker = new ProjectionRuntimeBroker({
+      resolveAdapter: id => id === rc1.manifest.id ? rc1 : id === alpha2.manifest.id ? alpha2 : undefined,
+      readRun: async () => undefined,
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
@@ -194,6 +202,8 @@ describe("ProjectionRuntimeBroker", () => {
       }),
     };
     const broker = new ProjectionRuntimeBroker({
+      resolveAdapter: id => id === rc1.manifest.id ? rc1 : id === alpha2.manifest.id ? alpha2 : undefined,
+      readRun: async () => undefined,
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
@@ -261,6 +271,8 @@ describe("ProjectionRuntimeBroker", () => {
       },
     };
     const broker = new ProjectionRuntimeBroker({
+      resolveAdapter: id => id === rc1.manifest.id ? rc1 : id === alpha2.manifest.id ? alpha2 : undefined,
+      readRun: async () => undefined,
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
@@ -328,6 +340,8 @@ describe("ProjectionRuntimeBroker", () => {
       }),
     };
     const broker = new ProjectionRuntimeBroker({
+      resolveAdapter: id => id === rc1.manifest.id ? rc1 : id === alpha2.manifest.id ? alpha2 : undefined,
+      readRun: async () => undefined,
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
@@ -387,6 +401,8 @@ describe("ProjectionRuntimeBroker", () => {
       },
     };
     const broker = new ProjectionRuntimeBroker({
+      resolveAdapter: id => id === rc1.manifest.id ? rc1 : id === alpha2.manifest.id ? alpha2 : undefined,
+      readRun: async () => undefined,
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,
@@ -427,6 +443,8 @@ describe("ProjectionRuntimeBroker", () => {
       },
     };
     const broker = new ProjectionRuntimeBroker({
+      resolveAdapter: id => id === rc1.manifest.id ? rc1 : id === alpha2.manifest.id ? alpha2 : undefined,
+      readRun: async () => undefined,
       lifecycleFactory: () => lifecycle as never,
       selectAdapter: async () => "dsh-alpha2" as AdapterId,
       statusLog: { start: async () => ({ event: {} }), succeed: async () => undefined, fail: async () => undefined } as never,

@@ -1,0 +1,48 @@
+{
+  "name": "@linmu/dsh-instance-integration-dsh",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./launcher-discovery": {
+      "development": "./src/launcher-discovery.ts",
+      "types": "./dist/launcher-discovery.d.ts",
+      "default": "./dist/launcher-discovery.js"
+    },
+    "./runtime-attestation": {
+      "development": "./src/runtime-attestation.ts",
+      "types": "./dist/runtime-attestation.d.ts",
+      "default": "./dist/runtime-attestation.js"
+    },
+    "./rc2-profile-overrides": {
+      "development": "./src/rc2-profile-overrides.ts",
+      "types": "./dist/rc2-profile-overrides.d.ts",
+      "default": "./dist/rc2-profile-overrides.js"
+    },
+    "./launcher-capabilities": {
+      "development": "./src/launcher-capabilities.ts",
+      "types": "./dist/launcher-capabilities.d.ts",
+      "default": "./dist/launcher-capabilities.js"
+    },
+    "./windows-tools": {
+      "development": "./src/windows-tools.ts",
+      "types": "./dist/windows-tools.d.ts",
+      "default": "./dist/windows-tools.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@linmu/dsh-session-contracts": "workspace:*",
+    "@linmu/dsh-adapter-dsh": "workspace:*",
+    "@linmu/dsh-session-extension-gpt-compat": "workspace:*",
+    "@linmu/dsh-session-adapter-0-1-5": "workspace:*",
+    "yaml": "2.8.1",
+    "zod": "4.1.5"
+  }
+}

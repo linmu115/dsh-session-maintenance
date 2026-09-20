@@ -52,6 +52,7 @@ export async function runCli(argv: readonly string[], fixture: Awaited<ReturnTyp
   let stderr = "";
   const exitCode = await executeCli(argv, {
     fixturePolicy: fixture.fixturePolicy,
+    inspectCodexEnvironment: async () => ({ compatible: true, bidirectional: false, reason: 'Synthetic fixture only' }),
     stdout: (text) => { stdout += text; },
     stderr: (text) => { stderr += text; },
   });
@@ -61,6 +62,7 @@ export async function runCli(argv: readonly string[], fixture: Awaited<ReturnTyp
 export async function createEngineFixture(name: string, input: {
   readonly continuationAdapter?: CodexContinuationPort;
   readonly withContinuationTarget?: boolean;
+  readonly enableCodexMirror?: boolean;
 } = {}) {
   const fixture = await createFixtureSystem(name);
   const options = { stateRoot: fixture.stateRoot, fixturePolicy: fixture.fixturePolicy };
@@ -90,8 +92,14 @@ export async function createEngineFixture(name: string, input: {
   }
   const engine = await createReadOnlyComposition({
     ...options,
+    inspectCodexEnvironment: async () => ({ compatible: true, bidirectional: false, reason: 'Synthetic fixture only' }),
     ...(input.continuationAdapter === undefined ? {} : { continuationAdapter: input.continuationAdapter }),
   });
+  if (input.enableCodexMirror !== false) {
+    await engine.codexMirror!.configure({ ...engine.codexMirror!.status().preferences, instanceId: 'codex-fixture' });
+    await engine.codexMirror!.check();
+    await engine.codexMirror!.configure({ ...engine.codexMirror!.status().preferences, mirror: true });
+  }
   const servers: Array<{ close: () => Promise<void> }> = [];
   return {
     ...fixture,

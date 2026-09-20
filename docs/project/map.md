@@ -1,5 +1,7 @@
 # Session Maintenance
 
+2026-09-20 源码候选的独立运行与接入边界：[[IMP-independent-components-20260920]]。运行副本尚未升级，历史记录按原验证范围阅读。
+
 ## 这个项目做什么
 
 将 Codex 与 DSH 会话维护为有稳定身份、版本、来源和恢复证据的长期资料。Engine 管规范历史及业务对象，平台 Adapter 处理宿主格式，扩展 Adapter 解释引用、贴纸、链接、主干和 GPT 插件状态。源 Codex 日志与 Vault 笔记各由原平台拥有。

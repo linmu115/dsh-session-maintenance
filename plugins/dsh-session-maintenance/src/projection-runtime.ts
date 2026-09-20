@@ -1067,6 +1067,15 @@ export class RuntimeBrokerPluginClient {
   coldSessionIds(): readonly string[] {
     return this.registrar.coldSessionIds(this.runId);
   }
+  async assertReady(): Promise<void> {
+    if (this.registrationId === null || this.draining) throw new Error('已注册实例尚未就绪');
+    const result = await this.post(`/v1/runtime-broker/runs/${encodeURIComponent(this.runId)}/ready`, { schemaVersion: 1, clientId: this.clientId, runId: this.runId }) as { ready?: boolean; runId?: string };
+    if (result.ready !== true || result.runId !== this.runId) throw new Error('Maintenance readiness receipt is invalid');
+  }
+  async reconcilePending(): Promise<void> {
+    for (const id of new Set([...this.tails.keys(), ...this.queues.keys(), ...this.pendingBatches.keys(), ...this.failures.keys()])) await this.flush(id);
+    if (this.pendingBatches.size || this.queues.size || this.failures.size) throw new Error('仍有未确认的会话操作');
+  }
 
   sessionHeaders(): readonly JsonValue[] {
     return this.registrar.sessionHeaders(this.runId);
@@ -1277,6 +1286,7 @@ export class RuntimeBrokerPluginClient {
         "content-type": "application/json",
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15_000),
     });
     const value = await response.json().catch(() => ({})) as { readonly error?: { readonly message?: string } };
     if (!response.ok) throw new Error(value.error?.message ?? `Runtime Broker returned HTTP ${response.status}`);

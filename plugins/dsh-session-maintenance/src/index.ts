@@ -9,6 +9,8 @@ import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-kn
 import { registerWorkspaceArchiveBridge } from './workspace-archive-bridge.js';
 import { registerAnnotationMirror, type AnnotationMirrorContext } from './annotation-mirror.js';
 import { installRc2LazyProjectionPersistence } from './rc2-lazy-persistence.js';
+import { RegisteredSessionWriteAccess } from './write-access.js';
+import { assertRegisteredStartup } from './registered-startup.js';
 import type { Context } from "@deepseek-ai/cordis";
 import { MaintenanceExtensionBridge, registerMaintenanceExtensionData } from "./extension-data.js";
 import s from "@deepseek-ai/schemastery";
@@ -58,9 +60,24 @@ interface HostContext extends CoreRuntimeContext {
 
 export async function apply(ctx: HostContext, input: PluginConfig): Promise<void> {
   const config = normalizeConfig(withLauncherNativeExtensions({ ...input, pinnedAdapterId: input.pinnedAdapterId || null }));
-  const launchProfile = launcherProjectionProfile(config);
-  const coreBinding = launcherCoreBinding(config, launchProfile);
   const descriptorPath = connectionDescriptorPath(config.connectionId);
+  const launchProfile = await (async () => {
+    try { const profile = launcherProjectionProfile(config); await assertRegisteredStartup(config, descriptorPath, profile !== null); return profile; }
+    catch (error) { ctx.appExit(1); throw error; }
+  })();
+  const coreBinding = launcherCoreBinding(config, launchProfile);
+  let activeRuntime: RuntimeBrokerPluginClient | undefined;
+  const writeAccess = launchProfile ? new RegisteredSessionWriteAccess(
+    async () => { if (!activeRuntime) throw new Error('实例尚未就绪'); await activeRuntime.assertReady(); },
+    async () => { if (!activeRuntime) throw new Error('实例尚未就绪'); await activeRuntime.reconcilePending(); },
+  ) : undefined;
+  if (writeAccess) {
+    (ctx as unknown as Context).provide('sessionWriteAccess' as never, writeAccess as never);
+    ctx.effect(() => () => writeAccess.close(), 'maintenance: write policy lifetime');
+    (ctx as unknown as { on(event: string, handler: (payload: unknown, next: () => Promise<unknown>) => Promise<unknown>): unknown }).on('agent/pre-step', async (_payload, next) => {
+      await writeAccess.assertWritable(); return next();
+    });
+  }
   const connection = descriptorPath === undefined
     ? { current: async () => { throw new Error("维护引擎连接尚未由可信安装器登记"); } }
     : new FileConnectionProvider(descriptorPath);
@@ -99,7 +116,14 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
       ...(launchProfile.nativeMode ? { nativeMode: launchProfile.nativeMode } : {}),
     });
     try { await runtime.attach(); }
-    catch (error) { throw new Error("RC2 prepared runtime could not attach", { cause: error }); }
+    catch (error) { ctx.appExit(1); throw new Error("此实例已接入 Maintenance，请先启动并确认维护服务就绪。", { cause: error }); }
+    activeRuntime = runtime;
+    await writeAccess!.assertWritable();
+    ctx.effect(() => {
+      const timer = setInterval(() => { void writeAccess!.assertWritable().catch(() => {}); }, 3000);
+      timer.unref();
+      return () => { clearInterval(timer); writeAccess!.close(); };
+    }, 'maintenance: registered instance write policy');
     registerMaintenanceInstanceWorkspace(ctx as unknown as Context, {instanceId:config.dshInstanceId,profileId:config.profileId}, connection);
     const graph = new MaintenanceGraph(connection, launchProfile.runId, async id => {
       const session = ctx.sessions.get(id as never);

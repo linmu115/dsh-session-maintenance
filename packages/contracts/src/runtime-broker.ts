@@ -1,3 +1,11 @@
+import { z } from 'zod';
+
+export const runtimeBrokerReadyRequestSchema = z.strictObject({
+  schemaVersion: z.literal(1), runId: z.string().min(1).max(256), clientId: z.string().min(1).max(256),
+});
+export type RuntimeBrokerReadyRequest = z.infer<typeof runtimeBrokerReadyRequestSchema>;
+export interface RuntimeBrokerReadyResponse { readonly schemaVersion: 1; readonly runId: string; readonly ready: true }
+
 import type {
   AdapterId,
   BranchId,

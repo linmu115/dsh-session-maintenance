@@ -30,4 +30,7 @@ export class MaintenanceSessionContext {
   endExecution(targetNativeSessionId:string,executionId:string){return this.request<{ended:true}>("end-execution",{targetNativeSessionId,executionId});}
 }
 declare module "@deepseek-ai/cordis" { interface Context {maintenanceSessionContext:MaintenanceSessionContext} }
-export function registerSessionContext(ctx:Context,value:MaintenanceSessionContext){ctx.provide("maintenanceSessionContext",value);}
+export function registerSessionContext(ctx:Context,value:MaintenanceSessionContext){
+  ctx.provide("maintenanceSessionContext",value);
+  ctx.provide("sessionReferenceContextProvider" as never,value as never);
+}

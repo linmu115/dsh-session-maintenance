@@ -1,4 +1,5 @@
 import { VaultBindingPage, type VaultBindingApi } from "./vault-binding-page.js";
+import { AdapterCatalogView, type AdapterCatalogApi } from './adapter-catalog.js';
 import { useEffect, useMemo, useState } from "react";
 import { Button, Surface, LoadingState, EmptyState } from "@linmu/dsh-session-ui";
 import { managedGraphSchema, type ExtensionBusinessPanel, type BusinessPage, type ExtensionPanel, type ExtensionScope, type ExtensionList, type ExtensionPage, type ExtensionDetail, type ExtensionWrite, type ExtensionWriteResult, type ExtensionConflict, type ExtensionCapabilities, type ExtensionPreview, type JsonValue } from "@linmu/dsh-session-contracts";
@@ -8,7 +9,7 @@ import { NativeContextDetail } from "./native-context-detail.js";
 import { extensionCategories, extensionRegisteredViews, type ExtensionCategory } from "./extension-navigation.js";
 import { BusinessPages, type BusinessPagesApi } from "./business-pages.js";
 
-export interface ExtensionPageApi extends BusinessPagesApi, VaultBindingApi {
+export interface ExtensionPageApi extends BusinessPagesApi, VaultBindingApi, AdapterCatalogApi {
   listExtensionBusinessPanels?: ExtensionBusinessApi["listExtensionBusinessPanels"];
   listExtensionDirectory?: ExtensionBusinessApi["listExtensionDirectory"];
   listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]>;
@@ -64,7 +65,6 @@ export function ExtensionPageView({api,onOpenSession}:{api:ExtensionPageApi;onOp
     return () => { abort.abort(); clearInterval(timer); };
   }, [api, revision]);
   const categories = extensionCategories(panels ?? [], pages);
-  if (api.listVaultBindingInstances && !categories.some(category => category.id === "obsidian-series")) categories.push({ id: "obsidian-series", adapterId: "obsidian-series", label: "Obsidian Bridge", pages: [] });
   const active = categories.find(item => item.id === selected) ?? categories[0];
   const renderDetail: Parameters<typeof ExtensionBusinessDirectory>[0]["renderDetail"] = (object, member, onChanged) => <ObjectEditor key={`${scopeKey(object.scope)}:${object.objectId}:${object.revision}`} api={api} scope={object.scope} capabilities={member.capabilities!} id={object.objectId} readOnly={object.readOnly} onChanged={onChanged} onOpenSession={onOpenSession}/>;
   return <div className="page-stack extension-page">
@@ -73,6 +73,8 @@ export function ExtensionPageView({api,onOpenSession}:{api:ExtensionPageApi;onOp
     {!panels && !error ? <LoadingState label="正在读取扩展栏目…"/> : null}
     {panels && categories.length === 0 ? <Surface><EmptyState title="尚未接入扩展" description="插件注册数据适配器或信息页后，对应栏目会显示在这里。"/></Surface> : null}
     <nav className="extension-category-nav" aria-label="扩展栏目">{categories.map(category => <button type="button" key={category.id} aria-current={active?.id === category.id ? "page" : undefined} onClick={() => { setSelected(category.id); setVisited(previous => [...new Set([...previous, ...(active ? [active.id] : []), category.id])]); }}>{category.label}</button>)}</nav>
+    <AdapterCatalogView api={api}/>
+    <p className="muted">Vault 连接请在当前 DSH 的「Obsidian 连接」设置中管理。</p>
     {categories.filter(category => category.id === active?.id || visited.includes(category.id)).map(category => <div key={category.id} hidden={category.id !== active?.id}>
       <ExtensionCategoryView api={api} category={category} revision={revision} onRefresh={() => setRevision(value => value + 1)} onOpenSession={onOpenSession} renderDetail={renderDetail}/>
     </div>)}
@@ -84,7 +86,7 @@ function ExtensionCategoryView({api, category, revision, onRefresh, onOpenSessio
   renderDetail: Parameters<typeof ExtensionBusinessDirectory>[0]["renderDetail"];
 }) {
   const [view, setView] = useState("directory");
-  const independentBinding = category.id === "obsidian-series" && !!api.listVaultBindingInstances;
+  const independentBinding = false;
   const registeredViews = extensionRegisteredViews(independentBinding ? category.pages.filter(page => !(page.owner.namespace === "obsidian-bridge" && page.owner.providerId === "vault-bindings")) : category.pages);
   const activeView = independentBinding && view === "vault-bindings" || registeredViews.some(item => item.id === view) ? view : "directory";
   const adapterId = category.adapterId;

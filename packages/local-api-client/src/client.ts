@@ -691,6 +691,15 @@ class ApiClient {
   async listExtensionPanels(signal?: AbortSignal): Promise<ExtensionPanel[]> {
     return this.request("/v1/extensions/panels",{},z.custom<ExtensionPanel[]>(),signal);
   }
+  async listInstalledAdapters() {
+    return this.request('/v1/extensions/adapters', {}, z.custom<{ entries: import('@linmu/dsh-session-contracts').InstalledAdapterEntry[]; issues: { directory: string; message: string }[]; requiresRestart: boolean }>());
+  }
+  async getCodexMirror() { return this.request('/v1/codex-mirror', {}, z.custom<import('@linmu/dsh-session-contracts').CodexMirrorStatus>()); }
+  async checkCodexMirror() { return this.request('/v1/codex-mirror/check', this.jsonPost({}), z.custom<import('@linmu/dsh-session-contracts').CodexMirrorStatus>()); }
+  async configureCodexMirror(input: import('@linmu/dsh-session-contracts').CodexMirrorPreferences) { return this.request('/v1/codex-mirror', this.jsonPost(input), z.custom<import('@linmu/dsh-session-contracts').CodexMirrorStatus>()); }
+  async setInstalledAdapterEnabled(id: string, enabled: boolean) {
+    return this.request('/v1/extensions/adapters/enabled', this.jsonPost({ id, enabled }), z.unknown());
+  }
   async listExtensionBusinessPanels(query: ExtensionBusinessPanelQuery = {}, signal?: AbortSignal): Promise<ExtensionBusinessPanel[]> {
     const parameters = new URLSearchParams(Object.entries(query).filter(([,v])=>v!==undefined).map(([k,v]): [string,string]=>[k,String(v)]));
     return this.request(`/v1/extensions/business-panels?${parameters}`,{},z.custom<ExtensionBusinessPanel[]>(),signal);

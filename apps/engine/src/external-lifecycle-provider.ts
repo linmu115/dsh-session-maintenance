@@ -1,5 +1,5 @@
 import { maintenanceRequired } from "./integrations/maintenance-policy.js";
-import { startManagedEngine, type EngineStartupMonitor } from "./engine-startup.js";
+import type { EngineStartupMonitor } from "./engine-startup.js";
 import { randomBytes } from "node:crypto";
 import { open, mkdir, readFile, rename, readdir } from "node:fs/promises";
 import { canRecoverAfterReboot, recoverySystemEvidence, scopedRecoveryRuns, type RuntimeProcessIdentity } from "./lifecycle-recovery.js";
@@ -37,11 +37,6 @@ const BROKER_PREPARE_TIMEOUT_MS = 240_000;
 // provider to report failure while the Engine is still safely recovering.
 const BROKER_FINALIZE_TIMEOUT_MS = 240_000;
 const GRACEFUL_SHUTDOWN_TIMEOUT_MS = 15_000;
-// Opening an existing canonical store may apply a one-time schema migration
-// before the health endpoint can listen. Large stores can legitimately take
-// several minutes, so the provider must not mistake that work for a failed
-// engine start.
-const ENGINE_START_TIMEOUT_MS = 240_000;
 const HANDLE_DIRECTORY = "external-lifecycle-handles";
 const SHUTDOWN_PATH = "/dsh-session-maintenance/runtime/shutdown";
 const SUPPORTED_RUNTIME_ADAPTERS = new Map<string, null | "dsh-rc1" | "dsh-0.1.5">([
@@ -209,8 +204,6 @@ export class MaintenanceExternalLifecycleProvider {
   private readonly clock: () => string;
   private readonly randomId: () => string;
   private readonly connectionOverride: (() => Promise<EngineConnection>) | undefined;
-  private readonly startEngine: (stateRoot: string) => Promise<EngineStartupMonitor | void>;
-  private readonly sleep: (milliseconds: number) => Promise<void>;
   private readonly requireBinding: boolean;
   private readonly recoveryRuns: typeof scopedRecoveryRuns;
   private readonly systemEvidence: typeof recoverySystemEvidence;
@@ -226,8 +219,6 @@ export class MaintenanceExternalLifecycleProvider {
     this.clock = dependencies.clock ?? (() => new Date().toISOString());
     this.randomId = dependencies.randomId ?? (() => randomBytes(24).toString("base64url"));
     this.connectionOverride = dependencies.connection;
-    this.startEngine = dependencies.startEngine ?? startManagedEngine;
-    this.sleep = dependencies.sleep ?? (async (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)));
   }
 
   async handle(value: unknown): Promise<ExternalLifecycleResponse> {
@@ -307,7 +298,7 @@ export class MaintenanceExternalLifecycleProvider {
     const required = request.maintenanceRequired === true || await maintenanceRequired(this.stateRoot,request.instanceId,request.profileId);
     const integration = await resolveRuntimeIntegration(this.stateRoot, request);
     const mustBind = required || integration !== undefined;
-    if (!request.web || !SUPPORTED_RUNTIME_ADAPTERS.has(request.runtimeVersion)) {
+    if (!request.web || (!integration && !SUPPORTED_RUNTIME_ADAPTERS.has(request.runtimeVersion))) {
       if(mustBind)throw new ProviderError("MAINTENANCE_RUNTIME_UNSUPPORTED","该实例要求维护接管，但目标宿主或启动入口不兼容。",false);
       return {schemaVersion:1,enabled:false,handle:null,launch:null};
     }
@@ -599,20 +590,7 @@ export class MaintenanceExternalLifecycleProvider {
     if (this.connectionOverride !== undefined) return this.connectionOverride();
     const existing = await this.tryConnection();
     if (existing !== null) return existing;
-    const startup = await this.startEngine(this.stateRoot);
-    try {
-      const deadline = Date.now() + ENGINE_START_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        const failure = await startup?.failure();
-        if (failure !== undefined) throw new ProviderError(failure, `Maintenance Engine startup failed: ${failure}. See logs/engine-lifecycle.`, true);
-        await this.sleep(100);
-        const connection = await this.tryConnection();
-        if (connection !== null) return connection;
-      }
-      throw new ProviderError("ENGINE_START_TIMEOUT", "Session Maintenance Engine did not become ready", true);
-    } finally {
-      startup?.dispose();
-    }
+    throw new ProviderError("MAINTENANCE_NOT_READY", "此实例已接入 Maintenance，请先启动并确认维护服务就绪。", true);
   }
 
   private async tryConnection(): Promise<EngineConnection | null> {

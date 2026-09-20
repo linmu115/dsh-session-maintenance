@@ -7,6 +7,8 @@ import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { build } from "esbuild";
+// @ts-expect-error Build helper is shared with the production bundle.
+import { dshRc2PackageMetadata } from '../../../scripts/dsh-rc2-bundle-plugin.mjs';
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import { MaintenanceWriteCoordinator } from "@linmu/dsh-session-store";
 import { recoverDeadEngineOwner, startManagedEngine } from "../src/engine-startup.js";
@@ -32,7 +34,7 @@ beforeAll(async () => {
         if (rel.startsWith('..') || isAbsolute(rel)) throw new Error('Outside synthetic root');
       } });
       if (process.connected) process.disconnect();`, resolveDir: resolve(".") },
-    outfile: entry, bundle: true, platform: "node", format: "esm", target: "node22",
+    outfile: entry, bundle: true, platform: "node", format: "esm", target: "node22", plugins: [dshRc2PackageMetadata()],
     conditions: ["development"], banner: { js: 'import {createRequire as startupTestRequire} from "node:module"; const require=startupTestRequire(import.meta.url);' },
   });
 });

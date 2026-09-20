@@ -60,5 +60,6 @@ export class MaintenanceNativeContext {
 }
 export function registerMaintenanceNativeContext(ctx: Context, value: MaintenanceNativeContext) {
   ctx.provide('maintenanceNativeContext', value);
+  ctx.provide('sessionNativeContext' as never, value as never);
 }
 declare module '@deepseek-ai/cordis' { interface Context { maintenanceNativeContext: MaintenanceNativeContext } }

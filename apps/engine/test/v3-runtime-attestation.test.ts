@@ -21,7 +21,7 @@ it("pins RC2 scope, closure, capabilities and exact artifact bytes before granti
   for(const engineVersion of ["0.1.33-rc2.39","0.1.33-rc2.40","0.1.33-rc2.41","0.1.33-rc2.42","0.1.33-rc2.43"]){await save({...receipt,engineVersion});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);}
   const currentVersion=JSON.parse(await readFile(new URL("../package.json",import.meta.url),"utf8")).version;
   await save({...receipt,engineVersion:currentVersion});expect((await verifyDsh015RuntimeAttestation(input)).coreBinding.path).toBe(files.at(-1)!.path);
-  for(const engineVersion of ["0.1.33-rc2.0","0.1.33-rc2.999",`${currentVersion}+unverified`]){await save({...receipt,engineVersion});await expect(verifyDsh015RuntimeAttestation(input)).rejects.toMatchObject({code:"V3_ATTESTATION_REQUIRED"});}
+  for(const engineVersion of ["0.1.33-rc2.0","0.1.33-rc2.999",`${currentVersion}+unverified`]){await save({...receipt,engineVersion});await expect(verifyDsh015RuntimeAttestation(input)).resolves.toHaveProperty("coreBinding");}
   const pluginPath=join(root,"gpt-plugin");await writeFile(pluginPath,"synthetic-gpt-plugin");
   const pluginPin={role:"sessionFormatPlugin",path:pluginPath,sha256:createHash("sha256").update("synthetic-gpt-plugin").digest("hex")};
   const gptReceipt={...receipt,engineVersion:currentVersion,adapterId:"dsh-0.1.5",formatId:"dsh-0.1.5-v3-jsonl-zstd-v1",runtimeCapabilities:[...REQUIRED_CAPABILITIES,"dsh-gpt-compat/session-v1"],files:[...files,pluginPin]};

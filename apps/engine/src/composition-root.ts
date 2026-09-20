@@ -1,4 +1,7 @@
 import { BusinessPageRegistry } from "./business-pages.js";
+import { AdapterCatalog } from './adapter-catalog.js';
+import { CodexMirrorPolicy } from './codex-mirror-policy.js';
+import { checkCodexEnvironment } from './codex-environment-check.js';
 import { InstanceWorkspaceRuntime } from "./instance-workspace-runtime.js";
 import { adapter as v3Adapter } from "@linmu/dsh-session-extension-gpt-compat";
 import { SqliteExtensionRepository } from "@linmu/dsh-session-store";
@@ -63,6 +66,7 @@ import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
 import { InstanceIntegrationService } from "./integrations/service.js";
 import { WorkspaceSyncPolicyService } from "./integrations/sync-policy.js";
 import { discoverLauncherIntegrations } from "./integrations/launcher-discovery.js";
+import { discoverStandaloneInstances } from './integrations/standalone.js';
 import { readLauncherInstanceDirectory } from "./integrations/launcher-instance-directory.js";
 import { registerCodexSource, withDefaultCodexSource } from "./integrations/codex-sources.js";
 import type { IntegrationInstallOptions } from "./integrations/launcher-install.js";
@@ -78,6 +82,7 @@ function adapterWorkerEntryPoint(packageName: string, bundledFilename: string): 
 }
 
 export interface CompositionOptions {
+  readonly inspectCodexEnvironment?: typeof checkCodexEnvironment;
   readonly extensionAdapters?: readonly import("@linmu/dsh-session-contracts").ExtensionDataAdapter[];
   readonly stateRoot: string;
   readonly ownerMode?: "engine" | "offline";
@@ -157,6 +162,8 @@ async function createComposition(
   await initializeStateRoot(options.stateRoot);
   await mkdir(join(options.stateRoot, "objects"), { recursive: true });
   const config = await loadConfig(options.stateRoot);
+  const adapterCatalog = new AdapterCatalog(options.stateRoot);
+  const installedAdapters = await adapterCatalog.load();
   const objectStore = new ZstdContentObjectStore(options.stateRoot);
   const metadataPath = activeDatabasePath(options.stateRoot, config);
   const repository = new SqliteSessionRepository(
@@ -169,6 +176,8 @@ async function createComposition(
   const instances: RegisteredInstance[] = [...registeredInstances(config)];
   const readAdapters = adapters(options.fixturePolicy);
   const codexReader = readAdapters.find(adapter => adapter.platform === "codex")!;
+  const codexMirror = new CodexMirrorPolicy(options.stateRoot, preferences => (options.inspectCodexEnvironment ?? checkCodexEnvironment)(preferences, instances, codexReader));
+  await codexMirror.initialize();
   const defaultCodexHome = options.integrationEnvironment === undefined
     ? process.env.CODEX_HOME?.trim() || join(homedir(), ".codex")
     : options.integrationEnvironment.codexHome;
@@ -220,6 +229,7 @@ async function createComposition(
     },
   ];
   for (const { adapter, generationId, packageName, workerFile } of builtinAdapters) {
+    if (installedAdapters.entries.some(item => item.kind === 'instance' && item.id === adapter.manifest.id)) continue;
     await adapterRegistry.register({
       manifest: adapter.manifest,
       source: {
@@ -232,6 +242,10 @@ async function createComposition(
     }, adapter);
   }
   coordinateAsyncMethods(adapterRegistry, ["register", "select"], writes, "adapter-registration");
+  for (const { entry, adapter } of installedAdapters.instances) {
+    if (adapterRegistry.list().some(item => item.manifest.id === entry.id)) throw new Error(`Installed adapter conflicts with a bundled adapter: ${entry.id}`);
+    await adapterRegistry.register({ manifest: adapter.manifest, source: { kind: 'local', directory: entry.directory, entryPoint: entry.worker! }, enabled: true }, adapter);
+  }
   const projectionRunRepository = coordinateAsyncMethods(new SqliteProjectionRunRepository(repository.database), ["createProjectionRun", "setProjectionRunState", "setProjectionRunCheckpoint", "upsertProjectionSession", "saveOperationReceipt"], writes, "projection-state");
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
   let composedEngine: SessionMaintenanceEngine | undefined;
@@ -245,7 +259,7 @@ async function createComposition(
       .all() as { id: string; archived_at: string | null }[];
     for (const row of rows) graphLifecycle.reconcileSessionArchive(row.id, row.archived_at);
   });
-  const resolveSourceAdapter: SourceAdapterResolver = event => builtinAdapters.map(item => item.adapter).find(owner => event.id.startsWith(`${owner.manifest.id}:`) || (typeof event.content === "object" && event.content !== null && !Array.isArray(event.content) && typeof (event.content as Readonly<Record<string, unknown>>).sourceKind === "string" && String((event.content as Readonly<Record<string, unknown>>).sourceKind).startsWith(`${owner.manifest.id}/`)));
+  const resolveSourceAdapter: SourceAdapterResolver = event => adapterRegistry.list().flatMap(item => { const adapter = adapterRegistry.resolveRuntimeAdapter(item.manifest.id); return adapter ? [adapter] : []; }).find(owner => event.id.startsWith(`${owner.manifest.id}:`) || (typeof event.content === "object" && event.content !== null && !Array.isArray(event.content) && typeof (event.content as Readonly<Record<string, unknown>>).sourceKind === "string" && String((event.content as Readonly<Record<string, unknown>>).sourceKind).startsWith(`${owner.manifest.id}/`)));
   const canonicalEngine = coordinateAsyncMethods(new CanonicalSessionEngine(
     new SqliteCanonicalSessionEngineStore(repository.database, objectStore, writes,
       session => { if (!session.tombstonedAt) graphLifecycle.reconcileSessionArchive(session.id, session.archivedAt); }, instanceWorkspaceRuntime.assertMutationAllowed),
@@ -265,6 +279,8 @@ async function createComposition(
   const projectScope: NonNullable<CodexCanonicalImportOptions["projectScope"]> = instance => codexProjectMapping.readScope(instance);
   const codexImports = createCodexImports(projectScope);
   const codexProjectObserver = new CodexProjectObserver({ instances, projectScope, importService: codexImports,
+    allowed: async () => (await codexMirror.check()).active.background && codexMirror.status().active.mirror,
+    selectedInstanceId: () => codexMirror.status().preferences.instanceId,
     onStatus: status => { codexProjectMapping.setObserverStatus(status); },
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
@@ -316,13 +332,17 @@ async function createComposition(
   composedEngine = new SessionMaintenanceEngine({
     businessPages,
     instanceWorkspace: instanceWorkspaceRuntime.createService(),
-    extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), options.extensionAdapters ?? builtInExtensionAdapters, (sessionId, versionId) => canonicalProjectionSource.loadVersionEvents(sessionId, versionId)),
+    adapterCatalog,
+    extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), [...(options.extensionAdapters ?? builtInExtensionAdapters).filter(adapter => !installedAdapters.entries.some(entry => entry.kind === 'business' && entry.namespace === adapter.namespace)), ...installedAdapters.business], (sessionId, versionId) => canonicalProjectionSource.loadVersionEvents(sessionId, versionId)),
     codexProjectMapping,
     codexProjectObserver,
+    codexMirror,
     beforeProjectionPrepare: async () => {
+      if (!codexMirror.status().preferences.mirror) return;
+      if (!(await codexMirror.check()).active.mirror) return;
       await codexProjectMapping.activateForStartup(async policy => {
         const importer = createCodexImports(instance => codexProjectMapping.readScope(instance, policy));
-        const instanceIds = instances.filter(instance => instance.platform === "codex").map(instance => instance.id);
+        const instanceIds = instances.filter(instance => instance.platform === 'codex' && instance.id === codexMirror.status().preferences.instanceId).map(instance => instance.id);
         if (instanceIds.length > 0) await importer.run({ operationId: `mapping-startup-${crypto.randomUUID()}`, instanceIds, mode: "content" });
       });
       codexImports.clearChangeCache();
@@ -332,6 +352,7 @@ async function createComposition(
       discover: async () => {
         const sources = await withDefaultCodexSource(instances, defaultCodexHome);
         const discovered = await discoverLauncherIntegrations(options.integrationEnvironment?.launcherDataRoot ?? join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "in.dsh-plug.dsh-launcher"), sources, instance => codexReader.probe(instance));
+        discovered.targets.push(...await discoverStandaloneInstances(options.stateRoot));
         return { ...discovered, targets: discovered.targets.map(target => target.target.kind === "codex"
           ? { ...target, codexRegistered: instances.some(instance => instance.platform === "codex" && instance.id === target.instanceId) }
           : target) };

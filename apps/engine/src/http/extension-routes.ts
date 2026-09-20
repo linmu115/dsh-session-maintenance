@@ -12,6 +12,14 @@ export async function routeExtensionRequest(request: IncomingMessage, response: 
   if (!service) throw new ExtensionDataError("EXTENSION_UNAVAILABLE", "扩展数据模块不可用。",503);
   const send = (value: unknown) => { response.statusCode=200; response.setHeader("content-type","application/json; charset=utf-8"); response.end(JSON.stringify(value)); };
   const query = Object.fromEntries(url.searchParams);
+  if (request.method === 'GET' && url.pathname === '/v1/extensions/adapters') {
+    send(await engine.adapterCatalog?.discover() ?? { entries: [], issues: [], requiresRestart: true }); return true;
+  }
+  if (request.method === 'POST' && url.pathname === '/v1/extensions/adapters/enabled') {
+    const body = z.object({ id: z.string().min(1).max(100), enabled: z.boolean() }).strict().parse(await readJsonBody(request));
+    if (!engine.adapterCatalog) throw new ExtensionDataError('ADAPTER_CATALOG_UNAVAILABLE', 'Adapter discovery is unavailable', 503);
+    send(await engine.runWrite('adapter-configuration', () => engine.adapterCatalog!.setEnabled(body.id, body.enabled))); return true;
+  }
   if (request.method === "GET") {
     // Navigation must not wait for GPT event decoding. Refresh its derived index
     // only for a GPT data request; other namespaces have independent ownership.

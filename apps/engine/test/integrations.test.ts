@@ -7,6 +7,7 @@ import { createFixtureSandbox } from "../../../packages/test-support/src/index.j
 import { MaintenanceWriteCoordinator } from "@linmu/dsh-session-store";
 import type { CanonicalWorkspaceDirectory } from "@linmu/dsh-session-contracts";
 import { discoverLauncherIntegrations } from "../src/integrations/launcher-discovery.js";
+import { discoverStandaloneInstances } from '../src/integrations/standalone.js';
 import { InstanceIntegrationService } from "../src/integrations/service.js";
 import { readIntegrationBindings, integrationBindingsPath } from "../src/integrations/bindings.js";
 import { resolveRuntimeIntegration } from "../src/integrations/runtime-binding.js";
@@ -62,6 +63,30 @@ async function fixture(withPlugin = true) {
 }
 
 describe("instance onboarding", () => {
+  it('registers, rechecks and deregisters a standalone profile without Launcher files or hooks', async () => {
+    const f = await fixture();
+    await unlink(join(f.dataRoot, 'config.json'));
+    await unlink(join(f.dataRoot, 'external-lifecycle-capabilities.json'));
+    const service = new InstanceIntegrationService({ stateRoot: f.stateRoot, writes: f.writes,
+      discover: async () => ({ launcherDetected: false, targets: await discoverStandaloneInstances(f.stateRoot) }),
+      installation: f.installation, verifyAdapter: f.verifyAdapter });
+    const directory = await service.registerStandalone({ schemaVersion: 1, instanceId: 'plain-instance', profileId: 'web',
+      name: 'Standalone', runtimeVersion: '0.1.2-rc.1', homeRoot: f.homeRoot, versionRoot: f.versionRoot, runtimeUrl: 'http://127.0.0.1:19876' });
+    expect(directory.launcherDetected).toBe(false);
+    expect(directory.targets[0]?.status).toBe('connected');
+    const binding = (await readIntegrationBindings(f.stateRoot))[0]!;
+    expect(binding.launcherDataRoot).toBeNull();
+    expect(await resolveRuntimeIntegration(f.stateRoot, { schemaVersion: 1, phase: 'prepare', instanceId: 'plain-instance', profileId: 'web', runtimeVersion: '0.1.2-rc.1', web: true })).toMatchObject({ adapterId: 'dsh-rc1' });
+    await expect(service.registerStandalone({ schemaVersion: 1, instanceId: 'plain-instance', profileId: 'web',
+      name: 'Changed', runtimeVersion: '0.1.2-rc.1', homeRoot: f.homeRoot, versionRoot: f.versionRoot, runtimeUrl: 'http://127.0.0.1:19876' })).rejects.toThrow('已注册');
+    const blocked = new InstanceIntegrationService({ stateRoot: f.stateRoot, writes: f.writes, discover: async () => ({ launcherDetected: false, targets: [] }),
+      installation: f.installation, verifyAdapter: f.verifyAdapter, recoveryRuns: async () => [{ id: 'pending', state: 'quarantined', startedAt: new Date().toISOString() }] });
+    await expect(blocked.action(binding.targetId, 'disconnect')).rejects.toThrow('收尾回执');
+    expect(await readIntegrationBindings(f.stateRoot)).toHaveLength(1);
+    await service.action(binding.targetId, 'disconnect');
+    expect(await readIntegrationBindings(f.stateRoot)).toEqual([]);
+    await expect(readFile(join(f.dataRoot, 'config.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
   it("accepts the current plugin declaration through the general release gate and rejects unlisted versions", async () => {
     const f = await fixture();
     const version = JSON.parse(await readFile(new URL("../../../plugins/dsh-session-maintenance/package.json", import.meta.url), "utf8")).version;
@@ -129,7 +154,8 @@ describe("instance onboarding", () => {
     const request = { schemaVersion: 1, phase: "prepare", instanceId: "instance-a", profileId: "web", runtimeVersion: "0.1.5-rc.2", web: true } as const;
     expect(await resolveRuntimeIntegration(f.stateRoot, request)).toMatchObject({ adapterId, runtimeCapabilities: capabilities, coreBinding: { path: coreBinding } });
     await json(attestationPath, { ...receipt, engineVersion: "0.1.33-rc2.999" });
-    expect((await f.discover()).targets[0]!.target.status).toBe("unsupported");
+    // Engine display versions do not determine host compatibility; changing the receipt still requires rechecking the binding.
+    expect((await f.discover()).targets[0]!.target.status).toBe("available");
     await expect(resolveRuntimeIntegration(f.stateRoot, request)).rejects.toMatchObject({ code: "INTEGRATION_RECHECK_REQUIRED" });
     await json(attestationPath, receipt);
     await writeFile(f.engineEntry, "changed synthetic engine");

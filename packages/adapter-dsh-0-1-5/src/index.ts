@@ -1,4 +1,6 @@
 import { defineDshSessionAdapter } from "@linmu/dsh-session-adapter-sdk";
+import { V3RuntimeBridge, bindV3NativeAppend } from './runtime-bridge.js';
+import { recoverV3RuntimeTail } from './runtime-tail-recovery.js';
 import { v3SessionContext } from "./session-context.js";
 import { v3SessionGraph } from "./session-graph.js";
 
@@ -41,6 +43,7 @@ export { readDshReaderPresentation, type DshReaderPresentation } from "./reader-
 
 
 export const adapter = defineDshSessionAdapter({
+  runtime: { createBridge: registrar => new V3RuntimeBridge(registrar), bindAppend: bindV3NativeAppend, recoverTail: recoverV3RuntimeTail },
   sessionContext: v3SessionContext,
   sessionGraph: v3SessionGraph,
   manifest,

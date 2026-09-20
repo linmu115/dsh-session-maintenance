@@ -1,8 +1,11 @@
 export * from "./manifest.js";
 export * from "./adapter.js";
+export * from "./business-adapter.js";
 export * from "./runtime-bridge.js";
 export * from "./conformance.js";
 export * from "./logical-digest.js";
+export { adapterPackageSchema } from '@linmu/dsh-session-contracts';
+export type { AdapterPackage, ExtensionDataAdapter, ExtensionContent, ExtensionScope } from '@linmu/dsh-session-contracts';
 
 export type {
   NativeSessionCodec,
@@ -47,3 +50,5 @@ export {
   RUNTIME_MANAGED_PROJECT_DIRECTORY,
   runtimeManagedProjectSegment,
 } from "@linmu/dsh-session-contracts";
+
+export type { InstanceHostIntegration, DiscoveredIntegration, StandaloneInstance, RuntimeAdapterHooks } from "@linmu/dsh-session-contracts";

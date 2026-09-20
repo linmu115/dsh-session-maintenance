@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { integrationActionRequestSchema, workspaceSyncUpdateSchema } from "@linmu/dsh-session-contracts";
+import { integrationActionRequestSchema, workspaceSyncUpdateSchema, standaloneInstanceSchema } from "@linmu/dsh-session-contracts";
 import type { InstanceIntegrationService } from "../integrations/service.js";
 import type { WorkspaceSyncPolicyService } from "../integrations/sync-policy.js";
 import { IntegrationError } from "../integrations/bindings.js";
@@ -13,6 +13,10 @@ export async function routeIntegrationRequest(request: IncomingMessage, response
   codexProjectMapping?: CodexProjectMappingService | undefined;
 }): Promise<boolean> {
   const send = (value: unknown) => { response.statusCode = 200; response.setHeader("content-type", "application/json; charset=utf-8"); response.end(`${JSON.stringify(value)}\n`); };
+  if (url.pathname === '/v1/integrations/standalone' && request.method === 'POST') {
+    if (!input.integrations) throw new IntegrationError('INTEGRATION_UNAVAILABLE', '接入管理尚未就绪。', 503);
+    send({ directory: await input.integrations.registerStandalone(standaloneInstanceSchema.parse(await readJsonBody(request))) }); return true;
+  }
   if (url.pathname === "/v1/codex-project-mapping" && ["GET", "PATCH"].includes(request.method ?? "")) {
     if (input.codexProjectMapping === undefined) throw new IntegrationError("MAPPING_UNAVAILABLE", "此引擎尚未配置 Codex 项目映射。", 503);
     send({ configuration: request.method === "GET" ? await input.codexProjectMapping.get() : await input.codexProjectMapping.save(codexProjectMappingUpdateSchema.parse(await readJsonBody(request))) }); return true;

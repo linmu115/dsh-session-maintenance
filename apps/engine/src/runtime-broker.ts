@@ -1,4 +1,4 @@
-import { createRuntimeBridge, bindNativeAppend as bindV3NativeAppend, recoverRuntimeTail as recoverV3RuntimeTail, manifest as v3Manifest } from "@linmu/dsh-session-extension-gpt-compat";
+import type { DshSessionAdapterV1, ProjectionRun, RuntimeAdapterRegistrar } from '@linmu/dsh-session-contracts';
 import { createHash } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
@@ -32,20 +32,6 @@ import type {
   RuntimeHandle,
   RunId,
 } from "@linmu/dsh-session-contracts";
-import {
-  Alpha2RuntimeBridge,
-  recoverAlpha2RuntimeTail,
-  manifest as alpha2Manifest,
-  type Alpha2RuntimeRegistrar,
-  type Alpha2RuntimeRegistration,
-} from "@linmu/dsh-session-adapter-alpha2";
-import {
-  Rc1RuntimeBridge,
-  recoverRc1RuntimeTail,
-  manifest as rc1Manifest,
-  type Rc1RuntimeRegistrar,
-  type Rc1RuntimeRegistration,
-} from "@linmu/dsh-session-adapter-rc1";
 import type {
   PreparedProjectionRunHandle,
   ProjectionLifecycle,
@@ -94,7 +80,7 @@ interface BrokerRun {
   managedProjectsByCwd: Map<string, LogicalProjectId> | null;
 }
 
-class BrokerRuntimeRegistrar implements Alpha2RuntimeRegistrar, Rc1RuntimeRegistrar {
+class BrokerRuntimeRegistrar implements RuntimeAdapterRegistrar {
   private acknowledgement: RuntimeBrokerAttachRunRequest | null = null;
 
   acknowledge(input: RuntimeBrokerAttachRunRequest): void {
@@ -102,7 +88,7 @@ class BrokerRuntimeRegistrar implements Alpha2RuntimeRegistrar, Rc1RuntimeRegist
     this.acknowledgement = input;
   }
 
-  async attach(input: { readonly runId: RunId }): Promise<Alpha2RuntimeRegistration & Rc1RuntimeRegistration> {
+  async attach(input: { readonly runId: RunId }): Promise<{ registrationId: string; attachedAt: string }> {
     const acknowledgement = this.acknowledgement;
     if (acknowledgement === null || acknowledgement.runId !== input.runId) {
       throw new Error(`Runtime attach acknowledgement is missing: ${input.runId}`);
@@ -118,13 +104,6 @@ class BrokerRuntimeRegistrar implements Alpha2RuntimeRegistrar, Rc1RuntimeRegist
   }
 
   async detach(_registrationId: string, _runId: RunId): Promise<void> {}
-}
-
-function runtimeBridge(adapterId: AdapterId, registrar: BrokerRuntimeRegistrar): DshRuntimeBridgeV1 {
-  if (adapterId === alpha2Manifest.id) return new Alpha2RuntimeBridge(registrar);
-  if (adapterId === v3Manifest.id) return createRuntimeBridge(registrar);
-  if (adapterId === rc1Manifest.id) return new Rc1RuntimeBridge(registrar);
-  throw new Error(`Runtime Broker event/flush protocol is not available for adapter ${adapterId}`);
 }
 
 function assertOwner(run: BrokerRun, clientId: string): void {
@@ -153,9 +132,13 @@ export class ProjectionRuntimeBroker {
   private readonly projectResolver: RuntimeProjectResolver;
   private readonly workspaceRegistration: Pick<RuntimeWorkspaceRegistration, "resolve"> | undefined;
   private readonly clock: () => string;
+  private readonly resolveAdapter: (id: AdapterId) => DshSessionAdapterV1 | undefined;
+  private readonly readRun: (id: RunId) => Promise<ProjectionRun | undefined>;
   private readonly runs = new Map<RunId, BrokerRun>();
 
   constructor(input: {
+    readonly resolveAdapter: (id: AdapterId) => DshSessionAdapterV1 | undefined;
+    readonly readRun: (id: RunId) => Promise<ProjectionRun | undefined>;
     readonly lifecycleFactory: RuntimeBrokerLifecycleFactory;
     readonly selectAdapter: RuntimeBrokerAdapterSelector;
     readonly statusLog: StatusLog;
@@ -163,6 +146,8 @@ export class ProjectionRuntimeBroker {
     readonly workspaceRegistration?: Pick<RuntimeWorkspaceRegistration, "resolve">;
     readonly clock?: () => string;
   }) {
+    this.resolveAdapter = input.resolveAdapter;
+    this.readRun = input.readRun;
     this.lifecycleFactory = input.lifecycleFactory;
     this.selectAdapter = input.selectAdapter;
     this.statusLog = input.statusLog;
@@ -175,6 +160,11 @@ export class ProjectionRuntimeBroker {
     const run = this.runs.get(runId);
     return run !== undefined && run.active !== null && !run.closing;
   }
+  assertRunReady(runId: RunId, clientId: string): void {
+    const run = this.runs.get(runId);
+    if (!run || !this.isRunActive(runId)) throw new Error('Maintenance run is not ready; recover the registered instance before writing');
+    assertRuntime(run, clientId);
+  }
 
   async prepareRun(input: RuntimeBrokerPrepareRunRequest): Promise<RuntimeBrokerPreparedRun> {
     if (input.projectSelection.kind !== "all") {
@@ -185,7 +175,7 @@ export class ProjectionRuntimeBroker {
     }
     const adapterId = await this.selectAdapter(input);
     const registrar = new BrokerRuntimeRegistrar();
-    const bridge = runtimeBridge(adapterId, registrar);
+    const bridge = this.runtimeHooks(adapterId).createBridge(registrar);
     const lifecycle = this.lifecycleFactory({ adapterId, bridge });
     const prepared = await lifecycle.prepareRun({
       instanceId: input.instanceId,
@@ -254,9 +244,8 @@ export class ProjectionRuntimeBroker {
     if (run.closing || run.active === null) throw new Error(`Runtime Broker run is not accepting appends: ${operation.runId}`);
     const received = await this.startSpan(run, "runtime.event.received", operation.nativeSessionId, operation.operationId);
     await this.statusLog.succeed(received, { diagnosticDetailRef: "diag:runtime-event-enqueued" });
-    const boundOperation = run.adapterId === v3Manifest.id
-      ? await bindV3NativeAppend(operation, run.prepared.run, new JsonProjectionDirectory(run.prepared.projectionRoot))
-      : operation;
+    const bind = this.runtimeHooks(run.adapterId).bindAppend;
+    const boundOperation = bind ? await bind(operation, run.prepared.run, new JsonProjectionDirectory(run.prepared.projectionRoot)) : operation;
     const promise = run.lifecycle.append(run.active, boundOperation);
     const pending = run.pendingBySession.get(operation.nativeSessionId) ?? new Set<Promise<unknown>>();
     pending.add(promise);
@@ -420,14 +409,11 @@ export class ProjectionRuntimeBroker {
     }
 
     const registrar = new BrokerRuntimeRegistrar();
-    const probeBridge = new Alpha2RuntimeBridge(registrar);
-    const probeLifecycle = this.lifecycleFactory({ adapterId: alpha2Manifest.id, bridge: probeBridge });
-    const persistedRun = await probeLifecycle.runRepository.getProjectionRun(input.runId);
-    const adapterId = persistedRun?.adapterId ?? alpha2Manifest.id;
-    const bridge = adapterId === alpha2Manifest.id ? probeBridge : runtimeBridge(adapterId, registrar);
-    const lifecycle = adapterId === alpha2Manifest.id
-      ? probeLifecycle
-      : this.lifecycleFactory({ adapterId, bridge });
+    const persistedRun = await this.readRun(input.runId);
+    if (!persistedRun) throw new Error(`Projection run does not exist: ${input.runId}`);
+    const adapterId = persistedRun.adapterId;
+    const bridge = this.runtimeHooks(adapterId).createBridge(registrar);
+    const lifecycle = this.lifecycleFactory({ adapterId, bridge });
     const projectionRoot = projectionRootFor(lifecycle.runtimeRoot, input.runId);
     const descriptor = await readProjectionRecoveryDescriptor(projectionRoot);
     if (persistedRun?.state === "preparing" && !descriptor.nativeSpace) {
@@ -449,6 +435,12 @@ export class ProjectionRuntimeBroker {
     });
     const receipt = await this.recoverLifecycle(lifecycle, input.runId, adapterId);
     return { schemaVersion: 1, runId: input.runId, state: receipt.state, removedProjection: true };
+  }
+
+  private runtimeHooks(id: AdapterId) {
+    const hooks = this.resolveAdapter(id)?.runtime;
+    if (!hooks) throw new Error(`Runtime Broker event/flush protocol is not available for adapter ${id}`);
+    return hooks;
   }
 
   private run(runId: RunId): BrokerRun {
@@ -473,11 +465,7 @@ export class ProjectionRuntimeBroker {
   ) {
     if (!recoverRuntimeTail) return lifecycle.recover(runId);
     const projectionRun = await lifecycle.runRepository?.getProjectionRun(runId);
-    const recoverRuntimeTailForAdapter = adapterId === v3Manifest.id ? recoverV3RuntimeTail : adapterId === rc1Manifest.id
-      ? recoverRc1RuntimeTail
-      : adapterId === alpha2Manifest.id
-        ? recoverAlpha2RuntimeTail
-        : undefined;
+    const recoverRuntimeTailForAdapter = this.runtimeHooks(adapterId).recoverTail;
     if (recoverRuntimeTailForAdapter === undefined) {
       throw new Error(`Runtime tail recovery is not available for adapter ${adapterId}`);
     }

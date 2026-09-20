@@ -1,0 +1,14 @@
+{
+  "protocolVersion": 1,
+  "packageId": "dsh-session-maintenance",
+  "version": "0.2.26-rc2.34",
+  "entries": [
+    {
+      "kind": "instance",
+      "id": "dsh-0.1.5",
+      "engine": "lib/adapter/index.mjs",
+      "worker": "lib/adapter/rpc-worker.mjs",
+      "dsh": "lib/index.js"
+    }
+  ]
+}

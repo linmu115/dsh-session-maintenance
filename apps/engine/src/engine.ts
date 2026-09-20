@@ -123,6 +123,8 @@ import { JobStore } from "./jobs/job-store.js";
 import type { CodexImportService } from "./codex-import-service.js";
 import type { CodexProjectMappingService } from "./codex-project-mapping.js";
 import type { CodexProjectObserver } from "./codex-project-observer.js";
+import type { AdapterCatalog } from './adapter-catalog.js';
+import type { CodexMirrorPolicy } from './codex-mirror-policy.js';
 import type { RetentionService } from "./retention-service.js";
 import type { WriteService } from "./write-service.js";
 import { SessionMaintenanceCommands } from "./session-maintenance-commands.js";
@@ -244,6 +246,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly businessPages: BusinessPageRegistry | undefined;
   readonly codexProjectMapping: CodexProjectMappingService | undefined;
   readonly codexProjectObserver: CodexProjectObserver | undefined;
+  readonly adapterCatalog: AdapterCatalog | undefined;
+  readonly codexMirror: CodexMirrorPolicy | undefined;
   readonly jobs: JobRunner;
   readonly jobStore: JobStore;
   private readonly codexImports: CodexImportService | undefined;
@@ -295,6 +299,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly businessPages?: BusinessPageRegistry;
     readonly codexProjectMapping?: CodexProjectMappingService;
     readonly codexProjectObserver?: CodexProjectObserver;
+    readonly adapterCatalog?: AdapterCatalog;
+    readonly codexMirror?: CodexMirrorPolicy;
   }) {
     this.integrations = input.integrations;
     this.workspaceSync = input.workspaceSync;
@@ -302,6 +308,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.businessPages = input.businessPages;
     this.codexProjectMapping = input.codexProjectMapping;
     this.codexProjectObserver = input.codexProjectObserver;
+    this.adapterCatalog = input.adapterCatalog;
+    this.codexMirror = input.codexMirror;
     this.writes = input.writes;
     this.retention = input.retention;
     this.extensions = input.extensions;
@@ -344,6 +352,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.resolveProjectionAdapter = input.resolveProjectionAdapter ?? (() => undefined);
     this.beforeProjectionPrepare = input.beforeProjectionPrepare ?? (async () => undefined);
     this.runtimeBroker = new ProjectionRuntimeBroker({
+      resolveAdapter: this.resolveProjectionAdapter,
+      readRun: id => this.projectionRunRepository.getProjectionRun(id),
       lifecycleFactory: input.projectionLifecycleFactory,
       statusLog: this.statusLog,
       projectResolver: new SqliteRuntimeProjectResolver(input.repository.database),
@@ -370,7 +380,12 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     return this.writes === undefined ? Promise.resolve().then(operation) : this.writes.run(scope, operation);
   }
 
-  importCodex(request: CodexImportRequest, signal?: AbortSignal, progress?: (current: number, message: string) => void | Promise<void>): Promise<JsonValue> {
+  async importCodex(request: CodexImportRequest, signal?: AbortSignal, progress?: (current: number, message: string) => void | Promise<void>): Promise<JsonValue> {
+    await this.codexMirror?.assertMirror();
+    if (this.codexMirror) {
+      const selected = this.codexMirror.status().preferences.instanceId;
+      if (!selected || request.instanceIds.some(id => id !== selected)) throw new Error('镜像请求包含尚未检查的 Codex 来源，请先切换目标并重新检查。');
+    }
     if (this.codexImports === undefined) throw new Error("IMPORT_NOT_AVAILABLE");
     return this.codexImports.run(request, signal, progress);
   }
@@ -385,8 +400,8 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       });
     }
     await this.beforeProjectionPrepare();
-    const instanceIds = this.instances.filter((instance) => instance.platform === "codex").map((instance) => instance.id);
-    if (this.codexImports !== undefined && instanceIds.length > 0) {
+    const instanceIds = this.instances.filter(instance => instance.platform === 'codex' && (!this.codexMirror || instance.id === this.codexMirror.status().preferences.instanceId)).map(instance => instance.id);
+    if (this.codexImports !== undefined && instanceIds.length > 0 && (this.codexMirror === undefined || this.codexMirror.status().active.mirror)) {
       const job = await this.runWrite("job-enqueue", () => this.jobs.enqueueCodexImport({ operationId: `titles-${crypto.randomUUID()}`, instanceIds, mode: "titles" }));
       await this.jobs.waitForImport(job.id);
     }

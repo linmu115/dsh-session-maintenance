@@ -4,6 +4,7 @@ import { routeBusinessPageRequest } from "./business-page-routes.js";
 import { routeInstanceWorkspaceRequest } from "./instance-workspace-routes.js";
 import { routeLearning } from "./learning-routes.js";
 import { ExtensionDataError } from "@linmu/dsh-session-contracts";
+import { codexMirrorPreferencesSchema, runtimeBrokerReadyRequestSchema } from '@linmu/dsh-session-contracts';
 import { routeExtensionRequest } from "./extension-routes.js";
 import { routeSessionReader } from "./session-reader-routes.js";
 import { routeSessionContext } from "./session-context-routes.js";
@@ -286,6 +287,17 @@ export async function routeRequest(
     if (await routeInstanceWorkspaceRequest(request, response, url, context.engine)) return;
     if (await routeBusinessPageRequest(request, response, url, {businessPages:context.engine.businessPages,hostAuthenticated:bearer})) return;
     if (await routeExtensionRequest(request, response, url, context.engine)) return;
+    if (url.pathname === '/v1/codex-mirror' || url.pathname === '/v1/codex-mirror/check') {
+      const policy = context.engine.codexMirror;
+      if (!policy) throw new HttpBodyError(503, 'Codex mirror policy is unavailable');
+      if (request.method === 'GET' && url.pathname === '/v1/codex-mirror') { send(response, 200, policy.status()); return; }
+      if (request.method === 'POST') {
+        const preferences = url.pathname.endsWith('/check') ? undefined : codexMirrorPreferencesSchema.parse(await readJsonBody(request));
+        const status = preferences === undefined ? await policy.check() : await context.engine.runWrite('codex-mirror-settings', () => policy.configure(preferences));
+        if (status.active.background) await context.engine.codexProjectObserver?.start(); else await context.engine.codexProjectObserver?.stop();
+        send(response, 200, status); return;
+      }
+    }
     if (await routeSessionReader(request, response, url, context.engine)) return;
     if (await routeNativeContext(request, response, url, context.engine, !bearer)) return;
     if (await routeSessionContext(request, response, url, context.engine)) return;
@@ -307,6 +319,14 @@ export async function routeRequest(
     if (request.method === "POST" && url.pathname === "/v1/runtime-broker/runs/prepare") {
       const body = runtimeBrokerPrepareSchema.parse(await readJsonBody(request));
       send(response, 201, { run: await context.engine.prepareProjectionRuntimeRun(body as never) });
+      return;
+    }
+    const runtimeReady = /^\/v1\/runtime-broker\/runs\/([^/]+)\/ready$/u.exec(url.pathname);
+    if (request.method === 'POST' && runtimeReady !== null) {
+      const body = runtimeBrokerReadyRequestSchema.parse(await readJsonBody(request));
+      if (decodeURIComponent(runtimeReady[1]!) !== body.runId) throw new HttpBodyError(400, 'runId path/body mismatch');
+      context.engine.runtimeBroker.assertRunReady(body.runId as never, body.clientId);
+      send(response, 200, { schemaVersion: 1, runId: body.runId, ready: true });
       return;
     }
     const runtimeBrokerAttach = /^\/v1\/runtime-broker\/runs\/([^/]+)\/attach$/u.exec(url.pathname);

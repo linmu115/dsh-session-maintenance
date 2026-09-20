@@ -2,11 +2,8 @@ import { spawn } from "node:child_process";
 import { access, mkdir, readFile, readdir } from "node:fs/promises";
 import { createServer } from "node:http";
 import { join, resolve } from "node:path";
-import { DatabaseSync } from "node:sqlite";
-import { setTimeout as delay } from "node:timers/promises";
 import { afterEach, expect, it, vi } from "vitest";
 import { assertFixtureSandbox } from "../../../packages/test-support/src/index.js";
-import { engineConnectionDescriptorSchema } from "@linmu/dsh-session-contracts";
 import { createEngineFixture } from "./helpers.js";
 import { loadConfig, registeredInstances } from "../src/config.js";
 
@@ -96,51 +93,15 @@ async function externalLifecycle(stateRoot: string, request: unknown) {
   } finally { clearTimeout(timer); }
 }
 
-it("cold-starts the CLI through defaultStartEngine and completes prepare/abort without requeuing its new title job", async () => {
-  const fixture = await createEngineFixture("default-cold-start-SYNTHETIC");
-  // Keep catalog observation in flight long enough to expose the former Windows
-  // ACL/publication window. No user state, process launch or connection is mocked.
-  const source = new DatabaseSync(join(fixture.codexHome, "state_5.sqlite"));
-  try {
-    const columns = (source.prepare("PRAGMA table_info(threads)").all() as { name: string }[]).map((column) => column.name);
-    const insert = source.prepare(`INSERT INTO threads (${columns.join(",")}) SELECT ${columns.map((name) => name === "id" ? "?" : name).join(",")} FROM threads WHERE id='thread-fixture'`);
-    source.exec("BEGIN");
-    for (let index = 0; index < 200; index += 1) insert.run(`cold-synthetic-${index}`);
-    source.exec("COMMIT");
-  } finally { source.close(); }
+it("refuses to auto-start Maintenance from the lifecycle CLI and leaves the instance stopped", async () => {
+  const fixture = await createEngineFixture("explicit-engine-start-SYNTHETIC");
   await fixture.stop();
-  cleanups.push(async () => {
-    assertFixtureSandbox(fixture.stateRoot);
-    let owner: { pid: number; ownerId: string } | undefined;
-    try { owner = JSON.parse(await readFile(join(fixture.stateRoot, "maintenance-writer.json"), "utf8")); } catch {}
-    if (owner !== undefined) {
-      expect(Number.isSafeInteger(owner.pid) && owner.pid > 0 && owner.pid !== process.pid).toBe(true);
-      // Only the Engine owning this marked test root is terminated. No live
-      // owner recovery or real-home cleanup is used by this regression.
-      try { process.kill(owner.pid, "SIGTERM"); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error; }
-      for (let attempt = 0; attempt < 100; attempt += 1) {
-        try { process.kill(owner.pid, 0); } catch (error) { if ((error as NodeJS.ErrnoException).code === "ESRCH") break; throw error; }
-        await delay(10);
-      }
-    }
-    await fixture.cleanup();
-  });
-  await expect(access(join(fixture.stateRoot, "connection.json"))).rejects.toThrow();
-  await expect(access(join(fixture.stateRoot, "maintenance-writer.json"))).rejects.toThrow();
-  const prepared = await externalLifecycle(fixture.stateRoot, {
+  cleanups.push(fixture.cleanup);
+  const result = await externalLifecycle(fixture.stateRoot, {
     schemaVersion: 1, phase: "prepare", instanceId: "cold-synthetic", profileId: "web", runtimeVersion: "0.1.2-rc.1", web: true,
   });
-  expect(prepared.code, prepared.stderr).toBe(0);
-  const response = JSON.parse(prepared.stdout);
-  expect(response).toMatchObject({ enabled: true });
-  const connection = engineConnectionDescriptorSchema.parse(JSON.parse(await readFile(join(fixture.stateRoot, "connection.json"), "utf8")));
-  expect(connection.pid).not.toBe(process.pid);
-  const aborted = await externalLifecycle(fixture.stateRoot, { schemaVersion: 1, phase: "abort", handle: response.handle, reason: "spawn-failed" });
-  expect(aborted.code, aborted.stderr).toBe(0);
-  expect(JSON.parse(aborted.stdout)).toEqual({ schemaVersion: 1, ok: true });
-  const database = new DatabaseSync(join(fixture.stateRoot, "metadata.sqlite"), { readOnly: true });
-  try {
-    const events = database.prepare("SELECT event_json FROM job_events ORDER BY sequence").all().map((row) => JSON.parse(String(row.event_json)).type);
-    expect(events).toEqual(["queued", "running", "progress", "completed"]);
-  } finally { database.close(); }
-}, 30_000);
+  expect(result.code).toBe(1);
+  expect(result.stderr).toContain("请先启动并确认维护服务就绪");
+  await expect(access(join(fixture.stateRoot, "connection.json"))).rejects.toThrow();
+  await expect(access(join(fixture.stateRoot, "maintenance-writer.json"))).rejects.toThrow();
+});

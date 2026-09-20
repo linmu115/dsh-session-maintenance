@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { AdapterCatalog } from './adapter-catalog.js';
+import { managedInstanceRequest, startStandaloneRuntime } from './standalone-runtime.js';
+import { standaloneInstanceSchema } from '@linmu/dsh-session-contracts';
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { MaintenanceWriteCoordinator } from "@linmu/dsh-session-store";
@@ -43,6 +46,7 @@ import { recoverDeadEngineOwner } from "./engine-startup.js";
 import { lifecycleErrorCode, recordEngineLifecycle } from "./engine-lifecycle-log.js";
 
 export interface CliOptions {
+  readonly inspectCodexEnvironment?: CompositionOptions['inspectCodexEnvironment'];
   readonly fixturePolicy?: (root: string) => void;
   readonly stdout?: (text: string) => void;
   readonly stderr?: (text: string) => void;
@@ -134,6 +138,7 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
   const compositionOptions = (): CompositionOptions => ({
     stateRoot: resolve(program.opts<{ stateRoot: string }>().stateRoot),
     ...(options.fixturePolicy === undefined ? {} : { fixturePolicy: options.fixturePolicy }),
+    ...(options.inspectCodexEnvironment === undefined ? {} : { inspectCodexEnvironment: options.inspectCodexEnvironment }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
 
@@ -143,6 +148,17 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
   });
 
   const instance = program.command("instance");
+  program.command('dashboard').description('Issue a short-lived local Dashboard login link').action(async () => {
+    output(stdout, await managedInstanceRequest(compositionOptions().stateRoot, '/v1/ui/launch-code', {}));
+  });
+  const adapter = program.command('adapter');
+  adapter.command('list').option('--json').action(async () => { output(stdout, await new AdapterCatalog(compositionOptions().stateRoot).discover()); });
+  for (const enabled of [true, false]) adapter.command(enabled ? 'enable <id>' : 'disable <id>').action(async (id: string) => {
+    const stateRoot = compositionOptions().stateRoot;
+    const owner = MaintenanceWriteCoordinator.acquire(stateRoot, 'offline');
+    try { output(stdout, await owner.run('adapter-configuration', () => new AdapterCatalog(stateRoot).setEnabled(id, enabled))); }
+    finally { await owner.close(); }
+  });
   instance.command("add")
     .requiredOption("--id <id>")
     .requiredOption("--platform <platform>")
@@ -496,6 +512,32 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
   continuation.command("recover").requiredOption("--id <id>").option("--json").action(async (value: { id: string }) => {
     const engine = await createReadOnlyComposition(compositionOptions());
     try { output(stdout, { continuation: await engine.recoverContinuation(value.id) }); } finally { engine.close(); }
+  });
+
+  const managedInstance = program.command('managed-instance').description('Register and supervise instances without Launcher');
+  managedInstance.command('list').action(async () => output(stdout, await managedInstanceRequest(compositionOptions().stateRoot, '/v1/integrations')));
+  managedInstance.command('register').requiredOption('--file <path>').action(async (value: { file: string }) => {
+    const config = standaloneInstanceSchema.parse(JSON.parse(await readFile(resolve(value.file), 'utf8')));
+    output(stdout, await managedInstanceRequest(compositionOptions().stateRoot, '/v1/integrations/standalone', config));
+  });
+  for (const [command, action] of [['check', 'check'], ['unregister', 'disconnect']] as const) {
+    managedInstance.command(command).requiredOption('--target <id>').action(async (value: { target: string }) => {
+      output(stdout, await managedInstanceRequest(compositionOptions().stateRoot, '/v1/integrations/actions', { targetId: value.target, action }));
+    });
+  }
+  managedInstance.command('start').requiredOption('--instance <id>').option('--profile <id>', 'DSH profile', 'web').action(async (value: { instance: string; profile: string }) => {
+    const code = await startStandaloneRuntime(compositionOptions().stateRoot, value.instance, value.profile, stdout);
+    if (code) throw new Error(`DSH exited with code ${code}; lifecycle receipt has been reconciled.`);
+  });
+  managedInstance.command('stop').requiredOption('--handle <handle>').requiredOption('--runtime-url <origin>').action(async (value: { handle: string; runtimeUrl: string }) => {
+    const provider = new MaintenanceExternalLifecycleProvider(compositionOptions().stateRoot, { requireBinding: true });
+    const response = await provider.handle({ schemaVersion: 1, phase: 'beforeStop', handle: value.handle, runtimeUrl: value.runtimeUrl });
+    if ('action' in response && response.action !== 'wait') throw new Error('正常停止未获准，请恢复服务后重试；不会强制终止。');
+    output(stdout, response);
+  });
+  managedInstance.command('recover').requiredOption('--instance <id>').option('--profile <id>', 'DSH profile', 'web').action(async (value: { instance: string; profile: string }) => {
+    const provider = new MaintenanceExternalLifecycleProvider(compositionOptions().stateRoot, { requireBinding: true });
+    output(stdout, await provider.handle({ schemaVersion: 1, phase: 'recoverBeforeStart', instanceId: value.instance, profileId: value.profile }));
   });
 
   program.command("external-lifecycle")

@@ -127,6 +127,8 @@ export function connectionDescriptorPath(
   // its conventional location keeps the plugin independent from launchers
   // that may filter custom environment variables when they re-spawn DSH.
   if (connectionId !== "primary") return undefined;
+  const stateRoot = environment.DSH_SESSION_MAINTENANCE_STATE_ROOT?.trim();
+  if (stateRoot) return join(stateRoot, 'connection.json');
   const localAppData = environment.LOCALAPPDATA;
   if (localAppData === undefined || localAppData.trim().length === 0) return undefined;
   return join(localAppData, "DSH-Session-Maintenance", "connection.json");

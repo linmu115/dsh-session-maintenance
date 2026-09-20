@@ -1,6 +1,6 @@
 {
   "name": "@linmu/dsh-session-maintenance-engine",
-  "version": "0.1.33-rc2.55",
+  "version": "0.1.33-rc2.56",
   "private": true,
   "type": "module",
   "bin": {
@@ -21,27 +21,30 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@linmu/dsh-session-adapter-alpha2": "workspace:*",
-    "@linmu/dsh-session-adapter-rc1": "workspace:*",
-    "@linmu/dsh-session-adapter-rc2": "workspace:*",
-    "@linmu/dsh-session-adapter-host": "workspace:*",
-    "@linmu/dsh-session-projection-lifecycle": "workspace:*",
     "@linmu/dsh-adapter-codex-continuation": "workspace:*",
     "@linmu/dsh-adapter-codex-read": "workspace:*",
     "@linmu/dsh-adapter-dsh": "workspace:*",
     "@linmu/dsh-adapter-dsh-write": "workspace:*",
+    "@linmu/dsh-canonical-session-engine": "workspace:*",
     "@linmu/dsh-host-gateway": "workspace:*",
+    "@linmu/dsh-session-adapter-0-1-5": "workspace:*",
+    "@linmu/dsh-session-adapter-alpha2": "workspace:*",
+    "@linmu/dsh-session-adapter-host": "workspace:*",
+    "@linmu/dsh-session-adapter-rc1": "workspace:*",
+    "@linmu/dsh-session-adapter-rc2": "workspace:*",
+    "@linmu/dsh-session-adapter-sdk": "workspace:*",
+    "@linmu/dsh-session-continuation-engine": "workspace:*",
     "@linmu/dsh-session-contracts": "workspace:*",
     "@linmu/dsh-session-domain": "workspace:*",
-    "@linmu/dsh-session-continuation-engine": "workspace:*",
-    "@linmu/dsh-canonical-session-engine": "workspace:*",
-    "@linmu/dsh-session-store": "workspace:*",
+    "@linmu/dsh-session-extension-gpt-compat": "workspace:*",
+    "@linmu/dsh-session-projection-lifecycle": "workspace:*",
     "@linmu/dsh-session-status-log": "workspace:*",
+    "@linmu/dsh-session-store": "workspace:*",
     "@linmu/dsh-session-transaction-engine": "workspace:*",
     "commander": "14.0.0",
     "yaml": "2.8.1",
     "zod": "4.1.5",
-    "@linmu/dsh-session-adapter-0-1-5": "workspace:*",
-    "@linmu/dsh-session-extension-gpt-compat": "workspace:*"
+    "@linmu/dsh-instance-integration-dsh": "workspace:*",
+    "@linmu/dsh-session-extension-knowledge": "workspace:*"
   }
 }

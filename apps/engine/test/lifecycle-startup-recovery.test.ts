@@ -125,7 +125,7 @@ it("reads only the selected instance/profile, without modifying its metadata", a
   insert.run("quarantined", "A", "web", "quarantined", previous);
   db.close();
   const before = await readFile(path);
-  expect(await scopedRecoveryRuns(root, "A", "web")).toEqual([{ id: "mine", state: "running", startedAt: previous }]);
+  expect(await scopedRecoveryRuns(root, "A", "web")).toEqual([{ id: "mine", state: "running", startedAt: previous }, { id: 'quarantined', state: 'quarantined', startedAt: previous }]);
   expect(await readFile(path)).toEqual(before);
 });
 

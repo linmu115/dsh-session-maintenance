@@ -44,7 +44,8 @@ describe("Adapter Registry API", () => {
     });
     expect(response.status).toBe(200);
     expect(await response.json()).toMatchObject({
-      adapters: [
+        adapters: [
+          { manifest: { id: "dsh-0.1.5" }, source: { kind: "generation" } },
         { manifest: { id: "dsh-alpha2" }, source: { kind: "generation" } },
         { manifest: { id: "dsh-rc1" }, source: { kind: "generation" } },
         { manifest: { id: "dsh-rc2" }, source: { kind: "generation" } },
@@ -84,7 +85,7 @@ describe("Built-in Adapter registration and runtime composition", () => {
       expect(lifecycle.adapter).toBe(adapter);
       // RC1 decorates the canonical source to restore its lifecycle evidence.
       // Verify the source contract, rather than requiring object identity.
-      const sourceRun = { id: "synthetic-source-probe", branchId: "main" } as never;
+      const sourceRun = { id: "synthetic-source-probe", branchId: "main", instanceId: 'fixture', profileId: 'web' } as never;
       expect(await lifecycle.source.load(sourceRun)).toEqual(await fixture.engine.canonicalProjectionSource.load(sourceRun));
       expect(Object.keys(selection.registration).sort()).toEqual(["enabled", "manifest", "source"]);
     } finally {

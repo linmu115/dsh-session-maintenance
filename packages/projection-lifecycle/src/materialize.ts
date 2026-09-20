@@ -256,8 +256,19 @@ export class JsonProjectionDirectory implements ProjectionWriter, ProjectionRead
     runId: RunId,
     canonicalUpdatedAtByNativeSessionId: ReadonlyMap<string, string> = new Map(),
   ): Promise<ProjectionRuntimeCatalogSidecar> {
-    const sessions: ProjectionRuntimeCatalogEntry[] = [];
-    for (const nativeSessionId of await this.listNativeSessionIds()) {
+    // A run overlays a shared cache which may have advanced after a crash. Keep
+    // its pinned inherited catalog and merge only locally owned changes.
+    const base = await this.baseDirectory();
+    let retained: ProjectionRuntimeCatalogEntry[] = [];
+    let pinned = false;
+    if (base) {
+      try { retained = [...parseCatalog(JSON.parse(await readFile(join(this.root, SESSION_CATALOG_FILE), 'utf8')), runId).sessions]; pinned = true; }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }
+    }
+    const ids = pinned ? await this.listLocalNativeSessionIds() : await this.listNativeSessionIds();
+    const local = new Set(ids);
+    const sessions: ProjectionRuntimeCatalogEntry[] = retained.filter(entry => !local.has(entry.nativeSessionId));
+    for (const nativeSessionId of ids) {
       sessions.push(catalogEntry(
         nativeSessionId,
         await this.readSession(nativeSessionId),

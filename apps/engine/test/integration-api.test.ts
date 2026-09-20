@@ -27,6 +27,7 @@ async function fixtureApi(name: string, input: {
   await mkdir(launcherDataRoot);
   const codexHome = await input.defaultHome?.(fixture);
   const options = {
+    inspectCodexEnvironment: async () => ({ compatible: true, bidirectional: false, reason: 'Synthetic fixture only' }),
     stateRoot: fixture.stateRoot,
     fixturePolicy: fixture.fixturePolicy,
     integrationEnvironment: {
@@ -101,6 +102,9 @@ describe("integration and workspace synchronization HTTP contracts", () => {
     const savedConfig = await loadConfig(fixture.stateRoot);
     expect(savedConfig.instances[instanceId]).toMatchObject({ root: await realpath(fixture.codexHome), platformVersion: "0.146.0" });
     expect(savedConfig.codexTargets).toEqual({});
+    await first.engine.codexMirror!.configure({ ...first.engine.codexMirror!.status().preferences, instanceId });
+    await first.engine.codexMirror!.check();
+    await first.engine.codexMirror!.configure({ ...first.engine.codexMirror!.status().preferences, mirror: true });
     const imported = await first.client.importCodex({ operationId: "default-source-import", instanceIds: [instanceId], mode: "content" });
     await first.server.jobs.waitForImport(imported.id);
     expect(first.engine.repository.database.prepare("SELECT COUNT(*) AS count FROM session_versions").get()).toMatchObject({ count: 1 });

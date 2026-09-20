@@ -1,4 +1,6 @@
 import { defineDshSessionAdapter } from "@linmu/dsh-session-adapter-sdk";
+import { Rc1RuntimeBridge } from './runtime-bridge.js';
+import { recoverRc1RuntimeTail } from './runtime-tail-recovery.js';
 
 import { inspectRc1, verifyRc1 } from "./inspect.js";
 import { manifest } from "./manifest.js";
@@ -38,6 +40,7 @@ export * from "./lineage.js";
 export { readRc1CanonicalEventText } from "./readable-text.js";
 
 export const adapter = defineDshSessionAdapter({
+  runtime: { createBridge: registrar => new Rc1RuntimeBridge(registrar), recoverTail: recoverRc1RuntimeTail },
   manifest,
   nativeSessionCodec: rc1NativeSessionCodec,
   restoreNativeEvents: restoreRc1Metadata,

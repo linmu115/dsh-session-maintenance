@@ -1,4 +1,6 @@
 import { defineDshSessionAdapter } from "@linmu/dsh-session-adapter-sdk";
+import { Alpha2RuntimeBridge } from './runtime-bridge.js';
+import { recoverAlpha2RuntimeTail } from './runtime-tail-recovery.js';
 
 import { inspectAlpha2, verifyAlpha2 } from "./inspect.js";
 import { manifest } from "./manifest.js";
@@ -33,6 +35,7 @@ export * from "./recovery-session.js";
 export * from "./runtime-tail-recovery.js";
 
 export const adapter = defineDshSessionAdapter({
+  runtime: { createBridge: registrar => new Alpha2RuntimeBridge(registrar), recoverTail: recoverAlpha2RuntimeTail },
   manifest,
   probe: async (environment) => probeAlpha2(environment),
   materialize: materializeAlpha2,

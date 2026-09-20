@@ -13,6 +13,8 @@ export function createV3DialectAdapter(dialect: V3AdapterDialect) {
   }, dialect);
   return {
     adapter: scopeV3Service({ ...adapter, manifest: dialect.manifest,
+      runtime: { createBridge: (registrar: V3RuntimeRegistrar) => scopeV3Service(new V3RuntimeBridge(registrar), dialect),
+        bindAppend: services.bindNativeAppend, recoverTail: services.recoverRuntimeTail },
       nativeSessionCodec: scopeV3Service(adapter.nativeSessionCodec, dialect),
       sessionContext: scopeV3Service(adapter.sessionContext, dialect),
       sessionGraph: scopeV3Service(adapter.sessionGraph, dialect),

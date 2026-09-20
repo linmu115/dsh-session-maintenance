@@ -81,15 +81,15 @@ importers:
       '@linmu/dsh-host-gateway':
         specifier: workspace:*
         version: link:../../packages/dsh-host-gateway
+      '@linmu/dsh-instance-integration-dsh':
+        specifier: workspace:*
+        version: link:../../packages/instance-integration-dsh
       '@linmu/dsh-session-adapter-0-1-5':
         specifier: workspace:*
         version: link:../../packages/adapter-dsh-0-1-5
       '@linmu/dsh-session-adapter-alpha2':
         specifier: workspace:*
         version: link:../../packages/adapter-dsh-alpha2
-      '@linmu/dsh-session-extension-gpt-compat':
-        specifier: workspace:*
-        version: link:../../packages/extension-gpt-compat
       '@linmu/dsh-session-adapter-host':
         specifier: workspace:*
         version: link:../../packages/adapter-host
@@ -99,6 +99,9 @@ importers:
       '@linmu/dsh-session-adapter-rc2':
         specifier: workspace:*
         version: link:../../packages/adapter-dsh-rc2
+      '@linmu/dsh-session-adapter-sdk':
+        specifier: workspace:*
+        version: link:../../packages/session-adapter-sdk
       '@linmu/dsh-session-continuation-engine':
         specifier: workspace:*
         version: link:../../packages/continuation-engine
@@ -108,6 +111,12 @@ importers:
       '@linmu/dsh-session-domain':
         specifier: workspace:*
         version: link:../../packages/session-domain
+      '@linmu/dsh-session-extension-gpt-compat':
+        specifier: workspace:*
+        version: link:../../packages/extension-gpt-compat
+      '@linmu/dsh-session-extension-knowledge':
+        specifier: workspace:*
+        version: link:../../packages/extension-knowledge
       '@linmu/dsh-session-projection-lifecycle':
         specifier: workspace:*
         version: link:../../packages/projection-lifecycle
@@ -210,48 +219,6 @@ importers:
         specifier: workspace:*
         version: link:../session-adapter-sdk
 
-  packages/extension-gpt-compat:
-    dependencies:
-      '@deepseek-ai/cordis':
-        specifier: 4.0.2
-        version: 4.0.2
-      '@deepseek-ai/dsh-invariants':
-        specifier: 0.1.5-rc.2
-        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
-      '@deepseek-ai/dsh-scope':
-        specifier: 0.1.5-rc.2
-        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))
-      '@deepseek-ai/dsh-session':
-        specifier: 0.1.5-rc.2
-        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))
-      '@deepseek-ai/dsh-session-format':
-        specifier: 0.1.5-rc.2
-        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
-      '@deepseek-ai/dsh-session-format-catalog':
-        specifier: 0.1.5-rc.2
-        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-session@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))
-      '@deepseek-ai/dsh-session-format-v0-to-v1':
-        specifier: 0.1.5-rc.2
-        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
-      '@deepseek-ai/dsh-session-format-v1-to-v2':
-        specifier: 0.1.5-rc.2
-        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
-      '@deepseek-ai/dsh-session-format-v2-to-v3':
-        specifier: 0.1.5-rc.2
-        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
-      '@linmu/dsh-session-adapter-0-1-5':
-        specifier: workspace:*
-        version: link:../adapter-dsh-0-1-5
-      '@linmu/dsh-session-adapter-rc1':
-        specifier: workspace:*
-        version: link:../adapter-dsh-rc1
-      '@linmu/dsh-session-adapter-sdk':
-        specifier: workspace:*
-        version: link:../session-adapter-sdk
-      '@linmu/dsh-session-contracts':
-        specifier: workspace:*
-        version: link:../contracts
-
   packages/adapter-dsh-rc1:
     dependencies:
       '@linmu/dsh-session-adapter-sdk':
@@ -334,15 +301,15 @@ importers:
       '@linmu/dsh-session-adapter-0-1-5':
         specifier: workspace:*
         version: link:../adapter-dsh-0-1-5
-      '@linmu/dsh-session-extension-gpt-compat':
-        specifier: workspace:*
-        version: link:../extension-gpt-compat
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts
       '@linmu/dsh-session-domain':
         specifier: workspace:*
         version: link:../session-domain
+      '@linmu/dsh-session-extension-gpt-compat':
+        specifier: workspace:*
+        version: link:../extension-gpt-compat
     devDependencies:
       '@deepseek-ai/cordis':
         specifier: 4.0.2
@@ -366,6 +333,60 @@ importers:
         specifier: workspace:*
         version: link:../session-domain
 
+  packages/extension-gpt-compat:
+    dependencies:
+      '@deepseek-ai/cordis':
+        specifier: 4.0.2
+        version: 4.0.2
+      '@deepseek-ai/dsh-invariants':
+        specifier: 0.1.5-rc.2
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-scope':
+        specifier: 0.1.5-rc.2
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))
+      '@deepseek-ai/dsh-session':
+        specifier: 0.1.5-rc.2
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)))
+      '@deepseek-ai/dsh-session-format':
+        specifier: 0.1.5-rc.2
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-session-format-catalog':
+        specifier: 0.1.5-rc.2
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-session@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-scope@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)(@deepseek-ai/dsh-invariants@0.1.5-rc.2(@deepseek-ai/cordis@4.0.2))))
+      '@deepseek-ai/dsh-session-format-v0-to-v1':
+        specifier: 0.1.5-rc.2
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-session-format-v1-to-v2':
+        specifier: 0.1.5-rc.2
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-session-format-v2-to-v3':
+        specifier: 0.1.5-rc.2
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@linmu/dsh-session-adapter-0-1-5':
+        specifier: workspace:*
+        version: link:../adapter-dsh-0-1-5
+      '@linmu/dsh-session-adapter-rc1':
+        specifier: workspace:*
+        version: link:../adapter-dsh-rc1
+      '@linmu/dsh-session-adapter-sdk':
+        specifier: workspace:*
+        version: link:../session-adapter-sdk
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
+  packages/extension-knowledge:
+    dependencies:
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-extension-gpt-compat':
+        specifier: workspace:*
+        version: link:../extension-gpt-compat
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
+
   packages/handoff-context:
     dependencies:
       '@linmu/dsh-session-contracts':
@@ -374,6 +395,27 @@ importers:
       '@linmu/dsh-session-domain':
         specifier: workspace:*
         version: link:../session-domain
+
+  packages/instance-integration-dsh:
+    dependencies:
+      '@linmu/dsh-adapter-dsh':
+        specifier: workspace:*
+        version: link:../adapter-dsh
+      '@linmu/dsh-session-adapter-0-1-5':
+        specifier: workspace:*
+        version: link:../adapter-dsh-0-1-5
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-extension-gpt-compat':
+        specifier: workspace:*
+        version: link:../extension-gpt-compat
+      yaml:
+        specifier: 2.8.1
+        version: 2.8.1
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
 
   packages/local-api-client:
     dependencies:

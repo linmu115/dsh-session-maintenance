@@ -11,9 +11,8 @@ const bindingSchema = z.strictObject({
 const bindingFileSchema = z.strictObject({ schemaVersion: z.literal(1), bindings: z.array(bindingSchema) });
 export type InstanceIntegrationBinding = z.infer<typeof bindingSchema>;
 
-export class IntegrationError extends Error {
-  constructor(readonly code: string, message: string, readonly status = 409) { super(message); }
-}
+export { IntegrationError } from "@linmu/dsh-session-contracts";
+import { IntegrationError } from "@linmu/dsh-session-contracts";
 
 export function integrationBindingsPath(stateRoot: string): string { return join(stateRoot, "instance-integrations.json"); }
 

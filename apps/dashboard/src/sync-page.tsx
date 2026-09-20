@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { CodexProjectMappingConfiguration, CodexProjectMappingUpdate, WorkspaceSyncConfiguration, WorkspaceSyncUpdate } from "@linmu/dsh-session-contracts";
 import { Badge, Button, EmptyState, LoadingState, Surface } from "@linmu/dsh-session-ui";
 import { InstanceWorkspacePage, type InstanceWorkspaceApi } from "./instance-workspace-page.js";
+import { CodexMirrorSettings, type CodexMirrorApi } from './codex-mirror-settings.js';
 
 const syncSections = [
   { id: "maintenance", title: "Maintenance 工作区同步" },
@@ -35,12 +36,12 @@ export function SyncSettingsPage({ api }: { readonly api: WorkspaceSyncApi & Ins
     {syncSections.map(item => <div key={item.id} role="tabpanel" id={`${prefix}-panel-${item.id}`}
       aria-labelledby={`${prefix}-tab-${item.id}`} hidden={section !== item.id} className="sync-section-panel" tabIndex={0}>
       {/* Keep visited panels mounted: changing tabs never reloads or saves a draft. */}
-      {visited.has(item.id) ? item.id === "maintenance" ? <InstanceWorkspacePage api={api} /> : <SyncPage api={api} /> : null}
+      {visited.has(item.id) ? item.id === "maintenance" ? <InstanceWorkspacePage api={api} /> : <><CodexMirrorSettings api={api}/><SyncPage api={api} /></> : null}
     </div>)}
   </div>;
 }
 
-export interface WorkspaceSyncApi {
+export interface WorkspaceSyncApi extends CodexMirrorApi {
   getCodexProjectMapping?(signal?: AbortSignal): Promise<CodexProjectMappingConfiguration>;
   saveCodexProjectMapping?(input: CodexProjectMappingUpdate, signal?: AbortSignal): Promise<CodexProjectMappingConfiguration>;
   getWorkspaceSync?(signal?: AbortSignal): Promise<WorkspaceSyncConfiguration>;

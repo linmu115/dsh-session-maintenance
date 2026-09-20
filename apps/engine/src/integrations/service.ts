@@ -1,4 +1,5 @@
 import { setMaintenanceRequired } from "./maintenance-policy.js";
+import { scopedRecoveryRuns } from '../lifecycle-recovery.js';
 import type { MaintenanceWriteScope, IntegrationAction, IntegrationDirectory, IntegrationTarget } from "@linmu/dsh-session-contracts";
 import { CODEX_NATIVE_SYNC_UNAVAILABLE } from "@linmu/dsh-session-contracts";
 import { IntegrationError, readIntegrationBindings, saveIntegrationBindings } from "./bindings.js";
@@ -8,6 +9,8 @@ import { readJsonIfPresent, writeJsonAtomically } from "./bindings.js";
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
+import { saveStandaloneInstance } from './standalone.js';
+import type { StandaloneInstance } from '@linmu/dsh-session-contracts';
 
 const displayCatalogSchema = z.object({ instances: z.array(z.object({ id: z.string(), name: z.string() })) });
 
@@ -20,6 +23,7 @@ export interface IntegrationServiceOptions {
   /** Runs within the same writer scope, before a successful binding can be published. */
   readonly registerSource?: (target: DiscoveredIntegration) => Promise<void>;
   readonly clock?: () => string;
+  readonly recoveryRuns?: typeof scopedRecoveryRuns;
 }
 
 /** Coordinates onboarding while keeping slow package installs outside the canonical writer queue. */
@@ -28,6 +32,16 @@ export class InstanceIntegrationService {
   private readonly generations = new Map<string, number>();
   private displayNames: { expiresAt: number; value: Promise<ReadonlyMap<string, string>> } | undefined;
   constructor(private readonly options: IntegrationServiceOptions) {}
+
+  async registerStandalone(config: StandaloneInstance): Promise<IntegrationDirectory> {
+    const target = await this.options.writes.run('instance-configuration', async () => {
+      const bindings = await readIntegrationBindings(this.options.stateRoot);
+      if (bindings.some(item => item.instanceId === config.instanceId && item.profileId === config.profileId))
+        throw new IntegrationError('INSTANCE_ALREADY_REGISTERED', '该实例已注册；更改路径前请正常停止并解除注册。');
+      return saveStandaloneInstance(this.options.stateRoot, config);
+    });
+    return this.action(target.target.id, 'connect');
+  }
 
   /** Presentation only: read the bound Launcher catalog, without attestation or runtime discovery. */
   async instanceDisplayName(instanceId: string, profileId: string): Promise<string | undefined> {
@@ -71,7 +85,8 @@ export class InstanceIntegrationService {
       const binding = bindings.find(bound => bound.targetId === target.id);
       if (binding !== undefined) {
         let hookReady = target.kind === "codex" && item.codexRegistered !== false;
-        if (target.kind === "dsh") {
+        if (target.kind === 'dsh' && item.launcherDataRoot === null) hookReady = true;
+        if (target.kind === "dsh" && item.launcherDataRoot !== null) {
           try { hookReady = launcherHooksEqual(await readJsonIfPresent(launcherHookPath(item)), await desiredLauncherHook(item, this.options.installation)); }
           catch { hookReady = false; }
         }
@@ -95,6 +110,12 @@ export class InstanceIntegrationService {
       this.generations.set(targetId, (this.generations.get(targetId) ?? 0) + 1);
       await this.options.writes.run("integration-disconnect", async () => {
         const bindings = await readIntegrationBindings(this.options.stateRoot);
+        const current = bindings.find(item => item.targetId === targetId);
+        if (current?.kind === 'dsh' && current.profileId !== null) {
+          const runs = await (this.options.recoveryRuns ?? scopedRecoveryRuns)(this.options.stateRoot, current.instanceId, current.profileId);
+          if (runs.some(run => !['closed', 'recovered'].includes(run.state)))
+            throw new IntegrationError('INTEGRATION_DRAIN_REQUIRED', '请先正常停止实例并完成未确认操作的恢复；取得收尾回执后才能解除注册。');
+        }
         await saveIntegrationBindings(this.options.stateRoot, bindings.filter(item => item.targetId !== targetId));
         const disconnected = bindings.find(item => item.targetId === targetId);
         if(disconnected?.kind === "dsh" && disconnected.profileId !== null) await setMaintenanceRequired(this.options.stateRoot,disconnected.instanceId,disconnected.profileId,false);
@@ -120,7 +141,7 @@ export class InstanceIntegrationService {
     generation += 1;
     this.generations.set(targetId, generation);
     try {
-      if (before.target.kind === "dsh") {
+      if (before.target.kind === "dsh" && before.launcherDataRoot !== null) {
         await desiredLauncherHook(before, this.options.installation); // Reject another provider before installing anything.
         await installIntegrationPlugin(before, this.options.installation);
       }
@@ -137,7 +158,7 @@ export class InstanceIntegrationService {
         if (current?.fingerprint !== after.fingerprint) throw new IntegrationError("INTEGRATION_TARGET_CHANGED", "实例在验证后发生变化，未保存启动绑定。");
         assertCurrent();
         const bindings = await readIntegrationBindings(this.options.stateRoot);
-        const hookPath = after.target.kind === "dsh" ? launcherHookPath(after) : null;
+        const hookPath = after.target.kind === "dsh" && after.launcherDataRoot !== null ? launcherHookPath(after) : null;
         const oldHook = hookPath === null ? undefined : await readJsonIfPresent(hookPath);
         let publishedHook: unknown;
         try {

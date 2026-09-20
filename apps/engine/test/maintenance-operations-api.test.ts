@@ -23,7 +23,7 @@ describe("Maintenance canonical operations API", () => {
     await canonical.upsertLogicalWorkspace({ schemaVersion: 1, id: "workspace-managed" as never, parentId: null, name: "项目", sortKey: "a", deletedAt: null, createdAt: at, updatedAt: at });
     await canonical.setWorkspaceMembership({ schemaVersion: 1, logicalSessionId: "logical-managed" as never, workspaceId: "workspace-managed" as never, displayOrder: 0, pinned: false, archived: false, revision: 1 });
     const runs = new SqliteProjectionRunRepository(database);
-    const adapterId = (database.prepare("SELECT adapter_id FROM adapter_registrations ORDER BY adapter_id LIMIT 1").get() as { readonly adapter_id: string }).adapter_id;
+    const adapterId = 'dsh-alpha2';
     await runs.createProjectionRun({ schemaVersion: 1, id: "run-managed" as never, leaseId: "lease-managed" as never, branchId: "branch-managed" as never, instanceId: "dsh-fixture", profileId: "alpha2", dshVersion: "0.1.2-alpha.2", adapterId: adapterId as never, state: "running", startedAt: at, heartbeatAt: at, checkpointId: null });
     await runs.upsertProjectionSession({ schemaVersion: 1, runId: "run-managed" as never, nativeSessionId: "native-managed" as never, logicalSessionId: "logical-managed" as never, baseVersionId: null, mode: "codex-read-until-write", nativeRevision: 1, lastCommittedOperationId: null, derivedChildSessionId: null });
     database.prepare(
@@ -59,6 +59,7 @@ describe("Maintenance canonical operations API", () => {
     await client.deleteCanonicalWorkspace("workspace-managed");
     expect((await client.listCanonicalWorkspaces()).unclassified[0]?.session.id).toBe("logical-managed");
     expect((await client.listCanonicalAdapters()).map((entry) => entry.manifest.id).sort()).toEqual([
+      "dsh-0.1.5",
       "dsh-alpha2",
       "dsh-rc1",
       "dsh-rc2",

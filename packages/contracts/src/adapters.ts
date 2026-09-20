@@ -137,6 +137,8 @@ export interface ProjectionReader {
 }
 
 export interface DshSessionAdapterV1 {
+  readonly hostIntegration?: import("./host-integration.js").InstanceHostIntegration;
+  readonly runtime?: import('./runtime-adapter.js').RuntimeAdapterHooks;
   readonly sessionContext?: import("./session-context.js").SessionContextAdapter;
   readonly sessionGraph?: import("./session-graph.js").SessionGraphAdapter;
   readonly manifest: AdapterManifestV1;

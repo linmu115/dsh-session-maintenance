@@ -26,6 +26,8 @@ export class CodexProjectObserver {
     readonly clock?: () => string;
     readonly onStatus?: (status: CodexProjectObserverStatus) => void;
     readonly onError?: (error: unknown) => void;
+    readonly allowed?: () => Promise<boolean>;
+    readonly selectedInstanceId?: () => string;
   }) {
     this.intervalMs = Math.max(250, Math.min(60_000, Number.isFinite(input.intervalMs) ? input.intervalMs! : 2_000));
   }
@@ -62,11 +64,13 @@ export class CodexProjectObserver {
     const signal = this.controller.signal;
     const pass = async () => {
       signal.throwIfAborted();
+      if (this.input.allowed && !await this.input.allowed()) { this.update({ ...this.state, state: 'idle', lastError: null }); return; }
       this.update({ ...this.state, state: "syncing" });
       try {
         for (const instance of this.input.instances) {
           signal.throwIfAborted();
           if (instance.platform !== "codex") continue;
+          if (this.input.selectedInstanceId && instance.id !== this.input.selectedInstanceId()) continue;
           const scope = await this.input.projectScope(instance, signal);
           signal.throwIfAborted();
           if (scope === undefined) {

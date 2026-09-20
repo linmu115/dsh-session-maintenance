@@ -1,7 +1,6 @@
 import { join } from "node:path";
-import { z } from "zod";
+import { registeredInstancePolicySchema as policySchema } from '@linmu/dsh-session-contracts';
 import { readJsonIfPresent, writeJsonAtomically, IntegrationError } from "./bindings.js";
-const policySchema=z.strictObject({schemaVersion:z.literal(1),required:z.array(z.strictObject({instanceId:z.string().min(1),profileId:z.string().min(1)}))});
 export async function maintenanceRequired(stateRoot:string,instanceId:string,profileId:string):Promise<boolean>{const value=await readJsonIfPresent(join(stateRoot,"maintenance-required.json"));if(value===undefined)return false;const parsed=policySchema.safeParse(value);if(!parsed.success)throw new IntegrationError("MAINTENANCE_POLICY_INVALID","维护接管策略损坏，启动已阻止。");return parsed.data.required.some(p=>p.instanceId===instanceId&&p.profileId===profileId);}
 /** Separate from repairable bindings: deleting a binding cannot revoke required takeover. */
 export async function setMaintenanceRequired(stateRoot:string,instanceId:string,profileId:string,required:boolean):Promise<void>{const raw=await readJsonIfPresent(join(stateRoot,"maintenance-required.json"));const previous=raw===undefined?[]:policySchema.parse(raw).required;const next=previous.filter(p=>p.instanceId!==instanceId||p.profileId!==profileId);if(required)next.push({instanceId,profileId});await writeJsonAtomically(join(stateRoot,"maintenance-required.json"),{schemaVersion:1,required:next});}
