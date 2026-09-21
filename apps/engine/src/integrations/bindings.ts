@@ -2,14 +2,22 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, readFile, rename, unlink } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
+import { dshIntegrationConnectionKindSchema, type DshIntegrationConnectionKind } from "@linmu/dsh-session-contracts";
 
 const bindingSchema = z.strictObject({
   targetId: z.string(), kind: z.enum(["dsh", "codex"]), instanceId: z.string(), profileId: z.string().nullable(),
-  launcherDataRoot: z.string().nullable(), runtimeVersion: z.string(), adapterId: z.string().nullable(),
+  /**
+   * Optional so records written before this field existed remain readable; they
+   * resolve to `legacy` and are never rewritten. Every binding this Engine writes
+   * states its source explicitly.
+   */
+  connectionKind: dshIntegrationConnectionKindSchema.optional(), launcherDataRoot: z.string().nullable(), runtimeVersion: z.string(), adapterId: z.string().nullable(),
   fingerprint: z.string(), checkedAt: z.iso.datetime(),
 });
 const bindingFileSchema = z.strictObject({ schemaVersion: z.literal(1), bindings: z.array(bindingSchema) });
 export type InstanceIntegrationBinding = z.infer<typeof bindingSchema>;
+/** Connection source of a stored binding; absent means `legacy`. */
+export type BindingConnectionKind = DshIntegrationConnectionKind;
 
 export { IntegrationError } from "@linmu/dsh-session-contracts";
 import { IntegrationError } from "@linmu/dsh-session-contracts";
