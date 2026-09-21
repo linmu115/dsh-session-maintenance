@@ -60,3 +60,25 @@ MNT-001：已注册实例安装普通业务插件（如 DSH Bridge）后，manag
 改动落在 [[REQ-detached-instance-attach-sync]]（新增第 7–11 条、收敛已答边界、更新验收）、[[DEC-directory-connect-sync-authority]]（新增决定一之二、细化决定二、新增三行被替代旧说法与「尚未实现」清单）、[[REQ-maintenance-source-list]] 与 [[MOD-instance-workspace]]（按「未显式选择即为空」补充现状与后果），以及 map.md 的当前实现与验收边界一节。本轮**只改项目地图记录**，未改代码、未提交 Git、未动 `docs/handoffs/**`、未动其它项目地图；除只读核对外没有启动引擎、接入实例或重启进程。全部能力仍未实现、未验收。
 
 **本轮与证据不一致因而未采纳的说法**：一是用户给的会话文件路径少一层，按实际层级记录并在 DEC 里写明差异；二是「刷新即可见」的用户经验来自复制整个会话目录，属于新增而非就地覆盖，因此只采纳「目录扫描无启动期索引」这一半，另一半标为未实测。
+
+## 第四轮：按用户逐项批准实现「引擎侧检出 + 接管 + 覆盖同步」
+
+触发：用户在 DSH 会话中把 [[REQ-detached-instance-attach-sync]] 拆成待办队列，**一次批准一项**，每项做完必须停下汇报。本轮执行了队列的前八项（含第七项的前半）。
+
+**已实现并本地提交（未推送、未构建、未做真实实例验收）**：目录式连接地基（同步范围默认空 + 实例自带工作区不再自动登记）；删除实例工作区时的自动登记；插件侧握手/租约与引擎侧单次接管；覆盖式写入器（按 adapter 原生 v3 格式写回实例活动会话目录）；Maintenance 自有存储映射；实例侧工作区级右键入口；写访问门重定义（`write-access-scope.ts` 的 `openWriteScope`／`FrozenWriteScope`／`ScopedSessionWriteAccess`：范围外与未知身份一律放行、不查引擎）；第 3 条 (b) 放宽「存在未解决恢复即拒绝接管」。用户明确**暂缓**第七项后半（取消实例侧启动门），`registered-startup.ts` 全程未动。
+
+**计划外的两项用户决定**：第 3 条 (a)「原生新会话自动登记进真源」经用户确认**不动**——第 2 项落地后，非维护工作区的新会话已在登记阶段被 `SESSION_NOT_SYNCED` 拒绝，「自动进真源」的语义已不成立；「工作区加入时是否映射**已存在**的会话」由用户答复为**一次性全量映射、之后增量**（[[REQ-detached-instance-attach-sync]] 第 13 条）。
+
+**本轮要求（用户在 DSH 会话中的要求）**：「非维护工作区里的会话不进库，但在 DSH 里必须能正常对话」。只读核查确认这不是一个待实现功能，而是**既有分层的结果**：拒绝只在引擎的运行期登记/提交处发生（`SESSION_NOT_SYNCED`），HTTP 层转成 409 只回给调用方；插件侧的运行期登记入口只有显式的 `create-session` 知识操作，普通对话不经过它；写入侧对范围外目标不查引擎。合成证据 `plugins/dsh-session-maintenance/test/out-of-scope-conversation.test.ts`（3 项）与 `apps/engine/test/runtime-new-workspace.test.ts`（4 项）通过，**真实实例仍未验收**。
+
+**尝试、失败与人工纠偏（供后续排错复用）**
+
+- 本机没有全局 `pnpm`，只能用 `node_modules/.bin` 下的 `tsc.CMD` / `vitest.CMD`；vitest 默认并行会产生大量与本改动无关的抖动失败，全部测试改用 `--maxWorkers=1 --testTimeout=30000` 后稳定。
+- 五次 HEAD 既有失败（`codex-project-mapping-offline`、`conversation-topology-repair` ×3、`extension-data`）与插件侧 `package-compatibility`（期望 `0.2.26-rc2.34`、实际 `.36`）**不是本轮引入**：用 `git worktree add --detach HEAD` 建干净基线复跑同批用例证明，基线跑完即删除。
+- **确有一次真实回归由本轮引入**：第三项新增了第三个已注册端点 `/dsh-session-maintenance/instance/lease`，`apps/engine/test/core-gateway.test.ts` 的端点计数断言因此失败。曾一度按「疑似抖动」放过，复跑后确认稳定失败，才改为断言 3 条路径与各自一条 unregister（比原断言更严），并向用户披露。
+- 覆盖式写入器连续踩到四个路径语义坑：文档路径必须用正斜杠；`v3NativeSessionCodec.describe` **不用** `header.cwd` 推项目段，写回必须自行拼实例路径、只把 `{relativePath, header}` 交给 `encode`；实例的会话目录名是**未转义**的原始会话 id；归档标记需要 `stateRoot`/`instanceId` 才能落在实例树外，revision 取自 payload 摘要。
+- `instance-workspace-source` 的合成事件一开始被 `importDshNative` 拒绝（`Canonical event belongs to another logical session`），补齐 `rawPayload` 的 `type`+`seq`、`source` 对象与 kind/role 映射后一致。
+- 改写 `native-space` 的 N09/N10 时反复失败：接管断言已通过，末尾却取到「Native space is not safely closed」。原因是测试顺序把「checkpoint 后改写」的篡改插在了检查点之前；把检查点挪到篡改之前、再用另一个 run 触发改写拒绝后通过。
+- 一处我自己报错的引用：曾把 `composition-root.ts:266` 说成写入权注册处，实际是 adapter 注册；用户随后也确认其行号引用有误。`dsh-native-import.ts:137` 的 initial-only 守卫经用户确认**不属于** (a) 的删除范围。
+
+**结果与边界（第四轮）**：改动落在源码（插件、引擎、`projection-lifecycle`）与项目地图记录（[[REQ-detached-instance-attach-sync]] 第 12、13 条、(a)/(b) 处置、边界收敛；map.md 的当前实现与验收边界及「按问题阅读」表）；**只做本地提交，未推送、未打包、未安装、未重启任何进程、未动 `docs/handoffs/**`、`docs/issues/**`、`docs/deployment/**`**。全部能力**未做真实实例验收**，因此地图里一律写作「部分实现、未验收」。未落地项：引擎启动时询问是否同步的弹窗、目录选择器接入引擎连接路径、可选的第 11 条实例侧范围入口、覆盖对**已打开**会话是否即时生效（需用一个未打开的会话实测）。

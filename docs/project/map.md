@@ -16,7 +16,8 @@
 | 身份、版本、真源与写入权 | [会话与工作区身份](records/objects/overview.md)、[版本与续接](records/objects/versions.md)、[对象归属与写入权](records/objects/extensions.md) |
 | 启动时自动恢复旧运行（已安装） | [[REQ-startup-recovery]]、[[IMP-startup-recovery]]、[[VER-startup-recovery]]；过程 [[HIST-startup-recovery]] |
 | 普通插件增删升级为何不能拦住启动（本轮实现，未发布未验收） | [[IMP-startup-gate-split]]、[[VER-startup-gate-split]]；过程草稿（未绑定事件索引）[2026-09-21 历程](history-drafts/2026-09-21-startup-gate-split.md)；问题登记见[插件自由组合问题](../../issues/2026-09-20-managed-plugin-composition.md) |
-| 实例先启动、引擎后接管并覆盖式同步（新要求，未实现） | [[REQ-detached-instance-attach-sync]]、[[DEC-directory-connect-sync-authority]]；当前实现相反（实例侧 `assertRegisteredStartup` 阻止加载） |
+| 实例先启动、引擎后接管并覆盖式同步（部分实现，全部未验收） | [[REQ-detached-instance-attach-sync]]、[[DEC-directory-connect-sync-authority]]；源码已部分落地（未推送、未进发行包、未做真实实例验收）；实例侧启动门按用户决定未动 |
+| 非维护工作区的会话不进真源，但在 DSH 里照常对话 | [[REQ-detached-instance-attach-sync]] 第 12 条（已实现，仅合成测试） |
 | 内部责任及生命周期 | [Engine 编排](records/modules/engine/overview.md)、[宿主接入](records/modules/host/overview.md)、[维护看板](records/modules/dashboard/overview.md) |
 | 接 Codex/DSH 平台 | [平台适配](records/modules/adapters/harness/overview.md) → [平台合同](records/modules/adapters/harness/contract.md) → [平台已知接入](records/modules/adapters/harness/connected.md) |
 | 接业务插件 | [业务数据适配](records/modules/adapters/business/overview.md) → [对象合同](records/modules/adapters/business/contract.md) → [业务已知接入](records/modules/adapters/business/connected.md) |
@@ -50,6 +51,10 @@
 2026-09-21 同一会话的后续一轮，用户对上述要求又逐条确认与修正（同样是**用户在 DSH 会话中的回答**，不是模型推断）：接管后的「覆盖」**写回实例当前实际使用的会话目录**（本机为 `<DSH_HOME>\sessions\<工作区目录>\<会话目录>\session.v3.jsonl.zstd`），**刷新 WebUI 即可见、不需要重启实例**——用户据此否掉了「引擎只做真源覆盖、实例原生文件不重写」的框架；同步范围**不存在「历史默认范围／legacy all」，「未显式选择即为空」**，新接入与存量一视同仁，原先依赖「无记录 = all」的已接入实例升级后范围会变空直到用户在面板里勾选；选择实例文件夹的那一层确认为 **DSH Home 根目录**（含 `profiles/` 与 `sessions/`）并**在选择栏旁给出文字提示**；同一实例出现两张卡时按 `(instanceId, profileId)` **合并为一张卡**并标注连接来源（Launcher / 目录式）；「连接之后让 DSH 侧也提供修改同步范围的选项」记为**可选**，不是本轮必须实现。已核实 DSH 的 JSONL 持久化按需 `readdir` 列目录、没有启动期索引；**尚未实测**已打开会话是否被宿主缓存在内存里。全部能力仍未实现、未验收，详见 [[REQ-detached-instance-attach-sync]] 第 7–11 条与 [[DEC-directory-connect-sync-authority]] 决定一之二。
 
 以下版本为各项能力当时的安装与检查时点，不替代上述当前引擎版本。
+
+2026-09-21 同一会话的再下一轮：**用户在 DSH 会话中的要求**补充了「**非维护工作区里的会话不进真源，但在 DSH 里必须照常读写与对话**」（[[REQ-detached-instance-attach-sync]] 第 12 条）。只读核查结论：拒绝只发生在**运行期登记/提交**这一步（引擎抛 `SESSION_NOT_SYNCED`，`apps/engine/src/runtime-workspace-registration.ts:65`、`:76`、`apps/engine/src/instance-workspace-runtime.ts:47`），并经 `apps/engine/src/http/routes.ts:792` 转成 HTTP 409 只回给调用方；插件侧的运行期登记入口只有**显式的 `create-session` 知识操作**（`plugins/dsh-session-maintenance/src/session-knowledge.ts:37`），普通对话不经过它；写入侧的门对范围外目标**一律放行且不查引擎**（`plugins/dsh-session-maintenance/src/write-access-scope.ts`）。**未发现它会冒到用户面前或阻塞宿主会话**。合成证据 `plugins/dsh-session-maintenance/test/out-of-scope-conversation.test.ts`（3 项）与 `apps/engine/test/runtime-new-workspace.test.ts`（4 项）通过；**未做真实实例验收**。同一轮用户拍板第 3 条 (a)「原生新会话自动登记进真源」**保持现状、不改代码**——非维护工作区的新会话已在登记阶段被拒，该语义已不成立；「工作区加入时是否映射**已存在**的会话」这一边界也由用户答复为**一次性全量映射、之后增量**（同记录第 13 条）。
+
+据此修正上两段的概括：本要求的**目录式连接与覆盖同步已在源码上部分落地**——引擎侧同步范围默认空并在登记阶段拒绝范围外会话、插件侧握手/租约、覆盖式写入器、自有存储映射、实例侧工作区级右键入口、写访问门重定义、单次接管（放宽「未完成恢复即拒绝」）。这些改动**只提交在本地分支，未推送、未构建进发行包、未做真实实例验收**；实例侧启动门 `registered-startup.ts` 按用户决定**未动**（[[REQ-detached-instance-attach-sync]] 第 6 条把「取消实例侧启动门」排在后面且用户已明确暂缓）。因此「全部能力尚未实现」不再成立，准确表述是**部分实现、全部未验收**。
 
 Vault绑定不依赖DSH启动的新要求与候选实现：[[REQ-offline-vault-binding]]、[[IF-offline-vault-binding]]、[[HIST-offline-vault-binding]]。已随 Engine .45 / Dashboard .1.7 与 Obsidian桥 .4 安装激活，真实绑定写入和安装版UI未验收。
 

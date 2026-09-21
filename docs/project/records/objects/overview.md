@@ -27,4 +27,6 @@ Codex 来源由 Codex 管理，Maintenance 只读导入为镜像。仅显示或�
 
 唯一共享定义在 [Canonical 类型](../../../../packages/contracts/src/canonical.ts)；实现依据 [追加与派生](../../../../packages/canonical-session-engine/src/dsh-append.ts)。运行空间见 [[OBJ-runtime]]，业务对象见 [[OBJ-extension]]。
 
-2026-09-21 用户注释新增的写入权边界（尚未实现）：来自 DSH 侧的引擎真源改动**只**依赖**已绑定**实例在**同步工作区**内产生的会话改动；实例自带工作区是该实例的自有工作区，其中的会话不进入真源也不被覆盖。工作区经右键菜单「将当前工作区加入 sessionmaintenance」显式加入。见 [[DEC-directory-connect-sync-authority]]。
+2026-09-21 用户注释新增的写入权边界（**2026-09-21 后续一轮起部分落地**）：来自 DSH 侧的引擎真源改动**只**依赖**已绑定**实例在**同步工作区**内产生的会话改动；实例自带工作区是该实例的自有工作区，其中的会话不进入真源也不被覆盖。工作区经右键菜单「将当前工作区加入 sessionmaintenance」显式加入。见 [[DEC-directory-connect-sync-authority]]。
+
+**2026-09-21 实现进展（写入侧已落地，未验收）**：写入侧的边界已实现——`plugins/dsh-session-maintenance/src/write-access-scope.ts` 的写访问门对**范围外或未知身份**的写入目标直接放行且**不查引擎**，所以非维护工作区的会话在 DSH 里照常读写与对话；「不进真源」由引擎在运行期登记/提交时以 `SESSION_NOT_SYNCED` 拒绝（转成 HTTP 409，只回给调用方，不阻塞宿主会话）。工作区级右键入口已落地（`plugins/dsh-session-maintenance/src/client/workspace-menu.ts`，菜单项 id `workspace-join`）。改动只在本地分支，**未推送、未构建进发行包、未做真实实例验收**。见 [[REQ-detached-instance-attach-sync]] 第 12 条。

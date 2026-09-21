@@ -25,7 +25,9 @@ CodexReadAdapter / DshReadAdapter 只读观察并规范化；Engine 选择导入
 
 CanonicalSessionEngine 的 observeCodex、importDshNative、appendDsh、tombstone/restore 统一提交正文对象、版本头、成员关系、谱系和回执。Codex 镜像第一次实际 DSH 追加创建派生身份。
 
-2026-09-21 用户注释改变的入库前提（尚未实现）：来自 DSH 侧的改动只认**已绑定实例在同步工作区内**产生的会话；实例自带工作区不自动登记为真源工作区。被显式加入的工作区应当在 **Maintenance 自己维护的会话存储区域中新增一个文件夹**，并把 DSH 会话映射成它自己的存储形式。此前的「原生新会话一律登记进真源（`importDshNative` 路径）」不再是默认规则。见 [[DEC-directory-connect-sync-authority]]、[[REQ-detached-instance-attach-sync]]。
+2026-09-21 用户注释改变的入库前提（**2026-09-21 后续一轮起部分落地**）：来自 DSH 侧的改动只认**已绑定实例在同步工作区内**产生的会话；实例自带工作区不自动登记为真源工作区。被显式加入的工作区应当在 **Maintenance 自己维护的会话存储区域中新增一个文件夹**，并把 DSH 会话映射成它自己的存储形式。此前的「原生新会话一律登记进真源（`importDshNative` 路径）」不再是默认规则。见 [[DEC-directory-connect-sync-authority]]、[[REQ-detached-instance-attach-sync]]。
+
+**2026-09-21 实现进展（源码已落地，未验收）**：「只认已绑定实例在同步工作区内产生的会话」已实现在运行期登记/提交处（范围外抛 `SESSION_NOT_SYNCED`，HTTP 409 只回给调用方）；「被加入的工作区在 Maintenance 自有存储里成为一个文件夹、并把该工作区**现有**会话一次性全部映射成自己的存储形式、之后走普通增量」已实现于 `apps/engine/src/workspace-session-mapping.ts` 的 `mapJoinedWorkspace`，并经 `apps/engine/src/composition-root.ts:426-443` 的 `mapWorkspace` 端口接到实例侧「加入工作区」入口（目录由引擎从实例 Home 推导）。Maintenance 的「文件夹」是看板分组行，不新建物理目录。改动只在本地分支，未推送、未构建、未做真实实例验收。
 
 检查点、比较、计划写入与恢复保留 WriteService/TransactionExecutor 边界；早期 DSH Gateway 写适配器仍有代码，不是当前原生逐条追加链。
 
