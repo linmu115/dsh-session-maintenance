@@ -14,7 +14,7 @@ import { inspectDshIntegrationPlugin } from '../../../packages/instance-integrat
 const options = new Map();
 for (let i = 2; i < process.argv.length; i += 2) {
   const key = process.argv[i], value = process.argv[i + 1];
-  if (!['--config', '--engine', '--engine-version', '--out-dir', '--launcher-digest'].includes(key) || !value || options.has(key)) throw new Error('Usage: node verify-installation.mjs --config instance.json --engine engine.mjs --engine-version VERSION --out-dir PROFILE [--launcher-digest SHA256]');
+  if (!['--config', '--engine', '--engine-version', '--out-dir', '--launcher-digest', '--profile-dir'].includes(key) || !value || options.has(key)) throw new Error('Usage: node verify-installation.mjs --config instance.json --engine engine.mjs --engine-version VERSION --out-dir PROFILE [--profile-dir NAME] [--launcher-digest SHA256]');
   options.set(key, value);
 }
 for (const key of ['--config', '--engine', '--engine-version', '--out-dir']) if (!options.has(key)) throw new Error(`Missing ${key}`);
@@ -22,7 +22,13 @@ const json = async path => JSON.parse(await readFile(path, 'utf8'));
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
 const config = standaloneInstanceSchema.parse(await json(resolve(options.get('--config'))));
 assert.equal(config.runtimeVersion, '0.1.5-rc.2', 'This adapter verifies DSH 0.1.5-rc.2 only');
-const homeRoot = await realpath(config.homeRoot), profileRoot = await realpath(join(homeRoot, 'profiles', config.profileId));
+// The profile *directory* and the instance's declared Maintenance identity are two different
+// names: the directory is a path segment (`profiles/web`), while `profileId` is what the plugin
+// declares in its patch row and what the Engine matches instances by. The receipt must state the
+// declared identity — that is the half the Engine compares — so the directory can be named on its
+// own for a machine where the two differ.
+const profileDirectory = options.get('--profile-dir') ?? config.profileId;
+const homeRoot = await realpath(config.homeRoot), profileRoot = await realpath(join(homeRoot, 'profiles', profileDirectory));
 const profile = await json(join(profileRoot, 'package.json'));
 if (profile.dsh?.profile?.bundles?.includes('dsh-gpt-compat')) throw new Error('This standard probe excludes experimental GPT Compat; use that extension\'s dedicated conformance suite.');
 let cliRoot = join(config.versionRoot, 'apps', 'cli');

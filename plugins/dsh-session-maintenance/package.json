@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-maintenance",
-  "version": "0.2.26-rc2.39",
+  "version": "0.2.26-rc2.40",
   "description": "DSH 0.1.5-rc.2 entry for Maintenance-backed canonical sessions and V3 projections",
   "type": "module",
   "license": "MIT",

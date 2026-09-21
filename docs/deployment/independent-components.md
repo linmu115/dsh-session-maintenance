@@ -1,6 +1,6 @@
 # 独立组件安装、配置与使用（2026-09-20 候选）
 
-本教程对应 Engine 0.1.36-rc2.61、接入插件 0.2.26-rc2.36、Core 0.3.12-rc2.21、Bridge 0.4.1-rc2.5、普通贴纸 0.7.4-rc2.6、ThoughtDAG 0.4.14-rc2.17、Companion 0.7.0-rc2.5。它们是本轮源码候选，不表示已发布到 npm 或已安装到任何用户实例。标准宿主 adapter 针对 DSH 0.1.5-rc.2；不声称兼容任意 DSH。
+本教程对应 Engine 0.1.37-rc2.62、接入插件 0.2.26-rc2.36、Core 0.3.12-rc2.21、Bridge 0.4.1-rc2.5、普通贴纸 0.7.4-rc2.6、ThoughtDAG 0.4.14-rc2.17、Companion 0.7.0-rc2.5。它们是本轮源码候选，不表示已发布到 npm 或已安装到任何用户实例。标准宿主 adapter 针对 DSH 0.1.5-rc.2；不声称兼容任意 DSH。
 
 ## 选择组合
 
@@ -108,7 +108,7 @@ node $engine --state-root $state dashboard
 ```powershell
 $profile = Join-Path $env:DSH_HOME 'profiles/web'
 $verify = Join-Path $profile 'node_modules/dsh-session-maintenance/lib/verify-installation.mjs'
-node $verify --config '.\instance.json' --engine $engine --engine-version '0.1.36-rc2.61' --out-dir $profile
+node $verify --config '.\instance.json' --engine $engine --engine-version '0.1.37-rc2.62' --out-dir $profile
 node $engine --state-root $state managed-instance register --file '.\instance.json'
 node $engine --state-root $state managed-instance list
 ```

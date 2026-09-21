@@ -315,7 +315,9 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
         if(version.version === "0.1.5-rc.2") {
           if(versions["@deepseek-ai/dsh-session-persistence-jsonl"]!==version.version)issues.push("实际 JSONL backend 未解析到 RC2。 ");
           if(versions["@deepseek-ai/dsh-session-format-catalog"]!==version.version)issues.push("实际 format catalog 未解析到 RC2。");
-          try {const attested=await verifyDsh015RuntimeAttestation({profileRoot,instanceId:instance.id,profileId:entry.name,homeRoot,cliPath,launcherDigest:host.digest,resolvedManifests:manifests,expectedAdapterId:adapterId??"dsh-0.1.5"});runtimeCapabilities=attested.runtimeCapabilities;attestationDigest=attested.digest;coreBinding=attested.coreBinding;}catch(error){issues.push(error instanceof Error?error.message:"RC2 能力验证失败。");runtimeCapabilities=[];}
+          // The receipt states the instance's Maintenance identity, so it is compared against that
+          // identity — the same half every other match in the Engine uses.
+          try {const attested=await verifyDsh015RuntimeAttestation({profileRoot,instanceId:instance.id,profileId:profileId,homeRoot,cliPath,launcherDigest:host.digest,resolvedManifests:manifests,expectedAdapterId:adapterId??"dsh-0.1.5"});runtimeCapabilities=attested.runtimeCapabilities;attestationDigest=attested.digest;coreBinding=attested.coreBinding;}catch(error){issues.push(error instanceof Error?error.message:"RC2 能力验证失败。");runtimeCapabilities=[];}
         }
         const id = integrationTargetId("dsh", canonicalLauncherRoot, instance.id, profileId);
         const target: IntegrationTarget = {
