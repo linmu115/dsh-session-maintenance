@@ -32,6 +32,10 @@ export {
 } from "./materialize.js";
 export { normalizeV3Append } from "./normalize-append.js";
 export { inspectV3, verifyV3 } from "./inspect.js";
+// The reusable half of the native-space reader: it walks the instance's own
+// one-directory-per-session layout and decodes every generation, which the
+// Engine needs when it maps a joined workspace's existing sessions.
+export { inspectV3NativeSpace } from "./generation-reader.js";
 export { probeV3 } from "./probe.js";
 export { resolveV3Reference } from "./references.js";
 export * from "./runtime-bridge.js";
