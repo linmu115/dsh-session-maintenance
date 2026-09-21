@@ -21,6 +21,7 @@ import type { JsonValue } from "@linmu/dsh-session-contracts";
 
 import { connectionDescriptorPath, launcherProjectionProfile, launcherCoreBinding, maintenanceStateRoot, normalizeConfig, withLauncherNativeExtensions, type Config as PluginConfig } from "./config.js";
 import { createInstanceLeaseHandler, startInstanceLease } from "./instance-lease.js";
+import { identityDeclaration } from "./instance-identity.js";
 import { startTakeoverPolling } from "./takeover.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
 import { launchDashboard } from "./dashboard-launcher.js";
@@ -62,8 +63,16 @@ interface HostContext extends CoreRuntimeContext {
   inject?(services: readonly string[], callback: (ctx: HostContext & ManagerActionContext) => void): void;
 }
 
-export async function apply(ctx: HostContext, input: PluginConfig): Promise<void> {
+// A loader row may carry no config at all, so an absent object must not be a load-time crash:
+// an unconfigured row runs on the schema defaults above (and, for identity, stands down).
+export async function apply(ctx: HostContext, input: PluginConfig = {} as PluginConfig): Promise<void> {
   const config = normalizeConfig(withLauncherNativeExtensions({ ...input, pinnedAdapterId: input.pinnedAdapterId || null }));
+  // Whether this machine declared its own instance identity. That takes both halves of the
+  // identity: the Engine matches a lease by instance id *and* profile id, so either one left
+  // at its portable placeholder means nothing can be matched. A machine that did not declare
+  // both must not publish a lease or claim a takeover ticket; it still loads and runs, because
+  // refusing to take part in a takeover is not a reason to refuse to work.
+  const identity = identityDeclaration(config.dshInstanceId, config.profileId);
   const descriptorPath = connectionDescriptorPath(config.connectionId);
   const launchProfile = await (async () => {
     try { const profile = launcherProjectionProfile(config); await assertRegisteredStartup(config, descriptorPath, profile !== null); return profile; }
@@ -107,24 +116,31 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     // which must still leave something the Engine can find once it appears.
     const stateRoot = maintenanceStateRoot(config.connectionId);
     const report = (message: string) => { if (ctx.logger) ctx.logger.warn(message); else console.warn(message); };
-    const publisher = await startInstanceLease({ instanceId: config.dshInstanceId, profileId: config.profileId,
-      stateRoot, ...(stateRoot === undefined ? {} : { stateRoot }), report });
-    if (publisher !== null && stateRoot !== undefined) {
-      const unregisterLease = ctx.webServer.register({ kind: "prefix", path: "/dsh-session-maintenance/instance/lease",
-        handler: createInstanceLeaseHandler({ identity: publisher.identity, publisher }) });
-      const poller = startTakeoverPolling({ identity: publisher.identity, connection: () => connection.current(), publisher, report,
-        attach: async (handoff: import("@linmu/dsh-session-contracts").TakeoverHandoff) => {
-          // The Engine prepared this run; attaching to it is the next step, and a
-          // takeover may only proceed when the run's persistence root matches the
-          // one this instance froze at boot. That judgement belongs to the attach
-          // path, so it is reported here rather than assumed.
-          report(`[dsh-session-maintenance] 引擎已为实例准备运行 ${handoff.runId}；等待接入。`);
-        } });
-      ctx.effect(() => () => {
-        void poller?.stop();
-        if (typeof unregisterLease === "function") unregisterLease();
-        void publisher.stopping();
-      }, "dsh-session-maintenance: takeover handshake");
+    if (!identity.declared) {
+      // A lease written under the placeholder would claim an instance that does not exist,
+      // and the Engine could never match it against the id the operator selected. Report and
+      // stand down: no lease, no polling, no attach — and no failure either.
+      report(identity.message ?? "");
+    } else {
+      const publisher = await startInstanceLease({ instanceId: config.dshInstanceId, profileId: config.profileId,
+        stateRoot, ...(stateRoot === undefined ? {} : { stateRoot }), report });
+      if (publisher !== null && stateRoot !== undefined) {
+        const unregisterLease = ctx.webServer.register({ kind: "prefix", path: "/dsh-session-maintenance/instance/lease",
+          handler: createInstanceLeaseHandler({ identity: publisher.identity, publisher }) });
+        const poller = startTakeoverPolling({ identity: publisher.identity, connection: () => connection.current(), publisher, report,
+          attach: async (handoff: import("@linmu/dsh-session-contracts").TakeoverHandoff) => {
+            // The Engine prepared this run; attaching to it is the next step, and a
+            // takeover may only proceed when the run's persistence root matches the
+            // one this instance froze at boot. That judgement belongs to the attach
+            // path, so it is reported here rather than assumed.
+            report(`[dsh-session-maintenance] 引擎已为实例准备运行 ${handoff.runId}；等待接入。`);
+          } });
+        ctx.effect(() => () => {
+          void poller?.stop();
+          if (typeof unregisterLease === "function") unregisterLease();
+          void publisher.stopping();
+        }, "dsh-session-maintenance: takeover handshake");
+      }
     }
   }
   if (launchProfile !== null) {

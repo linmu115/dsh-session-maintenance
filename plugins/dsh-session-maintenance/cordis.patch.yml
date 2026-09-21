@@ -1,7 +1,18 @@
+# This package is portable: it declares no instance id, no profile id and no connection
+# registration, because all three are facts about one machine. A machine declares its own
+# identity in its profile's cordis.patch.yml, targeting this row by id:
+#
+#   - id: session-maintenance
+#     config:
+#       connectionId: primary
+#       dshInstanceId: <this machine's DSH instance id>
+#       profileId: <this profile's name>
+#
+# A patch replaces the whole config, so restate every field to keep. Until a machine does
+# that, dshInstanceId stays at its schema default (dsh-web) and the plugin refuses to
+# publish an instance lease or accept a takeover — it still loads, and the instance still runs.
 - insert:
     - id: session-maintenance
       name: dsh-session-maintenance
       config:
         connectionId: primary
-        dshInstanceId: dsh-web
-        profileId: web

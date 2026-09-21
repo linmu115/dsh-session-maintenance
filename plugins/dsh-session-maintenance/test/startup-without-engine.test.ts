@@ -13,8 +13,13 @@ import { apply } from '../src/index.js';
  * It is deliberately *not* one of the identities the Engine recorded in
  * `maintenance-required.json`, and installing this plugin must not change that:
  * being absent from that file is what keeps a native instance startable.
+ *
+ * The profile id is declared here because the package ships only the portable placeholder
+ * (`web`), and a placeholder half of the identity stands the handshake down — which is a
+ * different subject from this file's startup gate (see instance-identity.test.ts).
  */
 const INSTANCE_ID = 'i-27c4d5a7-bdb5-4b8a-8d95-6267f47499c5';
+const DECLARED_PROFILE_ID = 'independent';
 
 /** Identities the Engine *did* record, as they appear on this machine's state root. */
 const RECORDED_ELSEWHERE = [
@@ -84,7 +89,7 @@ async function loadPlugin(): Promise<{ readonly exits: number[]; readonly endpoi
   const host = await ctx.plugin({
     inject: ['webServer', 'appExit'],
     apply: child => apply(child as never,
-      { connectionId: 'primary', dshInstanceId: INSTANCE_ID, profileId: 'web' }),
+      { connectionId: 'primary', dshInstanceId: INSTANCE_ID, profileId: DECLARED_PROFILE_ID }),
   });
   return { exits, endpoints, dispose: async () => { await host.dispose(); await ctx.fiber.dispose(); } };
 }
@@ -110,7 +115,7 @@ describe('an instance that the Engine did not require stays startable with no En
   });
 
   it('still refuses startup for an identity the Engine did require, so the gate is exactly that file', async () => {
-    await syntheticState([{ instanceId: INSTANCE_ID, profileId: 'web' }]);
+    await syntheticState([{ instanceId: INSTANCE_ID, profileId: DECLARED_PROFILE_ID }]);
     const exits: number[] = [];
     const ctx = new Context();
     ctx.provide('webServer', { register: vi.fn(() => () => undefined) } as never);
@@ -119,7 +124,7 @@ describe('an instance that the Engine did not require stays startable with no En
       await expect(ctx.plugin({
         inject: ['webServer', 'appExit'],
         apply: child => apply(child as never,
-          { connectionId: 'primary', dshInstanceId: INSTANCE_ID, profileId: 'web' }),
+          { connectionId: 'primary', dshInstanceId: INSTANCE_ID, profileId: DECLARED_PROFILE_ID }),
       })).rejects.toThrow('请先启动');
       expect(exits).toEqual([1]);
     } finally { await ctx.fiber.dispose(); }

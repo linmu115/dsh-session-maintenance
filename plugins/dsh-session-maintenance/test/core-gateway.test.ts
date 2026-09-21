@@ -54,7 +54,9 @@ describe("DSH rc.2 Core host entry", () => {
       }),
     } as never);
     try {
-      const host = await ctx.plugin({ inject: ["webServer"], apply: child => apply(child as never, { connectionId: "primary", dshInstanceId: "dsh-web", profileId: "web" }) });
+      // A declared identity is required here: with either portable placeholder (dsh-web / web)
+      // the plugin stands down from the handshake, which instance-identity.test.ts covers.
+      const host = await ctx.plugin({ inject: ["webServer"], apply: child => apply(child as never, { connectionId: "primary", dshInstanceId: "i-synthetic-identity", profileId: "synthetic" }) });
       // The instance's own liveness endpoint joins the two gateways: the Engine
       // has to be able to reach the running instance to take it over.
       expect(registrations).toEqual(["/dsh-session-maintenance/instance/lease",
