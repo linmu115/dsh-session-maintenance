@@ -3,9 +3,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import {
-  INSTANCE_LEASE_DIRECTORY, instanceLeasePath, listInstanceLeases, maintenanceInstanceIdFor, readInstanceLease,
-  removeInstanceLease, writeInstanceLease, instanceLeaseSchema, type InstanceLease,
+  instanceLeaseSchema, maintenanceInstanceIdFor, type InstanceLease,
 } from "../src/index.js";
+// The file layer sits behind its own subpath precisely because it is Node-only; the barrel must
+// stay safe for the browser Dashboard.
+import {
+  INSTANCE_LEASE_DIRECTORY, instanceLeasePath, listInstanceLeases, readInstanceLease,
+  removeInstanceLease, writeInstanceLease,
+} from "../src/instance-lease-file.js";
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });

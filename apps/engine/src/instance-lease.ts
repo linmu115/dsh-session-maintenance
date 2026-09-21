@@ -2,9 +2,10 @@ import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parseDocument } from 'yaml';
 import {
-  instanceLeasePath, readInstanceLease as readSharedLease, takeoverHandoffSchema,
+  takeoverHandoffSchema,
   type TakeoverHandoff,
 } from '@linmu/dsh-session-contracts';
+import { instanceLeasePath, readInstanceLease as readSharedLease } from '@linmu/dsh-session-contracts/instance-lease-file';
 import {
   instanceLeaseInspectionSchema, instanceLivenessAnswerSchema, instanceLivenessChallengeSchema,
   instanceSyncDecisionResponseSchema, instanceSyncRequestSchema,
@@ -24,7 +25,7 @@ import { recoverySystemEvidence } from './lifecycle-recovery.js';
  */
 export {
   INSTANCE_LEASE_DIRECTORY, instanceLeasePath, listInstanceLeases, readInstanceLease, removeInstanceLease, writeInstanceLease,
-} from '@linmu/dsh-session-contracts';
+} from '@linmu/dsh-session-contracts/instance-lease-file';
 
 /**
  * Judge one instance's lease.

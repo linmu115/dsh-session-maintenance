@@ -2,9 +2,11 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import {
-  instanceLeaseSchema, instanceLivenessAnswerSchema, instanceLivenessChallengeSchema, writeInstanceLease,
+  instanceLeaseSchema, instanceLivenessAnswerSchema, instanceLivenessChallengeSchema,
   type InstanceLease, type InstanceLeaseState,
 } from '@linmu/dsh-session-contracts';
+// The lease file layer is Node-only and deliberately outside the browser-safe barrel.
+import { writeInstanceLease } from '@linmu/dsh-session-contracts/instance-lease-file';
 
 /**
  * The instance half of the takeover handshake.

@@ -8,6 +8,11 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./instance-lease-file": {
+      "development": "./src/instance-lease-file.ts",
+      "types": "./dist/instance-lease-file.d.ts",
+      "default": "./dist/instance-lease-file.js"
     }
   },
   "files": ["dist"],

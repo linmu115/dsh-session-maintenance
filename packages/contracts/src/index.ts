@@ -49,7 +49,10 @@ export * from "./codex-mirror.js";
 export * from "./registered-instance-policy.js";
 export * from './standalone-instance.js';
 export * from './instance-lease.js';
-export * from './instance-lease-file.js';
+// The lease *file* layer is Node-only (node:fs/promises, node:path) and is therefore deliberately
+// not re-exported here: this barrel is consumed by the browser Dashboard, and a runtime value
+// pulled through it would drag Node built-ins into the browser bundle. Node callers import it
+// from the dedicated subpath instead: `@linmu/dsh-session-contracts/instance-lease-file`.
 export * from './runtime-adapter.js';
 
 export * from "./integration-error.js";
