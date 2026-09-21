@@ -1,7 +1,7 @@
 // Use the native Common Item Dialog on Windows PowerShell 5.1 as well as newer
 // hosts. No PowerShell 7 installation or legacy shell-tree enumeration is needed.
 export const FOLDER_PICKER_READY = 'DSH_VAULT_PICKER_READY';
-export const FOLDER_PICKER_SCRIPT = `
+const FOLDER_PICKER_TEMPLATE = `
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -79,7 +79,7 @@ public static class DshVaultFolderPicker {
       uint options; dialog.GetOptions(out options);
       // PICKFOLDERS | FORCEFILESYSTEM | PATHMUSTEXIST | DONTADDTORECENT
       dialog.SetOptions(options | 0x20 | 0x40 | 0x800 | 0x2000000);
-      dialog.SetTitle("选择已安装 Obsidian Bridge 的 Vault 文件夹");
+      dialog.SetTitle("__DSH_FOLDER_PICKER_TITLE__");
       dialog.SetOkButtonLabel("选择此文件夹");
       // Avoid restoring an unavailable last-used network folder from shell history.
       Guid iid = typeof(IShellItem).GUID;
@@ -106,3 +106,17 @@ public static class DshVaultFolderPicker {
 '@
 @{ path = [DshVaultFolderPicker]::Pick() } | ConvertTo-Json -Compress
 `;
+
+export const VAULT_FOLDER_PICKER_TITLE = '选择已安装 Obsidian Bridge 的 Vault 文件夹';
+
+/**
+ * The helper is one program; only the caption differs per entry, so every caller
+ * supplies its own title instead of keeping a second copy of the dialog code. The
+ * title is stripped of quotes before it reaches the script and is never used to
+ * evaluate the selected path.
+ */
+export function folderPickerScript(title: string): string {
+  return FOLDER_PICKER_TEMPLATE.replace('__DSH_FOLDER_PICKER_TITLE__', title.replace(/["'`$\\]/gu, ''));
+}
+
+export const FOLDER_PICKER_SCRIPT = folderPickerScript(VAULT_FOLDER_PICKER_TITLE);

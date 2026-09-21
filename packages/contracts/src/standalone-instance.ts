@@ -14,3 +14,20 @@ export const standaloneInstanceSchema = z.strictObject({
   }, 'Use an exact loopback HTTP origin'),
 });
 export type StandaloneInstance = z.infer<typeof standaloneInstanceSchema>;
+
+/**
+ * How an instance binding was established.
+ *
+ * - `directory`: the user selected the instance's DSH Home folder. Nothing in
+ *   the instance is required at launch for Maintenance to read it, so this kind
+ *   never installs a Launcher hook and never writes the instance-side startup
+ *   gate.
+ * - `launcher`: the instance was discovered through a Launcher data directory,
+ *   so its external-lifecycle hook is part of the binding.
+ * - `legacy`: a binding written before this field existed. Records are read as
+ *   `legacy` and are not migrated; its behaviour is inferred from whether the
+ *   binding carries a Launcher root, which is exactly how such a binding was
+ *   treated before.
+ */
+export const dshIntegrationConnectionKindSchema = z.enum(['directory', 'launcher', 'legacy']);
+export type DshIntegrationConnectionKind = z.infer<typeof dshIntegrationConnectionKindSchema>;

@@ -106,7 +106,9 @@ import {
   codexProjectMappingConfigurationSchema, codexProjectMappingUpdateSchema,
   type CodexProjectMappingConfiguration, type CodexProjectMappingUpdate,
   integrationDirectorySchema, workspaceSyncConfigurationSchema, integrationActionRequestSchema, workspaceSyncUpdateSchema,
+  selectInstanceFolderResponseSchema,
   type IntegrationDirectory, type IntegrationAction, type WorkspaceSyncConfiguration, type WorkspaceSyncUpdate,
+  type SelectInstanceFolderResponse,
 } from "@linmu/dsh-session-contracts";
 
 export interface MaintenanceClientOptions {
@@ -174,6 +176,15 @@ class ApiClient {
 
   async listIntegrations(signal?: AbortSignal): Promise<IntegrationDirectory> {
     return (await this.request("/v1/integrations", {}, z.strictObject({ directory: integrationDirectorySchema }), signal)).directory;
+  }
+
+  /**
+   * Connect by folder. The Engine opens the native chooser on its own machine and
+   * returns either a cancelled choice or a described DSH Home; the hint travels
+   * with both so the selection bar can show it before and after a choice.
+   */
+  selectInstanceFolder(signal?: AbortSignal): Promise<SelectInstanceFolderResponse> {
+    return this.request("/v1/integrations/instance-folder", this.jsonPost({}), selectInstanceFolderResponseSchema, signal);
   }
 
   async listInstanceWorkspaceInstances(signal?: AbortSignal) {

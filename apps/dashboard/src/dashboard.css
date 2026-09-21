@@ -349,6 +349,10 @@
 .capability-list p { color: var(--dsm-muted); margin: 5px 0; font-size: 12px; }
 .integration-card > details { margin-top: 14px; font-size: 12px; color: var(--dsm-muted); overflow-wrap: anywhere; }
 .integration-card > details summary { cursor: pointer; }
+.instance-folder-selection { border: 1px solid var(--dsm-border); border-radius: 10px; background: var(--dsm-soft-surface); padding: 14px 16px; margin: 14px 0; }
+.instance-folder-selection > p:first-child { margin: 0 0 10px; font-size: 12px; }
+.instance-folder-result { margin-top: 12px; border-top: 1px solid var(--dsm-border); padding-top: 12px; font-size: 12px; }
+.instance-folder-result p { margin: 4px 0; overflow-wrap: anywhere; }
 .sync-workspaces { display: grid; gap: 0; margin: 18px 0; }
 .sync-workspace { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; gap: 14px; border: 1px solid var(--dsm-border); padding: 18px; border-radius: 10px; cursor: pointer; }
 .sync-workspace[data-selected="true"] { border-color: var(--dsm-selected-border); background: var(--dsm-selected); }
