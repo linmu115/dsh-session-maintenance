@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
 import { REQUIRED_CAPABILITIES, verifyV3NativeContextMaterials, verifyV3NativeContextRelease } from "@linmu/dsh-session-adapter-0-1-5";
 import type { NativeContextMaterialInput, RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
-import { createEngineFixture, hashTree } from "./helpers.js";
+import { createEngineFixture, hashTree, joinInstanceWorkspace } from "./helpers.js";
 
 const at = "2026-09-15T00:00:00Z";
 const producerFixture = async () => JSON.parse(await readFile(new URL("./fixtures/native-context-core-agent-loop.json", import.meta.url), "utf8")) as {
@@ -31,6 +31,7 @@ describe("actual Core AgentLoop producer through durable Maintenance receipts", 
         instanceId: "fixture-native-loop", profileId: "web", dshVersion: "0.1.5-rc.2", maintenanceEndpoint: "http://127.0.0.1:41781",
         branchId: "main" as never, pinnedAdapterId: "dsh-0.1.5" as never, projectSelection: { kind: "all" }, environment: { runtimeCapabilities: [...REQUIRED_CAPABILITIES],
           packageVersions: Object.fromEntries(["@deepseek-ai/dsh-session", "@deepseek-ai/dsh-session-persistence", "@deepseek-ai/dsh-session-format-catalog"].map(p => [p, "0.1.5-rc.2"])) } };
+      await joinInstanceWorkspace(f.engine, { instanceId: request.instanceId, cwd: f.root });
       const run = await f.engine.prepareProjectionRuntimeRun(request);
       await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId,
         temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at, nativeMode: run.nativeMode });

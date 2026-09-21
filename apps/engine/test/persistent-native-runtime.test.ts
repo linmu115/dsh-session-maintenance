@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { JsonValue, RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
 import { rc1NativeSessionCodec } from "../../../packages/adapter-dsh-rc1/src/index.js";
 import { createReadOnlyComposition } from "../src/composition-root.js";
-import { createEngineFixture } from "./helpers.js";
+import { createEngineFixture, selectUnassignedSessions } from "./helpers.js";
 
 const at = "2026-09-10T00:00:00.000Z";
 const request: RuntimeBrokerPrepareRunRequest = {
@@ -28,6 +28,8 @@ describe("persistent native Broker lifecycle", () => {
         operationId: "synthetic-import" as never, logicalSessionId: "synthetic-logical" as never, nativeSessionId: "synthetic-source" as never,
         title: "Synthetic native history", tags: ["fixture"], archivedAt: null, workspaceId: null, events: [], importedAt: at,
       }));
+      // The imported native history has no workspace, so the instance must explicitly include unassigned sessions.
+      selectUnassignedSessions(engine, request.instanceId);
       const run = await engine.prepareProjectionRuntimeRun(request);
       expect(run.nativeMode).toBe("persistent-native-v1");
       expect(run.controlRoot).not.toBe(join(run.persistenceRoot, ".."));

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { RuntimeBrokerPrepareRunRequest, UserRequestPage } from "@linmu/dsh-session-contracts";
 import { REQUIRED_CAPABILITIES } from "@linmu/dsh-session-adapter-0-1-5";
-import { createEngineFixture, hashTree } from "./helpers.js";
+import { createEngineFixture, hashTree, joinInstanceWorkspace } from "./helpers.js";
 import { UserRequestIndexService } from "../src/user-request-index-service.js";
 import { contextHeader } from "../../../packages/adapter-dsh-0-1-5/test/context-fixture.js";
 
@@ -30,6 +30,7 @@ async function fixture(turns = 100) {
     instanceId: "fixture-copy", profileId: "web", dshVersion: "0.1.5-rc.2", maintenanceEndpoint: "http://127.0.0.1:41781", branchId: "main" as never,
     pinnedAdapterId: "dsh-0.1.5" as never, projectSelection: { kind: "all" }, environment: { runtimeCapabilities: [...REQUIRED_CAPABILITIES],
       packageVersions: Object.fromEntries(["@deepseek-ai/dsh-session", "@deepseek-ai/dsh-session-persistence", "@deepseek-ai/dsh-session-format-catalog"].map(p => [p, "0.1.5-rc.2"])) } };
+  await joinInstanceWorkspace(f.engine, { instanceId: request.instanceId, cwd: f.root });
   const run = await f.engine.prepareProjectionRuntimeRun(request);
   await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId,
     temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at, nativeMode: run.nativeMode });

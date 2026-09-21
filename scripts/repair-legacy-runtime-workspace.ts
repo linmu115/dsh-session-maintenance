@@ -29,6 +29,8 @@ export async function repairLegacyRuntimeWorkspace(engine: SessionMaintenanceEng
       const intent = database.prepare("SELECT workspace_id FROM runtime_workspace_registrations WHERE run_id=? AND native_session_id=?").get(runId, mapping.nativeSessionId);
       assert.equal(intent?.workspace_id, snapshot.workspaceId, "An existing workspace cannot be reassigned by this repair");
     }
+    // Only an already joined Maintenance workspace can be reused here: a workspace the instance
+    // created for itself is not enrolled by this repair.
     const workspaceId = registration.resolve({ run, nativeSessionId: mapping.nativeSessionId, projectId: membership.project_id as never });
     if (snapshot.workspaceId === null) await engine.sessionCommands.updateSession(logicalSessionId, { workspaceId });
     // The message bodies, head, WAL and run state remain for the normal provider recovery.

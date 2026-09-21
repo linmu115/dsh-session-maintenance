@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { REQUIRED_CAPABILITIES } from "@linmu/dsh-session-adapter-0-1-5";
 import type { RuntimeBrokerPrepareRunRequest, SessionContextRecord } from "@linmu/dsh-session-contracts";
-import { createEngineFixture, hashTree } from "./helpers.js";
+import { createEngineFixture, hashTree, joinInstanceWorkspace } from "./helpers.js";
 import { contextEvents, contextHeader } from "../../../packages/adapter-dsh-0-1-5/test/context-fixture.js";
 import { SessionGraphStore, graphObjectId } from "../src/session-graph-store.js";
 
@@ -14,6 +14,7 @@ async function setup() {
     projectSelection: { kind: "all" }, environment: { runtimeCapabilities: [...REQUIRED_CAPABILITIES],
       packageVersions: Object.fromEntries(["@deepseek-ai/dsh-session", "@deepseek-ai/dsh-session-persistence",
         "@deepseek-ai/dsh-session-format-catalog"].map(name => [name, "0.1.5-rc.2"])) } };
+  await joinInstanceWorkspace(f.engine, { instanceId: request.instanceId, cwd: f.root });
   const run = await f.engine.prepareProjectionRuntimeRun(request);
   await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId,
     temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at, nativeMode: run.nativeMode });

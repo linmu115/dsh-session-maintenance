@@ -8,7 +8,7 @@ import { builtInExtensionAdapters } from "../src/extensions/adapters.js";
 import { SessionGraphStore, graphObjectId } from "../src/session-graph-store.js";
 import type { SessionMaintenanceEngine } from "../src/engine.js";
 import { MaintenanceClient } from "../../../packages/local-api-client/src/index.js";
-import { createEngineFixture, hashTree } from "./helpers.js";
+import { createEngineFixture, hashTree, joinInstanceWorkspace } from "./helpers.js";
 import { REQUIRED_CAPABILITIES } from "@linmu/dsh-session-adapter-0-1-5";
 import { contextHeader } from "../../../packages/adapter-dsh-0-1-5/test/context-fixture.js";
 import type { RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
@@ -192,6 +192,7 @@ describe("Annotation metadata mirrors", () => {
       maintenanceEndpoint: server.origin, branchId: "main" as never, pinnedAdapterId: "dsh-0.1.5" as never,
       projectSelection: { kind: "all" }, environment: { runtimeCapabilities: [...REQUIRED_CAPABILITIES],
         packageVersions: Object.fromEntries(["@deepseek-ai/dsh-session", "@deepseek-ai/dsh-session-persistence", "@deepseek-ai/dsh-session-format-catalog"].map(name => [name, "0.1.5-rc.2"])) } };
+    await joinInstanceWorkspace(f.engine, { instanceId: request.instanceId, cwd: f.root });
     const run = await f.engine.prepareProjectionRuntimeRun(request);
     await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId,
       temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: "2026-09-15T00:00:00Z", nativeMode: run.nativeMode });

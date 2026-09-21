@@ -10,6 +10,7 @@ import {
   SqliteAdapterRegistryRepository,
   SqliteCanonicalProjectionSource,
   SqliteCanonicalRepository,
+  SqliteInstanceWorkspacePolicyRepository,
   SqliteProjectionRunRepository,
   SqliteStatusEventRepository,
   openMaintenanceDatabase,
@@ -116,6 +117,9 @@ describe("Alpha2 projection open integration", () => {
       updatedAt: at,
     });
     let nextId = 0;
+    // A run projects exactly the explicitly joined workspaces of its instance.
+    new SqliteInstanceWorkspacePolicyRepository(database).updatePolicy("alpha2-integration", { expectedRevision: 0,
+      selection: { kind: "ids", workspaceIds: [workspaceId], includeUnassigned: false } });
     const lifecycle = new ProjectionLifecycle({
       runRepository: new SqliteProjectionRunRepository(database),
       statusLog: new StatusLog(

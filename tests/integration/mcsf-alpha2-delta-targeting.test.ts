@@ -11,6 +11,7 @@ import {
 import {
   SqliteCanonicalProjectionSource,
   SqliteCanonicalRepository,
+  SqliteInstanceWorkspacePolicyRepository,
   openMaintenanceDatabase,
 } from "../../packages/session-store/src/index.js";
 import { MemoryStatusEventAdapter, StatusLog } from "../../packages/session-status-log/src/index.js";
@@ -140,6 +141,9 @@ describe("MCSF Alpha2 delta targeting", () => {
     await seed(canonical, "b");
 
     let nextId = 0;
+    // The cache projects exactly the explicitly joined workspaces of this instance.
+    new SqliteInstanceWorkspacePolicyRepository(database).updatePolicy("alpha2-acceptance", { expectedRevision: 0,
+      selection: { kind: "ids", workspaceIds: ["workspace-a" as never, "workspace-b" as never], includeUnassigned: false } });
     const cache = new PersistentProjectionCache({
       runtimeRoot: join(root, "runtime"),
       source: new SqliteCanonicalProjectionSource(database),

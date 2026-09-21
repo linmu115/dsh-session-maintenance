@@ -9,6 +9,7 @@ import {
   SqliteCanonicalProjectionSource,
   SqliteCanonicalRepository,
   SqliteCanonicalSessionEngineStore,
+  SqliteInstanceWorkspacePolicyRepository,
   ZstdContentObjectStore,
 } from "../src/index.js";
 
@@ -36,6 +37,10 @@ async function fixture() {
   const repository = new SqliteCanonicalRepository(database);
   const engine = new CanonicalSessionEngine(new SqliteCanonicalSessionEngineStore(database, objectStore));
   const source: IncrementalCanonicalProjectionSource = new SqliteCanonicalProjectionSource(database, objectStore);
+  // A projection carries exactly the explicitly selected scope; these fixture sessions start
+  // without a workspace, so the instance must include unassigned sessions.
+  new SqliteInstanceWorkspacePolicyRepository(database).updatePolicy("fixture", { expectedRevision: 0,
+    selection: { kind: "ids", workspaceIds: [], includeUnassigned: true } });
   return { database, objectStore, repository, engine, source };
 }
 
@@ -107,6 +112,9 @@ describe("Store canonical projection source", () => {
       { schemaVersion: 1, projectId, path: "D:/synthetic/first", normalizedPath: "d:/synthetic/first", ordinal: 0 },
     ]);
     await repository.setProjectMembership({ schemaVersion: 1, logicalSessionId: id, projectId, revision: 0 });
+    // The workspace this session moved into must be selected as well.
+    new SqliteInstanceWorkspacePolicyRepository(database).updatePolicy("fixture", { expectedRevision: 1,
+      selection: { kind: "ids", workspaceIds: [workspaceId], includeUnassigned: true } });
     database.prepare("UPDATE logical_sessions SET tombstoned_at = ? WHERE id = ?").run(at, "source-hidden");
     const full = await source.load(run);
     expect(full.sessions).toHaveLength(1);

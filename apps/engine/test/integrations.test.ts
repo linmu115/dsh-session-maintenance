@@ -35,9 +35,13 @@ async function fixture(withPlugin = true) {
   const catalog = { homes: [{ id: "home-a", name: "A", path: homeRoot }], versions: [{ id: "version-a", version: "0.1.2-rc.1", dir: versionRoot }], instances: [{ id: "instance-a", name: "DSH A", home_id: "home-a", version_id: "version-a" }, { id: "instance-b", name: "DSH B", home_id: "home-a", version_id: "version-a" }] };
   await json(join(dataRoot, "config.json"), catalog);
   await json(join(dataRoot, "external-lifecycle-capabilities.json"), { schemaVersion: 1, protocolVersion: 1, catalogFile: "config.json", supportedPhases: ["prepare", "beforeStop", "afterExit", "abort"], processId: process.pid, executable: { path: process.execPath, sha256: launcherSha } });
-  const profile = () => ({ dsh: { profile: { bundles: ["@deepseek-ai/dsh-web-app", ...(withPlugin ? ["dsh-session-maintenance"] : [])] } } });
+  // A real installed profile names the program it runs, either as a path (`link:`)
+  // or as a pinned version. Only the `link:` form lets the folder itself be
+  // checked for an installed CLI, which is what a directory connection uses.
+  const profile = () => ({ devDependencies: { "@deepseek-ai/dsh": `link:${join(versionRoot, "node_modules", "@deepseek-ai", "dsh")}` },
+    dsh: { profile: { bundles: ["@deepseek-ai/dsh-web-app", ...(withPlugin ? ["dsh-session-maintenance"] : [])] } } });
   await json(join(profileRoot, "package.json"), profile());
-  await json(join(versionRoot, "node_modules", "@deepseek-ai", "dsh", "package.json"), { name: "@deepseek-ai/dsh", version: "0.1.2-rc.1" });
+  await json(join(versionRoot, "node_modules", "@deepseek-ai", "dsh", "package.json"), { name: "@deepseek-ai/dsh", version: "0.1.2-rc.1", private: true });
   await mkdir(join(versionRoot, "node_modules", "@deepseek-ai", "dsh", "lib"));
   await writeFile(join(versionRoot, "node_modules", "@deepseek-ai", "dsh", "lib", "bin.js"), "// synthetic");
   for (const name of ["dsh-session", "dsh-session-persistence", "dsh-web-app"]) {
@@ -50,7 +54,7 @@ async function fixture(withPlugin = true) {
     await json(join(profileRoot, "node_modules", "dsh-session-maintenance", "package.json"), { name: "dsh-session-maintenance", version: "0.2.19", main: "index.js", dsh: { bundle: { patch: "./cordis.patch.yml" } } });
     await writeFile(join(profileRoot, "node_modules", "dsh-session-maintenance", "index.js"), "// synthetic plugin");
     await writeFile(join(profileRoot, "node_modules", "dsh-session-maintenance", "cordis.patch.yml"), "- insert:\n    - id: session-maintenance\n      name: dsh-session-maintenance\n");
-    await json(join(profileRoot, "package.json"), { dsh: { profile: { bundles: ["@deepseek-ai/dsh-web-app", "dsh-session-maintenance"] } } });
+    await json(join(profileRoot, "package.json"), { ...profile(), dsh: { profile: { bundles: ["@deepseek-ai/dsh-web-app", "dsh-session-maintenance"] } } });
   };
   if (withPlugin) await addPlugin();
   const writes = MaintenanceWriteCoordinator.acquire(stateRoot, "engine");
@@ -86,6 +90,164 @@ describe("instance onboarding", () => {
     await service.action(binding.targetId, 'disconnect');
     expect(await readIntegrationBindings(f.stateRoot)).toEqual([]);
     await expect(readFile(join(f.dataRoot, 'config.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+  it("records a directory connection without writing the startup gate or installing a hook", async () => {
+    const f = await fixture();
+    await unlink(join(f.dataRoot, "config.json"));
+    await unlink(join(f.dataRoot, "external-lifecycle-capabilities.json"));
+    const service = new InstanceIntegrationService({ stateRoot: f.stateRoot, writes: f.writes,
+      discover: async () => ({ launcherDetected: false, targets: await discoverStandaloneInstances(f.stateRoot) }),
+      installation: f.installation, verifyAdapter: f.verifyAdapter });
+    const directory = await service.registerStandalone({ schemaVersion: 1, instanceId: "folder-instance", profileId: "web",
+      name: "Selected folder", runtimeVersion: "0.1.2-rc.1", homeRoot: f.homeRoot, versionRoot: f.versionRoot, runtimeUrl: "http://127.0.0.1:19876" });
+    const targetId = directory.targets[0]!.id;
+    expect(directory.targets[0]!.status).toBe("connected");
+
+    // The whole point of a directory connection: launching the instance never
+    // depends on the Engine or on a Launcher hook, so neither is installed.
+    await expect(readFile(join(f.stateRoot, "maintenance-required.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    await expect(readFile(join(f.dataRoot, "runtime-lifecycle.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect((await readIntegrationBindings(f.stateRoot))[0]).toMatchObject({ targetId, connectionKind: "directory", launcherDataRoot: null });
+    expect(await resolveRuntimeIntegration(f.stateRoot, { schemaVersion: 1, phase: "prepare", instanceId: "folder-instance", profileId: "web", runtimeVersion: "0.1.2-rc.1", web: true })).toMatchObject({ adapterId: "dsh-rc1" });
+
+    // Disconnecting must not create the gate file either.
+    await service.action(targetId, "disconnect");
+    await expect(readFile(join(f.stateRoot, "maintenance-required.json"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("connects a folder choice by asking for the DSH Home and describing what is inside it", async () => {
+    const f = await fixture();
+    // The native dialog is injected, so this test never opens one; the real
+    // chooser is exercised by apps/engine/test/instance-folder.test.ts.
+    const asked: AbortSignal[] = [];
+    const service = new InstanceIntegrationService({ stateRoot: f.stateRoot, writes: f.writes,
+      discover: async () => ({ launcherDetected: false, targets: await discoverStandaloneInstances(f.stateRoot) }),
+      installation: f.installation, verifyAdapter: f.verifyAdapter,
+      pickInstanceFolder: async signal => { asked.push(signal); return f.homeRoot; } });
+    const selected = await service.selectInstanceFolder(new AbortController().signal);
+    expect(asked).toHaveLength(1);
+    expect(selected.cancelled).toBe(false);
+    if (selected.cancelled) throw new Error("expected a described Home");
+    // The folder alone names the instance and its profiles; nothing was registered.
+    expect(selected.inspection).toMatchObject({ homeRoot: f.homeRoot, suggestedInstanceId: "a", runtimeVersion: "0.1.2-rc.1", versionRoot: f.versionRoot });
+    expect(selected.inspection.profiles.map(profile => profile.profileId)).toEqual(["web"]);
+    expect(selected.hint).toContain("DSH Home 根目录");
+    await expect(readFile(join(f.stateRoot, "standalone-instances.json"))).rejects.toMatchObject({ code: "ENOENT" });
+    expect(await readIntegrationBindings(f.stateRoot)).toEqual([]);
+
+    // Cancelling is a normal outcome, not an error, and the hint still travels.
+    const cancelled = await new InstanceIntegrationService({ stateRoot: f.stateRoot, writes: f.writes,
+      discover: async () => ({ launcherDetected: false, targets: [] }), installation: f.installation,
+      verifyAdapter: f.verifyAdapter, pickInstanceFolder: async () => null }).selectInstanceFolder(new AbortController().signal);
+    expect(cancelled).toMatchObject({ cancelled: true });
+    expect(cancelled.hint).toBe(selected.hint);
+  });
+
+  it("refuses a folder that is not a complete DSH Home instead of registering it", async () => {
+    const f = await fixture();
+    const empty = join(f.sandbox.root, "not-a-home");
+    await mkdir(empty);
+    const service = new InstanceIntegrationService({ stateRoot: f.stateRoot, writes: f.writes,
+      discover: async () => ({ launcherDetected: false, targets: await discoverStandaloneInstances(f.stateRoot) }),
+      installation: f.installation, verifyAdapter: f.verifyAdapter,
+      pickInstanceFolder: async () => empty });
+    await expect(service.selectInstanceFolder(new AbortController().signal)).rejects.toMatchObject({ code: "INSTANCE_FOLDER_INVALID" });
+    expect(await readIntegrationBindings(f.stateRoot)).toEqual([]);
+  });
+
+  it("keeps writing the startup gate and the Launcher hook for a Launcher connection", async () => {
+    const f = await fixture();
+    const target = (await f.discover()).targets[0]!;
+    expect((await f.service.action(target.target.id, "connect")).targets[0]!.status).toBe("connected");
+    const policy = JSON.parse(await readFile(join(f.stateRoot, "maintenance-required.json"), "utf8"));
+    expect(policy.required).toContainEqual({ instanceId: "instance-a", profileId: "web" });
+    expect(JSON.parse(await readFile(join(f.dataRoot, "runtime-lifecycle.json"), "utf8")).args).toContain("--require-binding");
+    expect((await readIntegrationBindings(f.stateRoot))[0]).toMatchObject({ connectionKind: "launcher", launcherDataRoot: f.dataRoot });
+    await f.service.action(target.target.id, "disconnect");
+    expect(JSON.parse(await readFile(join(f.stateRoot, "maintenance-required.json"), "utf8")).required).toEqual([]);
+  });
+
+  it("treats a stored binding without a connection source as legacy and still clears its gate", async () => {
+    const f = await fixture();
+    const target = (await f.discover()).targets[0]!;
+    await f.service.action(target.target.id, "connect");
+    // An older Engine wrote bindings without the field; it must stay readable and keep its behaviour.
+    const path = integrationBindingsPath(f.stateRoot);
+    const bindings = JSON.parse(await readFile(path, "utf8"));
+    for (const binding of bindings.bindings) delete binding.connectionKind;
+    await writeFile(path, JSON.stringify(bindings));
+    expect((await f.service.list()).targets[0]!.status).toBe("connected");
+    const after = (await f.service.action(target.target.id, "disconnect")).targets;
+    expect(after.every(item => item.status !== "connected")).toBe(true);
+    expect(await readIntegrationBindings(f.stateRoot)).toEqual([]);
+    expect(JSON.parse(await readFile(join(f.stateRoot, "maintenance-required.json"), "utf8")).required).toEqual([]);
+  });
+
+  it("does not gate a launch on ordinary plugin composition, but still records it", async () => {
+    const f = await fixture();
+    const baseline = (await f.discover()).targets[0]!;
+    const inventory = baseline.pluginInventory;
+    expect(typeof inventory).toBe("string");
+
+    // Install an ordinary business plugin: it enters the bundle list and its
+    // manifest is resolved. The startup gate must not move because of that.
+    const extraRoot = join(f.profileRoot, "node_modules", "dsh-obsidian-bridge");
+    await json(join(extraRoot, "package.json"), { name: "dsh-obsidian-bridge", version: "0.4.1-rc2.8", main: "index.js", dsh: { bundle: { patch: "./cordis.patch.yml" } } });
+    await writeFile(join(extraRoot, "index.js"), "// synthetic plugin");
+    await writeFile(join(extraRoot, "cordis.patch.yml"), "- insert:\n    - id: obsidian-bridge\n      name: dsh-obsidian-bridge\n");
+    await json(join(f.profileRoot, "package.json"), { dsh: { profile: { bundles: ["@deepseek-ai/dsh-web-app", "dsh-session-maintenance", "dsh-obsidian-bridge"] } } });
+    const installed = (await f.discover()).targets[0]!;
+    expect(installed.fingerprint).toBe(baseline.fingerprint);
+    expect(installed.pluginInventory).not.toBe(inventory);
+
+    // Upgrading that plugin is likewise inventory, not contract.
+    const beforeUpgrade = installed.pluginInventory;
+    await json(join(extraRoot, "package.json"), { name: "dsh-obsidian-bridge", version: "0.4.1-rc2.9", main: "index.js", dsh: { bundle: { patch: "./cordis.patch.yml" } } });
+    const upgraded = (await f.discover()).targets[0]!;
+    expect(upgraded.fingerprint).toBe(baseline.fingerprint);
+    expect(upgraded.pluginInventory).not.toBe(beforeUpgrade);
+
+    // Removing it again returns the original inventory and leaves the gate alone.
+    await json(join(f.profileRoot, "package.json"), { dsh: { profile: { bundles: ["@deepseek-ai/dsh-web-app", "dsh-session-maintenance"] } } });
+    const removed = (await f.discover()).targets[0]!;
+    expect(removed.fingerprint).toBe(baseline.fingerprint);
+    expect(removed.pluginInventory).toBe(inventory);
+  });
+  it("keeps gating on the instance identity, effective patch layers and integration plugin contract", async () => {
+    const f = await fixture();
+    const baseline = (await f.discover()).targets[0]!;
+    // A changed runtime environment is a contract change: the adapter reads the
+    // instance differently, so the gate must move even though no plugin changed.
+    const envInstance = { ...f.catalog.instances[0]!, env_overrides: { DSH_DEBUG: "1" } };
+    await json(join(f.dataRoot, "config.json"), { ...f.catalog, instances: [envInstance, f.catalog.instances[1]!] });
+    const envChanged = (await f.discover()).targets[0]!;
+    expect(envChanged.fingerprint).not.toBe(baseline.fingerprint);
+    expect(envChanged.pluginInventory).toBe(baseline.pluginInventory);
+    await json(join(f.dataRoot, "config.json"), f.catalog);
+    expect((await f.discover()).targets[0]!.fingerprint).toBe(baseline.fingerprint);
+
+    // The actually installed runtime version is part of the read contract.
+    const cli = join(f.versionRoot, "node_modules", "@deepseek-ai", "dsh", "package.json");
+    const declared = JSON.parse(await readFile(cli, "utf8"));
+    await json(cli, { ...declared, version: "0.1.2-rc.2" });
+    const versionChanged = (await f.discover()).targets[0]!;
+    expect(versionChanged.fingerprint).not.toBe(baseline.fingerprint);
+    expect(versionChanged.pluginInventory).toBe(baseline.pluginInventory);
+
+    // An effective user patch layer is contract too: it can disable the session
+    // services the adapter depends on, so it cannot be treated as inventory.
+    await json(cli, declared);
+    await writeFile(join(f.profileRoot, "cordis.patch.yml"), "- id: unrelated-plugin\n  config:\n    theme: dark\n");
+    const patched = (await f.discover()).targets[0]!;
+    expect(patched.fingerprint).not.toBe(baseline.fingerprint);
+    expect(patched.pluginInventory).toBe(baseline.pluginInventory);
+    await unlink(join(f.profileRoot, "cordis.patch.yml"));
+    expect((await f.discover()).targets[0]!.fingerprint).toBe(baseline.fingerprint);
+
+    // The Maintenance integration plugin is the peer of this contract, not an
+    // ordinary business plugin, so replacing it moves the gate as well.
+    await json(join(f.profileRoot, "node_modules", "dsh-session-maintenance", "package.json"), { name: "dsh-session-maintenance", version: "0.2.20", main: "index.js", dsh: { bundle: { patch: "./cordis.patch.yml" } } });
+    expect((await f.discover()).targets[0]!.fingerprint).not.toBe(baseline.fingerprint);
   });
   it("retains frozen earlier-host legacy releases and rejects undeclared future versions", async () => {
     const f = await fixture();

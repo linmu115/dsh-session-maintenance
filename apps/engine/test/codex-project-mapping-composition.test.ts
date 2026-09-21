@@ -11,7 +11,7 @@ import { MaintenanceClient } from "../../../packages/local-api-client/src/index.
 import { CodexCanonicalImportService, type CanonicalImportPlanV1 } from "../src/codex-canonical-import.js";
 import { codexProjectKey } from "../src/codex-project-mapping.js";
 import { SqliteCodexProjectPort } from "../src/sqlite-codex-project-port.js";
-import { createEngineFixture, hashTree } from "./helpers.js";
+import { createEngineFixture, hashTree, selectAllWorkspaces } from "./helpers.js";
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
@@ -110,6 +110,8 @@ describe("Codex project mapping composition and HTTP activation", () => {
       branchId: "main" as never, pinnedAdapterId: "dsh-rc1" as never, projectSelection: { kind: "all" },
       environment: { packageVersions: { "@deepseek-ai/dsh-session": "0.1.2-rc.1", "@deepseek-ai/dsh-session-persistence": "0.1.2-rc.1" }, runtimeCapabilities: ["sessionPersistence", "session/event", "session/flush"] },
     };
+    // The instance explicitly selects every workspace, so this mapping test keeps projecting the Codex sessions.
+    selectAllWorkspaces(f.engine, request.instanceId);
     const run = await f.engine.prepareProjectionRuntimeRun(request);
     try {
       expect(run).toMatchObject({ state: "preparing", adapterId: "dsh-rc1" });

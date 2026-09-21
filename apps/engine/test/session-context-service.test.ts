@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createEngineFixture, hashTree } from './helpers.js';
+import { createEngineFixture, hashTree, joinInstanceWorkspace } from './helpers.js';
 import { REQUIRED_CAPABILITIES, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -17,6 +17,7 @@ describe('RC2 upstream through real Engine and authenticated HTTP',()=>{
         instanceId:'fixture-rc2-copy',profileId:'web',dshVersion:'0.1.5-rc.2',maintenanceEndpoint:'http://127.0.0.1:41781',branchId:'main' as never,
         pinnedAdapterId:'dsh-0.1.5' as never,projectSelection:{kind:'all'},environment:{runtimeCapabilities:[...REQUIRED_CAPABILITIES],
           packageVersions:Object.fromEntries(['@deepseek-ai/dsh-session','@deepseek-ai/dsh-session-persistence','@deepseek-ai/dsh-session-format-catalog'].map(p=>[p,'0.1.5-rc.2']))}};
+      await joinInstanceWorkspace(f.engine,{instanceId:request.instanceId,cwd:f.root});
       const run=await f.engine.prepareProjectionRuntimeRun(request);
       const sourceHeader={...contextHeader,cwd:f.root};
       await f.engine.attachProjectionRuntimeRun({schemaVersion:1,clientId:request.runtimeClientId,runId:run.runId,

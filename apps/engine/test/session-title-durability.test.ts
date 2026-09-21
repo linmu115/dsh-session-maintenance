@@ -1,12 +1,13 @@
 import { expect, it, vi } from "vitest";
 import { REQUIRED_CAPABILITIES } from "@linmu/dsh-session-adapter-0-1-5";
 import { contextEvents, contextHeader } from "../../../packages/adapter-dsh-0-1-5/test/context-fixture.js";
-import { createEngineFixture, hashTree } from "./helpers.js";
+import { createEngineFixture, hashTree, joinInstanceWorkspace } from "./helpers.js";
 
 it("commits native titles and preserves the renamed title through later ordinary append batches",async()=>{
   const f=await createEngineFixture("native-title-durable"),untouched=await Promise.all([hashTree(f.codexHome),hashTree(f.dshHome)]);
   try{
     const at="2026-09-15T00:00:00Z",clientId="title-runtime",header={...contextHeader,cwd:f.root};
+    await joinInstanceWorkspace(f.engine,{instanceId:"title-copy",cwd:f.root});
     const run=await f.engine.prepareProjectionRuntimeRun({schemaVersion:1,client:{kind:"launcher",id:"title-launcher"},runtimeClientId:clientId,
       instanceId:"title-copy",profileId:"web",dshVersion:"0.1.5-rc.2",maintenanceEndpoint:"http://127.0.0.1:41781",branchId:"main",pinnedAdapterId:"dsh-0.1.5",projectSelection:{kind:"all"},
       environment:{runtimeCapabilities:[...REQUIRED_CAPABILITIES],packageVersions:Object.fromEntries(["@deepseek-ai/dsh-session","@deepseek-ai/dsh-session-persistence","@deepseek-ai/dsh-session-format-catalog"].map(name=>[name,"0.1.5-rc.2"]))}} as any);

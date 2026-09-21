@@ -1,7 +1,7 @@
 import {expect,it} from 'vitest';
 import {REQUIRED_CAPABILITIES} from '@linmu/dsh-session-adapter-0-1-5';
 import type {RuntimeBrokerPrepareRunRequest} from '@linmu/dsh-session-contracts';
-import {createEngineFixture,hashTree} from './helpers.js';
+import {createEngineFixture,hashTree,joinInstanceWorkspace} from './helpers.js';
 import {contextEvents,contextHeader} from '../../../packages/adapter-dsh-0-1-5/test/context-fixture.js';
 import {MaintenanceKnowledge} from '../../../plugins/dsh-session-maintenance/src/session-knowledge.js';
 
@@ -10,6 +10,7 @@ it('keeps stickers, migrations, links and target-scoped graph metadata separate 
  try{
   const before=await hashTree(f.dshHome),at='2026-09-14T05:00:00Z';
   const request:RuntimeBrokerPrepareRunRequest={schemaVersion:1,client:{kind:'launcher',id:'knowledge-fixture'},runtimeClientId:'knowledge-runtime',instanceId:'knowledge-copy',profileId:'web',dshVersion:'0.1.5-rc.2',maintenanceEndpoint:'http://127.0.0.1:41781',branchId:'main' as never,pinnedAdapterId:'dsh-0.1.5' as never,projectSelection:{kind:'all'},environment:{runtimeCapabilities:[...REQUIRED_CAPABILITIES],packageVersions:Object.fromEntries(['@deepseek-ai/dsh-session','@deepseek-ai/dsh-session-persistence','@deepseek-ai/dsh-session-format-catalog'].map(n=>[n,'0.1.5-rc.2']))}};
+  await joinInstanceWorkspace(f.engine,{instanceId:request.instanceId,cwd:f.root});
   const run=await f.engine.prepareProjectionRuntimeRun(request);
   await f.engine.attachProjectionRuntimeRun({schemaVersion:1,clientId:request.runtimeClientId,runId:run.runId,temporaryPersistenceRootId:run.temporaryPersistenceRootId,attachedAt:at,nativeMode:run.nativeMode});
   const header={...contextHeader,cwd:f.root};const ids:Record<string,string>={};

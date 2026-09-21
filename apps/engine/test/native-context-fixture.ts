@@ -2,7 +2,7 @@ import { expect } from "vitest";
 import { REQUIRED_CAPABILITIES } from "@linmu/dsh-session-adapter-0-1-5";
 import type { RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
 import { contextHeader } from "../../../packages/adapter-dsh-0-1-5/test/context-fixture.js";
-import { createEngineFixture, hashTree } from "./helpers.js";
+import { createEngineFixture, hashTree, joinInstanceWorkspace } from "./helpers.js";
 
 const at = "2026-09-15T00:00:00Z";
 function events(count: number) {
@@ -21,6 +21,7 @@ export async function nativeContextFixture() {
   const f = await createEngineFixture("native-context-http");
   const untouched = await Promise.all([hashTree(f.codexHome), hashTree(f.dshHome)]);
   const request: RuntimeBrokerPrepareRunRequest = { schemaVersion: 1, client: { kind: "launcher", id: "fixture-launcher" }, runtimeClientId: "fixture-runtime", instanceId: "fixture-native-context", profileId: "web", dshVersion: "0.1.5-rc.2", maintenanceEndpoint: "http://127.0.0.1:41781", branchId: "main" as never, pinnedAdapterId: "dsh-0.1.5" as never, projectSelection: { kind: "all" }, environment: { runtimeCapabilities: [...REQUIRED_CAPABILITIES], packageVersions: Object.fromEntries(["@deepseek-ai/dsh-session", "@deepseek-ai/dsh-session-persistence", "@deepseek-ai/dsh-session-format-catalog"].map(name => [name, "0.1.5-rc.2"])) } };
+  await joinInstanceWorkspace(f.engine, { instanceId: request.instanceId, cwd: f.root });
   const run = await f.engine.prepareProjectionRuntimeRun(request);
   await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId, temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at, nativeMode: run.nativeMode });
   const mappings: Record<string, any> = {};
