@@ -26,3 +26,5 @@ Codex 来源由 Codex 管理，Maintenance 只读导入为镜像。仅显示或�
 待实现的显式学习双端绑定模式 [[REQ-learning-roundtrip]] 将限定例外：两端受控追加推进同一逻辑身份，DSH 续写不派生，绑定 Codex 不另建镜像。当前默认镜像行为尚未改变，不能把此需求解释为已上线能力。
 
 唯一共享定义在 [Canonical 类型](../../../../packages/contracts/src/canonical.ts)；实现依据 [追加与派生](../../../../packages/canonical-session-engine/src/dsh-append.ts)。运行空间见 [[OBJ-runtime]]，业务对象见 [[OBJ-extension]]。
+
+2026-09-21 用户注释新增的写入权边界（尚未实现）：来自 DSH 侧的引擎真源改动**只**依赖**已绑定**实例在**同步工作区**内产生的会话改动；实例自带工作区是该实例的自有工作区，其中的会话不进入真源也不被覆盖。工作区经右键菜单「将当前工作区加入 sessionmaintenance」显式加入。见 [[DEC-directory-connect-sync-authority]]。

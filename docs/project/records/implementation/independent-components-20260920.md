@@ -34,3 +34,5 @@
 ## 最新交接方向
 
 Maintenance 的普通插件组合门禁与未知类型保留登记为后续事项，暂停实现；用户要求转为关闭引擎的其他插件独立验收。此前对普通插件变化要求手工 revalidate 的建议已被替代。详见 docs/handoffs/2026-09-20-maintenance-and-independent-acceptance.md 及对应 issues 文档。
+
+2026-09-21 更新：上段的「普通插件组合门禁暂停实现」已由用户授权开始并完成第一项，见 [[IMP-startup-gate-split]] 与 [[VER-startup-gate-split]]（未提交、未发布、未做真实实例验收）。未知类型保留（MNT-002）仍待审计。同一轮用户提出实例先启动、引擎后接管的覆盖式同步要求，登记为 [[REQ-detached-instance-attach-sync]]，尚未实现。

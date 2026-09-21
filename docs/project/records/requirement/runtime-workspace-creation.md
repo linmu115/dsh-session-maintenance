@@ -1,16 +1,36 @@
 ---
-id: REQ-runtime-workspace-creation
-kind: requirement
-title: 实例新建工作区自动回写
-status: current
+{
+  "id": "REQ-runtime-workspace-creation",
+  "kind": "requirement",
+  "title": "实例新建工作区自动回写",
+  "status": "current",
+  "documentation": {
+    "state": "archived",
+    "reason": "用户 2026-09-21 注释明确删除「实例自带工作区自动登记进真源」的旧规则，改用同步工作区默认不勾选、右键显式加入",
+    "evidence": "对照本轮用户注释第 3 条，以及 DEC-directory-connect-sync-authority 登记的替代关系",
+    "archived_at": "2026-09-21T08:00:38.646384+00:00",
+    "archive_path": "archive/records/9157793a8f2c-cff625774ce1.md",
+    "sha256": "42f53051d8f98ef83a1445af7361295be58097e692cc9dea74b3bf3a31d54d44",
+    "original_path": "records/requirement/runtime-workspace-creation.md",
+    "original_line": 7,
+    "original_end_line": 16,
+    "map_version": {
+      "git_head": "798b0ae7bb45ed11002ff1bc74c4aa4cd893f3d7",
+      "branch": "codex/image-startup-recovery-20260917",
+      "dirty": true
+    },
+    "successor": "DEC-directory-connect-sync-authority",
+    "current_gap": false
+  },
+  "summary": "说明已归档；当前说明见 DEC-directory-connect-sync-authority",
+  "progress": "",
+  "gap": ""
+}
 ---
+这份说明已归档，不代表相关功能退役或需求撤销。
 
-# 实例新建工作区自动回写
+原因：用户 2026-09-21 注释明确删除「实例自带工作区自动登记进真源」的旧规则，改用同步工作区默认不勾选、右键显式加入
 
-来源：2026-09-19 用户在当前 Codex 任务确认“同步名单控制实例加载哪些已有工作区；实例主动创建的新工作区，自动写入 Maintenance，并加入这个实例的同步名单”，并要求实施。
+当前说明：[[DEC-directory-connect-sync-authority]]。
 
-新会话必须具有明确工作区归属。已有工作区复用稳定身份；新工作区由 Maintenance 登记，并加入发起实例当前运行及保存名单。其它已保存选择、其它实例和运行不被覆盖。手动调整已有名单仍下次启动生效。
-
-创建需要持久、幂等的登记，失败重试不重复创建工作区或会话。未选中的已有工作区不能通过新建会话绕过同步范围。目录仅辅助解析，歧义必须显式报告。提供具体的范围错误，不隐藏在通用回执报错中。
-
-验收：限定一个已有工作区且关闭未分组时，新工作区首条消息可提交；同工作区重复建会话、失败重试、下一次启动、其它实例隔离和手动待生效选择均正确。
+需要旧正文时显式查看历史；默认查询只返回本提示和替代定位。

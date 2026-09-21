@@ -1,26 +1,45 @@
 ---
-id: INT-stickers
-kind: implementation
-title: 贴纸：对象、会话与引用接入
-status: current
-summary: 贴纸对象、真实会话和固定引用分开保存。
-relations:
-- relation: consumes
-  to:
-    record_id: IF-extension
-  reason: stickers 格式及受控存储
-- relation: consumes
-  to:
-    record_id: IF-graph
-  reason: 会话身份、来源标记及统一撤销
-- relation: related_to
-  to:
-    project_id: dd46311f-d98d-49ff-ae13-fef0a8a6f9c3
-  reason: 外部 Suite 保存贴纸内部接入说明
-sources:
-- path: ../../apps/engine/src/extensions/adapters.ts
-- path: ../../packages/contracts/src/session-knowledge.ts
-- path: ../reports/2026-09-15-graph-reference-lifecycle-release.md
+{
+  "id": "INT-stickers",
+  "kind": "implementation",
+  "title": "贴纸：对象、会话与引用接入",
+  "status": "current",
+  "summary": "贴纸对象、真实会话和固定引用分开保存。",
+  "relations": [
+    {
+      "relation": "consumes",
+      "to": {
+        "record_id": "IF-extension"
+      },
+      "reason": "stickers 格式及受控存储"
+    },
+    {
+      "relation": "consumes",
+      "to": {
+        "record_id": "IF-graph"
+      },
+      "reason": "会话身份、来源标记及统一撤销"
+    },
+    {
+      "relation": "related_to",
+      "to": {
+        "project_id": "ed61ceeb-b51e-5124-924f-27d608ccbe10"
+      },
+      "reason": "按当前独立维护职责接入 Sticker Board"
+    }
+  ],
+  "sources": [
+    {
+      "path": "../../apps/engine/src/extensions/adapters.ts"
+    },
+    {
+      "path": "../../packages/contracts/src/session-knowledge.ts"
+    },
+    {
+      "path": "../reports/2026-09-15-graph-reference-lifecycle-release.md"
+    }
+  ]
+}
 ---
 
 # 贴纸：对象、会话与引用接入

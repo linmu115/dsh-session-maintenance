@@ -1,9 +1,12 @@
 ---
-id: DEC-selection
-kind: decision
-title: 这张地图选了哪些资料
-status: current
-summary: 原需求和合同保留，目录按责任组织，历史报告仅证明当时范围。
+{
+  "id": "DEC-selection",
+  "kind": "decision",
+  "title": "这张地图选了哪些资料",
+  "status": "current",
+  "summary": "原需求和合同保留，目录按责任组织，历史报告仅证明当时范围。",
+  "sources": []
+}
 ---
 
 # 这张地图选了哪些资料

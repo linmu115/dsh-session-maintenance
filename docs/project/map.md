@@ -15,6 +15,8 @@
 | 能做什么、现在怎样用 | [当前能力](../../README.md#%E5%BD%93%E5%89%8D%E5%8A%9F%E8%83%BD)、[使用流程](../../README.md#%E4%BD%BF%E7%94%A8%E6%B5%81%E7%A8%8B)、[当前实现](records/implementation/IMP-current.md) |
 | 身份、版本、真源与写入权 | [会话与工作区身份](records/objects/overview.md)、[版本与续接](records/objects/versions.md)、[对象归属与写入权](records/objects/extensions.md) |
 | 启动时自动恢复旧运行（已安装） | [[REQ-startup-recovery]]、[[IMP-startup-recovery]]、[[VER-startup-recovery]]；过程 [[HIST-startup-recovery]] |
+| 普通插件增删升级为何不能拦住启动（本轮实现，未发布未验收） | [[IMP-startup-gate-split]]、[[VER-startup-gate-split]]；过程草稿（未绑定事件索引）[2026-09-21 历程](history-drafts/2026-09-21-startup-gate-split.md)；问题登记见[插件自由组合问题](../../issues/2026-09-20-managed-plugin-composition.md) |
+| 实例先启动、引擎后接管并覆盖式同步（新要求，未实现） | [[REQ-detached-instance-attach-sync]]、[[DEC-directory-connect-sync-authority]]；当前实现相反（实例侧 `assertRegisteredStartup` 阻止加载） |
 | 内部责任及生命周期 | [Engine 编排](records/modules/engine/overview.md)、[宿主接入](records/modules/host/overview.md)、[维护看板](records/modules/dashboard/overview.md) |
 | 接 Codex/DSH 平台 | [平台适配](records/modules/adapters/harness/overview.md) → [平台合同](records/modules/adapters/harness/contract.md) → [平台已知接入](records/modules/adapters/harness/connected.md) |
 | 接业务插件 | [业务数据适配](records/modules/adapters/business/overview.md) → [对象合同](records/modules/adapters/business/contract.md) → [业务已知接入](records/modules/adapters/business/connected.md) |
@@ -24,7 +26,7 @@
 | 业务插件信息页与实例分类工作区范围（本地实现与验证完成） | [[REQ-extension-pages]]、[[IF-extension-pages]]、[[IF-instance-workspace-scope]]；历程 [[HIST-extension-pages-vault-binding]] |
 | 跨项目完整确认稿 | [DSH–Obsidian 与 Maintenance 完整需求](../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-dsh-obsidian-confirmed-requirements.md)；外部提供方维护自己的合同；SM本轮真实状态见 [[IMP-sync-ui-release]] 与 [[VER-sync-ui-release]]。 |
 | 同步与扩展层级、安装后哪些生效 | [[REQ-sync-extension-navigation]]、[[IMP-sync-ui-release]]、[[VER-sync-ui-release]]；这些是旧版验收；当前部署见 [[VER-startup-recovery]]。 |
-| 旧设计哪些有效 | [规格继承](records/decision/authority-history.md) |
+| 旧设计哪些有效 | [规格继承](records/decision/authority-history.md)；2026-09-21 实例接入与同步权威的新决定 [[DEC-directory-connect-sync-authority]] |
 | 这次验证了什么 | [本次地图验证](records/verification/VER-adoption.md)；历史产品证据 [原生上下文历史验证](../changes/2026-09-15-native-context-management.md#%E9%AA%8C%E8%AF%81%E5%AF%B9%E5%BA%94)、[目录与阅读器历史验证](../reports/2026-09-15-extension-ownership-reader-release.md#%E9%AA%8C%E8%AF%81%E4%B8%8E%E9%83%A8%E7%BD%B2) |
 
 架构图以责任边界展示内部模块与接口；流程图只画实现可证明的交接。A/B 共用本地图，B 可展开目录按责任定位记录。
@@ -38,6 +40,14 @@
 ## 当前实现与验收边界
 
 当前维护引擎为 **0.1.33-rc2.53**，Dashboard **0.1.13**。学习双向维护已完成真实关联、自动退出普通 Codex 同步与零增量交接；发送按新增消息计算预算，不自动跳转或发起回答。2026-09-19 18:20 正常重启后接入 connected，交接仍为等待回收，历史与派生数不变。真实新增问答完整往返仍未验收。当前用法见 [[IMP-learning-roundtrip]]，证据见 [[VER-learning-roundtrip]]。
+
+2026-09-21 启动门分离（MNT-001）：普通业务插件的增删升级不再计入启动绑定，普通插件组合单独记录为 `pluginInventory`；生效的用户 patch 层与接入插件自身身份仍在合同内。实现见 [[IMP-startup-gate-split]]，证据见 [[VER-startup-gate-split]]。**未提交、未构建进发行包、未做真实实例验收**；本机安装的发行版引擎（.58 / 接入 .36）不含此修复。
+
+同一轮用户提出新架构要求：实例先启动、引擎后启动，引擎启动后自动检出已启动实例并连接，随后经实例侧插件确认执行真源同步，引擎缺席期间已勾选工作区内的实例侧改动由真源覆盖。已登记为 [[REQ-detached-instance-attach-sync]]；当前实现与该要求相反，实例侧 `plugins/dsh-session-maintenance/src/registered-startup.ts` 会抛错阻止加载，尚未开始实现。
+
+2026-09-21 该要求的边界由**用户在 DSH 会话中的注释**逐条确认（不是模型推断）：插件侧在引擎缺席时留下可供引擎发现的握手/租约；引擎侧接管**不得依赖 Launcher**，改为像 Vault 绑定一样**选择实例文件夹**接入；来自 DSH 侧的真源改动**只**依赖**已绑定**实例在**同步工作区**内产生的会话改动，同步工作区**默认全部不勾选**，实例自带工作区是该实例的自有工作区（其中的会话不受影响），需在**原本的右键操作菜单**选「将当前工作区加入 sessionmaintenance」，由引擎启动时接纳，并在 Maintenance 自有会话存储区为该工作区新增文件夹、把 DSH 会话映射成自己的存储形式；归档状态按真源对称覆盖（真源未归档则覆盖后恢复为未归档）；实施顺序为**先做引擎侧「检出 + 接管 + 覆盖同步」**（不需要重启实例、不挂 hook 即可验收），取消实例侧启动门排在其后。这替代了此前的「原生新会话登记进真源（`importDshNative`）」与「未完成恢复则拒绝覆盖原生目录」两条规则。决定与替代关系见 [[DEC-directory-connect-sync-authority]]（旧记录 [[REQ-runtime-workspace-creation]] 已归档）；全部能力**尚未实现、未验收**。
+
+2026-09-21 同一会话的后续一轮，用户对上述要求又逐条确认与修正（同样是**用户在 DSH 会话中的回答**，不是模型推断）：接管后的「覆盖」**写回实例当前实际使用的会话目录**（本机为 `<DSH_HOME>\sessions\<工作区目录>\<会话目录>\session.v3.jsonl.zstd`），**刷新 WebUI 即可见、不需要重启实例**——用户据此否掉了「引擎只做真源覆盖、实例原生文件不重写」的框架；同步范围**不存在「历史默认范围／legacy all」，「未显式选择即为空」**，新接入与存量一视同仁，原先依赖「无记录 = all」的已接入实例升级后范围会变空直到用户在面板里勾选；选择实例文件夹的那一层确认为 **DSH Home 根目录**（含 `profiles/` 与 `sessions/`）并**在选择栏旁给出文字提示**；同一实例出现两张卡时按 `(instanceId, profileId)` **合并为一张卡**并标注连接来源（Launcher / 目录式）；「连接之后让 DSH 侧也提供修改同步范围的选项」记为**可选**，不是本轮必须实现。已核实 DSH 的 JSONL 持久化按需 `readdir` 列目录、没有启动期索引；**尚未实测**已打开会话是否被宿主缓存在内存里。全部能力仍未实现、未验收，详见 [[REQ-detached-instance-attach-sync]] 第 7–11 条与 [[DEC-directory-connect-sync-authority]] 决定一之二。
 
 以下版本为各项能力当时的安装与检查时点，不替代上述当前引擎版本。
 

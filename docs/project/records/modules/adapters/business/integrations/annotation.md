@@ -1,33 +1,57 @@
 ---
-id: INT-annotation
-kind: implementation
-title: Core 的固定引用、镜像与原生接入
-status: current
-summary: Core 持有实时引用事务，Maintenance 提供固定来源、镜像和原生状态。
-relations:
-- relation: consumes
-  to:
-    record_id: IF-graph
-  reason: Core 固定引用捕获、读取、绑定和交付回执
-- relation: consumes
-  to:
-    record_id: IF-native-context
-  reason: Core 原生工具及 Agent surface
-- relation: consumes
-  to:
-    record_id: IF-core-directory
-    project_id: dd46311f-d98d-49ff-ae13-fef0a8a6f9c3
-  reason: Maintenance 镜像消费 Core 的只读条目目录
-- relation: consumes
-  to:
-    record_id: IF-core-host
-    project_id: dd46311f-d98d-49ff-ae13-fef0a8a6f9c3
-  reason: 可选 Core 宿主服务协作
-sources:
-- path: ../changes/2026-09-15-native-context-management.md
-- path: ../../plugins/dsh-session-maintenance/src/session-context.ts
-- path: ../../plugins/dsh-session-maintenance/src/annotation-mirror.ts
-- path: ../../plugins/dsh-session-maintenance/src/native-context.ts
+{
+  "id": "INT-annotation",
+  "kind": "implementation",
+  "title": "Core 的固定引用、镜像与原生接入",
+  "status": "current",
+  "summary": "Core 持有实时引用事务，Maintenance 提供固定来源、镜像和原生状态。",
+  "relations": [
+    {
+      "relation": "consumes",
+      "to": {
+        "record_id": "IF-graph"
+      },
+      "reason": "Core 固定引用捕获、读取、绑定和交付回执"
+    },
+    {
+      "relation": "consumes",
+      "to": {
+        "record_id": "IF-native-context"
+      },
+      "reason": "Core 原生工具及 Agent surface"
+    },
+    {
+      "relation": "consumes",
+      "to": {
+        "record_id": "IF-core-directory",
+        "project_id": "ddcdd580-5275-5eef-9578-6de0e81fa887"
+      },
+      "reason": "Maintenance 镜像消费 Core 的只读条目目录"
+    },
+    {
+      "relation": "consumes",
+      "to": {
+        "record_id": "IF-core-host",
+        "project_id": "ddcdd580-5275-5eef-9578-6de0e81fa887"
+      },
+      "reason": "可选 Core 宿主服务协作"
+    }
+  ],
+  "sources": [
+    {
+      "path": "../changes/2026-09-15-native-context-management.md"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/session-context.ts"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/annotation-mirror.ts"
+    },
+    {
+      "path": "../../plugins/dsh-session-maintenance/src/native-context.ts"
+    }
+  ]
+}
 ---
 
 # Core 的固定引用、镜像与原生接入
