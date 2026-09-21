@@ -101,12 +101,6 @@ export class NativeSessionSpace {
     return m;
   }
 
-  private async ownerIsFinished(owner: string): Promise<void> {
-    if (owner === this.run.id) return;
-    const previous = await this.runs.getProjectionRun(owner as ProjectionRun["id"]);
-    if (!previous || !["closed", "recovered"].includes(previous.state)) throw new Error("Native space requires previous run recovery");
-  }
-
   async prepare(directory: JsonProjectionDirectory): Promise<NativeSpaceReference> {
     await ownedPath(resolve(this.runtimeRoot), relative(resolve(this.runtimeRoot), this.reference.root));
     await mkdir(this.reference.root, { recursive: true });
@@ -126,7 +120,13 @@ export class NativeSessionSpace {
         if (old.state !== "preparing" || (old.owner !== this.run.id && previous?.state !== "quarantined")) {
           throw new Error("Native space is not safely closed");
         }
-      } else await this.ownerIsFinished(old.owner);
+      }
+      // A cleanly closed space from a previous run is taken over without waiting
+      // for that run to be recovered first: the previous rule refused the next
+      // overwrite until recovery finished, and the operator's model is that a
+      // new run may prepare while an older run is still unresolved. What still
+      // protects the data is the inventory below and the file-level ownership
+      // checks, which refuse to touch files this run does not own.
     } else if ((await readdir(this.reference.root)).length !== 0) throw new Error("Refusing unowned native files");
     await this.verifyInventory(old?.files ?? {});
     // Staging has no history semantics. Once the prior journal is completed and ownership

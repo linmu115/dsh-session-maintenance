@@ -103,18 +103,33 @@ describe("persistent native session space", () => {
     expect(await rc1NativeSessionCodec.inspect(n.reference.root)).toHaveLength(2);
   });
 
-  it("N09/N10: refuses active ownership, changed native bytes, and isolates instance/profile/format", async () => {
+  it("N09/N10: takes over a space whose previous run is unresolved, still refuses changed bytes, and isolates instance/profile/format", async () => {
     const f = await fixture(); const first = run("one"); await f.setup(first, { a: payload("a") });
     const s = new NativeSessionSpace(f.root, first, adapter, f.repository); await s.prepare(f.directory);
     await expect(new NativeSessionSpace(f.root, run("two"), adapter, f.repository).prepare(f.directory)).rejects.toThrow(/safely closed/);
     expect(nativeSpaceReference(f.root, { ...first, profileId: "other" }, rc1NativeSessionCodec).root).not.toBe(s.reference.root);
     expect(nativeSpaceReference(f.root, { ...first, instanceId: "other" }, rc1NativeSessionCodec).root).not.toBe(s.reference.root);
     expect(nativeSpaceReference(f.root, first, { ...rc1NativeSessionCodec, formatId: "other" }).root).not.toBe(s.reference.root);
-    await s.checkpoint(f.directory); f.states.set(first.id, { ...first, state: "closed" });
+
+    // The space is checkpointed but the previous run is deliberately left
+    // unresolved. The rule that refused the next overwrite until that recovery
+    // finished no longer exists, so a new run takes the space over; what still
+    // protects the data is the inventory check and the file-level ownership
+    // rules, and the previous run's content is still readable afterwards.
+    await s.checkpoint(f.directory);
     const [artifact] = await rc1NativeSessionCodec.inspect(s.reference.root);
-    await appendFile(join(s.reference.root, artifact!.relativePath), "changed");
+    const before = await readFile(join(s.reference.root, artifact!.relativePath));
     await f.setup(run("two"), { a: payload("a") });
-    await expect(new NativeSessionSpace(f.root, run("two"), adapter, f.repository).prepare(f.directory)).rejects.toThrow(/changed after checkpoint/);
+    const taken = new NativeSessionSpace(f.root, run("two"), adapter, f.repository);
+    await expect(taken.prepare(f.directory)).resolves.toMatchObject({ root: s.reference.root });
+    expect(await readFile(join(s.reference.root, artifact!.relativePath))).toEqual(before);
+
+    // Changed bytes are still refused after a checkpoint, by the file-level
+    // ownership check rather than by the removed recovery rule.
+    await taken.checkpoint(f.directory);
+    await appendFile(join(s.reference.root, artifact!.relativePath), "changed");
+    await f.setup(run("three"), { a: payload("a") });
+    await expect(new NativeSessionSpace(f.root, run("three"), adapter, f.repository).prepare(f.directory)).rejects.toThrow(/changed after checkpoint/);
   });
 
   it("N08: completes an interrupted replacement from its journal before the next preparation", async () => {
