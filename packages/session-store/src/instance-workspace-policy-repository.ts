@@ -1,7 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import {
   instanceWorkspaceInstanceIdSchema, instanceWorkspacePolicySchema, instanceWorkspacePolicyUpdateSchema,
-  type InstanceWorkspacePolicy, type InstanceWorkspacePolicyUpdate, type LogicalSessionId, type LogicalWorkspaceId, type ProjectionRun,
+  type InstanceWorkspacePolicy, type InstanceWorkspacePolicyUpdate, type InstanceWorkspaceSelection,
+  type LogicalSessionId, type LogicalWorkspaceId, type ProjectionRun,
 } from "@linmu/dsh-session-contracts";
 
 export type InstanceWorkspacePolicyErrorCode = "INSTANCE_WORKSPACE_POLICY_CONFLICT" | "INSTANCE_WORKSPACE_UNKNOWN"
@@ -18,6 +19,13 @@ function selected(policy: InstanceWorkspacePolicy, workspaceId: LogicalWorkspace
   return policy.selection.kind === "all" || (workspaceId === null
     ? policy.selection.includeUnassigned : policy.selection.workspaceIds.includes(workspaceId));
 }
+/**
+ * An instance synchronises exactly the workspaces that were explicitly selected for it.
+ * There is no implicit "unconfigured means everything" scope: an instance without a saved
+ * selection synchronises nothing, and an instance created by the instance side keeps its
+ * own workspaces out of the true source until an operator joins one here.
+ */
+const noWorkspacesSelected: InstanceWorkspaceSelection = { kind: "ids", workspaceIds: [], includeUnassigned: false };
 
 /** Synchronous reads participate in the caller's canonical commit transaction. No cached policy. */
 export class SqliteInstanceWorkspacePolicyRepository {
@@ -27,7 +35,7 @@ export class SqliteInstanceWorkspacePolicyRepository {
     const row = this.database.prepare("SELECT revision, selection_json, updated_at FROM instance_workspace_policies WHERE instance_id = ?")
       .get(instanceId) as { revision: number; selection_json: string; updated_at: string } | undefined;
     return instanceWorkspacePolicySchema.parse({ schemaVersion: 1, instanceId, revision: row?.revision ?? 0,
-      selection: row ? JSON.parse(row.selection_json) : { kind: "all" }, updatedAt: row?.updated_at ?? null });
+      selection: row ? JSON.parse(row.selection_json) : noWorkspacesSelected, updatedAt: row?.updated_at ?? null });
   }
   /** Freeze the selected scope before materialization; later saves apply to the next run. */
   policyForRun(run: Pick<ProjectionRun, "id" | "instanceId" | "profileId" | "state">): InstanceWorkspacePolicy {
@@ -40,8 +48,9 @@ export class SqliteInstanceWorkspacePolicyRepository {
     }
     const stored = this.database.prepare("SELECT instance_id, profile_id FROM projection_runs WHERE id=?").get(run.id) as { instance_id: string; profile_id: string } | undefined;
     if (stored && (stored.instance_id !== run.instanceId || stored.profile_id !== run.profileId)) throw new Error("Projection scope identity mismatch");
-    // Existing pre-upgrade runs were projected with all workspaces. Recovery
-    // must retain that effective policy instead of applying a newly saved one.
+    // Runs prepared before migration 027 have no stored scope row and were projected with all
+    // workspaces. Recovery retains that effective policy instead of applying a newly saved one: this
+    // is a run-recovery compatibility rule, not an instance default.
     const policy = run.state === "preparing" || !stored ? this.getPolicy(run.instanceId)
       : instanceWorkspacePolicySchema.parse({ schemaVersion: 1, instanceId: run.instanceId, revision: 0, selection: { kind: "all" }, updatedAt: null });
     if (stored && run.state === "preparing") this.database.prepare("INSERT INTO projection_run_workspace_scopes(run_id,instance_id,policy_json) VALUES (?,?,?)")
@@ -56,27 +65,7 @@ export class SqliteInstanceWorkspacePolicyRepository {
     const row = this.database.prepare("SELECT cache_revision FROM projection_run_workspace_scopes WHERE run_id=?").get(run.id);
     return typeof row?.cache_revision === "number" ? row.cache_revision : policy.revision;
   }
-  /** Enrol only a newly created workspace; do not activate unrelated pending edits. */
-  enrollCreatedWorkspace(run: Pick<ProjectionRun, "id" | "instanceId" | "profileId" | "state">, workspaceId: LogicalWorkspaceId): void {
-    const active = this.policyForRun(run);
-    const previous = this.getPolicy(run.instanceId);
-    const saved = selected(previous, workspaceId) ? previous : this.updatePolicy(run.instanceId, {
-      expectedRevision: previous.revision,
-      selection: previous.selection.kind === "all" ? previous.selection : {
-        ...previous.selection, workspaceIds: [...previous.selection.workspaceIds, workspaceId],
-      },
-    });
-    const effective = { ...active,
-      revision: active.revision === previous.revision ? saved.revision : active.revision,
-      selection: active.selection.kind === "all" ? active.selection : {
-        ...active.selection, workspaceIds: [...new Set([...active.selection.workspaceIds, workspaceId])].sort(),
-      },
-    };
-    const cacheRevision = this.cacheRevisionForRun(run);
-    this.database.prepare(`INSERT INTO projection_run_workspace_scopes(run_id,instance_id,policy_json,cache_revision) VALUES (?,?,?,?)
-      ON CONFLICT(run_id) DO UPDATE SET policy_json=excluded.policy_json,cache_revision=excluded.cache_revision WHERE instance_id=excluded.instance_id`)
-      .run(run.id, run.instanceId, JSON.stringify(effective), cacheRevision);
-  }
+  /** Joining a workspace is an explicit operator action; no live session or workspace creation extends a saved scope. */
   updatePolicy(instanceId: string, input: InstanceWorkspacePolicyUpdate): InstanceWorkspacePolicy {
     instanceWorkspaceInstanceIdSchema.parse(instanceId);
     const update = instanceWorkspacePolicyUpdateSchema.parse(input);

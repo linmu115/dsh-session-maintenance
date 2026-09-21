@@ -38,17 +38,34 @@ describe("instance workspace policy repository", () => {
     const reopened = openMaintenanceDatabase(path); databases.push(reopened);
     expect(new SqliteInstanceWorkspacePolicyRepository(reopened).getPolicy("i-one").revision).toBe(1);
   });
-  it("defaults to all without writing, isolates instance policies and allows explicit empty/unassigned-only", async () => {
+  it("defaults to an empty selection without writing, isolates instance policies and allows explicit empty/unassigned-only", async () => {
     const { db, repo } = await fixture();
-    expect(repo.getPolicy("i-one")).toEqual({ schemaVersion: 1, instanceId: "i-one", revision: 0, selection: { kind: "all" }, updatedAt: null });
+    // No saved selection means no synchronised workspace: there is no implicit "everything" default.
+    expect(repo.getPolicy("i-one")).toEqual({ schemaVersion: 1, instanceId: "i-one", revision: 0,
+      selection: { kind: "ids", workspaceIds: [], includeUnassigned: false }, updatedAt: null });
     expect(db.prepare("SELECT COUNT(*) AS count FROM instance_workspace_policies").get()).toMatchObject({ count: 0 });
+    expect(repo.sessionScope("i-one", sid("in-a")).status).toBe("not-synced");
+    expect(repo.sessionScope("i-one", sid("unassigned")).status).toBe("not-synced");
+    // A second instance does not inherit anything from the first, saved or not.
+    expect(repo.sessionScope("i-two", sid("in-a")).status).toBe("not-synced");
     repo.updatePolicy("i-one", { expectedRevision: 0, selection: { kind: "ids", workspaceIds: [], includeUnassigned: false } });
     expect(repo.sessionScope("i-one", sid("in-a")).status).toBe("not-synced");
     expect(repo.sessionScope("i-one", sid("unassigned")).status).toBe("not-synced");
-    expect(repo.sessionScope("i-two", sid("in-a")).status).toBe("allowed");
+    expect(repo.sessionScope("i-two", sid("in-a")).status).toBe("not-synced");
     repo.updatePolicy("i-one", { expectedRevision: 1, selection: { kind: "ids", workspaceIds: [], includeUnassigned: true } });
     expect(repo.sessionScope("i-one", sid("unassigned")).status).toBe("allowed");
     expect(repo.isWorkspaceSelected("i-one", wid("a"))).toBe(false);
+  });
+  it("synchronises exactly the explicitly saved selection and never widens it on its own", async () => {
+    const { repo } = await fixture();
+    repo.updatePolicy("i-one", { expectedRevision: 0, selection: { kind: "ids", workspaceIds: [wid("a")], includeUnassigned: false } });
+    expect(repo.isWorkspaceSelected("i-one", wid("a"))).toBe(true);
+    expect(repo.isWorkspaceSelected("i-one", wid("b"))).toBe(false);
+    // Only an explicit save changes the scope; an implicit default never re-appears.
+    repo.updatePolicy("i-one", { expectedRevision: 1, selection: { kind: "ids", workspaceIds: [], includeUnassigned: false } });
+    expect(repo.isWorkspaceSelected("i-one", wid("a"))).toBe(false);
+    expect(repo.isWorkspaceSelected("i-one", wid("b"))).toBe(false);
+    expect(repo.sessionScope("i-one", sid("in-a")).status).toBe("not-synced");
   });
   it("applies current membership and policy synchronously inside a caller transaction; outer rollback retains both", async () => {
     const { db, repo } = await fixture();

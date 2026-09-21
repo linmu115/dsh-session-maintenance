@@ -19,10 +19,12 @@ async function fixture() {
   const writes = MaintenanceWriteCoordinator.acquire(root);
   cleanups.push(async () => { db.close(); writes.close(); await rm(root, { recursive: true, force: true }); });
   const policy = new SqliteInstanceWorkspacePolicyRepository(db);
-  for (const id of ["selected", "excluded"]) db.prepare("INSERT INTO logical_workspaces(id,parent_id,name,sort_key,created_at,updated_at) VALUES (?,NULL,?,?,?,?)").run(id,id,id,at,at);
+  for (const id of ["joined", "selected", "excluded"]) db.prepare("INSERT INTO logical_workspaces(id,parent_id,name,sort_key,created_at,updated_at) VALUES (?,NULL,?,?,?,?)").run(id,id,id,at,at);
   for (const id of ["project-new", "project-existing"]) db.prepare("INSERT INTO logical_projects(id,name,source_platform,sort_key,created_at,updated_at) VALUES (?,?,'maintenance',?,?,?)").run(id,id,id,at,at);
   db.prepare("INSERT INTO adapter_registrations VALUES ('fixture','{}','fixture',1,?,?)").run(at,at);
-  policy.updatePolicy("instance-a", { expectedRevision: 0, selection: { kind: "ids", workspaceIds: ["selected" as never], includeUnassigned: false } });
+  // The instance/project binding is what an explicit "join this workspace" action leaves behind.
+  db.prepare("INSERT INTO runtime_workspace_bindings(instance_id,project_id,workspace_id) VALUES ('instance-a','project-new','joined')").run();
+  policy.updatePolicy("instance-a", { expectedRevision: 0, selection: { kind: "ids", workspaceIds: ["joined" as never, "selected" as never], includeUnassigned: false } });
   const run = (id: string, instanceId = "instance-a"): ProjectionRun => {
     db.prepare("INSERT INTO projection_runs(id,lease_id,branch_id,instance_id,profile_id,dsh_version,adapter_id,state,started_at,heartbeat_at) VALUES (?,?,?,?,'web','0.1.5-rc.2','fixture','preparing',?,?)").run(id,`lease-${id}`,id,instanceId,at,at);
     const value = { schemaVersion: 1, id, leaseId: `lease-${id}`, branchId: id, instanceId, profileId: "web", dshVersion: "0.1.5-rc.2", adapterId: "fixture", state: "preparing", startedAt: at, heartbeatAt: at, checkpointId: null } as ProjectionRun;
@@ -39,13 +41,16 @@ async function fixture() {
   return { db, policy, run, current, service, engine, store, input };
 }
 
-it("registers a new workspace, commits its first message, and retains it for the next run without changing another instance", async () => {
+it("uses the explicitly joined workspace of the project, commits its first message, and retains it for the next run without changing another instance", async () => {
   const f = await fixture();
   f.policy.updatePolicy("instance-b", { expectedRevision: 0, selection: { kind: "ids", workspaceIds: [], includeUnassigned: false } });
   const other = f.run("run-other", "instance-b");
   const workspaceId = f.service.resolve(f.input);
+  expect(workspaceId).toBe("joined");
   expect(f.policy.workspaceSelected(f.policy.policyForRun(f.current), workspaceId)).toBe(true);
-  expect(f.policy.getPolicy("instance-a").selection).toEqual({ kind: "ids", workspaceIds: ["selected", workspaceId].sort(), includeUnassigned: false });
+  // Registration never edits the saved selection: only the Maintenance panel does that.
+  expect(f.policy.getPolicy("instance-a").selection).toEqual({ kind: "ids", workspaceIds: ["joined", "selected"], includeUnassigned: false });
+  expect(f.policy.getPolicy("instance-a").revision).toBe(1);
   expect(f.policy.workspaceSelected(f.policy.policyForRun(other), workspaceId)).toBe(false);
   const registered = await f.engine.importDshNative({ operationId: "register" as never, logicalSessionId: "logical-new" as never,
     nativeSessionId: f.input.nativeSessionId, title: "new", tags: [], archivedAt: null, workspaceId, events: [], importedAt: at });
@@ -59,13 +64,15 @@ it("registers a new workspace, commits its first message, and retains it for the
   expect(f.policy.workspaceSelected(f.policy.policyForRun(f.run("run-next")), workspaceId)).toBe(true);
 });
 
-it("reuses durable registration after failure and restart, and does not duplicate a workspace for another session", async () => {
+it("reuses durable registration after failure and restart, and never creates a workspace for a new session", async () => {
   const f = await fixture();
   const first = f.service.resolve(f.input);
+  expect(first).toBe("joined");
   expect(new RuntimeWorkspaceRegistration(f.db).resolve(f.input)).toBe(first);
   expect(f.service.resolve({ ...f.input, nativeSessionId: "native-second" as never })).toBe(first);
   expect(f.db.prepare("SELECT count(*) n FROM logical_workspaces").get()?.n).toBe(3);
-  expect(f.policy.getPolicy("instance-a").revision).toBe(2);
+  expect(f.db.prepare("SELECT count(*) n FROM runtime_workspace_bindings").get()?.n).toBe(1);
+  expect(f.policy.getPolicy("instance-a").revision).toBe(1);
 });
 
 it("inherits an explicitly selected workspace and rejects excluded or ambiguous existing choices", async () => {
@@ -76,14 +83,17 @@ it("inherits an explicitly selected workspace and rejects excluded or ambiguous 
   expect(f.policy.getPolicy("instance-a").revision).toBe(1);
 });
 
-it("does not activate unrelated saved edits or alter another active run while enrolling a new workspace", async () => {
+it("reports a project without a joined workspace instead of enrolling it, and leaves frozen runs untouched", async () => {
   const f = await fixture();
   const sibling = f.run("run-sibling");
+  f.db.prepare("DELETE FROM runtime_workspace_bindings WHERE instance_id='instance-a' AND project_id='project-new'").run();
+  expect(() => f.service.resolve(f.input)).toThrow(/同步/);
+  expect(f.db.prepare("SELECT count(*) n FROM logical_workspaces").get()?.n).toBe(3);
+  expect(f.db.prepare("SELECT count(*) n FROM runtime_workspace_registrations").get()?.n).toBe(0);
+  // A later saved edit is not activated by a live session registration.
   f.policy.updatePolicy("instance-a", { expectedRevision: 1, selection: { kind: "ids", workspaceIds: ["excluded" as never], includeUnassigned: true } });
-  const workspaceId = f.service.resolve(f.input);
-  expect(f.policy.policyForRun(f.current).selection).toEqual({ kind: "ids", workspaceIds: ["selected", workspaceId].sort(), includeUnassigned: false });
-  expect(f.policy.getPolicy("instance-a").selection).toEqual({ kind: "ids", workspaceIds: ["excluded", workspaceId].sort(), includeUnassigned: true });
-  expect(f.policy.workspaceSelected(f.policy.policyForRun(sibling), workspaceId)).toBe(false);
+  expect(f.policy.policyForRun(f.current).selection).toEqual({ kind: "ids", workspaceIds: ["joined", "selected"], includeUnassigned: false });
+  expect(f.policy.policyForRun(sibling).selection).toEqual({ kind: "ids", workspaceIds: ["joined", "selected"], includeUnassigned: false });
   expect(f.policy.policyForRun(f.current).revision).not.toBe(f.policy.getPolicy("instance-a").revision);
 });
 
@@ -98,19 +108,21 @@ it("reuses a unique existing project membership, refuses ambiguity, and respects
   expect(f.service.resolve({ ...f.input, projectId: "project-existing" as never })).toBe("selected");
   await add("existing-excluded", "excluded");
   expect(() => f.service.resolve({ ...f.input, projectId: "project-existing" as never, nativeSessionId: "ambiguous" as never })).toThrow("multiple Maintenance workspaces");
-  const created = f.service.resolve({ ...f.input, nativeSessionId: "created" as never });
+  const joined = f.service.resolve({ ...f.input, nativeSessionId: "created" as never });
+  expect(joined).toBe("joined");
   const saved = f.policy.getPolicy("instance-a");
   f.policy.updatePolicy("instance-a", { expectedRevision: saved.revision, selection: { kind: "ids", workspaceIds: ["selected" as never], includeUnassigned: false } });
   const next = f.run("after-deselection");
   expect(() => f.service.resolve({ ...f.input, run: next, nativeSessionId: "excluded-new" as never })).toThrow(/同步/);
-  expect(f.policy.isWorkspaceSelected("instance-a", created)).toBe(false);
+  expect(f.policy.isWorkspaceSelected("instance-a", joined)).toBe(false);
 });
 
-it("rolls back workspace and policy creation if its registration intent cannot be persisted", async () => {
+it("rolls back the registration intent without touching workspaces or the saved selection", async () => {
   const f = await fixture();
   f.db.exec("CREATE TRIGGER reject_intent BEFORE INSERT ON runtime_workspace_registrations BEGIN SELECT RAISE(ABORT,'fixture failure'); END");
   expect(() => f.service.resolve(f.input)).toThrow("fixture failure");
-  expect(f.db.prepare("SELECT count(*) n FROM logical_workspaces").get()?.n).toBe(2);
+  expect(f.db.prepare("SELECT count(*) n FROM logical_workspaces").get()?.n).toBe(3);
+  expect(f.db.prepare("SELECT count(*) n FROM runtime_workspace_registrations").get()?.n).toBe(0);
   expect(f.policy.getPolicy("instance-a").revision).toBe(1);
   expect(f.policy.policyForRun(f.current).revision).toBe(1);
   expect(f.db.isTransaction).toBe(false);

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
 import type { LogicalProjectId, LogicalWorkspaceId, NativeSessionId, ProjectionRun } from "@linmu/dsh-session-contracts";
 import { InstanceWorkspacePolicyError, SqliteInstanceWorkspacePolicyRepository } from "@linmu/dsh-session-store";
@@ -10,7 +9,12 @@ export interface RuntimeWorkspaceRegistrationInput {
   readonly workspaceId?: LogicalWorkspaceId;
 }
 
-/** Durable registration intent: retries finish the same creation, including after process recovery. */
+const NOT_JOINED = "此工作区未加入当前实例的同步范围，请先选择工作区并同步后再创建会话";
+
+/**
+ * Durable registration intent: retries finish the same registration, including after process recovery.
+ * Resolution only reuses a workspace the instance already joined explicitly; it never creates or enrols one.
+ */
 export class RuntimeWorkspaceRegistration {
   private readonly policies: SqliteInstanceWorkspacePolicyRepository;
   constructor(private readonly database: DatabaseSync) { this.policies = new SqliteInstanceWorkspacePolicyRepository(database); }
@@ -38,8 +42,8 @@ export class RuntimeWorkspaceRegistration {
       this.assertSelected(run, previous.workspace_id as LogicalWorkspaceId);
       return previous.workspace_id as LogicalWorkspaceId;
     }
-    const project = this.database.prepare("SELECT name FROM logical_projects WHERE id=? AND deleted_at IS NULL").get(projectId);
-    if (!project || typeof project.name !== "string") throw new Error("Workspace registration project is missing or deleted");
+    const project = this.database.prepare("SELECT id FROM logical_projects WHERE id=? AND deleted_at IS NULL").get(projectId);
+    if (!project) throw new Error("Workspace registration project is missing or deleted");
     let workspaceId = input.workspaceId;
     if (workspaceId === undefined) {
       const binding = this.database.prepare("SELECT workspace_id FROM runtime_workspace_bindings WHERE instance_id=? AND project_id=?").get(run.instanceId, projectId);
@@ -55,17 +59,11 @@ export class RuntimeWorkspaceRegistration {
         workspaceId = candidates[0]?.id as LogicalWorkspaceId | undefined;
       }
     }
-    if (workspaceId !== undefined) this.assertSelected(run, workspaceId);
-    else {
-      // The instance/project binding gives a stable identity even before the first session commits.
-      workspaceId = `workspace-runtime-${createHash("sha256").update(JSON.stringify([run.instanceId, projectId])).digest("hex").slice(0,32)}` as LogicalWorkspaceId;
-      const at = new Date().toISOString();
-      this.database.prepare("INSERT INTO logical_workspaces(id,parent_id,name,sort_key,created_at,updated_at) VALUES (?,NULL,?,?,?,?)")
-        .run(workspaceId, project.name, project.name, at, at);
-      this.database.prepare("INSERT INTO runtime_workspace_bindings(instance_id,project_id,workspace_id) VALUES (?,?,?)")
-        .run(run.instanceId, projectId, workspaceId);
-      this.policies.enrollCreatedWorkspace(run, workspaceId);
-    }
+    // A workspace the instance created for itself is that instance's own workspace. It is not
+    // registered here and its sessions never enter the true source; joining it is an explicit
+    // operator action, so an unresolvable project is reported instead of being enrolled.
+    if (workspaceId === undefined) throw new InstanceWorkspacePolicyError("SESSION_NOT_SYNCED", NOT_JOINED);
+    this.assertSelected(run, workspaceId);
     this.database.prepare("INSERT INTO runtime_workspace_registrations(run_id,native_session_id,project_id,workspace_id,requested_workspace_id) VALUES (?,?,?,?,?)")
       .run(run.id, nativeSessionId, projectId, workspaceId, input.workspaceId ?? null);
     return workspaceId;
@@ -75,7 +73,7 @@ export class RuntimeWorkspaceRegistration {
     const workspace = this.database.prepare("SELECT deleted_at FROM logical_workspaces WHERE id=?").get(workspaceId);
     if (!workspace || workspace.deleted_at !== null) throw new Error("Workspace is missing or deleted");
     if (!this.policies.workspaceSelected(this.policies.policyForRun(run), workspaceId)) {
-      throw new InstanceWorkspacePolicyError("SESSION_NOT_SYNCED", "此工作区未加入当前实例的同步范围，请先选择工作区并同步后再创建会话");
+      throw new InstanceWorkspacePolicyError("SESSION_NOT_SYNCED", NOT_JOINED);
     }
   }
 }

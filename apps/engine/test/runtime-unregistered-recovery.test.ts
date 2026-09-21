@@ -7,7 +7,7 @@ import { JsonProjectionDirectory } from "@linmu/dsh-session-projection-lifecycle
 import { SqliteAdapterEvidenceStore } from "@linmu/dsh-session-store";
 import { createReadOnlyComposition } from "../src/composition-root.js";
 import { SqliteRuntimeProjectResolver } from "../src/runtime-project-resolver.js";
-import { createEngineFixture, hashTree } from "./helpers.js";
+import { createEngineFixture, hashTree, selectAllWorkspaces } from "./helpers.js";
 
 describe("repair of an RC1 session rejected before canonical registration", () => {
   it("finishes the existing registration recovery and keeps every durable control/inbox row", async () => {
@@ -17,6 +17,8 @@ describe("repair of an RC1 session rejected before canonical registration", () =
     try {
       const request = { schemaVersion: 1 as const, client: { kind: "launcher" as const, id: "fixture-repair-launcher" }, runtimeClientId: "fixture-repair-runtime", instanceId: "fixture-rc1", profileId: "web", dshVersion: "0.1.2-rc.1", maintenanceEndpoint: "http://127.0.0.1:41781", branchId: "main" as never, pinnedAdapterId: "dsh-rc1" as never, projectSelection: { kind: "all" as const }, environment: { packageVersions: { "@deepseek-ai/dsh-session": "0.1.2-rc.1", "@deepseek-ai/dsh-session-persistence": "0.1.2-rc.1" }, runtimeCapabilities: ["sessionPersistence", "session/event", "session/flush"] } };
       await f.engine.importCodex({ operationId: "fixture-codex-before-projection", instanceIds: [f.engine.instances[0]!.id], mode: "content" });
+      // The widest explicit selection: this repair test is about registration recovery, not about narrowing scope.
+      selectAllWorkspaces(f.engine, request.instanceId);
       const run = await f.engine.prepareProjectionRuntimeRun(request);
       expect(await f.engine.projectionRunRepository.listProjectionSessions(run.runId)).toHaveLength(1);
       const cwd = "D:/synthetic/new-workspace";

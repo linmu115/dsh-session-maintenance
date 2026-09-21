@@ -18,7 +18,8 @@ function summary(selection: InstanceWorkspaceSelection, configuration: InstanceW
 function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instanceId: string }) {
   const editorLayout = useSyncEditorLayout<HTMLFormElement>();
   const [configuration, setConfiguration] = useState<InstanceWorkspaceConfiguration>();
-  const [selection, setSelection] = useState<InstanceWorkspaceSelection>({ kind: "all" });
+  // Mirrors the engine default for an instance without a saved selection: nothing is synchronised.
+  const [selection, setSelection] = useState<InstanceWorkspaceSelection>({ kind: "ids", workspaceIds: [], includeUnassigned: false });
   const [error, setError] = useState<string>();
   const [notice, setNotice] = useState<string>();
   const [editing, setEditing] = useState(false);

@@ -2,12 +2,11 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { expect, it, vi } from "vitest";
 import { REQUIRED_CAPABILITIES, v3NativeSessionCodec } from "@linmu/dsh-session-adapter-0-1-5";
-import { SqliteInstanceWorkspacePolicyRepository } from "@linmu/dsh-session-store";
 import type { RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
 import { repairLegacyRuntimeWorkspace } from "../../../scripts/repair-legacy-runtime-workspace.js";
 import { RuntimeWorkspaceRegistration } from "../src/runtime-workspace-registration.js";
 import { createReadOnlyComposition } from "../src/composition-root.js";
-import { createEngineFixture } from "./helpers.js";
+import { createEngineFixture, joinInstanceWorkspace } from "./helpers.js";
 
 it("repairs only the legacy empty registration and recovers RC2 WAL through the normal broker", async () => {
   const f = await createEngineFixture("legacy-workspace-upgrade"), at = "2026-09-20T00:00:00.000Z";
@@ -21,13 +20,12 @@ it("repairs only the legacy empty registration and recovers RC2 WAL through the 
       environment: { runtimeCapabilities: [...REQUIRED_CAPABILITIES], packageVersions: Object.fromEntries(
         ["@deepseek-ai/dsh-session", "@deepseek-ai/dsh-session-persistence", "@deepseek-ai/dsh-session-format-catalog"].map(p => [p, "0.1.5-rc.2"])) },
     };
-    new SqliteInstanceWorkspacePolicyRepository(f.engine.repository.database).updatePolicy(request.instanceId, {
-      expectedRevision: 0, selection: { kind: "ids", workspaceIds: [], includeUnassigned: false },
-    });
+    const cwd = join(f.root, "original-project"); await mkdir(cwd);
+    // The workspace must already be joined: the repair reuses a Maintenance workspace, it never invents one.
+    const joined = await joinInstanceWorkspace(f.engine, { instanceId: request.instanceId, cwd, workspaceId: "workspace-legacy-repair" });
     const run = await f.engine.prepareProjectionRuntimeRun(request);
     await f.engine.attachProjectionRuntimeRun({ schemaVersion: 1, clientId: request.runtimeClientId, runId: run.runId,
       temporaryPersistenceRootId: run.temporaryPersistenceRootId, attachedAt: at, nativeMode: run.nativeMode });
-    const cwd = join(f.root, "original-project"); await mkdir(cwd);
     const nativeSessionId = "native-legacy" as never;
     const header = { version: 3, id: nativeSessionId, cwd, createdAt: Date.parse(at), isSeeded: false, agentPreset: "standard", delegationDepth: 0 };
     const legacy = vi.spyOn(RuntimeWorkspaceRegistration.prototype, "resolve").mockReturnValueOnce(null as never);
@@ -51,7 +49,8 @@ it("repairs only the legacy empty registration and recovers RC2 WAL through the 
     expect(await repairLegacyRuntimeWorkspace(restarted, run.runId, registered.logicalSessionId as never)).toEqual(repaired);
     expect((await restarted.closeProjectionRuntimeRun({ schemaVersion: 1, clientId: request.client.id, runId: run.runId, reason: "recovery" })).state).toBe("recovered");
     const snapshot = await restarted.canonicalEngine.store.getSession(registered.logicalSessionId as never);
-    expect(snapshot?.workspaceId).toBe(repaired.workspaceId);
+    expect(repaired.workspaceId).toBe(joined);
+    expect(snapshot?.workspaceId).toBe(joined);
     expect((await restarted.canonicalEngine.store.getVersion(snapshot!.headVersionId!))?.events).toHaveLength(2);
     expect(await restarted.projectionRunRepository.getOperationReceipt(operation.operationId)).toMatchObject({ status: "committed" });
     await expect(repairLegacyRuntimeWorkspace(restarted, run.runId, registered.logicalSessionId as never)).rejects.toThrow("failed run");

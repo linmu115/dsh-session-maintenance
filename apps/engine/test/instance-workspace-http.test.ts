@@ -12,7 +12,7 @@ it('composes authenticated workspace policy and public page routes without writi
   expect((await fetch(server.origin+path)).status).toBe(401);
   expect((await fetch(server.origin+path,{headers:{...headers,origin:'https://foreign.invalid'}})).status).toBe(403);
   const get=await fetch(server.origin+path,{headers});expect(get.status).toBe(200);
-  expect((await get.json()).configuration.policy).toMatchObject({revision:0,selection:{kind:'all'}});
+  expect((await get.json()).configuration.policy).toMatchObject({revision:0,selection:{kind:'ids',workspaceIds:[],includeUnassigned:false}});
   const save=()=>fetch(server.origin+path,{method:'PATCH',headers,body:JSON.stringify({expectedRevision:0,selection:{kind:'ids',workspaceIds:[],includeUnassigned:false}})});
   expect((await save()).status).toBe(200);expect((await save()).status).toBe(409);
   const list=await fetch(server.origin+'/v1/business-pages',{headers});expect(list.status).toBe(200);expect(await list.json()).toEqual({pages:[]});
