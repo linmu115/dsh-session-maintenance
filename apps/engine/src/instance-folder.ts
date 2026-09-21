@@ -25,12 +25,30 @@ export interface InstanceHomeProfile {
   readonly web: boolean;
 }
 
+/**
+ * A directory under `profiles/` that is *not* a profile this engine can attach.
+ *
+ * `profiles/` is not a list of profiles: the DSH Home also keeps DSH-generated
+ * directories there (`node_modules` above all, whose name is a perfectly legal
+ * profile id), and an install may hold profiles that name no DSH program at all.
+ * Such a directory must not decide the fate of the whole folder, but the operator
+ * still deserves to know why it is missing from the list.
+ */
+export interface SkippedProfileEntry {
+  /** The directory name, reported exactly as it appears under `profiles/`. */
+  readonly entry: string;
+  /** Why it was skipped; safe to show to the operator. */
+  readonly reason: string;
+}
+
 export interface InstanceHomeInspection {
   /** Canonical DSH Home root, i.e. the folder the user selected. */
   readonly homeRoot: string;
   /** Folder name, offered as the instance identity; the caller still chooses the final id. */
   readonly suggestedInstanceId: string;
   readonly profiles: readonly InstanceHomeProfile[];
+  /** Directories under `profiles/` that were recognized as profile folders but not attachable. */
+  readonly skippedEntries: readonly SkippedProfileEntry[];
   /** Version actually installed in `versionRoot`, or the version the profile states when no install is reachable. */
   readonly runtimeVersion: string;
   /**
@@ -139,23 +157,28 @@ async function readCliVersion(versionRoot: string): Promise<string | null> {
 }
 
 /**
- * Where a profile's DSH program may be stated or found: the profile's own path
- * declaration, then the CLI as resolvable from the profile. The manifest's
- * location is probed directly rather than importing the package, because the
- * published CLI declares only `bin` and cannot be resolved by name.
+ * The program a profile provably names, read straight from its own manifest.
+ *
+ * This deliberately does not walk upwards for `node_modules`: that walk is shared by every
+ * profile through the Home's own `profiles/node_modules`, so it cannot tell profiles apart. On
+ * this machine it is actively misleading — the shared link and `web`'s own link resolve to
+ * *different* roots for the same program, which read as "two profiles disagree about the
+ * program" when only one profile named a program at all.
  */
-function cliManifestCandidates(profileRoot: string, manifest: Record<string, unknown>): string[] {
-  const candidates: string[] = [];
+async function declaredProfileProgram(manifest: Record<string, unknown>, profileRoot: string): Promise<{ readonly runtimeVersion: string | null; readonly versionRoot: string | null; readonly cliPath: string | null } | null> {
+  const stated = declaredDshVersion(manifest);
+  if (stated !== null) return { runtimeVersion: stated, versionRoot: null, cliPath: null };
   const declared = declaredDshPath(manifest, profileRoot);
-  if (declared !== null) candidates.push(join(declared, 'package.json'));
-  let current = profileRoot;
-  for (;;) {
-    candidates.push(join(current, 'node_modules', cliPackageName, 'package.json'));
-    const parent = dirname(current);
-    if (parent === current) break;
-    current = parent;
-  }
-  return [...new Set(candidates.map(candidate => resolve(candidate)))];
+  if (declared === null) return null;
+  const cliManifest = join(declared, 'package.json');
+  if (!(await isFile(cliManifest))) return null;
+  const anchor = installAnchor(cliManifest);
+  if (anchor === null) return null;
+  // The stored root must be canonical: it is handed to the instance launch and to the adapter.
+  const versionRoot = await realpath(anchor).catch(() => null);
+  if (versionRoot === null) return null;
+  const installed = await readCliVersion(versionRoot);
+  return { runtimeVersion: installed, versionRoot, cliPath: join(versionRoot, 'node_modules', cliPackageName, 'lib', 'bin.js') };
 }
 
 interface ProfileInspection {
@@ -173,42 +196,42 @@ interface ProfileInspection {
   readonly declaredRuntimeVersion: string | null;
 }
 
-async function inspectProfile(homeRoot: string, entry: string): Promise<ProfileInspection> {
+async function inspectProfile(homeRoot: string, entry: string): Promise<ProfileInspection | SkippedProfileEntry> {
   const profileRoot = join(homeRoot, 'profiles', entry);
-  const incomplete = invalid(`配置 ${entry} 不完整：缺少可读取的 profile 清单，请先用官方 CLI 初始化这个 DSH Home。`);
+  // `profiles/` also holds DSH-generated directories. `node_modules` is a legal profile id, so
+  // the name alone proves nothing: only a readable manifest that declares `dsh.profile.bundles`
+  // makes a directory a profile at all. One that does not is skipped instead of failing the
+  // whole selection, because the operator also selected the Home for its real profiles.
+  const notAProfile = (reason: string): SkippedProfileEntry => ({ entry, reason });
   const manifest = await readProfileManifest(join(profileRoot, 'package.json'));
-  if (manifest === undefined) throw incomplete;
+  if (manifest === undefined) return notAProfile('缺少可读取的 profile 清单（package.json），不是 DSH 配置目录。');
   const dsh = manifest['dsh'];
   const bundles = typeof dsh === 'object' && dsh !== null && !Array.isArray(dsh)
     ? (dsh as { profile?: { bundles?: unknown } }).profile?.bundles : undefined;
-  if (!Array.isArray(bundles)) throw incomplete;
-  const declaredRuntimeVersion = declaredDshVersion(manifest);
+  if (!Array.isArray(bundles)) return notAProfile('清单未声明 dsh.profile.bundles，不是 DSH 配置目录。');
+  // A profile is only attachable when it names the program that runs it. This machine shows why
+  // the alternative (trust the nearest `node_modules` above it) cannot work: the Home's shared
+  // `profiles/node_modules` link answers for every profile, and the anchor it yields differs from
+  // the one a profile's own `link:` declaration yields, so two profiles that use the *same*
+  // program looked like a conflict — while a profile that declares nothing looked usable.
+  const declared = await declaredProfileProgram(manifest, profileRoot);
+  if (declared === null)
+    return notAProfile(`清单未声明 ${cliPackageName}（路径或版本），无法确定这个配置要用哪个 DSH 程序。`);
   const unsupported = (version: string) => invalid(`此实例的 DSH 版本 ${version} 尚未验证接入，请改用受支持的版本。`);
-  for (const cliManifest of cliManifestCandidates(profileRoot, manifest)) {
-    // A candidate that is not actually installed must be skipped before any version is trusted.
-    if (!(await isFile(cliManifest))) continue;
-    const anchor = installAnchor(cliManifest);
-    if (anchor === null) continue;
-    // The stored roots must be canonical: they are handed to the instance launch and to the adapter.
-    const versionRoot = await realpath(anchor).catch(() => null);
-    if (versionRoot === null) continue;
-    const installed = await readCliVersion(versionRoot);
-    if (installed === null) continue;
-    const cliPath = join(versionRoot, 'node_modules', cliPackageName, 'lib', 'bin.js');
-    if (!(await isFile(cliPath))) throw invalid('此 DSH Home 的程序目录缺少官方启动程序，请重新安装这个实例。');
-    if (!(installed in SUPPORTED_DSH_INTEGRATIONS)) throw unsupported(installed);
-    if (declaredRuntimeVersion !== null && declaredRuntimeVersion !== installed)
-      throw invalid(`配置 ${entry} 声明的 DSH ${declaredRuntimeVersion} 与实际安装的 ${installed} 不一致，请先用官方 CLI 修复这个实例。`);
-    return {
-      profile: { profileId: entry, root: profileRoot, web: bundles.includes('@deepseek-ai/dsh-web-app') },
-      runtimeVersion: installed, versionRoot, cliPath, declaredRuntimeVersion,
-    };
+  // A declared version is only checkable against the install it names; a declared path is
+  // resolved from this folder alone.
+  if (declared.versionRoot === null) {
+    if (!(declared.runtimeVersion! in SUPPORTED_DSH_INTEGRATIONS)) throw unsupported(declared.runtimeVersion!);
+    return { profile: { profileId: entry, root: profileRoot, web: bundles.includes('@deepseek-ai/dsh-web-app') },
+      runtimeVersion: declared.runtimeVersion!, versionRoot: null, cliPath: null, declaredRuntimeVersion: declared.runtimeVersion! };
   }
-  // Nothing in the selected folder names an installed program. A profile that
-  // states its version is still checkable; one that states nothing is not.
-  if (declaredRuntimeVersion === null) throw invalid(`未在 DSH Home 中找到已安装的官方 DSH 程序：配置 ${entry} 未声明或无法解析 ${cliPackageName}，请先用官方 CLI 安装这个实例。`);
-  if (!(declaredRuntimeVersion in SUPPORTED_DSH_INTEGRATIONS)) throw unsupported(declaredRuntimeVersion);
-  return { profile: { profileId: entry, root: profileRoot, web: bundles.includes('@deepseek-ai/dsh-web-app') }, runtimeVersion: declaredRuntimeVersion, versionRoot: null, cliPath: null, declaredRuntimeVersion };
+  if (declared.runtimeVersion === null)
+    throw invalid(`配置 ${entry} 声明的 DSH 程序目录无法读取，请先用官方 CLI 修复这个实例。`);
+  if (!(await isFile(declared.cliPath!))) throw invalid('此 DSH Home 的程序目录缺少官方启动程序，请重新安装这个实例。');
+  if (!(declared.runtimeVersion in SUPPORTED_DSH_INTEGRATIONS)) throw unsupported(declared.runtimeVersion);
+  return { profile: { profileId: entry, root: profileRoot, web: bundles.includes('@deepseek-ai/dsh-web-app') },
+    runtimeVersion: declared.runtimeVersion, versionRoot: declared.versionRoot, cliPath: declared.cliPath,
+    declaredRuntimeVersion: null };
 }
 
 /**
@@ -224,11 +247,22 @@ export async function inspectInstanceFolder(selected: string): Promise<InstanceH
   if (!(await isDirectory(profilesRoot))) throw invalid('所选文件夹不是 DSH Home：缺少 profiles 文件夹');
   const entries = await readdir(profilesRoot, { withFileTypes: true }).catch(() => { throw invalid('无法读取所选文件夹的 profiles 目录'); });
   const names = entries.filter(entry => entry.isDirectory() && profileIdPattern.test(entry.name)).map(entry => entry.name).sort();
-  if (names.length === 0) throw invalid('所选 DSH Home 尚未安装任何 DSH 配置，请先用官方 CLI 启动一次。');
-  const inspected = [];
-  for (const name of names) inspected.push(await inspectProfile(homeRoot, name));
+  const inspected: ProfileInspection[] = [];
+  const skippedEntries: SkippedProfileEntry[] = [];
+  for (const name of names) {
+    const result = await inspectProfile(homeRoot, name);
+    if ('profile' in result) inspected.push(result);
+    else skippedEntries.push(result);
+  }
+  if (inspected.length === 0) {
+    // Every directory was skipped, so there is no instance here to attach. Say which ones and
+    // why, because "no profile" on its own would hide the DSH-generated directories.
+    if (names.length === 0) throw invalid('所选 DSH Home 尚未安装任何 DSH 配置，请先用官方 CLI 启动一次。');
+    throw invalid(`所选 DSH Home 没有可接入的 DSH 配置：${skippedEntries.map(item => `${item.entry}（${item.reason}）`).join('；')}`);
+  }
   // One selected folder describes one instance, so every profile in it must agree
-  // on the program that reads its sessions.
+  // on the program that reads its sessions. Only attachable profiles take part:
+  // a skipped directory has no program to agree or disagree with.
   const programs = [...new Set(inspected.map(item => `${item.runtimeVersion}\u0000${item.versionRoot === null ? '' : resolve(item.versionRoot)}`))];
   if (programs.length !== 1) throw invalid('所选 DSH Home 的多个配置使用不同的 DSH 程序目录，无法确定接入哪个实例。');
   const first = inspected[0]!;
@@ -237,6 +271,7 @@ export async function inspectInstanceFolder(selected: string): Promise<InstanceH
     homeRoot,
     suggestedInstanceId: profileIdPattern.test(suggested) ? suggested : 'dsh-instance',
     profiles: inspected.map(item => item.profile),
+    skippedEntries,
     runtimeVersion: first.runtimeVersion,
     versionRoot: first.versionRoot,
     cliPath: first.cliPath,

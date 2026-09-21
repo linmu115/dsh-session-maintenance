@@ -88,6 +88,9 @@ it("opens the folder picker only for an authenticated, exact-Origin caller", asy
   expect(await response.json()).toEqual({ hint: "选择 DSH Home 根目录，其中包含 profiles/ 与 sessions/；同一 Home 下的多个 profile 会被分别识别",
     cancelled: false, inspection: { homeRoot: f.homeRoot, suggestedInstanceId: "my-dsh-home",
       profiles: [{ profileId: "web", root: f.profileRoot, web: true }],
+      // The response is parsed by the strict contract schema, so a Home whose folders were all
+      // usable carries an explicit empty list of skipped directories.
+      skippedEntries: [],
       runtimeVersion: "0.1.2-rc.1", versionRoot: f.versionRoot,
       cliPath: join(f.versionRoot, "node_modules", cliPackage, "lib", "bin.js"), declaredRuntimeVersion: null } });
   // Choosing a folder is a check, not a connection: nothing was registered or written.

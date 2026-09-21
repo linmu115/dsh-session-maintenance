@@ -50,6 +50,8 @@ function InstanceFolderBar(props: {
       <p><strong>{inspection.suggestedInstanceId}</strong> · DSH {inspection.runtimeVersion}</p>
       <p className="muted">{inspection.homeRoot}</p>
       <p>识别到 {inspection.profiles.length} 个配置：{inspection.profiles.map(profile => `${profile.profileId}${profile.web ? "（Web）" : ""}`).join("、")}</p>
+      {(inspection.skippedEntries ?? []).length === 0 ? null : <p className="muted">已跳过 {inspection.skippedEntries!.length} 个目录：
+        {inspection.skippedEntries!.map(item => `${item.entry}（${item.reason}）`).join("；")}</p>}
       {inspection.versionRoot === null ? <p role="status" className="muted">这个 Home 只声明了版本，未找到已安装的官方程序；接入前需要先安装该实例。</p> : null}
       <p className="muted">选择文件夹只做检查：还没有登记任何接入，也没有写入启动门。</p>
     </div>}

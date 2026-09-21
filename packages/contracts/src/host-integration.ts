@@ -92,12 +92,27 @@ export const instanceHomeProfileSchema = z.strictObject({
   web: z.boolean(),
 });
 
+/**
+ * A directory under `profiles/` that is recognized as a profile folder but cannot be attached.
+ *
+ * `profiles/` is not a list of profiles — DSH keeps generated directories there too
+ * (`node_modules`), and an install can hold profiles that name no DSH program. Those are
+ * skipped instead of failing the whole selection, and the operator is told why the list of
+ * recognized profiles is shorter than the folders they can see.
+ */
+export const skippedProfileEntrySchema = z.strictObject({
+  entry: z.string().min(1).max(128),
+  reason: z.string().min(1),
+});
+
 /** A read-only description of a selected DSH Home, derived from the folder alone. */
 export const instanceHomeInspectionSchema = z.strictObject({
   homeRoot: z.string().min(1),
   /** Offered from the folder name; the caller still decides the final instance id. */
   suggestedInstanceId: z.string().min(1),
   profiles: z.array(instanceHomeProfileSchema).min(1),
+  /** Profile folders that were skipped, in name order. Absent when every folder was usable. */
+  skippedEntries: z.array(skippedProfileEntrySchema).optional(),
   runtimeVersion: z.string().min(1),
   /** `null` when the folder only states a version and no installed program can be located. */
   versionRoot: z.string().min(1).nullable(),
@@ -105,6 +120,7 @@ export const instanceHomeInspectionSchema = z.strictObject({
   declaredRuntimeVersion: z.string().min(1).nullable(),
 });
 export type InstanceHomeProfile = z.infer<typeof instanceHomeProfileSchema>;
+export type SkippedProfileEntry = z.infer<typeof skippedProfileEntrySchema>;
 export type InstanceHomeInspection = z.infer<typeof instanceHomeInspectionSchema>;
 
 /**

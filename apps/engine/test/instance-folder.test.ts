@@ -149,6 +149,8 @@ it('derives the instance identity, profiles, runtime version and program root fr
   // `link:` names a path, so there is no stated version to compare with the install.
   expect(inspected.declaredRuntimeVersion).toBeNull();
   expect(inspected.profiles).toEqual([{ profileId: 'web', root: home.profileRoot, web: true }]);
+  // Nothing was skipped in a Home that holds exactly one real profile.
+  expect(inspected.skippedEntries).toEqual([]);
   // Offered from the folder name only; the caller still decides the final id.
   expect(inspected.suggestedInstanceId).toBe('my-dsh-home');
   // A read-only check writes nothing inside the selected folder.
@@ -182,11 +184,48 @@ it('reports the version it actually resolved from the program folder', async () 
   expect(inspected.declaredRuntimeVersion).toBeNull();
 });
 
-it('refuses a profile that names no runtime and cannot resolve one', async () => {
-  // A profile that states neither a path nor a version cannot be tied to a program folder.
+it('skips a profile that declares no program instead of failing the whole folder', async () => {
+  // A profile that names no program at all cannot become an instance. On a real Home such a
+  // directory sits next to the usable one and must not condemn it.
   const home = await syntheticHome({ declareRuntime: false });
-  await expect(inspectInstanceFolder(home.homeRoot)).rejects.toMatchObject({ code: 'INSTANCE_FOLDER_INVALID' });
-  await expect(inspectInstanceFolder(home.homeRoot)).rejects.toThrow('未声明或无法解析');
+  const desktop = join(home.homeRoot, 'profiles', 'web-desktop');
+  await mkdir(desktop, { recursive: true });
+  await json(join(desktop, 'package.json'), { name: 'dsh-profile-web-desktop', devDependencies: { [cliPackage]: `link:${join(home.versionRoot, 'node_modules', cliPackage)}` }, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } } });
+  const inspected = await inspectInstanceFolder(home.homeRoot);
+  expect(inspected.profiles.map(profile => profile.profileId)).toEqual(['web-desktop']);
+  expect(inspected.skippedEntries).toEqual([{ entry: 'web', reason: `清单未声明 ${cliPackage}（路径或版本），无法确定这个配置要用哪个 DSH 程序。` }]);
+  // With nothing left to attach, the same directory is reported as the reason the folder failed.
+  const only = await syntheticHome({ declareRuntime: false });
+  await expect(inspectInstanceFolder(only.homeRoot)).rejects.toMatchObject({ code: 'INSTANCE_FOLDER_INVALID' });
+  await expect(inspectInstanceFolder(only.homeRoot)).rejects.toThrow('清单未声明');
+});
+
+it('skips a generated directory under profiles/ such as node_modules, and still finds the real profiles', async () => {
+  const home = await syntheticHome();
+  // DSH creates this itself; its name is a legal profile id, so the name alone proves nothing.
+  const generated = join(home.homeRoot, 'profiles', 'node_modules');
+  await mkdir(join(generated, '.pnpm'), { recursive: true });
+  // A directory with a manifest that is not a profile manifest is skipped for its own reason.
+  const notAProfile = join(home.homeRoot, 'profiles', 'headless');
+  await mkdir(notAProfile, { recursive: true });
+  await json(join(notAProfile, 'package.json'), { name: 'unrelated', private: true });
+  const inspected = await inspectInstanceFolder(home.homeRoot);
+  // The real profile is still reached, with its program resolved.
+  expect(inspected.profiles.map(profile => profile.profileId)).toEqual(['web']);
+  expect(inspected.runtimeVersion).toBe(runtimeVersion);
+  expect(inspected.versionRoot).toBe(home.versionRoot);
+  expect(inspected.skippedEntries).toEqual([
+    { entry: 'headless', reason: '清单未声明 dsh.profile.bundles，不是 DSH 配置目录。' },
+    { entry: 'node_modules', reason: '缺少可读取的 profile 清单（package.json），不是 DSH 配置目录。' },
+  ]);
+});
+
+it('reports a folder with no usable profile at all as a failure, naming what it skipped', async () => {
+  const home = await mkdtemp(join(tmpdir(), 'dsh-instance-folder-unusable-'));
+  roots.push(home);
+  await mkdir(join(home, 'profiles', 'node_modules'), { recursive: true });
+  await expect(inspectInstanceFolder(home)).rejects.toThrow('没有可接入的 DSH 配置');
+  await expect(inspectInstanceFolder(home)).rejects.toThrow('node_modules（缺少可读取的 profile 清单');
 });
 
 it('enumerates every installed profile and marks which of them is a Web profile', async () => {
@@ -209,8 +248,13 @@ it('refuses a folder that is not a complete DSH Home', async () => {
   await mkdir(join(empty, 'profiles'));
   await expect(inspectInstanceFolder(empty)).rejects.toThrow('尚未安装任何 DSH 配置');
   await mkdir(join(empty, 'profiles', 'web'), { recursive: true });
-  await expect(inspectInstanceFolder(empty)).rejects.toThrow('不完整');
+  // A directory without a profile manifest is skipped rather than fatal; with no other profile
+  // left, the folder is still refused and the reason names the directory that was skipped.
+  await expect(inspectInstanceFolder(empty)).rejects.toThrow('没有可接入的 DSH 配置');
+  await expect(inspectInstanceFolder(empty)).rejects.toThrow('web（缺少可读取的 profile 清单');
   const noEntry = await syntheticHome({ cliEntry: false });
+  // The program is declared but its launcher is missing: that is a broken install, not a
+  // directory to skip silently.
   await expect(inspectInstanceFolder(noEntry.homeRoot)).rejects.toThrow('缺少官方启动程序');
   const unsupported = await syntheticHome();
   await json(join(unsupported.versionRoot, 'node_modules', cliPackage, 'package.json'), { name: cliPackage, version: '0.1.2-alpha.9' });
@@ -227,6 +271,9 @@ it('refuses two profiles that would attach different program directories', async
   const otherProfile = join(home.homeRoot, 'profiles', 'web-desktop');
   await mkdir(otherProfile, { recursive: true });
   await json(join(otherProfile, 'package.json'), { name: 'dsh-profile-web-desktop', devDependencies: { [cliPackage]: `link:${join(otherRuntime, 'node_modules', cliPackage)}` }, dsh: { profile: { bundles: ['@deepseek-ai/dsh-base'] } } });
+  // A skipped directory does not take part in the agreement check: it has no program to disagree
+  // with, so the two usable profiles are still what decides the outcome.
+  await mkdir(join(home.homeRoot, 'profiles', 'node_modules'), { recursive: true });
   await expect(inspectInstanceFolder(home.homeRoot)).rejects.toMatchObject({ code: 'INSTANCE_FOLDER_INVALID' });
   await expect(inspectInstanceFolder(home.homeRoot)).rejects.toThrow('不同的 DSH 程序目录');
 });
