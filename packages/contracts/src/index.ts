@@ -48,6 +48,8 @@ export * from "./adapter-package.js";
 export * from "./codex-mirror.js";
 export * from "./registered-instance-policy.js";
 export * from './standalone-instance.js';
+export * from './instance-lease.js';
+export * from './instance-lease-file.js';
 export * from './runtime-adapter.js';
 
 export * from "./integration-error.js";

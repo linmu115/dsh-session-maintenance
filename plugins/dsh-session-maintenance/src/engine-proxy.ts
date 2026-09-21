@@ -22,7 +22,8 @@ export type ProxyOperation =
   | "delete-candidate"
   | "delete-session"
   | "settings:get"
-  | "settings:patch";
+  | "settings:patch"
+  | "join-workspace";
 
 export interface ProxyRequest {
   readonly operation: ProxyOperation;
@@ -35,6 +36,10 @@ export interface ProxyRequest {
   readonly logicalAnchorId?: string | null;
   readonly legacyNativeSessionId?: string | null;
   readonly legacyNativeAnchorId?: string | null;
+  /** The workspace-level entry: which workspace, and where its sessions live. */
+  readonly workspaceId?: string;
+  readonly workspaceName?: string;
+  readonly workspacePath?: string;
 }
 
 export interface ProxyResult {
@@ -105,6 +110,12 @@ interface SessionDetail {
 function safeId(value: unknown, name: string): string {
   if (typeof value !== "string" || !SAFE_ID.test(value)) throw new TypeError(`${name} 必须是已登记 ID，不能是路径`);
   return value;
+}
+
+/** Free text the user's own workspace supplied; it is never used as a path. */
+function safeText(value: unknown, name: string): string {
+  if (typeof value !== "string" || value.trim().length === 0 || value.length > 1_000) throw new TypeError(`${name} 无效`);
+  return value.trim();
 }
 
 function sendJson(response: ServerResponse, status: number, value: unknown): void {
@@ -220,6 +231,22 @@ export class RestrictedEngineProxy {
     }
 
     const instanceId = safeId(input.instanceId ?? this.defaultInstanceId, "instanceId");
+    if (input.operation === "join-workspace") {
+      // The Engine maps the workspace's own directory: it is the side that can
+      // read the instance's sessions and write them into Maintenance's storage.
+      const workspaceId = safeId(input.workspaceId, "workspaceId");
+      const workspaceName = safeText(input.workspaceName, "workspaceName");
+      const workspacePath = safeText(input.workspacePath, "workspacePath");
+      const value = await this.engine("/v1/instances/workspace-joins", "POST", { instanceId, profileId: this.config.profileId,
+        workspaceId, workspaceName, workspacePath }) as { join?: { workspaceId?: string; mapped?: readonly unknown[]; alreadyPresent?: readonly unknown[]; failures?: readonly unknown[] } };
+      const join = value.join;
+      if (join === undefined || typeof join.workspaceId !== "string" || !Array.isArray(join.mapped)
+        || !Array.isArray(join.alreadyPresent) || !Array.isArray(join.failures)) {
+        throw new Error("维护引擎未返回匹配的工作区加入回执；请检查状态后重试");
+      }
+      const skipped = join.failures.length === 0 ? "" : `；${join.failures.length} 个会话未能读取`;
+      return { ok: true, message: `已把「${workspaceName}」加入维护范围：映射 ${join.mapped.length} 个会话，已有 ${join.alreadyPresent.length} 个${skipped}` };
+    }
     if (input.operation === "scan-current") {
       const value = await this.engine("/v1/jobs/scan", "POST", { instanceIds: [instanceId] }) as { job: { id: string } };
       return { ok: true, message: "已提交当前 DSH 实例扫描；Engine 会按稳定 ID 更新此会话", jobId: value.job.id };

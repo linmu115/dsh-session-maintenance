@@ -1,16 +1,24 @@
-import { setMaintenanceRequired } from "./maintenance-policy.js";
+import { maintenanceRequired, setMaintenanceRequired } from "./maintenance-policy.js";
 import { scopedRecoveryRuns } from '../lifecycle-recovery.js';
 import type { MaintenanceWriteScope, IntegrationAction, IntegrationDirectory, IntegrationTarget } from "@linmu/dsh-session-contracts";
 import { CODEX_NATIVE_SYNC_UNAVAILABLE } from "@linmu/dsh-session-contracts";
 import { IntegrationError, readIntegrationBindings, saveIntegrationBindings } from "./bindings.js";
 import type { DiscoveredIntegration, DiscoveredIntegrations } from "./launcher-discovery.js";
+import { classifyIntegrationConnectionKind, resolveBindingConnectionKind } from "./launcher-discovery.js";
 import { configureLauncherHook, desiredLauncherHook, launcherHookPath, launcherHooksEqual, installIntegrationPlugin, type IntegrationInstallOptions } from "./launcher-install.js";
 import { readJsonIfPresent, writeJsonAtomically } from "./bindings.js";
 import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { saveStandaloneInstance } from './standalone.js';
-import type { StandaloneInstance } from '@linmu/dsh-session-contracts';
+import type { InstanceFolderPicker, InstanceFolderSelection } from '../instance-folder.js';
+import { createWindowsInstanceFolderPicker, selectInstanceFolder } from '../instance-folder.js';
+import { randomUUID } from 'node:crypto';
+import { challengeInstanceLiveness, claimTakeoverHandoff, inspectInstanceLease, listPendingSyncRequests,
+  listTakeoverHandoffs, recordSyncDecision, writeSyncRequest, writeTakeoverHandoff } from '../instance-lease.js';
+import { workspaceJoinReceiptSchema } from '@linmu/dsh-session-contracts';
+import type { InstanceLeaseInspection, InstanceSyncDecisionResponse, StandaloneInstance, TakeoverClaimRequest,
+  TakeoverHandoff, WorkspaceJoinReceipt, WorkspaceJoinRequest } from '@linmu/dsh-session-contracts';
 
 const displayCatalogSchema = z.object({ instances: z.array(z.object({ id: z.string(), name: z.string() })) });
 
@@ -22,6 +30,26 @@ export interface IntegrationServiceOptions {
   readonly verifyAdapter: (target: DiscoveredIntegration) => Promise<void>;
   /** Runs within the same writer scope, before a successful binding can be published. */
   readonly registerSource?: (target: DiscoveredIntegration) => Promise<void>;
+  /**
+   * How the operator chooses the instance's DSH Home folder. Injectable so a
+   * caller (and a test) never has to open the native dialog, and so a headless
+   * deployment can refuse the interaction explicitly instead of hanging on it.
+   */
+  readonly pickInstanceFolder?: InstanceFolderPicker;
+  /**
+   * Turns a verified running instance into an Engine-prepared run and returns
+   * the handoff the instance claims. Injected because only the composition root
+   * can reach the Runtime Broker and the Canonical store; this service owns the
+   * decision about *whether* a takeover may happen, not the run itself.
+   */
+  readonly prepareTakeover?: (target: DiscoveredIntegration, inspection: InstanceLeaseInspection) => Promise<TakeoverHandoff | null>;
+  /**
+   * Maps a workspace the user asked to join into Maintenance's own storage.
+   * Injected because only the composition root can reach the canonical store.
+   */
+  readonly mapWorkspace?: (input: { readonly target: DiscoveredIntegration; readonly request: WorkspaceJoinRequest }) =>
+    Promise<{ readonly workspaceId: string; readonly created: boolean; readonly mapped: readonly string[];
+      readonly alreadyPresent: readonly unknown[]; readonly failures: readonly { nativeSessionId: string; reason: string }[] }>;
   readonly clock?: () => string;
   readonly recoveryRuns?: typeof scopedRecoveryRuns;
 }
@@ -41,6 +69,145 @@ export class InstanceIntegrationService {
       return saveStandaloneInstance(this.options.stateRoot, config);
     });
     return this.action(target.target.id, 'connect');
+  }
+
+  /**
+   * Connect by folder: ask for the instance's DSH Home, then report what is in
+   * it. This step is deliberately read-only, so a cancelled or unusable choice
+   * leaves no binding, no Launcher hook and no startup gate behind; registering
+   * the inspected Home is a separate, explicit confirmation.
+   */
+  async selectInstanceFolder(signal: AbortSignal): Promise<InstanceFolderSelection> {
+    return selectInstanceFolder(this.options.pickInstanceFolder ?? createWindowsInstanceFolderPicker(), signal);
+  }
+
+  /**
+   * Detect whether the instance behind a selected folder is running right now.
+   *
+   * Detection is a separate question from connection: a bound instance can be
+   * stopped, and a stopped instance cannot be taken over. The answer is built
+   * from the instance's own handshake plus OS evidence, never from Launcher
+   * state, which is what makes a directory connection independent of Launcher.
+   */
+  async inspectInstanceTakeover(targetId: string): Promise<{ readonly target: IntegrationTarget; readonly lease: InstanceLeaseInspection }> {
+    const { target, lease } = await this.resolveTakeoverTarget(targetId);
+    return { target: target.target, lease };
+  }
+
+  private async resolveTakeoverTarget(targetId: string): Promise<{ target: DiscoveredIntegration; lease: InstanceLeaseInspection }> {
+    const found = (await this.options.discover()).targets.find(item => item.target.id === targetId);
+    if (found === undefined) throw new IntegrationError('INTEGRATION_NOT_FOUND', '接入对象已不存在，请刷新实例列表。', 404);
+    if (found.target.kind !== 'dsh' || found.target.profile === null)
+      throw new IntegrationError('INSTANCE_TAKEOVER_UNSUPPORTED', '只有具体配置的 DSH 实例才能被接管。');
+    const lease = await inspectInstanceLease(this.options.stateRoot, { instanceId: found.instanceId,
+      profileId: found.target.profile, expectedHomeRoot: found.homeRoot, profileRoot: found.profileRoot });
+    return { target: found, lease };
+  }
+
+  /**
+   * Ask the running instance's user to approve a synchronisation.
+   *
+   * The Engine cannot synchronise an already running instance by itself: the
+   * plugin's persistence root was fixed when the instance started. So the Engine
+   * states what it wants and waits for the instance to put the question to its
+   * user. Writing the request is the whole action — no work happens here, and an
+   * unanswered or refused request leaves everything untouched.
+   */
+  async requestInstanceSync(targetId: string, summary: string): Promise<{ readonly requestId: string;
+    readonly instanceId: string; readonly profileId: string }> {
+    const { target, lease } = await this.resolveTakeoverTarget(targetId);
+    if (lease.decision !== 'running' || lease.runtimeUrl === null)
+      throw new IntegrationError('INSTANCE_NOT_RUNNING', lease.reason);
+    const requestId = `sync-${randomUUID()}`;
+    await writeSyncRequest(this.options.stateRoot, { schemaVersion: 1, requestId, instanceId: target.instanceId,
+      profileId: target.target.profile!, summary, requestedAt: (this.options.clock ?? (() => new Date().toISOString()))() });
+    return { requestId, instanceId: target.instanceId, profileId: target.target.profile! };
+  }
+
+  /** Requests this instance has not answered yet, for the instance to surface. */
+  async listPendingInstanceSync(instanceId: string, profileId: string) {
+    return listPendingSyncRequests(this.options.stateRoot, instanceId, profileId);
+  }
+
+  /** Record the user's answer; the first answer is final. */
+  async decideInstanceSync(decision: InstanceSyncDecisionResponse): Promise<InstanceSyncDecisionResponse> {
+    const recorded = await recordSyncDecision(this.options.stateRoot, decision);
+    if (!recorded.recorded) throw new IntegrationError('INSTANCE_SYNC_DECISION_REFUSED', recorded.reason, 409);
+    return decision;
+  }
+
+  /**
+   * Take over an already running instance.
+   *
+   * The Engine drives this: it verifies the instance first, then prepares its own
+   * run, and only then publishes a handoff for the instance to claim. Nothing is
+   * relaxed for the sake of the takeover — the run still comes from the normal
+   * projection lifecycle, and an instance that cannot prove it is the running
+   * instance simply does not get one.
+   */
+  async takeoverInstance(targetId: string): Promise<{ readonly target: IntegrationTarget; readonly lease: InstanceLeaseInspection;
+    readonly handoff: TakeoverHandoff | null }> {
+    const { target, lease } = await this.resolveTakeoverTarget(targetId);
+    if (lease.decision !== 'running' || lease.process === null || lease.runtimeUrl === null)
+      throw new IntegrationError('INSTANCE_NOT_RUNNING', lease.reason);
+    // The lease says an instance was started; the instance itself has to agree.
+    const challenged = await challengeInstanceLiveness({ runtimeUrl: lease.runtimeUrl, instanceId: target.instanceId,
+      profileId: target.target.profile!, pid: lease.process.pid, homeRoot: target.homeRoot });
+    if (!challenged.answered) throw new IntegrationError('INSTANCE_HANDSHAKE_REFUSED', challenged.reason);
+    if (this.options.prepareTakeover === undefined)
+      throw new IntegrationError('INSTANCE_TAKEOVER_UNAVAILABLE', '此引擎尚未配置接管运行通道。', 503);
+    const prepared = await this.options.prepareTakeover(target, lease);
+    if (prepared === null) throw new IntegrationError('INSTANCE_NOT_RUNNING', lease.reason);
+    await writeTakeoverHandoff(this.options.stateRoot, prepared);
+    return { target: target.target, lease, handoff: prepared };
+  }
+
+  /**
+   * Hand the prepared run to the instance that presents the ticket.
+   *
+   * The ticket is single-use and bound to one instance: a claimed ticket is
+   * never returned again, so a restarted instance cannot attach the same run
+   * twice, and a wrong instance cannot steal a run prepared for another.
+   */
+  async claimTakeoverHandoff(input: TakeoverClaimRequest): Promise<TakeoverHandoff> {
+    const claimed = await claimTakeoverHandoff(this.options.stateRoot, input);
+    if (!claimed.claimed) throw new IntegrationError('INSTANCE_TAKEOVER_REFUSED', claimed.reason, 409);
+    return claimed.handoff;
+  }
+
+  /**
+   * Prepared runs still waiting for their instance.
+   *
+   * The instance polls this while the Engine is up: the tickets live in the
+   * Engine's own directory, and only a caller presenting this instance's
+   * identity learns that a run was prepared for it. Claimed tickets are
+   * omitted, which is what makes the poll idempotent instead of attaching the
+   * same run over and over.
+   */
+  async listPendingTakeovers(instanceId: string, profileId: string): Promise<readonly TakeoverHandoff[]> {
+    return (await listTakeoverHandoffs(this.options.stateRoot))
+      .filter(handoff => handoff.instanceId === instanceId && handoff.profileId === profileId && handoff.claimedAt === null);
+  }
+
+  /**
+   * Join one workspace into Maintenance's own storage, on the instance's request.
+   *
+   * The instance only states which workspace it is and where its sessions live;
+   * the Engine maps them, because reading an instance's sessions and writing
+   * canonical rows are both its jobs. Joining only ever happens because a user
+   * asked for it through the entry: nothing here enrols a workspace by itself.
+   */
+  async joinWorkspace(input: WorkspaceJoinRequest): Promise<WorkspaceJoinReceipt> {
+    if (this.options.mapWorkspace === undefined)
+      throw new IntegrationError('WORKSPACE_JOIN_UNAVAILABLE', '此引擎尚未配置工作区映射。', 503);
+    const found = (await this.options.discover()).targets.find(item => item.instanceId === input.instanceId
+      && item.target.profile === input.profileId);
+    if (found === undefined) throw new IntegrationError('INTEGRATION_NOT_FOUND', '该实例尚未接入，无法加入工作区。', 404);
+    if (found.homeRoot.length === 0) throw new IntegrationError('INSTANCE_PATH_INVALID', '该实例没有可读取的 DSH Home。');
+    const receipt = await this.options.mapWorkspace({ target: found, request: input });
+    return workspaceJoinReceiptSchema.parse({ workspaceId: receipt.workspaceId, created: receipt.created,
+      mapped: [...receipt.mapped], alreadyPresent: receipt.alreadyPresent.map(String),
+      failures: receipt.failures.map(failure => ({ ...failure })) });
   }
 
   /** Presentation only: read the bound Launcher catalog, without attestation or runtime discovery. */
@@ -84,9 +251,13 @@ export class InstanceIntegrationService {
       const target: IntegrationTarget = { ...item.target, capabilities: item.target.capabilities.map(capability => ({ ...capability })), issues: [...item.target.issues] };
       const binding = bindings.find(bound => bound.targetId === target.id);
       if (binding !== undefined) {
+        const connectionKind = resolveBindingConnectionKind(binding);
         let hookReady = target.kind === "codex" && item.codexRegistered !== false;
-        if (target.kind === 'dsh' && item.launcherDataRoot === null) hookReady = true;
-        if (target.kind === "dsh" && item.launcherDataRoot !== null) {
+        // Only a Launcher connection owns an external-lifecycle hook. A
+        // directory connection must reach `connected` without one, and a legacy
+        // record without a Launcher root keeps the behaviour it already had.
+        if (target.kind === "dsh" && (connectionKind === "directory" || item.launcherDataRoot === null)) hookReady = true;
+        if (target.kind === "dsh" && connectionKind !== "directory" && item.launcherDataRoot !== null) {
           try { hookReady = launcherHooksEqual(await readJsonIfPresent(launcherHookPath(item)), await desiredLauncherHook(item, this.options.installation)); }
           catch { hookReady = false; }
         }
@@ -118,7 +289,11 @@ export class InstanceIntegrationService {
         }
         await saveIntegrationBindings(this.options.stateRoot, bindings.filter(item => item.targetId !== targetId));
         const disconnected = bindings.find(item => item.targetId === targetId);
-        if(disconnected?.kind === "dsh" && disconnected.profileId !== null) await setMaintenanceRequired(this.options.stateRoot,disconnected.instanceId,disconnected.profileId,false);
+        // Only a connection that owns the instance-side startup gate clears it;
+        // a directory connection never wrote one and must not create the file.
+        if(disconnected?.kind === "dsh" && disconnected.profileId !== null
+          && await maintenanceRequired(this.options.stateRoot, disconnected.instanceId, disconnected.profileId))
+          await setMaintenanceRequired(this.options.stateRoot,disconnected.instanceId,disconnected.profileId,false);
       });
       return this.list();
     }
@@ -141,7 +316,11 @@ export class InstanceIntegrationService {
     generation += 1;
     this.generations.set(targetId, generation);
     try {
-      if (before.target.kind === "dsh" && before.launcherDataRoot !== null) {
+      // A directory connection must not require anything of the instance at
+      // launch, so it neither installs the Launcher hook nor the instance-side
+      // startup gate; a Launcher connection keeps both steps unchanged.
+      const keeping = classifyIntegrationConnectionKind(before.launcherDataRoot) !== "directory";
+      if (keeping && before.target.kind === "dsh" && before.launcherDataRoot !== null) {
         await desiredLauncherHook(before, this.options.installation); // Reject another provider before installing anything.
         await installIntegrationPlugin(before, this.options.installation);
       }
@@ -158,7 +337,7 @@ export class InstanceIntegrationService {
         if (current?.fingerprint !== after.fingerprint) throw new IntegrationError("INTEGRATION_TARGET_CHANGED", "实例在验证后发生变化，未保存启动绑定。");
         assertCurrent();
         const bindings = await readIntegrationBindings(this.options.stateRoot);
-        const hookPath = after.target.kind === "dsh" && after.launcherDataRoot !== null ? launcherHookPath(after) : null;
+        const hookPath = keeping && after.target.kind === "dsh" && after.launcherDataRoot !== null ? launcherHookPath(after) : null;
         const oldHook = hookPath === null ? undefined : await readJsonIfPresent(hookPath);
         let publishedHook: unknown;
         try {
@@ -166,9 +345,10 @@ export class InstanceIntegrationService {
           assertCurrent();
           if (hookPath !== null) { await configureLauncherHook(after, this.options.installation); publishedHook = await readJsonIfPresent(hookPath); }
           assertCurrent();
-          if(after.target.kind === "dsh" && after.target.profile !== null) await setMaintenanceRequired(this.options.stateRoot,after.instanceId,after.target.profile,true);
+          if (keeping && after.target.kind === "dsh" && after.target.profile !== null) await setMaintenanceRequired(this.options.stateRoot,after.instanceId,after.target.profile,true);
           await saveIntegrationBindings(this.options.stateRoot, [...bindings.filter(item => item.targetId !== targetId), {
             targetId, kind: after.target.kind, instanceId: after.instanceId, profileId: after.target.profile,
+            connectionKind: classifyIntegrationConnectionKind(after.launcherDataRoot),
             launcherDataRoot: after.launcherDataRoot, runtimeVersion: after.target.version, adapterId: after.target.adapterId,
             fingerprint: after.fingerprint, checkedAt: (this.options.clock ?? (() => new Date().toISOString()))(),
           }]);

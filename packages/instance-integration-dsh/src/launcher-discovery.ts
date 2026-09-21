@@ -10,7 +10,7 @@ import { z } from "zod";
 import { parseDocument } from "yaml";
 import { maintenanceIntegrationBundleReady } from "@linmu/dsh-adapter-dsh";
 import { inspectRc2ProfileOverrides } from "./rc2-profile-overrides.js";
-import type { AdapterProbe, IntegrationTarget, RegisteredInstance, StandaloneInstance } from "@linmu/dsh-session-contracts";
+import type { AdapterProbe, DshIntegrationConnectionKind, IntegrationTarget, RegisteredInstance, StandaloneInstance } from "@linmu/dsh-session-contracts";
 import { IntegrationError, readJsonIfPresent } from "./bindings.js";
 import { inspectLauncherCapabilities } from "./launcher-capabilities.js";
 
@@ -29,8 +29,83 @@ export function integrationTargetId(kind: string, scope: string, instanceId: str
   return `${kind}-${createHash("sha256").update(JSON.stringify([scope, instanceId, profileId])).digest("hex").slice(0, 32)}`;
 }
 function fingerprint(value: unknown): string { return createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
+
+/**
+ * The startup gate: instance identity plus the actual integration contract.
+ *
+ * These inputs answer "is this still the same instance, and does the peer that
+ * reads its sessions still speak the same contract?". A change here means the
+ * binding genuinely cannot be trusted and a re-check is required:
+ *
+ * - identity: launcher root, instance/home/version ids and roots, the profile.
+ * - host and runtime contract: Launcher capability digest, the RC2 attestation
+ *   receipt digest (which already pins the resolved runtime closure by hash),
+ *   the actually installed runtime version, and the environment overrides that
+ *   change how the adapter reads the instance.
+ * - effective user patch layers (profile and home `cordis.patch.yml`): a user
+ *   patch can disable the persistence or session services the adapter relies
+ *   on, so the composed layer is contract, not inventory.
+ * - the Maintenance integration plugin's own resolved manifest and bundle patch:
+ *   it is the peer of this contract, not an ordinary business plugin.
+ *
+ * Ordinary plugin composition is intentionally excluded; see
+ * {@link pluginInventoryFingerprint}.
+ */
+function contractFingerprint(input: {
+  canonicalLauncherRoot: string; hostDigest: string | null; attestationDigest: string | null;
+  instanceId: string; homeId: string; versionId: string;
+  homeRoot: string; versionRoot: string | null; profileRoot: string | null;
+  actualVersion: string | null; envOverrides: Readonly<Record<string, string>>;
+  plugin: unknown; patchDigests: readonly (string | null)[];
+}): string {
+  return fingerprint([
+    input.canonicalLauncherRoot, input.hostDigest, input.attestationDigest,
+    input.instanceId, input.homeId, input.versionId,
+    input.homeRoot, input.versionRoot, input.profileRoot,
+    input.actualVersion, input.envOverrides,
+    input.plugin, input.patchDigests,
+  ]);
+}
+
+/**
+ * Diagnostic record of the ordinary business plugin composition. Never gates a
+ * launch.
+ *
+ * Kept so that installing, removing or upgrading a business plugin can be shown
+ * and explained without becoming a startup precondition, which is precisely the
+ * MNT-001 defect. Real incompatibilities still gate through their own explicit
+ * checks (`pluginReady`, the declared host/adapter/format declarations and the
+ * per-package version checks), not through a byte difference in this inventory.
+ */
+function pluginInventoryFingerprint(input: {
+  versions: Readonly<Record<string, string>>; manifests: readonly string[];
+  webApp: unknown; bundles: unknown; extraBundles: unknown;
+}): string {
+  return fingerprint([
+    input.versions, input.manifests,
+    input.webApp, input.bundles, input.extraBundles,
+  ]);
+}
+
 function unique<T extends { id: string }>(items: T[], label: string): void {
   if (new Set(items.map(item => item.id)).size !== items.length) throw new IntegrationError("LAUNCHER_CATALOG_INVALID", `${label}存在重复标识，无法确定接入对象。`, 503);
+}
+
+/**
+ * Fallback for records written before the binding carried a connection source.
+ *
+ * A Launcher target always has a Launcher data root; a target without one came
+ * from the standalone synthesis path, which is the underlying mechanism a
+ * directory connection uses. This is exactly how such a record was treated
+ * before, so existing bindings keep their behaviour without being migrated.
+ */
+export function classifyIntegrationConnectionKind(launcherDataRoot: string | null): DshIntegrationConnectionKind {
+  return launcherDataRoot === null ? "directory" : "launcher";
+}
+
+/** A stored binding without an explicit source stays `legacy`; existing records are never rewritten. */
+export function resolveBindingConnectionKind(binding: { readonly connectionKind?: DshIntegrationConnectionKind | undefined; readonly launcherDataRoot: string | null }): DshIntegrationConnectionKind {
+  return binding.connectionKind ?? "legacy";
 }
 export async function ownedRealpath(parent: string, path: string): Promise<string> {
   const [root, actual] = await Promise.all([realpath(parent), realpath(path)]);
@@ -243,14 +318,26 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
             { id: "lifecycle", label: "随实例启动和收尾", status: "unchecked", detail: "完成实例绑定后启用。" },
           ], issues,
         };
-        targets.push({ target, instanceId: instance.id, launcherDataRoot: standalone ? null : canonicalLauncherRoot, homeRoot, versionRoot, profileRoot, cliPath, packageVersions: versions, pluginReady, ...(pluginCheck.issue ? { pluginIssue: pluginCheck.issue } : {}), runtimeCapabilities, ...(coreBinding?{coreBinding}:{}),
-          fingerprint: fingerprint([canonicalLauncherRoot, host.digest, attestationDigest, instance.id, home.id, version.id, homeRoot, versionRoot, profileRoot, actualVersion, versions, manifests, plugin, webApp, bundles, extraBundles, patchDigests, instance.env_overrides ?? {}]) });
+        targets.push({ target, instanceId: instance.id, launcherDataRoot: standalone ? null : canonicalLauncherRoot, connectionKind: classifyIntegrationConnectionKind(standalone ? null : canonicalLauncherRoot), homeRoot, versionRoot, profileRoot, cliPath, packageVersions: versions, pluginReady, ...(pluginCheck.issue ? { pluginIssue: pluginCheck.issue } : {}), runtimeCapabilities, ...(coreBinding?{coreBinding}:{}),
+          // Startup gate: identity, the runtime/format contract, the effective user
+          // patch layers and the integration plugin itself. See the contract's own
+          // doc comment. Ordinary business plugin composition is recorded separately
+          // below and must never gate a launch by itself.
+          fingerprint: contractFingerprint({
+            canonicalLauncherRoot, hostDigest: host.digest,
+            attestationDigest: attestationDigest ?? "",
+            instanceId: instance.id, homeId: home.id, versionId: version.id,
+            homeRoot, versionRoot, profileRoot, actualVersion,
+            envOverrides: instance.env_overrides ?? {},
+            plugin, patchDigests,
+          }),
+          pluginInventory: pluginInventoryFingerprint({ versions, manifests, webApp, bundles, extraBundles }) });
         } catch {
           // A broken unrelated profile must not take down valid targets or scoped launches.
           const id = integrationTargetId("dsh", canonicalLauncherRoot, instance.id, entry.name);
           targets.push({ target: { id, kind: "dsh", name: `${instance.name} · ${entry.name}`, version: version.version, profile: entry.name,
             status: "unsupported", adapterId: null, capabilities: [], issues: ["此配置的数据或路径无法读取，请在 Launcher 中修复该配置。"] },
-            instanceId: instance.id, fingerprint: fingerprint([id, "unreadable"]), launcherDataRoot: standalone ? null : canonicalLauncherRoot, homeRoot, versionRoot,
+            instanceId: instance.id, fingerprint: fingerprint([id, "unreadable"]), launcherDataRoot: standalone ? null : canonicalLauncherRoot, connectionKind: classifyIntegrationConnectionKind(standalone ? null : canonicalLauncherRoot), homeRoot, versionRoot,
             profileRoot: null, cliPath: null, packageVersions: {}, pluginReady: false });
         }
       }
@@ -266,7 +353,7 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
         { id: "read", label: "读取已有会话", status: readable ? "supported" : "unavailable", detail: readable ? "已通过读取适配器的数据库和会话结构检查；首次导入在同步页操作。" : "该来源尚未通过实际读取适配器检查。" },
         { id: "native-write", label: "原生双向同步", status: "unavailable", detail: "完整原生对话写入尚未通过验证。" },
       ], issues: readable ? [] : ["Codex 读取版本或会话结构尚未通过验证，请检查来源。"] },
-      instanceId: instance.id, launcherDataRoot: null, homeRoot, versionRoot: null, profileRoot: null, cliPath: null, packageVersions: {}, pluginReady: true,
+      instanceId: instance.id, launcherDataRoot: null, connectionKind: classifyIntegrationConnectionKind(null), homeRoot, versionRoot: null, profileRoot: null, cliPath: null, packageVersions: {}, pluginReady: true,
       codexSource: { ...instance, root: homeRoot },
       fingerprint: fingerprint([instance.id, homeRoot, instance.platformVersion, readable]),
     });

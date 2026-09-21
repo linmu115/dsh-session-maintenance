@@ -8,6 +8,22 @@ export interface ObservableSnapshot<T> {
 export interface SessionListSnapshot {
   readonly current?: string;
   readonly byId?: Readonly<Record<string, { readonly title?: string; readonly archived?: boolean } | undefined>>;
+  /**
+   * The instance's workspaces, when the host exposes them. The workspace-level
+   * entry reads the name and directory from here; without it the entry refuses
+   * the click rather than joining something it cannot describe.
+   */
+  readonly workspaces?: Readonly<Record<string, { readonly name?: string; readonly path?: string } | undefined>>;
+}
+
+/** Reads one workspace's name and directory out of the host's own snapshot. */
+export function describeInstanceWorkspace(snapshot: SessionListSnapshot, workspaceId: string):
+{ readonly name: string; readonly path: string } | undefined {
+  const workspace = snapshot.workspaces?.[workspaceId];
+  const name = workspace?.name?.trim();
+  const path = workspace?.path?.trim();
+  if (name === undefined || name.length === 0 || path === undefined || path.length === 0) return undefined;
+  return { name, path };
 }
 
 export interface SettingsSectionRegistration {

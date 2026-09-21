@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { extensionConnectSchema, type ExtensionConnect } from "@linmu/dsh-session-contracts";
 
 export const SUPPORTED_DSH_VERSION = "0.1.5-rc.2" as const;
@@ -27,6 +27,13 @@ export interface LauncherProjectionProfile {
   readonly temporaryPersistenceRootId: string;
   readonly dshVersion: string;
   readonly nativeMode?: "persistent-native-v1";
+  /**
+   * The synchronisation scope the Engine froze for this run, when the handoff
+   * states it. Absent means this instance was not told a scope, so its write gate
+   * has nothing it may hold back.
+   */
+  readonly scopeWorkspaceIds?: readonly string[];
+  readonly scopeIncludeUnassigned?: boolean;
 }
 
 const SAFE_ID = /^[A-Za-z0-9@][A-Za-z0-9@/._:-]{0,255}$/u;
@@ -115,6 +122,31 @@ export function launcherProjectionProfile(
 export type { ProjectionRuntimeDescriptor } from "./projection-runtime.js";
 export { normalizeProjectionRuntimeDescriptor } from "./projection-runtime.js";
 
+/**
+ * Where the Engine keeps its per-user state, resolved by the same chain that
+ * finds the connection descriptor.
+ *
+ * The instance has to publish its handshake *before* any Engine exists, so this
+ * answer may not depend on `connection.json` being there: the installer's
+ * registered path gives the directory, then the state-root variable, then the
+ * per-user conventional location. One chain for both questions keeps a machine
+ * from ending up with a descriptor in one directory and handshakes in another.
+ */
+export function maintenanceStateRoot(
+  connectionId = "primary",
+  environment: Readonly<Record<string, string | undefined>> = process.env,
+): string | undefined {
+  const key = `DSH_SESSION_MAINTENANCE_CONNECTION_${connectionId.toUpperCase().replaceAll(/[^A-Z0-9]/gu, "_")}`;
+  const registered = environment[key];
+  if (registered !== undefined && registered.trim().length > 0) return dirname(registered);
+  if (connectionId !== "primary") return undefined;
+  const stateRoot = environment.DSH_SESSION_MAINTENANCE_STATE_ROOT?.trim();
+  if (stateRoot) return stateRoot;
+  const localAppData = environment.LOCALAPPDATA;
+  if (localAppData === undefined || localAppData.trim().length === 0) return undefined;
+  return join(localAppData, "DSH-Session-Maintenance");
+}
+
 export function connectionDescriptorPath(
   connectionId: string,
   environment: Readonly<Record<string, string | undefined>> = process.env,
@@ -126,12 +158,9 @@ export function connectionDescriptorPath(
   // `primary` is the installer-owned, per-user Engine registration. Resolving
   // its conventional location keeps the plugin independent from launchers
   // that may filter custom environment variables when they re-spawn DSH.
-  if (connectionId !== "primary") return undefined;
-  const stateRoot = environment.DSH_SESSION_MAINTENANCE_STATE_ROOT?.trim();
-  if (stateRoot) return join(stateRoot, 'connection.json');
-  const localAppData = environment.LOCALAPPDATA;
-  if (localAppData === undefined || localAppData.trim().length === 0) return undefined;
-  return join(localAppData, "DSH-Session-Maintenance", "connection.json");
+  const stateRoot = maintenanceStateRoot(connectionId, environment);
+  if (stateRoot === undefined) return undefined;
+  return join(stateRoot, "connection.json");
 }
 
 /** The Launcher pins an inspected importer receipt; browser requests cannot override it. */

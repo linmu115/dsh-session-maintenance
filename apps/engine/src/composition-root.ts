@@ -9,10 +9,15 @@ import { ExtensionDataService } from "./extensions/service.js";
 import { builtInExtensionAdapters } from "./extensions/adapters.js";
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
+import type { DiscoveredIntegration, InstanceLeaseInspection, LogicalWorkspace, LogicalWorkspaceId, RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
+import { nativeProjectDirectory } from './native-session-overwrite.js';
+import { createInstanceWorkspaceSource } from './instance-workspace-source.js';
+import { mapJoinedWorkspace, mappedLogicalSessionId } from './workspace-session-mapping.js';
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
@@ -89,11 +94,32 @@ export interface CompositionOptions {
   readonly clock?: () => string;
   readonly fixturePolicy?: (root: string) => void;
   readonly continuationAdapter?: CodexContinuationPort;
+  /** Overridden by tests; production uses the native Windows chooser. */
+  readonly pickInstanceFolder?: import("./instance-folder.js").InstanceFolderPicker;
   readonly integrationEnvironment?: { readonly launcherDataRoot: string; readonly installation: IntegrationInstallOptions; readonly codexHome?: string };
 }
 
 export interface DshWritableCompositionOptions extends CompositionOptions {
   readonly dshGatewayTargets: readonly DshGatewayTarget[];
+}
+
+/**
+ * The run request for a takeover of an already running instance.
+ *
+ * It is the same request the Launcher sends, with the Engine as the owner: the
+ * instance's own runtime endpoint is where the plugin will be asked to attach,
+ * and its adapter and version come from the binding that was already verified.
+ * `projectSelection` stays "all" because project-id filtering is not available
+ * in the Runtime Broker yet — that is a pre-existing limit, not a widening of
+ * the instance's synchronised workspace scope, which the run freezes separately.
+ */
+function takeoverPrepareRequest(target: DiscoveredIntegration, inspection: InstanceLeaseInspection): RuntimeBrokerPrepareRunRequest {
+  return { schemaVersion: 1, client: { kind: "cli", id: `takeover-owner-${randomUUID()}` },
+    runtimeClientId: `plugin-${randomUUID()}`, instanceId: target.instanceId, profileId: target.target.profile!,
+    dshVersion: target.target.version, maintenanceEndpoint: inspection.runtimeUrl!, branchId: "main" as never,
+    environment: { packageVersions: { ...target.packageVersions },
+      runtimeCapabilities: [...(target.runtimeCapabilities ?? ["sessionPersistence", "session/event", "session/flush"])] },
+    pinnedAdapterId: (target.target.adapterId ?? null) as never, projectSelection: { kind: "all" } };
 }
 
 function adapters(fixturePolicy?: (root: string) => void): readonly SessionReadAdapter[] {
@@ -378,6 +404,44 @@ async function createComposition(
         } });
       },
       ...(options.clock === undefined ? {} : { clock: options.clock }),
+      ...(options.pickInstanceFolder === undefined ? {} : { pickInstanceFolder: options.pickInstanceFolder }),
+      // Takeover: the Engine prepares the run itself, exactly as a Launcher
+      // launch would, and publishes the handoff for the running instance to
+      // claim. Nothing here relaxes the run's own preconditions — a run the
+      // lifecycle refuses to prepare is a takeover that does not happen.
+      prepareTakeover: async (target, inspection) => {
+        if (target.target.profile === null || inspection.runtimeUrl === null) return null;
+        const prepared = await composedEngine!.prepareProjectionRuntimeRun(takeoverPrepareRequest(target, inspection));
+        return { schemaVersion: 1, ticketId: `takeover-${randomUUID()}`, instanceId: target.instanceId,
+          profileId: target.target.profile, runId: prepared.runId, runtimeClientId: prepared.runtimeClientId,
+          ownerClientId: `takeover-owner-${randomUUID()}`, temporaryPersistenceRootId: prepared.temporaryPersistenceRootId,
+          maintenanceEndpoint: inspection.runtimeUrl, dshVersion: target.target.version,
+          adapterId: prepared.adapterId, nativeMode: prepared.nativeMode ?? null,
+          createdAt: new Date().toISOString(), claimedAt: null };
+      },
+      // Joining a workspace is the instance-side entry asking the Engine to map
+      // that workspace's existing sessions into Maintenance's own storage. The
+      // directory is derived from the instance's Home and the workspace path, so
+      // the instance never sends a location the Engine just obeys.
+      mapWorkspace: async ({ target, request }) => {
+        const projectDirectory = nativeProjectDirectory(request.workspacePath);
+        const sessionsRoot = join(target.homeRoot, "sessions", projectDirectory);
+        const source = createInstanceWorkspaceSource({ sessionsRoot, instanceId: request.instanceId,
+          logicalSessionId: nativeSessionId => mappedLogicalSessionId(request.instanceId, nativeSessionId) });
+        const mapped = await mapJoinedWorkspace({ engine: canonicalEngine, instanceId: request.instanceId,
+          workspaceKey: request.workspaceId, workspaceName: request.workspaceName, source,
+          workspaces: {
+            // Reading the folder row is a plain lookup against the same table the
+            // board reads, so no second notion of a workspace is introduced.
+            read: async (id: LogicalWorkspaceId) => repository.database.prepare(
+              `SELECT id, parent_id AS parentId, name, sort_key AS sortKey, deleted_at AS deletedAt,
+                 created_at AS createdAt, updated_at AS updatedAt FROM logical_workspaces WHERE id = ?`)
+              .get(id) as unknown as LogicalWorkspace | undefined,
+            upsert: async (workspace: LogicalWorkspace) => new SqliteCanonicalRepository(repository.database).upsertLogicalWorkspace(workspace),
+          } });
+        return { workspaceId: mapped.workspaceId as unknown as string, created: mapped.created,
+          mapped: mapped.mapped.map(String), alreadyPresent: mapped.alreadyPresent, failures: mapped.failures };
+      },
     }),
     workspaceSync: new WorkspaceSyncPolicyService({ stateRoot: options.stateRoot, writes, directory: () => new SessionMaintenanceQueries(repository.database).readCanonicalWorkspaceDirectory() }),
     instances,

@@ -43,8 +43,8 @@ describe("DSH rc.2 Core host entry", () => {
     expect(await response.text()).not.toContain("sessions.get");
   });
 
-  it("unregisters both host endpoints when Cordis unloads the plugin", async () => {
-    const unregistrations = [vi.fn(), vi.fn()];
+  it("unregisters every host endpoint, including the takeover handshake, when Cordis unloads the plugin", async () => {
+    const unregistrations = [vi.fn(), vi.fn(), vi.fn()];
     const registrations: string[] = [];
     const ctx = new Context();
     ctx.provide("webServer", {
@@ -55,10 +55,12 @@ describe("DSH rc.2 Core host entry", () => {
     } as never);
     try {
       const host = await ctx.plugin({ inject: ["webServer"], apply: child => apply(child as never, { connectionId: "primary", dshInstanceId: "dsh-web", profileId: "web" }) });
-      expect(registrations).toEqual(["/dsh-session-maintenance/api", "/dsh-session-maintenance/core"]);
+      // The instance's own liveness endpoint joins the two gateways: the Engine
+      // has to be able to reach the running instance to take it over.
+      expect(registrations).toEqual(["/dsh-session-maintenance/instance/lease",
+        "/dsh-session-maintenance/api", "/dsh-session-maintenance/core"]);
       await host.dispose();
-      expect(unregistrations[0]).toHaveBeenCalledOnce();
-      expect(unregistrations[1]).toHaveBeenCalledOnce();
+      for (const unregister of unregistrations) expect(unregister).toHaveBeenCalledOnce();
     } finally { await ctx.fiber.dispose(); }
   });
 });

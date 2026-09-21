@@ -11,6 +11,7 @@ import { registerWorkspaceArchiveBridge } from './workspace-archive-bridge.js';
 import { registerAnnotationMirror, type AnnotationMirrorContext } from './annotation-mirror.js';
 import { installRc2LazyProjectionPersistence } from './rc2-lazy-persistence.js';
 import { RegisteredSessionWriteAccess } from './write-access.js';
+import { FrozenWriteScope, ScopedSessionWriteAccess, openWriteScope, writeTargetOf, type WriteScopePort } from './write-access-scope.js';
 import { assertRegisteredStartup } from './registered-startup.js';
 import type { Context } from "@deepseek-ai/cordis";
 import { MaintenanceExtensionBridge, registerMaintenanceExtensionData } from "./extension-data.js";
@@ -18,7 +19,9 @@ import s from "@deepseek-ai/schemastery";
 import type { Session, SessionEvent } from "@deepseek-ai/dsh-session";
 import type { JsonValue } from "@linmu/dsh-session-contracts";
 
-import { connectionDescriptorPath, launcherProjectionProfile, launcherCoreBinding, normalizeConfig, withLauncherNativeExtensions, type Config as PluginConfig } from "./config.js";
+import { connectionDescriptorPath, launcherProjectionProfile, launcherCoreBinding, maintenanceStateRoot, normalizeConfig, withLauncherNativeExtensions, type Config as PluginConfig } from "./config.js";
+import { createInstanceLeaseHandler, startInstanceLease } from "./instance-lease.js";
+import { startTakeoverPolling } from "./takeover.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
 import { launchDashboard } from "./dashboard-launcher.js";
 import { createProxyHandler, FileConnectionProvider, RestrictedEngineProxy } from "./engine-proxy.js";
@@ -68,15 +71,26 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
   })();
   const coreBinding = launcherCoreBinding(config, launchProfile);
   let activeRuntime: RuntimeBrokerPluginClient | undefined;
-  const writeAccess = launchProfile ? new RegisteredSessionWriteAccess(
-    async () => { if (!activeRuntime) throw new Error('实例尚未就绪'); await activeRuntime.assertReady(); },
-    async () => { if (!activeRuntime) throw new Error('实例尚未就绪'); await activeRuntime.reconcilePending(); },
-  ) : undefined;
-  if (writeAccess) {
+  const engineGate = new RegisteredSessionWriteAccess(
+    async () => { if (!activeRuntime) throw new Error('实例尚未接管'); await activeRuntime.assertReady(); },
+    async () => { if (!activeRuntime) throw new Error('实例尚未接管'); await activeRuntime.reconcilePending(); },
+  );
+  // The gate is always provided, but it only ever holds back a session that a
+  // taken-over run froze into this instance's scope. An instance with no run —
+  // including one with no Engine at all — takes the open branch and is never
+  // blocked, which is what keeps this plugin from making the instance unusable.
+  // Until a run is attached and frozen there is no scope to enforce, so the gate
+  // has nothing it may hold back.
+  let frozenScope: WriteScopePort = openWriteScope;
+  const writeAccess = new ScopedSessionWriteAccess({ scope: { decisionFor: target => frozenScope.decisionFor(target) },
+    assertWritable: () => engineGate.assertWritable(), onUndecidable: () => undefined });
+  {
     (ctx as unknown as Context).provide('sessionWriteAccess' as never, writeAccess as never);
-    ctx.effect(() => () => writeAccess.close(), 'maintenance: write policy lifetime');
-    (ctx as unknown as { on(event: string, handler: (payload: unknown, next: () => Promise<unknown>) => Promise<unknown>): unknown }).on('agent/pre-step', async (_payload, next) => {
-      await writeAccess.assertWritable(); return next();
+    ctx.effect(() => () => engineGate.close(), 'maintenance: write policy lifetime');
+    (ctx as unknown as { on(event: string, handler: (payload: unknown, next: () => Promise<unknown>) => Promise<unknown>): unknown }).on('agent/pre-step', async (payload, next) => {
+      // A host payload this build cannot identify is not gated: a write this
+      // plugin cannot attribute must never be the reason an instance stops.
+      await writeAccess.assertWritable(writeTargetOf(payload)); return next();
     });
   }
   const connection = descriptorPath === undefined
@@ -87,6 +101,32 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
   (ctx as unknown as Context).provide("maintenanceReferenceResolver", {
     resolve: (location: import("./engine-proxy.js").ProxyRequest) => proxy.invoke({ ...location, operation: "reference:resolve" }),
   });
+  {
+    // Takeover handshake. This is deliberately outside the prepared-run block
+    // below: the case that matters is an instance started with no Engine at all,
+    // which must still leave something the Engine can find once it appears.
+    const stateRoot = maintenanceStateRoot(config.connectionId);
+    const report = (message: string) => { if (ctx.logger) ctx.logger.warn(message); else console.warn(message); };
+    const publisher = await startInstanceLease({ instanceId: config.dshInstanceId, profileId: config.profileId,
+      stateRoot, ...(stateRoot === undefined ? {} : { stateRoot }), report });
+    if (publisher !== null && stateRoot !== undefined) {
+      const unregisterLease = ctx.webServer.register({ kind: "prefix", path: "/dsh-session-maintenance/instance/lease",
+        handler: createInstanceLeaseHandler({ identity: publisher.identity, publisher }) });
+      const poller = startTakeoverPolling({ identity: publisher.identity, connection: () => connection.current(), publisher, report,
+        attach: async (handoff: import("@linmu/dsh-session-contracts").TakeoverHandoff) => {
+          // The Engine prepared this run; attaching to it is the next step, and a
+          // takeover may only proceed when the run's persistence root matches the
+          // one this instance froze at boot. That judgement belongs to the attach
+          // path, so it is reported here rather than assumed.
+          report(`[dsh-session-maintenance] 引擎已为实例准备运行 ${handoff.runId}；等待接入。`);
+        } });
+      ctx.effect(() => () => {
+        void poller?.stop();
+        if (typeof unregisterLease === "function") unregisterLease();
+        void publisher.stopping();
+      }, "dsh-session-maintenance: takeover handshake");
+    }
+  }
   if (launchProfile !== null) {
     const transport = new HttpProjectionRuntimeTransport(fetch, async () => {
       const current = await connection.current();
@@ -119,11 +159,16 @@ export async function apply(ctx: HostContext, input: PluginConfig): Promise<void
     try { await runtime.attach(); }
     catch (error) { ctx.appExit(1); throw new Error("此实例已接入 Maintenance，请先启动并确认维护服务就绪。", { cause: error }); }
     activeRuntime = runtime;
-    await writeAccess!.assertWritable();
+    // Now that a run is attached, the Engine's frozen scope is in force. It is
+    // captured here and never recomputed, so a later scope change can neither
+    // block a session this run admitted nor admit one it did not.
+    frozenScope = new FrozenWriteScope({ workspaceIds: launchProfile.scopeWorkspaceIds ?? [],
+      includeUnassigned: launchProfile.scopeIncludeUnassigned === true });
+    await engineGate.assertWritable();
     ctx.effect(() => {
-      const timer = setInterval(() => { void writeAccess!.assertWritable().catch(() => {}); }, 3000);
+      const timer = setInterval(() => { void engineGate.assertWritable().catch(() => {}); }, 3000);
       timer.unref();
-      return () => { clearInterval(timer); writeAccess!.close(); };
+      return () => { clearInterval(timer); };
     }, 'maintenance: registered instance write policy');
     registerMaintenanceInstanceWorkspace(ctx as unknown as Context, {instanceId:config.dshInstanceId,profileId:config.profileId}, connection);
     const graph = new MaintenanceGraph(connection, launchProfile.runId, async id => {
