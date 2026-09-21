@@ -7,6 +7,11 @@ export const integrationCapabilitySchema = z.strictObject({
 export const integrationTargetSchema = z.strictObject({
   id, kind: z.enum(["dsh", "codex"]), name: z.string(), version: z.string(), profile: z.string().nullable(),
   status: z.enum(["available", "connected", "needs-attention", "unsupported"]), adapterId: z.string().nullable(),
+  /**
+   * How this card was established, so the operator can tell a folder connection
+   * from a Launcher one (and from a record written before the field existed).
+   */
+  connectionKind: z.enum(["directory", "launcher", "legacy"]).optional(),
   capabilities: z.array(integrationCapabilitySchema), issues: z.array(z.string()),
 });
 export const integrationDirectorySchema = z.strictObject({

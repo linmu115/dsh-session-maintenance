@@ -66,7 +66,9 @@ export interface InstanceHomeInspection {
 /** A folder choice: cancelled, or one inspection that still has to be confirmed. */
 export type InstanceFolderSelection =
   | { readonly hint: string; readonly cancelled: true }
-  | { readonly hint: string; readonly cancelled: false; readonly inspection: InstanceHomeInspection };
+  | { readonly hint: string; readonly cancelled: false; readonly inspection: InstanceHomeInspection;
+      /** Set by the Engine once it records the checked folder; confirming goes through this id. */
+      readonly pendingId?: string };
 
 /**
  * The whole "connect by folder" step: ask for a DSH Home, then describe what is

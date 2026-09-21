@@ -11,6 +11,10 @@ import { unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { saveStandaloneInstance } from './standalone.js';
+import { forgetPendingSelection, readPendingSelection, savePendingSelection } from './pending-selection.js';
+import { PLACEHOLDER_INSTANCE_ID, PLACEHOLDER_PROFILE_ID, readDeclaredProfileIdentity } from './launcher-discovery.js';
+import { configuredRuntimeUrl } from '../instance-lease.js';
+import { basename } from 'node:path';
 import type { InstanceFolderPicker, InstanceFolderSelection } from '../instance-folder.js';
 import { createWindowsInstanceFolderPicker, selectInstanceFolder } from '../instance-folder.js';
 import { randomUUID } from 'node:crypto';
@@ -78,7 +82,70 @@ export class InstanceIntegrationService {
    * the inspected Home is a separate, explicit confirmation.
    */
   async selectInstanceFolder(signal: AbortSignal): Promise<InstanceFolderSelection> {
-    return selectInstanceFolder(this.options.pickInstanceFolder ?? createWindowsInstanceFolderPicker(), signal);
+    const selection = await selectInstanceFolder(this.options.pickInstanceFolder ?? createWindowsInstanceFolderPicker(), signal);
+    if (selection.cancelled) return selection;
+    // Checking stays read-only for the instance, but the Engine records what it saw so the
+    // confirmation cannot be turned into "register this arbitrary path": the confirm step re-reads
+    // the path from this record instead of trusting the browser.
+    const pendingId = `select-${randomUUID()}`;
+    await this.options.writes.run('instance-selection', () => savePendingSelection(this.options.stateRoot, {
+      pendingId,
+      homeRoot: selection.inspection.homeRoot,
+      suggestedInstanceId: selection.inspection.suggestedInstanceId,
+      profiles: selection.inspection.profiles.map(profile => ({ ...profile })),
+      runtimeVersion: selection.inspection.runtimeVersion,
+      // Confirming needs the program the Home actually runs, so a selection that only states a
+      // version cannot be confirmed; the check reports that before the user gets here.
+      versionRoot: selection.inspection.versionRoot ?? '',
+      cliPath: selection.inspection.cliPath ?? '',
+      createdAt: (this.options.clock ?? (() => new Date().toISOString()))(),
+    }));
+    return { ...selection, pendingId };
+  }
+
+  /**
+   * Turn one checked profile into a directory connection.
+   *
+   * Three things must hold, and each failure says what to do about it instead of guessing:
+   *
+   *   * the profile is one the Engine itself listed for that pending check (never a path from
+   *     the caller);
+   *   * the profile declares its Maintenance identity in its own patch — the Engine may not invent
+   *     one, because the instance's plugin publishes exactly that id and nothing else will match;
+   *   * the Home names a program folder and a loopback endpoint, which is what the verification
+   *     and the takeover path read.
+   *
+   * This is a `directory` connection: no Launcher hook is installed and the instance-side startup
+   * gate is never written, so registering can never stop the instance from starting.
+   */
+  async confirmInstanceSelection(input: { readonly pendingId: string; readonly profileId: string }): Promise<IntegrationDirectory> {
+    const now = this.options.clock ?? (() => new Date().toISOString());
+    const pending = await readPendingSelection(this.options.stateRoot, input.pendingId, now);
+    const profile = pending.profiles.find(item => item.profileId === input.profileId);
+    if (profile === undefined)
+      throw new IntegrationError('INSTANCE_PROFILE_NOT_SELECTED', '该配置不在这次检查的文件夹里；请重新选择实例文件夹再接入。', 400);
+    const declared = await readDeclaredProfileIdentity(profile.root);
+    if (!declared.declared)
+      throw new IntegrationError('INSTANCE_IDENTITY_UNDECLARED',
+        `配置 ${profile.profileId} 未声明实例身份，无法登记：请在 ${profile.root}\\cordis.patch.yml 里为 id: session-maintenance 配置本机的 dshInstanceId 与 profileId`
+        + `（占位默认值 ${PLACEHOLDER_INSTANCE_ID} / ${PLACEHOLDER_PROFILE_ID} 一律视为未声明），然后重新选择实例文件夹。`, 400);
+    if (pending.versionRoot.length === 0)
+      throw new IntegrationError('INSTANCE_PROGRAM_MISSING', '这个 Home 只声明了版本、没有可用的官方程序目录；请先用官方 CLI 安装该实例。', 400);
+    const runtimeUrl = await configuredRuntimeUrl(profile.root);
+    if (runtimeUrl === null)
+      throw new IntegrationError('INSTANCE_ENDPOINT_UNKNOWN', `配置 ${profile.profileId} 没有声明 webserver 端口，无法登记这个实例。`, 400);
+    const directory = await this.registerStandalone({
+      schemaVersion: 1,
+      instanceId: declared.instanceId,
+      profileId: declared.profileId,
+      name: basename(pending.homeRoot).slice(0, 200) || declared.profileId,
+      runtimeVersion: pending.runtimeVersion,
+      homeRoot: pending.homeRoot,
+      versionRoot: pending.versionRoot,
+      runtimeUrl,
+    });
+    await this.options.writes.run('instance-selection', () => forgetPendingSelection(this.options.stateRoot, input.pendingId));
+    return directory;
   }
 
   /**
@@ -247,11 +314,14 @@ export class InstanceIntegrationService {
   async list(): Promise<IntegrationDirectory> {
     this.displayNames = undefined;
     const [discovery, bindings] = await Promise.all([this.options.discover(), readIntegrationBindings(this.options.stateRoot)]);
-    const targets = await Promise.all(discovery.targets.map(async item => {
+    const described = await Promise.all(discovery.targets.map(async item => {
       const target: IntegrationTarget = { ...item.target, capabilities: item.target.capabilities.map(capability => ({ ...capability })), issues: [...item.target.issues] };
       const binding = bindings.find(bound => bound.targetId === target.id);
+      // How this card came about: a stored binding is authoritative (it is what the Engine will
+      // actually use); otherwise the discovery source is what we know.
+      target.connectionKind = binding === undefined ? item.connectionKind : resolveBindingConnectionKind(binding);
       if (binding !== undefined) {
-        const connectionKind = resolveBindingConnectionKind(binding);
+        const connectionKind = target.connectionKind;
         let hookReady = target.kind === "codex" && item.codexRegistered !== false;
         // Only a Launcher connection owns an external-lifecycle hook. A
         // directory connection must reach `connected` without one, and a legacy
@@ -266,11 +336,34 @@ export class InstanceIntegrationService {
         const lifecycle = target.capabilities.find(capability => capability.id === "lifecycle");
         if (lifecycle !== undefined) { lifecycle.status = target.status === "connected" ? "supported" : "unavailable"; lifecycle.detail = target.status === "connected" ? "已保存此实例及配置的启动绑定；运行连接在启动后建立。" : "启动绑定需要重新验证。"; }
       }
-      return target;
+      return { item, target, bound: binding !== undefined };
     }));
+    // One instance, one card. The same Home can be reached as a Launcher instance and as a
+    // directory connection (and a Launcher catalog may list it twice), which used to show up as
+    // several rows with different states. They are merged by the identity Maintenance actually
+    // matches on — `(instanceId, profileId)` — and the surviving card keeps the bound source.
+    const merged: IntegrationTarget[] = [];
+    const seen = new Map<string, IntegrationTarget>();
+    // Order decides the surviving card: a bound source first (it is what the Engine will use),
+    // then a folder connection (it requires nothing of the instance at launch) over a Launcher one.
+    const rank = (entry: { bound: boolean; target: IntegrationTarget }): number =>
+      entry.bound ? 0 : entry.target.connectionKind === "directory" ? 1 : 2;
+    for (const entry of described.sort((left, right) => rank(left) - rank(right))) {
+      const key = `${entry.target.kind}\u0000${entry.item.instanceId}\u0000${entry.target.profile ?? ""}`;
+      const existing = seen.get(key);
+      if (existing === undefined) { seen.set(key, entry.target); merged.push(entry.target); continue; }
+      for (const issue of entry.target.issues) if (!existing.issues.includes(issue)) existing.issues.push(issue);
+      if (existing.status !== "connected" && entry.target.status === "connected") {
+        existing.status = "connected";
+        existing.adapterId = entry.target.adapterId;
+        existing.connectionKind = entry.target.connectionKind;
+        existing.capabilities = entry.target.capabilities;
+      }
+    }
+    const targets = merged;
     for (const binding of bindings) {
       if (targets.some(item => item.id === binding.targetId)) continue;
-      targets.push({ id: binding.targetId, kind: binding.kind, name: "已不可用的接入", version: binding.runtimeVersion, profile: binding.profileId, status: "needs-attention", adapterId: binding.adapterId, capabilities: [], issues: ["原实例已移除或来源目录不可用，可以断开此接入；会话数据保留。"] });
+      targets.push({ id: binding.targetId, kind: binding.kind, name: "已不可用的接入", version: binding.runtimeVersion, profile: binding.profileId, status: "needs-attention", adapterId: binding.adapterId, connectionKind: resolveBindingConnectionKind(binding), capabilities: [], issues: ["原实例已移除或来源目录不可用，可以断开此接入；会话数据保留。"] });
     }
     return { targets, launcherDetected: discovery.launcherDetected, nativeSyncSupported: false, nativeSyncReason: CODEX_NATIVE_SYNC_UNAVAILABLE };
   }

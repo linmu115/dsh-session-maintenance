@@ -23,7 +23,9 @@ export const SUPPORTED_DSH_INTEGRATIONS: Readonly<Record<string, string>> = {
   "0.1.2-alpha.2": "dsh-alpha2", "0.1.2-rc.1": "dsh-rc1", "0.1.5-rc.2": "dsh-0.1.5",
 };
 export type { DiscoveredIntegration, DiscoveredIntegrations } from "@linmu/dsh-session-contracts";
+export * from "./profile-identity.js";
 import type { DiscoveredIntegration, DiscoveredIntegrations } from "@linmu/dsh-session-contracts";
+import { declaredIdentityFromPatch, maintenanceProfileId } from "./profile-identity.js";
 const safeSegment = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 export function integrationTargetId(kind: string, scope: string, instanceId: string, profileId: string | null): string {
   return `${kind}-${createHash("sha256").update(JSON.stringify([scope, instanceId, profileId])).digest("hex").slice(0, 32)}`;
@@ -238,7 +240,7 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
         if (error.code === "ENOENT") return []; throw error;
       });
       for (const entry of entries) {
-        if (!entry.isDirectory() || !safeSegment.test(entry.name) || (standalone && entry.name !== standalone.profileId)) continue;
+        if (!entry.isDirectory() || !safeSegment.test(entry.name)) continue;
         try {
         await ownedRealpath(homeRoot, profilesRoot);
         const profileRoot = await ownedRealpath(profilesRoot, join(profilesRoot, entry.name));
@@ -261,6 +263,13 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
         }
         const overrideScope = { runtimeVersion: version.version, instanceId: instance.id, profileId: entry.name };
         issues.push(...inspectRc2ProfileOverrides(patches, overrideScope));
+        // The identity Maintenance matches on is the one the profile declares for its own plugin,
+        // not the directory name; see `profile-identity.ts`. The directory name stays the host-side
+        // name used by the attestation receipt and the override scope above, which is what the
+        // installed receipt states.
+        const declaredIdentity = declaredIdentityFromPatch(patches[0]);
+        const profileId = maintenanceProfileId(entry.name, declaredIdentity);
+        if (standalone && profileId !== standalone.profileId) continue;
         const npmRoot = join(versionRoot, "node_modules", "@deepseek-ai", "dsh");
         const checkoutRoot = join(versionRoot, "apps", "cli");
         const cliRoot = await stat(join(checkoutRoot, "package.json")).then(() => checkoutRoot, () => npmRoot);
@@ -308,9 +317,9 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
           if(versions["@deepseek-ai/dsh-session-format-catalog"]!==version.version)issues.push("实际 format catalog 未解析到 RC2。");
           try {const attested=await verifyDsh015RuntimeAttestation({profileRoot,instanceId:instance.id,profileId:entry.name,homeRoot,cliPath,launcherDigest:host.digest,resolvedManifests:manifests,expectedAdapterId:adapterId??"dsh-0.1.5"});runtimeCapabilities=attested.runtimeCapabilities;attestationDigest=attested.digest;coreBinding=attested.coreBinding;}catch(error){issues.push(error instanceof Error?error.message:"RC2 能力验证失败。");runtimeCapabilities=[];}
         }
-        const id = integrationTargetId("dsh", canonicalLauncherRoot, instance.id, entry.name);
+        const id = integrationTargetId("dsh", canonicalLauncherRoot, instance.id, profileId);
         const target: IntegrationTarget = {
-          id, kind: "dsh", name: instance.name, version: version.version, profile: entry.name,
+          id, kind: "dsh", name: instance.name, version: version.version, profile: profileId,
           status: issues.length > 0 ? "unsupported" : "available", adapterId,
           capabilities: [
             { id: "projection", label: "会话读取与增量提交", status: issues.length > 0 ? "unavailable" : "supported", detail: issues.length > 0 ? "实例尚未通过版本与组件检查。" : "已识别经过验证的版本组合；接入时再执行 Adapter 检查。" },

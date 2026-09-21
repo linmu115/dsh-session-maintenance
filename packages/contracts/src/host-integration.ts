@@ -127,9 +127,21 @@ export type InstanceHomeInspection = z.infer<typeof instanceHomeInspectionSchema
  * Result of the folder picker. A cancelled selection is a normal outcome, not an
  * error, and the hint travels with both outcomes so the selection bar can show it
  * before and after a choice.
+ *
+ * `pendingId` names the Engine-side record of the checked folder. Confirming a
+ * selection goes through that id, so the browser never sends a path the Engine
+ * would have to trust: the Engine re-reads what it inspected itself.
  */
 export const selectInstanceFolderResponseSchema = z.union([
   z.strictObject({ hint: z.string().min(1), cancelled: z.literal(true) }),
-  z.strictObject({ hint: z.string().min(1), cancelled: z.literal(false), inspection: instanceHomeInspectionSchema }),
+  z.strictObject({ hint: z.string().min(1), cancelled: z.literal(false), pendingId: z.string().min(1),
+    inspection: instanceHomeInspectionSchema }),
 ]);
 export type SelectInstanceFolderResponse = z.infer<typeof selectInstanceFolderResponseSchema>;
+
+/** Confirm one profile of a checked folder as a directory connection. */
+export const instanceFolderConfirmRequestSchema = z.strictObject({
+  pendingId: z.string().min(1).max(200),
+  profileId: z.string().min(1).max(128),
+});
+export type InstanceFolderConfirmRequest = z.infer<typeof instanceFolderConfirmRequestSchema>;

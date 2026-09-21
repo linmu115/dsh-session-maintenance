@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { integrationActionRequestSchema, workspaceSyncUpdateSchema, standaloneInstanceSchema, selectInstanceFolderResponseSchema,
+  instanceFolderConfirmRequestSchema,
   instanceTakeoverRequestSchema, instanceTakeoverResponseSchema, takeoverClaimRequestSchema, takeoverQuerySchema,
   instanceSyncDecisionResponseSchema, instanceSyncRequestCreateSchema, workspaceJoinRequestSchema } from "@linmu/dsh-session-contracts";
 import type { InstanceIntegrationService } from "../integrations/service.js";
@@ -26,6 +27,14 @@ export async function routeIntegrationRequest(request: IncomingMessage, response
     try {
       send(selectInstanceFolderResponseSchema.parse(await input.integrations.selectInstanceFolder(lifetime.signal)));
     } finally { request.off('close', disconnect); }
+    return true;
+  }
+  if (url.pathname === '/v1/integrations/instance-folder/confirm' && request.method === 'POST') {
+    if (!input.integrations) throw new IntegrationError('INTEGRATION_UNAVAILABLE', '接入管理尚未就绪。', 503);
+    // Confirming is the only step here that writes: it registers one profile the Engine already
+    // listed for that pending check, as a directory connection.
+    const body = instanceFolderConfirmRequestSchema.parse(await readJsonBody(request));
+    send({ directory: await input.integrations.confirmInstanceSelection(body) });
     return true;
   }
   if (url.pathname === '/v1/integrations/takeover' && request.method === 'POST') {

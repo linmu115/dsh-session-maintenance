@@ -106,9 +106,9 @@ import {
   codexProjectMappingConfigurationSchema, codexProjectMappingUpdateSchema,
   type CodexProjectMappingConfiguration, type CodexProjectMappingUpdate,
   integrationDirectorySchema, workspaceSyncConfigurationSchema, integrationActionRequestSchema, workspaceSyncUpdateSchema,
-  selectInstanceFolderResponseSchema,
+  selectInstanceFolderResponseSchema, instanceFolderConfirmRequestSchema, standaloneInstanceSchema,
   type IntegrationDirectory, type IntegrationAction, type WorkspaceSyncConfiguration, type WorkspaceSyncUpdate,
-  type SelectInstanceFolderResponse,
+  type SelectInstanceFolderResponse, type InstanceFolderConfirmRequest, type StandaloneInstance,
 } from "@linmu/dsh-session-contracts";
 
 export interface MaintenanceClientOptions {
@@ -185,6 +185,23 @@ class ApiClient {
    */
   selectInstanceFolder(signal?: AbortSignal): Promise<SelectInstanceFolderResponse> {
     return this.request("/v1/integrations/instance-folder", this.jsonPost({}), selectInstanceFolderResponseSchema, signal);
+  }
+
+  /**
+   * Confirm one profile of a checked folder as a directory connection. The Engine
+   * derives the instance identity from that profile's own patch and writes no
+   * Launcher hook and no startup gate, so this never affects how the instance starts.
+   */
+  async confirmInstanceFolder(input: InstanceFolderConfirmRequest, signal?: AbortSignal): Promise<IntegrationDirectory> {
+    return (await this.request("/v1/integrations/instance-folder/confirm",
+      this.jsonPost(instanceFolderConfirmRequestSchema.parse(input)),
+      z.strictObject({ directory: integrationDirectorySchema }), signal)).directory;
+  }
+
+  async registerStandaloneInstance(input: StandaloneInstance, signal?: AbortSignal): Promise<IntegrationDirectory> {
+    return (await this.request("/v1/integrations/standalone",
+      this.jsonPost(standaloneInstanceSchema.parse(input)),
+      z.strictObject({ directory: integrationDirectorySchema }), signal)).directory;
   }
 
   async listInstanceWorkspaceInstances(signal?: AbortSignal) {

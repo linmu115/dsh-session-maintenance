@@ -85,7 +85,10 @@ it("opens the folder picker only for an authenticated, exact-Origin caller", asy
 
   const response = await call({ authorization: `Bearer ${f.server.token}`, origin: f.server.origin });
   expect(response.status).toBe(200);
-  expect(await response.json()).toEqual({ hint: "选择 DSH Home 根目录，其中包含 profiles/ 与 sessions/；同一 Home 下的多个 profile 会被分别识别",
+  const answered = await response.json() as { readonly pendingId?: unknown };
+  // The Engine records what it checked, and confirming names that record instead of a path.
+  expect(typeof answered.pendingId).toBe("string");
+  expect(answered).toMatchObject({ hint: "选择 DSH Home 根目录，其中包含 profiles/ 与 sessions/；同一 Home 下的多个 profile 会被分别识别",
     cancelled: false, inspection: { homeRoot: f.homeRoot, suggestedInstanceId: "my-dsh-home",
       profiles: [{ profileId: "web", root: f.profileRoot, web: true }],
       // The response is parsed by the strict contract schema, so a Home whose folders were all
