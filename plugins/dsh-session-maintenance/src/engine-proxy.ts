@@ -2,12 +2,14 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 
 import type { Config } from "./config.js";
+import { identityDeclaration } from "./instance-identity.js";
 
 const MAX_REQUEST_BYTES = 16 * 1024;
 const MAX_RESPONSE_BYTES = 1024 * 1024;
 const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 
 export type ProxyOperation =
+  | "identity"
   | "status"
   | "reference:resolve"
   | "resolve"
@@ -45,6 +47,21 @@ export interface ProxyRequest {
 export interface ProxyResult {
   readonly ok: true;
   readonly message: string;
+  /** Machine-readable outcome for callers that must distinguish an idempotent repeat. */
+  readonly code?: "joined" | "already-joined";
+  /**
+   * The declared identity, answered by the `identity` operation.
+   *
+   * The browser half needs its own instance id and profile id to key a deferred
+   * workspace join; they live in the host's configuration, so the host states them
+   * here instead of the client guessing.
+   */
+  readonly identity?: {
+    readonly apiVersion: 1;
+    readonly instanceId: string;
+    readonly profileId: string;
+    readonly declared: boolean;
+  };
   readonly logicalSessionId?: string;
   readonly planId?: string;
   readonly jobId?: string;
@@ -60,6 +77,33 @@ export interface ProxyResult {
     readonly runId: string | null;
     readonly status: "resolved" | "unavailable";
   };
+}
+
+/** Why a requested maintenance operation could not be carried out. */
+export type ProxyErrorCode = "engine-unreachable" | "engine-error" | "invalid-input";
+
+/**
+ * A failure the caller can act on, carried across the client boundary.
+ *
+ * The browser half has to tell "the Engine is not running" from "the Engine
+ * refused", because only the first one is a deferred join rather than a failure;
+ * a message alone would force it to match on prose.
+ */
+export class ProxyError extends Error {
+  constructor(readonly code: ProxyErrorCode, message: string) { super(message); this.name = "ProxyError"; }
+}
+
+/** A workspace join as the Engine reports it: what it mapped now and what was already there. */
+export interface WorkspaceJoinReceipt {
+  readonly workspaceId: string;
+  readonly mapped: readonly unknown[];
+  readonly alreadyPresent: readonly unknown[];
+  readonly failures: readonly unknown[];
+}
+
+/** `already-joined` is the idempotent repeat: the mapping existed and nothing new was written. */
+export function workspaceJoinCode(receipt: WorkspaceJoinReceipt): "joined" | "already-joined" {
+  return receipt.mapped.length === 0 && receipt.alreadyPresent.length > 0 ? "already-joined" : "joined";
 }
 
 export interface EngineConnection {
@@ -147,15 +191,26 @@ function assertRequest(value: unknown): ProxyRequest {
   const allowed = new Set([
     "operation", "instanceId", "sessionId", "applySafe", "settings", "referenceType",
     "logicalSessionId", "logicalAnchorId", "legacyNativeSessionId", "legacyNativeAnchorId",
+    // The workspace-level entry: which workspace it is, and where its sessions live.
+    "workspaceId", "workspaceName", "workspacePath",
   ]);
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("请求包含未允许字段");
   const operations: readonly ProxyOperation[] = [
-    "status", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
-    "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "settings:get", "settings:patch",
+    "identity", "status", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
+    "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "settings:get", "settings:patch", "join-workspace",
   ];
   if (!operations.includes(record.operation as ProxyOperation)) throw new TypeError("未知维护操作");
   if (record.operation === "delete-session" && Object.keys(record).some(key => key !== "operation" && key !== "sessionId")) {
     throw new TypeError("删除只接受当前实例的原生会话 ID，不能指定其他实例或真源 ID");
+  }
+  // The workspace entry is the only operation that carries a workspace directory, and that
+  // directory is resolved by the Engine against its own records — never used as a path here.
+  if (record.operation === "join-workspace") {
+    const extras = Object.keys(record).filter(key => !["operation", "instanceId", "workspaceId", "workspaceName", "workspacePath"].includes(key));
+    if (extras.length > 0) throw new TypeError("工作区加入只接受工作区标识、名称与目录");
+    safeId(record.workspaceId, "workspaceId");
+    safeText(record.workspaceName, "workspaceName");
+    safeText(record.workspacePath, "workspacePath");
   }
   if (record.instanceId !== undefined) safeId(record.instanceId, "instanceId");
   if (record.sessionId !== undefined) safeId(record.sessionId, "sessionId");
@@ -204,6 +259,14 @@ export class RestrictedEngineProxy {
   }
 
   private async execute(input: ProxyRequest): Promise<ProxyResult> {
+    if (input.operation === "identity") {
+      // The browser half reads this once and keys its workspace joins with it. An undeclared
+      // identity is a normal state — the instance still runs — so it is reported, not thrown.
+      const identity = identityDeclaration(this.config.dshInstanceId, this.config.profileId);
+      return identity.declared
+        ? { ok: true, message: "已读取本机实例身份", identity: { apiVersion: 1, instanceId: identity.instanceId, profileId: identity.profileId ?? "", declared: true } }
+        : { ok: true, message: "本机未声明实例身份", identity: { apiVersion: 1, instanceId: identity.instanceId, profileId: identity.profileId ?? "", declared: false } };
+    }
     if (input.operation === "status") {
       await this.engine("/v1/health");
       return { ok: true, message: "维护引擎在线" };
@@ -238,14 +301,17 @@ export class RestrictedEngineProxy {
       const workspaceName = safeText(input.workspaceName, "workspaceName");
       const workspacePath = safeText(input.workspacePath, "workspacePath");
       const value = await this.engine("/v1/instances/workspace-joins", "POST", { instanceId, profileId: this.config.profileId,
-        workspaceId, workspaceName, workspacePath }) as { join?: { workspaceId?: string; mapped?: readonly unknown[]; alreadyPresent?: readonly unknown[]; failures?: readonly unknown[] } };
+        workspaceId, workspaceName, workspacePath }) as { join?: WorkspaceJoinReceipt };
       const join = value.join;
       if (join === undefined || typeof join.workspaceId !== "string" || !Array.isArray(join.mapped)
         || !Array.isArray(join.alreadyPresent) || !Array.isArray(join.failures)) {
-        throw new Error("维护引擎未返回匹配的工作区加入回执；请检查状态后重试");
+        throw new ProxyError("engine-error", "维护引擎未返回匹配的工作区加入回执；请检查状态后重试");
       }
       const skipped = join.failures.length === 0 ? "" : `；${join.failures.length} 个会话未能读取`;
-      return { ok: true, message: `已把「${workspaceName}」加入维护范围：映射 ${join.mapped.length} 个会话，已有 ${join.alreadyPresent.length} 个${skipped}` };
+      const code = workspaceJoinCode(join);
+      return { ok: true, code, message: code === "already-joined"
+        ? `「${workspaceName}」已在维护范围内：${join.alreadyPresent.length} 个会话已映射${skipped}`
+        : `已把「${workspaceName}」加入维护范围：映射 ${join.mapped.length} 个会话，已有 ${join.alreadyPresent.length} 个${skipped}` };
     }
     if (input.operation === "scan-current") {
       const value = await this.engine("/v1/jobs/scan", "POST", { instanceIds: [instanceId] }) as { job: { id: string } };
@@ -348,7 +414,11 @@ export class RestrictedEngineProxy {
   }
 
   private async engine(path: string, method = "GET", body?: unknown): Promise<unknown> {
-    const connection = await this.connection.current();
+    let connection: EngineConnection;
+    try { connection = await this.connection.current(); }
+    // No registered descriptor is the same answer as a stopped Engine: there is nothing to
+    // hand the request to, and the caller may legitimately retry later.
+    catch (error) { throw new ProxyError("engine-unreachable", error instanceof Error ? error.message : "维护引擎连接描述符不可用"); }
     let response: Response;
     try {
       response = await this.fetchImpl(`${connection.origin}${path}`, {
@@ -361,14 +431,14 @@ export class RestrictedEngineProxy {
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
     } catch {
-      throw new Error("维护引擎离线；请先启动本机 Engine");
+      throw new ProxyError("engine-unreachable", "维护引擎离线；请先启动本机 Engine");
     }
     const text = await response.text();
-    if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) throw new Error("维护引擎响应超出限制");
+    if (Buffer.byteLength(text) > MAX_RESPONSE_BYTES) throw new ProxyError("engine-error", "维护引擎响应超出限制");
     if (!response.ok) {
       let message = `维护引擎返回 HTTP ${response.status}`;
       try { message = (JSON.parse(text) as { error?: { message?: string } }).error?.message ?? message; } catch { /* bounded status only */ }
-      throw new Error(message.replaceAll(connection.token, "[REDACTED]"));
+      throw new ProxyError("engine-error", message.replaceAll(connection.token, "[REDACTED]"));
     }
     return JSON.parse(text) as unknown;
   }
@@ -398,7 +468,11 @@ export function createProxyHandler(proxy: RestrictedEngineProxy, endpoint = "/ds
       const result = await proxy.invoke(assertRequest(await readJson(request)));
       sendJson(response, 200, result);
     } catch (error) {
-      sendJson(response, 400, { ok: false, error: errorMessage(error) });
+      // The code travels with the failure so the browser half can tell a stopped Engine from a
+      // refused request without matching on the message.
+      const code: ProxyErrorCode = error instanceof ProxyError ? error.code
+        : error instanceof TypeError ? "invalid-input" : "engine-error";
+      sendJson(response, 400, { ok: false, code, error: errorMessage(error) });
     }
   };
 }

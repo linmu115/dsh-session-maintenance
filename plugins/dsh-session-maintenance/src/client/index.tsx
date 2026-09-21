@@ -1,5 +1,5 @@
 import type { ClientContext } from "./context.js";
-import { createMaintenanceActions, describeInstanceWorkspace } from "./context.js";
+import { createMaintenanceActions } from "./context.js";
 import { installContextMenu } from "./context-menu.js";
 import { openDashboard, registerOptionalSidebar } from "./dashboard-entry.js";
 import { decorateSessionRows } from "./session-locator.js";
@@ -7,34 +7,40 @@ import { registerSettingsSection } from "./settings-actions.js";
 import { installStyles } from "./styles.js";
 import { verifyUiContract } from "./ui-contract.js";
 import { BrowserPendingIntentStore, WorkspaceJoinQueue } from "./workspace-join.js";
-import { installWorkspaceJoinEntry } from "./workspace-menu.js";
+import { createWorkspaceBridge, installWorkspaceBridge } from "./workspace-bridge.js";
 
 export const inject = ["sessions", "slots"] as const;
 
 /**
- * The instance this client runs inside, when the host states it.
+ * The instance-side entry point for "add this workspace to sessionmaintenance".
  *
- * The workspace entry needs an identity to key a deferred join. The Engine also
- * knows its own instance, so an unknown identity here does not block delivery —
- * it only means the pending intent is keyed by the workspace alone.
+ * The menu itself belongs to the context-menu plugin: it renders the workspace right-click menu,
+ * and its DOM carries no attribute this plugin could recognize, so injecting an item was never
+ * going to work. What this plugin owns instead is the half the menu cannot do for itself — the
+ * authenticated Engine connection — published as one global handle the menu calls
+ * (`globalThis.dshSessionMaintenance`, see `workspace-bridge.ts`).
  */
-export const CLIENT_INSTANCE_IDENTITY = { instanceId: "", profileId: "web" } as const;
-
 export function apply(ctx: ClientContext): void {
   ctx.inject(inject, (injected) => {
     const actions = createMaintenanceActions();
     const feedback = (message: string) => { console.info(`[dsh-session-maintenance] ${message}`); };
-    // The workspace-level entry has to work while the Engine is down, so the
-    // pending intent is durable and the delivery attempt is what may fail.
+    // The entry has to work while the Engine is down, so the pending intent is durable and the
+    // delivery attempt is what may fail. Delivery always goes through the bridge, which is the
+    // only path that knows this instance's real identity.
+    let bridge: ReturnType<typeof createWorkspaceBridge>;
     const joinQueue = new WorkspaceJoinQueue({ store: new BrowserPendingIntentStore(), report: feedback,
       deliver: async intent => {
-        const result = await actions.invoke({ operation: "join-workspace", workspaceId: intent.workspaceId,
-          workspaceName: intent.workspaceName, workspacePath: intent.workspacePath,
-          ...(intent.instanceId.length === 0 ? {} : { instanceId: intent.instanceId }) });
+        const result = await bridge.handle.joinWorkspace({ workspaceId: intent.workspaceId,
+          workspaceName: intent.workspaceName, workspacePath: intent.workspacePath });
+        // A deferred outcome must still throw, or the queue would drop the intent it just kept.
+        if (!result.ok) throw new Error(result.message);
         return result.message;
       } });
+    bridge = createWorkspaceBridge({ actions, queue: joinQueue, report: feedback });
     const cleanup = [
       installStyles(),
+      // Published before anything else can need it, and removed again on unload.
+      installWorkspaceBridge(globalThis, bridge, feedback),
       registerSettingsSection(injected.slots, {
         actions,
         currentSessionId: () => injected.sessions.list.getSnapshot().current,
@@ -51,10 +57,6 @@ export function apply(ctx: ClientContext): void {
         snapshot: () => injected.sessions.list.getSnapshot(),
         onFeedback: feedback,
       }),
-      installWorkspaceJoinEntry({ queue: joinQueue, instanceId: CLIENT_INSTANCE_IDENTITY.instanceId,
-        profileId: CLIENT_INSTANCE_IDENTITY.profileId,
-        describeWorkspace: (workspaceId: string) => describeInstanceWorkspace(injected.sessions.list.getSnapshot(), workspaceId),
-        onFeedback: feedback }),
     ];
     const contract = verifyUiContract(injected);
     if (!contract.compatible) {
@@ -64,6 +66,8 @@ export function apply(ctx: ClientContext): void {
         decorateSessionRows(injected),
       );
     }
+    // A queue that survived the last page load is flushed once the Engine may be back.
+    void joinQueue.flush().catch(error => { console.warn("[dsh-session-maintenance] 待办工作区加入未能交付", error); });
     injected.effect(() => () => {
       for (const dispose of cleanup.reverse()) dispose();
     }, "dsh-session-maintenance: client entry");
@@ -78,4 +82,4 @@ export * from "./settings-actions.js";
 export * from "./ui-contract.js";
 export * from "./other-event-card.js";
 export * from "./workspace-join.js";
-export * from "./workspace-menu.js";
+export * from "./workspace-bridge.js";

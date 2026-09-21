@@ -107,6 +107,64 @@ describe("restricted Engine proxy", () => {
     expect(JSON.stringify(result)).not.toContain(token);
   });
 
+  it("forwards a workspace join and reports an idempotent repeat as already-joined", async () => {
+    const bodies: unknown[] = [];
+    let already = false;
+    const provider: EngineConnectionProvider = { current: async () => ({ origin: "http://127.0.0.1:43123", token: "a".repeat(43) }) };
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(String(input)).toBe("http://127.0.0.1:43123/v1/instances/workspace-joins");
+      bodies.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ join: { workspaceId: "workspace-a", mapped: already ? [] : ["s1", "s2"],
+        alreadyPresent: already ? ["s1", "s2"] : [], failures: [] } }), { status: 200 });
+    };
+    const proxy = new RestrictedEngineProxy(config, provider, fetchImpl);
+    const join = { operation: "join-workspace", workspaceId: "workspace-a", workspaceName: "工作区 A", workspacePath: "D:\\合成\\工作区A" } as const;
+    const first = await proxy.invoke(join);
+    expect(first.code).toBe("joined");
+    expect(first.message).toContain("映射 2 个会话");
+    already = true;
+    const second = await proxy.invoke(join);
+    expect(second.code).toBe("already-joined");
+    expect(second.message).toContain("已在维护范围内");
+    // The Engine receives the workspace facts plus this instance's identity, and nothing else.
+    expect(bodies[0]).toEqual({ instanceId: "dsh-fixture", profileId: "web", workspaceId: "workspace-a",
+      workspaceName: "工作区 A", workspacePath: "D:\\合成\\工作区A" });
+  });
+
+  it("refuses a workspace join that carries fields the operation does not accept", async () => {
+    const proxy = new RestrictedEngineProxy(config, { current: async () => ({ origin: "http://127.0.0.1:43123", token: "a".repeat(43) }) },
+      async () => new Response("{}", { status: 200 }));
+    await expect(proxy.invoke({ operation: "join-workspace", workspaceId: "workspace-a", workspaceName: "n", workspacePath: "p", settings: {} } as never))
+      .rejects.toThrow("工作区加入只接受");
+    await expect(proxy.invoke({ operation: "join-workspace", workspaceId: "D:/escape", workspaceName: "n", workspacePath: "p" }))
+      .rejects.toThrow("不能是路径");
+  });
+
+  it("answers the declared instance identity for the browser half", async () => {
+    const declared = new RestrictedEngineProxy(
+      { connectionId: "primary", dshInstanceId: "i-27c4d5a7-bdb5-4b8a-8d95-6267f47499c5", profileId: "web-i27c4" },
+      { current: async () => ({ origin: "http://127.0.0.1:43123", token: "a".repeat(43) }) }, async () => new Response("{}", { status: 200 }));
+    expect(await declared.invoke({ operation: "identity" })).toMatchObject({ ok: true,
+      identity: { apiVersion: 1, instanceId: "i-27c4d5a7-bdb5-4b8a-8d95-6267f47499c5", profileId: "web-i27c4", declared: true } });
+    // The portable placeholders mean this machine declared nothing; the answer needs no Engine.
+    let contacted = 0;
+    const undeclared = new RestrictedEngineProxy(config, { current: async () => ({ origin: "http://127.0.0.1:43123", token: "a".repeat(43) }) },
+      async () => { contacted += 1; return new Response("{}", { status: 200 }); });
+    expect((await undeclared.invoke({ operation: "identity" })).identity).toMatchObject({ declared: false, instanceId: "dsh-fixture" });
+    expect(contacted).toBe(0);
+  });
+
+  it("tells a stopped Engine apart from a refused request across the client boundary", async () => {
+    const offline = new RestrictedEngineProxy(config, { current: async () => { throw new Error("维护引擎连接描述符不可用"); } },
+      async () => new Response("{}", { status: 200 }));
+    await expect(offline.invoke({ operation: "status" }))
+      .rejects.toMatchObject({ name: "ProxyError", code: "engine-unreachable" });
+    const refusing = new RestrictedEngineProxy(config, { current: async () => ({ origin: "http://127.0.0.1:43123", token: "a".repeat(43) }) },
+      async () => new Response(JSON.stringify({ error: { message: "工作区目录不在登记范围内" } }), { status: 409 }));
+    await expect(refusing.invoke({ operation: "status" }))
+      .rejects.toMatchObject({ name: "ProxyError", code: "engine-error", message: "工作区目录不在登记范围内" });
+  });
+
   it("refreshes the host-only connection and never returns the rotating capability", async () => {
     let token = "a".repeat(43);
     const provider: EngineConnectionProvider = { current: async () => ({ origin: "http://127.0.0.1:43123", token }) };
