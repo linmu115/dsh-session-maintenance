@@ -40,6 +40,7 @@ export interface CanonicalEndpointSnapshot {
 
 /** Logical synchronization results. No host layout, plugin API or process identity is needed. */
 export interface WorkspaceWriteBackSummary {
+  readonly pluginData?: { readonly restored: number; readonly retained: number };
   readonly written: number;
   readonly unchanged: number;
   readonly skippedOutOfScope: number;

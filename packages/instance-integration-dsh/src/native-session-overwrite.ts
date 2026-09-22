@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
+import { mkdir, open, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { NativeSessionCodec, NativeSessionFileDescription, JsonValue } from '@linmu/dsh-session-contracts';
 import { v3NativeProjectKey, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
@@ -276,7 +276,8 @@ export async function applyNativeOverwrite(input: {
       else await writeFile(backupPath, previous);
       await mkdir(dirname(target), { recursive: true });
       const staged = `${target}.${process.pid}.staged`;
-      await writeFile(staged, bytes);
+      const stagedFile = await open(staged, 'w', 0o600);
+      try { await stagedFile.writeFile(bytes); await stagedFile.sync(); } finally { await stagedFile.close(); }
       await rename(staged, target);
       // Removing the other project directory's copy deletes the only other copy of that session, so
       // it happens only after reading the intended bytes back off the disk.

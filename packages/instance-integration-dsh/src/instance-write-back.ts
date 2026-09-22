@@ -2,8 +2,9 @@ import { appendFile, mkdir, readFile } from 'node:fs/promises';
 import { basename, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { CanonicalProjectionInput, LogicalWorkspaceId, ProjectionRun } from '@linmu/dsh-session-contracts';
-import { adapter } from '@linmu/dsh-session-extension-gpt-compat';
-import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
+import { adapter, gptCompatExtensionAdapter } from '@linmu/dsh-session-extension-gpt-compat';
+import { v3NativeSessionId, filterNativePluginData } from '@linmu/dsh-session-adapter-0-1-5';
+import type { PluginDataMappingSession } from '@linmu/dsh-session-adapter-host';
 import type { WorkspaceWriteBackSummary as InstanceWriteBackSummary } from '@linmu/dsh-session-contracts';
 import { writeBackProjectionToInstance } from './instance-session-writeback.js';
 import { readWorkspaceMappings, saveWorkspaceMappings } from './workspace-mapping-store.js';
@@ -23,6 +24,8 @@ import { IntegrationError } from '@linmu/dsh-session-contracts';
  * cannot be touched even though the projection itself carries its sessions.
  */
 export interface InstanceWriteBackOptions {
+  readonly pluginData?: PluginDataMappingSession;
+  readonly withNativeLocks?: import('./instance-session-writeback.js').WriteBackInput['withNativeLocks'];
   /** Adapter-owned host lease: holds flush/drain/exclusive access until the work completes. */
   readonly withWriteAccess?: <T>(work: () => Promise<T>) => Promise<T>;
   readonly synchronizeArchived?: (sessions: readonly { readonly nativeSessionId: string; readonly archived: boolean }[]) => Promise<void>;
@@ -234,6 +237,7 @@ async function writeBackWithAccess(options: InstanceWriteBackOptions, request: I
   const journal: string[] = [];
   const failures: WriteBackFailures = [];
   const result = await writeBackProjectionToInstance({
+    ...(options.withNativeLocks ? { withNativeLocks: options.withNativeLocks } : {}),
     ...(options.bindIdentity ? { bindIdentity: options.bindIdentity } : {}),
     projection,
     sessionsRoot: request.sessionsRoot,
@@ -243,7 +247,7 @@ async function writeBackWithAccess(options: InstanceWriteBackOptions, request: I
     inScope: session => selected(memberships.get(session.id) ?? null),
     archived: session => session.archivedAt !== null,
     journal: async entry => { journal.push(JSON.stringify({ at: new Date().toISOString(), instanceId: request.instanceId, ...entry })); },
-    materialize: createAdapterMaterializer(failures, folderFor),
+    materialize: createAdapterMaterializer(failures, folderFor, options.pluginData),
     codec: adapter.nativeSessionCodec,
   });
   if (journal.length > 0) {
@@ -277,7 +281,7 @@ async function writeBackWithAccess(options: InstanceWriteBackOptions, request: I
  * the host resolves a session's `cwd` and requires it to equal the registered workspace path, which
  * is the folder we just created for the bucket.
  */
-export function createAdapterMaterializer(failures: WriteBackFailures = [], folders: ReadonlyMap<string, string> = new Map()):
+export function createAdapterMaterializer(failures: WriteBackFailures = [], folders: ReadonlyMap<string, string> = new Map(), pluginData?: PluginDataMappingSession):
 (input: CanonicalProjectionInput) => Promise<readonly { readonly nativeSessionId: string; readonly payload: never }[]> {
   return async input => {
     const captured = new Map<string, unknown>();
@@ -287,7 +291,21 @@ export function createAdapterMaterializer(failures: WriteBackFailures = [], fold
       try {
         await adapter.materialize({ ...input, sessions: [projected] }, {
           writeWorkspace: async () => undefined,
-          writeSession: async (nativeSessionId: string, payload: unknown) => { captured.set(nativeSessionId, payload); },
+          writeSession: async (nativeSessionId: string, payload: unknown) => {
+            const filtered = pluginData ? await filterNativePluginData(payload as never, async event => {
+              const canonical = session.events.find(item => item.extensions.nativeFormatVersion === 3
+                && ((item.extensions.nativeProjectionEvent ?? item.rawPayload) as { seq?: number } | null)?.seq === event.seq);
+              const namespace = typeof canonical?.extensions.extensionNamespace === 'string' ? canonical.extensions.extensionNamespace
+                : gptCompatExtensionAdapter.nativeEvents?.types.has(event.type) ? gptCompatExtensionAdapter.namespace : undefined;
+              if (!namespace) return event;
+              const result = await pluginData.map({ namespace, dataType: event.type,
+                recordId: canonical?.id ?? `${session.session.id}/${event.type}/${event.seq}`, value: event as never },
+                { endpointId: input.run.instanceId, sessionId: nativeSessionId,
+                  context: { cwd: (payload as { header: { cwd: string } }).header.cwd } });
+              return result.status === 'mapped' && result.placement.kind === 'host-event' ? result.placement.value as never : null;
+            }) : payload;
+            captured.set(nativeSessionId, filtered);
+          },
         } as never);
       } catch (error) {
         failures.push({ logicalSessionId: String(session.session.id), message: error instanceof Error ? error.message : '无法还原为实例会话' });

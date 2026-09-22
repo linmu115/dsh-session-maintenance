@@ -1,5 +1,7 @@
 # Session Maintenance
 
+2026-09-22 最新修正与实现：Maintenance 忠实记录插件数据及来源，不拥有通用图业务模型；对应插件 adapter 负责握手、目标定位、还原和正常读取验证，缺插件不映射且保留源数据。源码已接通宿主内完整写回、官方内核锁、归档恢复、失败隔离及严格回执，并补齐缺插件后续写的序号映射。组合 340 项、最终局部 31 项测试分别通过（部分重叠），全仓类型检查与构建通过；未部署，真实插件功能未验收，遗留全局解耦未完成。见[实现与验证边界](../changes/2026-09-22-host-write-barrier-and-plugin-mapping.md)、[本轮历程与时间日志](history-drafts/2026-09-22-host-write-barrier-and-plugin-mapping.md)。以下旧时点记录按其当时状态阅读。
+
 2026-09-22 后续实现：用户确认核心、宿主 adapter、业务 adapter 的职责，并要求未知结构化数据统一打包映射、折叠不展示。本轮迁出安装/Launcher 配置/目录选择/租约实现，核心改用通用会话生命周期通知；已接纳的未知事件无损保留并合并为折叠数据包。全仓类型检查与构建通过；组合回归 466 项中 465 通过，1 项为已有扩展校验错误文本失败。图/引用等旧业务入口和宿主阅读格式仍有耦合，真实写入权及取消归档未接通，未部署。当前边界见[宿主边界与未知结构化数据](../changes/2026-09-22-host-boundaries-and-opaque-data.md)、[开发历程草稿](history-drafts/2026-09-22-host-boundaries-and-opaque-data.md)。
 
 2026-09-22 当前要求：Maintenance 主体不耦合实例、Launcher 或其他插件；平台读写及协议只发生在 adapter。运行期目标覆盖新建、追加、改名、工作区移动、归档和删除。本轮已拆出通用同步协调与 adapter 物理读写，69 个相关测试文件、369 项测试通过；真实独占写入及宿主归档恢复协议仍未接通，源码候选未部署，整体解耦未完成。详细状态见[Adapter 所有的工作区同步](../changes/2026-09-22-adapter-owned-workspace-sync.md)，[开发历程草稿](history-drafts/2026-09-22-adapter-owned-workspace-sync.md)。下面旧版本记录保留其历史验收边界。
@@ -8,7 +10,7 @@
 
 ## 这个项目做什么
 
-将 Codex 与 DSH 会话维护为有稳定身份、版本、来源和恢复证据的长期资料。Engine 管规范历史及业务对象，平台 Adapter 处理宿主格式，扩展 Adapter 解释引用、贴纸、链接、主干和 GPT 插件状态。源 Codex 日志与 Vault 笔记各由原平台拥有。
+将 Codex 与 DSH 会话维护为有稳定身份、版本、来源和恢复证据的长期资料。Engine 管规范历史和插件原数据的忠实记录；平台 Adapter 处理宿主格式，插件 Adapter 负责插件数据握手、映射和功能恢复。引用、贴纸、链接、主干和 GPT 插件状态的业务含义属于对应插件。源 Codex 日志与 Vault 笔记各由原平台拥有。
 
 本项目独立维护，ID 为 `0d05f813-7097-47d9-9e88-3d523bb537d6`。DSH–Obsidian Suite 与 ThoughtDAG 是外部协作者，各有独立地图。
 

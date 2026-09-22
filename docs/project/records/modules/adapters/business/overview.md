@@ -19,6 +19,8 @@ sources:
 
 # 业务插件／扩展数据适配器
 
+2026-09-22 当前职责：插件 adapter 拥有对应插件的握手、目标定位、数据恢复和正常读取验证；Maintenance 保留带来源/类型标记的原数据。宿主 adapter 提供不透明目标上下文，核心不解释宿主路径或插件图模型。新增恢复注册机制已完成合成验收，真实插件尚未接入验收；见[本轮报告](../../../../../changes/2026-09-22-host-write-barrier-and-plugin-mapping.md)。下面保留的旧业务入口仍待迁出，不是当前架构目标。
+
 ExtensionDataAdapter 声明 namespace、支持插件/schema 版本、校验、摘要和能力，必要时提供 ownership 与预览；数据由 [扩展存储、冲突与目录](../../engine/extensions/overview.md) 保存。
 
 可信 Engine 代码通过 register 或 CompositionOptions.extensionAdapters 注册，disposer 只卸载能力。实例/Profile 的 extensionPlugins 是本实例参与者的完整声明，和代码注册表分开；不接受浏览器上传执行代码。

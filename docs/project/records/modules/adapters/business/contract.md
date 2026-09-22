@@ -18,6 +18,8 @@ sources:
 
 # 业务对象怎样交给 Maintenance 管理
 
+2026-09-22 用户修正：Maintenance 只忠实记录插件数据、类型和来源；目标插件 adapter 自己握手、定位目标会话、恢复数据并用插件正常读取路径验证，缺插件时不映射且不删源数据。新增 [功能恢复协议](../../../../../../packages/contracts/src/plugin-data-mapping.ts) 和[当前实现/验收边界](../../../../../changes/2026-09-22-host-write-barrier-and-plugin-mapping.md)。下面已有“图领域限制”等条款描述尚未迁完的旧实现，不表示核心继续拥有插件业务模型。
+
 贴纸插件保存属于 Y 的 stickers 对象，携带 logicalSessionId、writerId 与 expectedRevision；Engine 核验实例、能力、schema 后返回 revision，冲突返回双方候选。调用方保留未确认编辑。
 
 唯一技术合同：[ExtensionDataAdapter 与写入 DTO](../../../../../../packages/contracts/src/extension-data.ts)、[面板、归属及镜像 DTO](../../../../../../packages/contracts/src/extension-directory.ts)。[公共接入指南](../../../../../extensions/plugin-data-integration.md)保留首版说明，当前能力以 [内置注册实现](../../../../../../apps/engine/src/extensions/adapters.ts)为准。

@@ -63,3 +63,5 @@ export * from "./host-integration.js";
 export * from './session-extension-sync.js';
 export * from './host-plugin-compatibility.js';
 export * from "./maintenance-plugin-config.js";
+export * from './host-workspace-sync.js';
+export * from './plugin-data-mapping.js';

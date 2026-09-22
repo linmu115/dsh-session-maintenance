@@ -28,7 +28,7 @@ function api(): SessionReaderApi {
 it('keeps unknown data in one collapsed bundle and never requests its body when opened', async () => {
   const service = api();
   service.getSessionReaderProcess = vi.fn(async () => ({ ...processPage, items: [
-    { id: 'opaque-one', kind: 'opaque-data', label: '未识别数据包', eventIds: ['unknown-one', 'unknown-two'], paired: false },
+    { id: 'opaque-one', kind: 'opaque-data' as const, label: '未识别数据包', eventIds: ['unknown-one', 'unknown-two'], paired: false },
   ] }));
   await render(<ReaderTurnView api={service} logicalSessionId="session" snapshot={snapshot} turn={turn} />);
   await click('本轮过程');

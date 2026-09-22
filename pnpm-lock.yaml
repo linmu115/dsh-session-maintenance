@@ -575,6 +575,15 @@ importers:
       '@linmu/dsh-host-gateway':
         specifier: workspace:*
         version: link:../../packages/dsh-host-gateway
+      '@linmu/dsh-instance-integration-dsh':
+        specifier: workspace:*
+        version: link:../../packages/instance-integration-dsh
+      '@linmu/dsh-session-adapter-0-1-5':
+        specifier: workspace:*
+        version: link:../../packages/adapter-dsh-0-1-5
+      '@linmu/dsh-session-adapter-host':
+        specifier: workspace:*
+        version: link:../../packages/adapter-host
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

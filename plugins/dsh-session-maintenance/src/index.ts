@@ -24,6 +24,7 @@ import type { JsonValue } from "@linmu/dsh-session-contracts";
 
 import { connectionDescriptorPath, launcherProjectionProfile, launcherCoreBinding, maintenanceStateRoot, normalizeConfig, withLauncherNativeExtensions, type Config as PluginConfig } from "./config.js";
 import { createInstanceLeaseHandler, startInstanceLease } from "./instance-lease.js";
+import { createHostWorkspaceSync } from './host-workspace-sync.js';
 import { identityDeclaration } from "./instance-identity.js";
 import { startTakeoverPolling } from "./takeover.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
@@ -128,6 +129,16 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
       const publisher = await startInstanceLease({ instanceId: config.dshInstanceId, profileId: config.profileId,
         stateRoot, ...(stateRoot === undefined ? {} : { stateRoot }), report });
       if (publisher !== null && stateRoot !== undefined) {
+        let sync: ReturnType<typeof createHostWorkspaceSync> | undefined;
+        try { sync = createHostWorkspaceSync({ runtime: ctx as never, identity: publisher.identity, stateRoot, connection }); }
+        catch { report('当前宿主未提供完整写入屏障，工作区写回不可用；普通会话继续使用。'); }
+        if (sync) {
+          const activeSync = sync;
+          // Each plugin adapter owns its handshake and registers its opaque-data mapping here.
+          (ctx as unknown as Context).provide('maintenancePluginDataMapping' as never, activeSync.pluginData as never);
+          const unregisterSync = ctx.webServer.register({ kind: 'prefix', path: '/dsh-session-maintenance/instance/workspace-sync', handler: activeSync.handler });
+          ctx.effect(() => () => { activeSync.dispose(); if (typeof unregisterSync === 'function') unregisterSync(); }, 'maintenance: host write barrier');
+        }
         const unregisterLease = ctx.webServer.register({ kind: "prefix", path: "/dsh-session-maintenance/instance/lease",
           handler: createInstanceLeaseHandler({ identity: publisher.identity, publisher }) });
         const poller = startTakeoverPolling({ identity: publisher.identity, connection: () => connection.current(), publisher, report,

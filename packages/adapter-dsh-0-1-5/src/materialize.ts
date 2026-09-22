@@ -16,14 +16,14 @@ export function v3ProjectedNativeRevision(item:Pick<CanonicalProjectionSessionIn
  const payload=record(value);if(!Array.isArray(payload.events))throw new TypeError("V3 projection events are missing");
  if(payload.conversionLedger===undefined){
   // Runtime-created sessions have no legacy conversion prefix; every canonical row must attest a V3 native row.
-  const events=item.events.map((e,i)=>{const raw=record(e.rawPayload);if(e.extensions.nativeFormatVersion!==3||raw.seq!==i)throw new TypeError("Runtime projection lacks a verified V3 canonical prefix");return raw;});
+  const events=item.events.map((e,i)=>{const raw=record(e.extensions.nativeProjectionEvent ?? e.rawPayload);if(e.extensions.nativeFormatVersion!==3||raw.seq!==i)throw new TypeError("Runtime projection lacks a verified V3 canonical prefix");return raw;});
   if(payload.events.length<events.length||digest(payload.events.slice(0,events.length))!==digest(events))throw new TypeError("Runtime projection prefix differs from canonical");return events.length;
  }
  const ledger=record(payload.conversionLedger);
  const canonicalCount=count(ledger.canonicalEventCount), prefix=count(ledger.nativeRevision);
  if(item.events.length<canonicalCount||ledger.canonicalDigest!==canonicalDigest({...item,events:item.events.slice(0,canonicalCount)}))throw new TypeError("V3 canonical source differs from conversion receipt");
  if(payload.events.length<prefix||digest(payload.events.slice(0,prefix))!==ledger.eventsDigest)throw new TypeError("V3 committed projection prefix differs from conversion receipt");
- const tail=item.events.slice(canonicalCount).map((e,i)=>{const raw=record(e.rawPayload);if(e.extensions.nativeFormatVersion!==3||raw.seq!==prefix+i)throw new TypeError("Unverified canonical V3 tail");return raw;});
+ const tail=item.events.slice(canonicalCount).map((e,i)=>{const raw=record(e.extensions.nativeProjectionEvent ?? e.rawPayload);if(e.extensions.nativeFormatVersion!==3||raw.seq!==prefix+i)throw new TypeError("Unverified canonical V3 tail");return raw;});
  if(payload.events.length<prefix+tail.length||digest(payload.events.slice(prefix,prefix+tail.length))!==digest(tail))throw new TypeError("V3 canonical tail differs from projection");return prefix+tail.length;
 }
 export async function materializeV3(input:CanonicalProjectionInput,output:ProjectionWriter):Promise<ProjectionManifest> {
@@ -65,7 +65,7 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
    nativePrefix.push({type:"session/title",seq:nativePrefix.length,time:nativePrefix.at(-1)?.time??createdAt,
     data:{title:item.session.title,messageSeqs:[],source:{kind:"user"}}});
   }
-  const all=[...nativePrefix,...tail.map(e=>{if(!isRecord(e.rawPayload))throw new TypeError("V3 event evidence is unavailable");return e.rawPayload as unknown as SessionFormatEvent;})];
+  const all=[...nativePrefix,...tail.map(e=>{if(!isRecord(e.extensions.nativeProjectionEvent ?? e.rawPayload))throw new TypeError("V3 event evidence is unavailable");return (e.extensions.nativeProjectionEvent ?? e.rawPayload) as unknown as SessionFormatEvent;})];
   const artifact=validateV3({header:converted?.artifact.header??header,events:all,inheritedEventCount:converted?.artifact.inheritedEventCount??count(cut)});
   const titleProjection=v3TitleProjection(artifact.events,artifact.events.length-1);
   const legacyAliases=[...new Set(item.events.map(e=>e.source.sessionId).filter(id=>id!==nativeId))];

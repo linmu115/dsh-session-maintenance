@@ -7,6 +7,7 @@ import {
   type NativeOverwritePlan, type NativeOverwriteReceipt, type NativeOverwriteSession, type NativeOverwriteState,
 } from './native-session-overwrite.js';
 import { observeNativeSessionCopies } from './native-session-observation.js';
+import { saveEndpointProjection } from './projection-receipt.js';
 
 /**
  * The whole write-back: the run's frozen scope → logical sessions → native
@@ -89,6 +90,7 @@ export async function readNativeOverwriteState(input: {
 }
 
 export interface WriteBackInput {
+  readonly withNativeLocks?: <T>(sessions: readonly NativeOverwriteSession[], work: () => Promise<T>) => Promise<T>;
   readonly bindIdentity?: (nativeSessionId: string, logicalSessionId: string, checkOnly: boolean) => Promise<void>;
   readonly projection: CanonicalProjectionInput;
   readonly sessionsRoot: string;
@@ -129,6 +131,7 @@ export async function writeBackProjectionToInstance(input: WriteBackInput): Prom
       archived: input.archived({ id: canonical.session.id, archivedAt: canonical.session.archivedAt ?? null }) }];
   });
   const identities = admitted.filter(item => sessions.some(s => s.nativeSessionId === String(v3NativeSessionId(item.session.id))));
+  const commit = async () => {
   for (const item of identities) await input.bindIdentity?.(String(v3NativeSessionId(item.session.id)), String(item.session.id), true);
   const { nativeSessionTarget } = await import('./native-session-overwrite.js');
   const state = await readNativeOverwriteState({ stateRoot: input.stateRoot, instanceId: input.instanceId, sessions,
@@ -150,6 +153,12 @@ export async function writeBackProjectionToInstance(input: WriteBackInput): Prom
     journal: input.journal, backupRoot: input.backupRoot, stateRoot: input.stateRoot, instanceId: input.instanceId,
     duplicates: observed.copies, codec: input.codec ?? adapter.nativeSessionCodec });
   // Also repair already-materialized identities. A successful unchanged pass is valid evidence.
-  for (const item of identities) await input.bindIdentity?.(String(v3NativeSessionId(item.session.id)), String(item.session.id), false);
+  for (const item of identities) {
+    const nativeId = String(v3NativeSessionId(item.session.id));
+    await saveEndpointProjection(input.stateRoot, input.instanceId, nativeId, item.events, sessions.find(session => session.nativeSessionId === nativeId)!.payload);
+    await input.bindIdentity?.(nativeId, String(item.session.id), false);
+  }
   return { plan, receipt, skippedOutOfScope };
+  };
+  return input.withNativeLocks ? input.withNativeLocks(sessions, commit) : commit();
 }

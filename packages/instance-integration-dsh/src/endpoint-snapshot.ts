@@ -6,6 +6,8 @@ import { IntegrationError } from '@linmu/dsh-session-contracts';
 import { adapter, inspectNativeSpace as inspectV3NativeSpace } from '@linmu/dsh-session-extension-gpt-compat';
 import { canonicalEventsFor } from './instance-workspace-source.js';
 import { readWorkspaceMappings } from './workspace-mapping-store.js';
+import { readEndpointProjection, projectionSourceDigest } from './projection-receipt.js';
+import { remapProjectedAppend } from '@linmu/dsh-session-adapter-0-1-5';
 
 /** Translate native rows only here. The engine never inspects cwd, seq, or host event types. */
 export async function readEndpointSnapshot(input: {
@@ -26,21 +28,35 @@ export async function readEndpointSnapshot(input: {
   const folder = folders.find(item => resolve(item.path).toLowerCase() === resolve(cwd).toLowerCase());
   if (!folder) throw new IntegrationError('SESSION_NOT_SYNCED', '会话已移出当前同步工作区。');
   const existing = input.projection.sessions.find(item => item.session.id === input.logicalSessionId);
+  const receipt = await readEndpointProjection(input.stateRoot, input.endpointId, input.nativeSessionId);
   let nativePrefix = 0;
+  let sourceNativeCount = 0;
+  let nativeToSource: number[] = [];
   if (existing) {
     let expected: readonly unknown[] | undefined;
-    await adapter.materialize({ ...input.projection, sessions: [existing] }, {
+    if (receipt) {
+      if (projectionSourceDigest(existing.events.slice(0, receipt.sourceCount)) !== receipt.sourceDigest) throw new Error('SYNC_PROJECTION_SOURCE_CHANGED');
+      const later = existing.events.slice(receipt.sourceCount);
+      if (later.some(event => event.source.instanceId !== input.endpointId || String(event.source.sessionId) !== input.nativeSessionId)) throw new Error('SYNC_PROJECTION_REBASE_REQUIRED');
+      expected = [...receipt.nativeEvents, ...later.map(event => event.rawPayload)];
+      sourceNativeCount = receipt.sourceNativeCount + later.length;
+      nativeToSource = [...receipt.nativeToSource, ...later.map((_, index) => receipt.sourceNativeCount + index)];
+    } else await adapter.materialize({ ...input.projection, sessions: [existing] }, {
       writeWorkspace: async () => undefined,
       writeSession: async (_id: NativeSessionId, payload) => { expected = (payload as unknown as { events: unknown[] }).events; },
     });
     if (!expected || actual.events.length < expected.length || expected.some((event, i) => !isDeepStrictEqual(event, actual.events[i])))
       throw new IntegrationError('SYNC_NATIVE_PREFIX_CHANGED', '实例历史与已提交版本不一致，未覆盖真源。');
     nativePrefix = expected.length;
+    if (!receipt) { sourceNativeCount = nativePrefix; nativeToSource = expected.map((_, index) => index); }
   }
   const baseEvents = existing?.events ?? [];
   const nextSequence = (baseEvents.at(-1)?.sequence ?? -1) + 1;
+  const mapping = [...nativeToSource, ...actual.events.slice(nativePrefix).map((_, index) => sourceNativeCount + index)];
   const appended = canonicalEventsFor({ artifact: actual, instanceId: input.endpointId,
-    logicalSessionId: () => String(input.logicalSessionId) }).slice(nativePrefix).map((event, index) => ({ ...event, sequence: nextSequence + index }));
+    logicalSessionId: () => String(input.logicalSessionId) }).slice(nativePrefix).map((event, index) => ({ ...event, sequence: nextSequence + index,
+      ...(receipt ? { id: `${event.id}:projection:${receipt.sourceDigest}` } : {}),
+      ...(receipt ? { extensions: { ...event.extensions, nativeProjectionEvent: remapProjectedAppend(event.rawPayload!, sourceNativeCount + index, mapping) } } : {}) }));
   const state = JSON.parse(await readFile(join(input.homeRoot, 'storages', 'workspace.json'), 'utf8')) as {
     unit?: { name?: string; version?: number }; global?: { archivedSessionIds?: string[] };
   };

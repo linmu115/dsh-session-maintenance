@@ -15,7 +15,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import type { DiscoveredIntegration, InstanceLeaseInspection, LogicalWorkspace, LogicalWorkspaceId, RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
-import { writeBackInstanceWorkspaces, writeBackRunIdentity } from '@linmu/dsh-instance-integration-dsh/instance-write-back';
+import { writeBackRunIdentity } from '@linmu/dsh-instance-integration-dsh/instance-write-back';
+import { synchronizeThroughHost } from '@linmu/dsh-instance-integration-dsh/host-workspace-sync';
 import { readEndpointSnapshot } from '@linmu/dsh-instance-integration-dsh/endpoint-snapshot';
 import { IntegrationError } from './integrations/bindings.js';
 import { createWorkspaceSourceForHome, dshSessionBinding } from '@linmu/dsh-instance-integration-dsh/instance-workspace-source';
@@ -314,7 +315,7 @@ async function createComposition(
       if (registered === undefined)
         throw new IntegrationError("INSTANCE_WRITE_BACK_NOT_REGISTERED", "该实例尚未接入，无法把工作区写入实例目录。", 404);
       const policy = new SqliteInstanceWorkspacePolicyRepository(repository.database).getPolicy(instanceId);
-      return writeBackInstanceWorkspaces({
+      return synchronizeThroughHost({
         bindIdentity: (nativeSessionId, logicalSessionId, checkOnly) => ensurePlatformSessionBinding({ repository,
           ...dshSessionBinding(instanceId, nativeSessionId), logicalSessionId, checkOnly }),
         stateRoot: options.stateRoot,

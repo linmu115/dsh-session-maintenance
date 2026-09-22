@@ -123,6 +123,16 @@
       "development": "./src/system-evidence.ts",
       "types": "./dist/system-evidence.d.ts",
       "default": "./dist/system-evidence.js"
+    },
+    "./host-write-barrier": {
+      "development": "./src/host-write-barrier.ts",
+      "types": "./dist/host-write-barrier.d.ts",
+      "default": "./dist/host-write-barrier.js"
+    },
+    "./host-workspace-sync": {
+      "development": "./src/host-workspace-sync.ts",
+      "types": "./dist/host-workspace-sync.d.ts",
+      "default": "./dist/host-workspace-sync.js"
     }
   },
   "files": [

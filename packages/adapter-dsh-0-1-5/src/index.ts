@@ -22,6 +22,7 @@ import {
 import { isV3PreparationOnlyAppend } from "./runtime-tail-recovery.js";
 import { v3NativeSessionCodec } from "./native-session-codec.js";
 export { v3NativeSessionCodec } from "./native-session-codec.js";
+export { filterNativePluginData, remapProjectedAppend } from './filter-plugin-data.js';
 
 export { manifest } from "./manifest.js";
 export {

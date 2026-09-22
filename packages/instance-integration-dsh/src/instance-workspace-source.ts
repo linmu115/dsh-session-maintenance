@@ -1,5 +1,6 @@
 import { join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { gptCompatExtensionAdapter } from '@linmu/dsh-session-extension-gpt-compat';
 import type { CanonicalEventV1, NativeSessionArtifact, NativeSessionId } from '@linmu/dsh-session-contracts';
 // The adapter already walks exactly this layout and decodes every generation it
 // finds; the reusable half is its own space inspector, so the Engine reads the
@@ -80,6 +81,8 @@ export function canonicalEventsFor(input: {
   const logicalSessionId = input.logicalSessionId(String(input.artifact.nativeSessionId)) as never;
   return input.artifact.events.map((event, index) => {
     const shape = canonicalShapeFor(event);
+    const dataType = (event as { type?: string }).type;
+    const owner = dataType && gptCompatExtensionAdapter.nativeEvents?.types.has(dataType) ? gptCompatExtensionAdapter.namespace : undefined;
     return {
       schemaVersion: 1 as const,
       id: `${input.artifact.nativeSessionId}#${index}` as never,
@@ -90,7 +93,8 @@ export function canonicalEventsFor(input: {
       content: {},
       contentDigest: `sha256:${createHash('sha256').update(JSON.stringify(event)).digest('hex')}`,
       rawPayload: event,
-      extensions: { nativeFormatVersion: 3, ...(index === 0 ? { nativeHeader: input.artifact.header, inheritedEventCount: input.artifact.inheritedEventCount } : {}) },
+      extensions: { nativeFormatVersion: 3, ...(owner ? { extensionNamespace: owner, extensionDataType: dataType } : {}),
+        ...(index === 0 ? { nativeHeader: input.artifact.header, inheritedEventCount: input.artifact.inheritedEventCount } : {}) },
       source: { platform: "dsh", instanceId: input.instanceId, sessionId: String(input.artifact.nativeSessionId),
         eventId: String(index), cursor: String(index) },
     } as unknown as CanonicalEventV1;
