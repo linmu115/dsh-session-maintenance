@@ -1,3 +1,5 @@
+import { MAINTENANCE_PLUGIN_ROW_ID, maintenancePluginConfigIssue } from "@linmu/dsh-session-contracts";
+
 function record(value: unknown): value is Record<string, unknown> { return value !== null && typeof value === "object" && !Array.isArray(value); }
 const infrastructure = new Set(["session", "session-maintenance", "session-persistence", "session-persistence-jsonl", "session-query-sqlite", "session-projection", "session-projection-cache", "session-controller", "workspace", "workspace-controller", "web-startup", "webserver", "web-runtime"]);
 const infrastructurePackages = new Set(["dsh-session-maintenance", ...["session", "session-persistence", "session-query", "session-projection-cache", "workspace", "web-app", "web-runtime", "webserver"].map(name => `@deepseek-ai/dsh-${name}`)]);
@@ -30,7 +32,19 @@ export function inspectDshIntegrationOverrides(layers: readonly unknown[]): stri
       if (patch.insert !== undefined) inspectInsert(patch.insert);
       if (typeof patch.id !== "string" || !infrastructure.has(patch.id)) continue;
       if (patch.disabled !== undefined && patch.disabled !== false) issues.add("用户配置禁用了会话或 Web 基础组件，请恢复后重新检查接入。");
-      if (Object.keys(patch).some(key => !["id", "name", "disabled"].includes(key))) issues.add("用户配置修改了会话或 Web 基础组件，需要单独验证该配置。");
+      const fields = Object.keys(patch);
+      if (!fields.some(key => !["id", "name", "disabled"].includes(key))) continue;
+      // This plugin's own row is how a machine declares its Maintenance identity, so its `config`
+      // is the documented declaration rather than a component replacement. It is verified with the
+      // rule the plugin itself applies (shared through the contracts package), so a declaration the
+      // plugin would accept is accepted here, and one it would reject is reported with the field
+      // named. Every other infrastructure id keeps being reported unchanged.
+      if (patch.id === MAINTENANCE_PLUGIN_ROW_ID) {
+        const reason = maintenancePluginConfigIssue((patch as { readonly config?: unknown }).config, fields);
+        if (reason !== undefined) issues.add(reason);
+        continue;
+      }
+      issues.add("用户配置修改了会话或 Web 基础组件，需要单独验证该配置。");
     }
   }
   return [...issues];
