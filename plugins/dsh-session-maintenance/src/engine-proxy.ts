@@ -63,8 +63,8 @@ export interface ProxyResult {
    */
   /** Whether the asked session belongs to this instance's mapped workspaces (session-mapped). */
   readonly mapped?: boolean;
-  /** The local folders this instance should own as workspaces (workspace-folders). */
-  readonly folders?: readonly { readonly name: string; readonly path: string }[];  readonly identity?: {
+  /** The local folders this instance should own as workspaces, and the sessions inside each one. */
+  readonly folders?: readonly { readonly name: string; readonly path: string; readonly sessions?: readonly string[] }[];  readonly identity?: {
     readonly apiVersion: 1;
     readonly instanceId: string;
     readonly profileId: string;
@@ -341,7 +341,7 @@ export class RestrictedEngineProxy {
     if (input.operation === "workspace-folders") {
       // The Engine created the mapped folders; the instance is the side that can register them as
       // its own workspaces. The paths come from the Engine's records, never from the caller.
-      const value = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/workspace-folders`) as { folders?: { folders?: readonly { name: string; path: string }[] } };
+      const value = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/workspace-folders`) as { folders?: { folders?: readonly { name: string; path: string; sessions?: readonly string[] }[] } };
       const folders = value.folders?.folders ?? [];
       return { ok: true, message: `已读取 ${folders.length} 个映射工作区`, folders };
     }    if (input.operation === "session-mapped") {

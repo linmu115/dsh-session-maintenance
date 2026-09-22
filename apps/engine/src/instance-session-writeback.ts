@@ -5,6 +5,7 @@ import {
   applyNativeOverwrite, planNativeOverwrite, readArchiveMarker,
   type NativeOverwritePlan, type NativeOverwriteReceipt, type NativeOverwriteSession, type NativeOverwriteState,
 } from './native-session-overwrite.js';
+import { observeNativeSessionCopies } from './native-session-observation.js';
 
 /**
  * The whole write-back: the run's frozen scope → logical sessions → native
@@ -128,10 +129,15 @@ export async function writeBackProjectionToInstance(input: WriteBackInput): Prom
   const { nativeSessionTarget } = await import('./native-session-overwrite.js');
   const state = await readNativeOverwriteState({ stateRoot: input.stateRoot, instanceId: input.instanceId, sessions,
     relativePathFor: session => nativeSessionTarget(session)?.relativePath ?? null });
-  const plan = planNativeOverwrite({ sessionsRoot: input.sessionsRoot, sessions, state });
+  // The instance's tree is read before it is written. Its own record of a previous write is not
+  // proof that the content is still there, and a copy left in the project directory a session's
+  // `cwd` used to name is what makes the host refuse to start.
+  const observed = await observeNativeSessionCopies({ sessionsRoot: input.sessionsRoot, sessions });
+  const plan = planNativeOverwrite({ sessionsRoot: input.sessionsRoot, sessions,
+    state: { ...state, present: observed.present, copies: observed.copies } });
   const receipt = await applyNativeOverwrite({ sessionsRoot: input.sessionsRoot, sessions, plan,
     journal: input.journal, backupRoot: input.backupRoot, stateRoot: input.stateRoot, instanceId: input.instanceId,
-    codec: input.codec ?? v3NativeSessionCodec });
+    duplicates: observed.copies, codec: input.codec ?? v3NativeSessionCodec });
   return { plan, receipt, skippedOutOfScope };
 }
 

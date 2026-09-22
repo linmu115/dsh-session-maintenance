@@ -1,5 +1,5 @@
-import { appendFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { appendFile, mkdir, readFile } from 'node:fs/promises';
+import { basename, join } from 'node:path';
 import type { CanonicalProjectionInput, LogicalWorkspaceId, ProjectionRun } from '@linmu/dsh-session-contracts';
 import { materializeV3, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
 import type { InstanceWriteBackSummary } from './instance-workspace-service.js';
@@ -47,6 +47,12 @@ export interface InstanceWriteBackRequest {
   readonly profileId: string;
   /** The instance's own sessions root; the adapter's layout rule adds the project directory. */
   readonly sessionsRoot: string;
+  /**
+   * The instance's DSH Home. It is read — never written — to learn which workspaces the instance
+   * already owns, because a bucket that mirrors one of them must keep using that workspace's own
+   * path instead of a second folder under the mapping root.
+   */
+  readonly instanceHome: string;
 }
 
 /** Sessions the adapter could not turn back into an instance payload, reported instead of thrown. */
@@ -73,6 +79,81 @@ export function workspaceFolderName(name: string, workspaceId: string): string {
   return cleaned.length > 0 ? cleaned : workspaceId.replace(UNSAFE_FOLDER, '_');
 }
 
+/**
+ * The workspaces the instance already owns, by display name, as its own registry records them.
+ *
+ * A Maintenance bucket is a grouping of sessions, and one of those groupings can mirror a
+ * workspace the instance itself created — the operator's own working directory. Mapping that bucket
+ * to a *new* folder under the mapping root would relocate the instance's own sessions into a second
+ * workspace that only looks like the first, so the instance's existing path wins: the operator's
+ * rule is that a workspace which already exists is reused rather than recreated.
+ *
+ * This is a read of a private, versioned store, so it is deliberately strict and never fatal: any
+ * deviation — a missing file, a different unit, an unparsable payload — means "the instance owns
+ * nothing as far as this run is concerned", and the mapped folder is used as before.
+ */
+export async function readRegisteredWorkspacePaths(homeRoot: string): Promise<ReadonlyMap<string, string>> {
+  const text = await readFile(join(homeRoot, 'storages', 'workspace.json'), 'utf8').catch(() => undefined);
+  if (text === undefined) return new Map();
+  try {
+    const parsed = JSON.parse(text) as {
+      readonly unit?: { readonly name?: unknown; readonly version?: unknown };
+      readonly tables?: { readonly workspaces?: Readonly<Record<string, { readonly path?: unknown; readonly title?: unknown }>> };
+    };
+    if (parsed.unit?.name !== 'workspace' || parsed.unit?.version !== WORKSPACE_STORE_VERSION) return new Map();
+    const registered = new Map<string, string>();
+    for (const record of Object.values(parsed.tables?.workspaces ?? {})) {
+      if (typeof record?.path !== 'string' || record.path.length === 0) continue;
+      const name = typeof record.title === 'string' && record.title.trim().length > 0 ? record.title.trim() : basename(record.path);
+      const key = name.toLowerCase();
+      if (!registered.has(key)) registered.set(key, record.path);
+    }
+    return registered;
+  } catch { return new Map(); }
+}
+
+/** The `workspaces` storage unit this reader understands; anything else is not interpreted. */
+const WORKSPACE_STORE_VERSION = 2;
+
+/** One bucket's resolved local folder: where the instance owns that bucket's sessions. */
+export interface MappedWorkspaceFolder {
+  readonly workspaceId: string;
+  /** The folder name below the mapping root, after sanitising and duplicate resolution. */
+  readonly folder: string;
+  readonly path: string;
+  /** The instance already owns a workspace at `path`; nothing has to be created for it. */
+  readonly owned: boolean;
+}
+
+/**
+ * Resolve every bucket to the local folder the instance owns it under — one rule, both callers.
+ *
+ * The write-back writes sessions with that folder as their `cwd`; the instance-side endpoint reports
+ * the same folders so the instance can register them. Two implementations of this rule would drift,
+ * and a drift here is not cosmetic: a session whose `cwd` names a folder the instance has not
+ * registered falls out of every workspace.
+ */
+export function mapWorkspaceFolders(input: {
+  readonly workspaceRoot: string;
+  readonly registered: ReadonlyMap<string, string>;
+  readonly buckets: readonly { readonly workspaceId: string; readonly name: string }[];
+}): readonly MappedWorkspaceFolder[] {
+  const claimed = new Map<string, string>();
+  const mapped: MappedWorkspaceFolder[] = [];
+  for (const bucket of input.buckets) {
+    const name = workspaceFolderName(bucket.name, bucket.workspaceId);
+    // Two buckets whose names sanitise to the same folder must not share one: the second one is
+    // distinguished by a short stable suffix rather than silently merging two buckets into one.
+    const owner = claimed.get(name.toLowerCase());
+    const folder = owner === undefined || owner === bucket.workspaceId ? name : `${name}-${bucket.workspaceId.slice(-6)}`;
+    claimed.set(folder.toLowerCase(), bucket.workspaceId);
+    const owned = input.registered.get(folder.toLowerCase());
+    mapped.push({ workspaceId: bucket.workspaceId, folder, path: owned ?? join(input.workspaceRoot, folder),
+      owned: owned !== undefined });
+  }
+  return mapped;
+}
+
 export async function writeBackInstanceWorkspaces(options: InstanceWriteBackOptions, request: InstanceWriteBackRequest): Promise<InstanceWriteBackSummary> {
   const { selection } = options.selectionFor(request.instanceId);
   const memberships = await options.memberships();
@@ -83,20 +164,17 @@ export async function writeBackInstanceWorkspaces(options: InstanceWriteBackOpti
 
   // One local folder per selected bucket, created once and reused afterwards. A projected session's
   // `cwd` becomes that folder, so the host's own membership rule (cwd must resolve to the registered
-  // workspace path) can hold for it.
+  // workspace path) can hold for it. A bucket the instance already owns a workspace for keeps that
+  // workspace's path: reusing it is what the operator asked for, and it is also what keeps the
+  // instance's own sessions where the instance put them.
+  const registered = await readRegisteredWorkspacePaths(request.instanceHome);
   const folderFor = new Map<string, string>();
-  const claimed = new Map<string, string>();
-  for (const workspaceId of new Set(projection.sessions.map(session => session.workspaceId).filter(id => id !== null && selected(id)))) {
-    const name = workspaceFolderName(names.get(String(workspaceId)) ?? String(workspaceId), String(workspaceId));
-    // Two buckets whose names sanitise to the same folder must not share one: the second one is
-    // distinguished by a short stable suffix rather than silently merging two buckets into one.
-    const owner = claimed.get(name.toLowerCase());
-    const folder = owner === undefined || owner === String(workspaceId)
-      ? name : `${name}-${String(workspaceId).slice(-6)}`;
-    claimed.set(folder.toLowerCase(), String(workspaceId));
-    const path = join(options.workspaceRoot, folder);
-    await mkdir(path, { recursive: true });
-    folderFor.set(String(workspaceId), path);
+  const mapped = mapWorkspaceFolders({ workspaceRoot: options.workspaceRoot, registered,
+    buckets: [...new Set(projection.sessions.map(session => session.workspaceId).filter(id => id !== null && selected(id)))]
+      .map(workspaceId => ({ workspaceId: String(workspaceId), name: names.get(String(workspaceId)) ?? String(workspaceId) })) });
+  for (const folder of mapped) {
+    if (!folder.owned) await mkdir(folder.path, { recursive: true });
+    folderFor.set(folder.workspaceId, folder.path);
   }
 
   const journal: string[] = [];

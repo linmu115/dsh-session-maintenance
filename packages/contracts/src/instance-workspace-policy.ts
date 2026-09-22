@@ -18,10 +18,18 @@ export const instanceWorkspacePolicySchema = z.strictObject({
   updatedAt: z.iso.datetime().nullable(),
 });
 export type InstanceWorkspacePolicy = z.infer<typeof instanceWorkspacePolicySchema>;
-/** The local folders an instance currently owns its mapped buckets under. */
+/**
+ * The local folders an instance currently owns its mapped buckets under.
+ *
+ * `sessions` is what makes the folder more than a path: the instance's own workspace registry keeps
+ * an ordered membership list, so a folder without its session ids would show up in the instance as
+ * an empty workspace. The Engine derives those ids from the folder it just wrote, using the same
+ * layout rule it wrote with.
+ */
 export const instanceWorkspaceFoldersSchema = z.strictObject({
   schemaVersion: z.literal(1), instanceId: instanceWorkspaceInstanceIdSchema,
-  folders: z.array(z.strictObject({ name: z.string().min(1).max(200), path: z.string().min(1) })).max(10_000),
+  folders: z.array(z.strictObject({ name: z.string().min(1).max(200), path: z.string().min(1),
+    sessions: z.array(z.string().min(1).max(500)).max(100_000).default([]) })).max(10_000),
 });
 export type InstanceWorkspaceFolders = z.infer<typeof instanceWorkspaceFoldersSchema>;
 export const instanceWorkspacePolicyUpdateSchema = z.strictObject({

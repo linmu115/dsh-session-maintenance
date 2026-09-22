@@ -1,7 +1,7 @@
 {
   "protocolVersion": 1,
   "packageId": "dsh-session-maintenance",
-  "version": "0.2.26-rc2.41",
+  "version": "0.2.26-rc2.42",
   "entries": [
     {
       "kind": "instance",

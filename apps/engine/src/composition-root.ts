@@ -320,7 +320,7 @@ async function createComposition(
         workspaceNames: async () => new Map((repository.database.prepare("SELECT id, name FROM logical_workspaces WHERE deleted_at IS NULL")
           .all() as { id: string; name: string }[]).map(row => [row.id, row.name])),
         loadProjection: run => canonicalProjectionSource.load(run),
-      }, { instanceId, profileId, sessionsRoot: join(registered.homeRoot, "sessions") });
+      }, { instanceId, profileId, sessionsRoot: join(registered.homeRoot, "sessions"), instanceHome: registered.homeRoot });
     },
     () => readStandaloneInstances(options.stateRoot));
   const graphLifecycle = new SessionGraphStore(repository.database);

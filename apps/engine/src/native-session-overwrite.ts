@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, rm, rmdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { NativeSessionCodec, NativeSessionFileDescription, JsonValue } from '@linmu/dsh-session-contracts';
 import { v3NativeProjectKey, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
@@ -37,7 +37,12 @@ export interface NativeOverwritePlanEntry {
   readonly nativeSessionId: string;
   /** Relative to the instance's sessions root; always a session directory, never the project directory. */
   readonly relativePath: string;
-  readonly action: 'write' | 'restore-unarchived' | 'archive' | 'unchanged';
+  /**
+   * `relocate` is the plan's answer to a session that is already at the intended revision but whose
+   * id also exists under another project directory. The bytes are not written again; the copies are
+   * retired, because one id under two project directories makes the instance refuse to start.
+   */
+  readonly action: 'write' | 'restore-unarchived' | 'archive' | 'relocate' | 'unchanged';
   /** Deterministic: the same intended change always names the same operation. */
   readonly operationId: string;
 }
@@ -55,6 +60,16 @@ export interface NativeOverwriteState {
   readonly revisions: ReadonlyMap<string, string>;
   /** `relativePath` → whether the instance currently has that session archived. */
   readonly archived: ReadonlyMap<string, boolean>;
+  /**
+   * `relativePath` → the instance really stores readable content there. Absent means "not observed":
+   * a caller that does not look at the tree keeps the older behaviour of trusting its own record.
+   */
+  readonly present?: ReadonlySet<string>;
+  /**
+   * `relativePath` → documents under *other* project directories that hold the same session id.
+   * The host refuses to start while such a pair exists, so finding one always changes the plan.
+   */
+  readonly copies?: ReadonlyMap<string, readonly string[]>;
 }
 
 /** Where the Engine keeps what it wrote, so a later run can tell unchanged from changed. */
@@ -64,6 +79,11 @@ export interface NativeOverwriteJournalEntry {
   readonly archived: boolean;
   /** The bytes that were replaced, so the write is reversible. */
   readonly backupPath: string | null;
+  /**
+   * Documents under other project directories this operation retired, each backed up under the
+   * backup root at its own relative path. Present only when a duplicate was found and removed.
+   */
+  readonly relocatedFrom?: readonly string[];
 }
 
 
@@ -105,12 +125,19 @@ export function planNativeOverwrite(input: {
     const relativePath = target.relativePath;
     const written = input.state.revisions.get(relativePath);
     const archivedNow = input.state.archived.get(relativePath);
-    // Two independent questions. The bytes: a changed payload digest is a write,
-    // and an unchanged one is nothing at all. The archive state: it is *not* part
-    // of the session bytes, so the only record of it is the Engine's own, and a
-    // disagreement there is what makes the recovery symmetric — a session the
-    // true source no longer has archived is restored to active.
-    const action: NativeOverwritePlanEntry['action'] = written !== session.revision ? 'write'
+    // A record of a previous write is not proof that the bytes are still there: an instance that
+    // was recovered by hand can be left holding an empty placeholder the host silently ignores.
+    const missing = input.state.present !== undefined && !input.state.present.has(relativePath);
+    const elsewhere = input.state.copies?.get(relativePath) ?? [];
+    // Three independent questions. The bytes: a changed payload digest — or content that is not
+    // actually on disk — is a write, and an unchanged payload that is present is nothing at all. The
+    // duplicates: one id under two project directories stops the instance from starting, so the
+    // copies are retired as soon as the intended content is in place. The archive state: it is *not*
+    // part of the session bytes, so the only record of it is the Engine's own, and a disagreement
+    // there is what makes the recovery symmetric — a session the true source no longer has archived
+    // is restored to active.
+    const action: NativeOverwritePlanEntry['action'] = written !== session.revision || missing ? 'write'
+      : elsewhere.length > 0 ? 'relocate'
       : archivedNow !== undefined && archivedNow !== session.archived ? (session.archived ? 'archive' : 'restore-unarchived')
       : 'unchanged';
     entries.push({ nativeSessionId: session.nativeSessionId, relativePath, action,
@@ -199,6 +226,12 @@ export async function applyNativeOverwrite(input: {
   /** The Engine's own state root; the archive marker lives there, not in the instance tree. */
   readonly stateRoot: string;
   readonly instanceId: string;
+  /**
+   * Documents under other project directories holding the same session id, keyed by the intended
+   * relative path. A single id under two project directories is what makes the host refuse to
+   * start, so these are retired — but only after the intended content is verifiably in place.
+   */
+  readonly duplicates?: ReadonlyMap<string, readonly string[]>;
 }): Promise<NativeOverwriteReceipt> {
   const codec = input.codec ?? v3NativeSessionCodec;
   const applied: NativeOverwritePlanEntry[] = [];
@@ -210,6 +243,20 @@ export async function applyNativeOverwrite(input: {
     const metadata = session.payload;
     const planned = nativeSessionTarget(session);
     if (planned === null || planned.relativePath !== entry.relativePath) continue;
+    const elsewhere = input.duplicates?.get(entry.relativePath) ?? [];
+    if (entry.action === 'relocate') {
+      // The intended bytes are already there, so nothing is written; only the stale copies go. This
+      // is the state a hand recovery leaves behind: the content was moved out of the old project
+      // directory and the planned one holds an empty placeholder.
+      const retired = await retireForeignCopies({ sessionsRoot: input.sessionsRoot, backupRoot: input.backupRoot,
+        relativePaths: elsewhere });
+      const record: NativeOverwriteJournalEntry = { relativePath: entry.relativePath, revision: session.revision,
+        archived: session.archived, backupPath: null, relocatedFrom: retired };
+      journal.push(record);
+      await input.journal(record);
+      applied.push(entry);
+      continue;
+    }
     // The description is what `encode` needs: where the file goes and its header.
     // The path itself is the instance's layout, not the adapter's runtime-managed
     // one: `describe` names its own projection directories, which the instance
@@ -231,8 +278,14 @@ export async function applyNativeOverwrite(input: {
       const staged = `${target}.${process.pid}.staged`;
       await writeFile(staged, bytes);
       await rename(staged, target);
+      // Removing the other project directory's copy deletes the only other copy of that session, so
+      // it happens only after reading the intended bytes back off the disk.
+      const retired = elsewhere.length === 0 ? [] : await retireForeignCopies({
+        sessionsRoot: input.sessionsRoot, backupRoot: input.backupRoot, relativePaths: elsewhere,
+        verified: { target, bytes } });
       const record: NativeOverwriteJournalEntry = { relativePath: entry.relativePath, revision: session.revision,
-        archived: session.archived, backupPath: previous === undefined ? null : backupPath };
+        archived: session.archived, backupPath: previous === undefined ? null : backupPath,
+        ...(retired.length > 0 ? { relocatedFrom: retired } : {}) };
       journal.push(record);
       await writeArchiveMarker({ stateRoot: input.stateRoot, instanceId: input.instanceId, relativePath: entry.relativePath,
         record: { revision: session.revision, archived: session.archived } });
@@ -251,9 +304,57 @@ export async function applyNativeOverwrite(input: {
   return { applied, journal };
 }
 
+/**
+ * Retire duplicate copies of one session from the project directories it no longer belongs to.
+ *
+ * Each copy is backed up under the backup root at its own relative path before it is removed, so a
+ * relocation is exactly as reversible as a write. A directory that is left empty afterwards is
+ * removed too: the host treats a leftover session directory as a session, which is how an emptied
+ * placeholder kept producing duplicates after the file itself was gone.
+ *
+ * `verified` is the write this relocation depends on: when it is given, the target is read back and
+ * compared before anything is deleted, and a mismatch removes nothing at all.
+ */
+async function retireForeignCopies(input: {
+  readonly sessionsRoot: string;
+  readonly backupRoot: string;
+  readonly relativePaths: readonly string[];
+  readonly verified?: { readonly target: string; readonly bytes: Uint8Array };
+}): Promise<readonly string[]> {
+  if (input.verified !== undefined) {
+    const written = await readFile(input.verified.target).catch(() => undefined);
+    if (written === undefined || !sameBytes(written, input.verified.bytes))
+      throw new Error(`refusing to remove a duplicate session: ${input.verified.target} does not hold the intended bytes`);
+  }
+  const retired: string[] = [];
+  for (const relativePath of input.relativePaths) {
+    const file = localPath(input.sessionsRoot, relativePath);
+    const bytes = await readFile(file).catch(() => undefined);
+    if (bytes === undefined) continue;
+    const backup = localPath(input.backupRoot, relativePath);
+    await mkdir(dirname(backup), { recursive: true });
+    await writeFile(backup, bytes);
+    await rm(file, { force: true });
+    // Only an empty directory is removed; a directory still holding another generation stays. The
+    // project directory goes too once the last session has left it, so a finished move leaves no
+    // half-empty shell behind for the next reader to interpret.
+    await rmdir(dirname(file)).catch(() => undefined);
+    await rmdir(dirname(dirname(file))).catch(() => undefined);
+    retired.push(relativePath);
+  }
+  return retired;
+}
+
 /** Filesystem path for a document-style relative path, on any platform. */
 function localPath(root: string, relativePath: string): string {
   return join(root, ...relativePath.split('/'));
+}
+
+/** Byte equality without depending on which of the two buffer shapes the codec returns. */
+function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
+  if (left.length !== right.length) return false;
+  for (let index = 0; index < left.length; index += 1) if (left[index] !== right[index]) return false;
+  return true;
 }
 
 /**

@@ -1,9 +1,11 @@
 import type { DatabaseSync } from "node:sqlite";
+import { readdir, stat } from "node:fs/promises";
 import type { CanonicalEngineMutation } from "@linmu/dsh-canonical-session-engine";
 import type { InstanceWorkspacePolicy, LogicalSessionId, LogicalWorkspaceId, MaintenanceWriteScope, ProjectionRun, RegisteredInstance, RunId } from "@linmu/dsh-session-contracts";
 import { SqliteInstanceWorkspacePolicyRepository, InstanceWorkspacePolicyError } from "@linmu/dsh-session-store";
 import { InstanceWorkspaceService, type InstanceWriteBackSummary } from "./instance-workspace-service.js";
-import { workspaceFolderName } from "./instance-write-back.js";
+import { mapWorkspaceFolders, readRegisteredWorkspacePaths } from "./instance-write-back.js";
+import { nativeProjectDirectory } from "./native-session-overwrite.js";
 import { join } from "node:path";
 import { IntegrationError } from "./integrations/bindings.js";
 
@@ -18,6 +20,30 @@ function workspaceRootDefault(): string {
   return configured !== undefined && configured.length > 0 ? configured : 'D:\\DSHworkplace';
 }
 
+/**
+ * The sessions the instance actually stores under one mapped folder.
+ *
+ * The instance's workspace registry keeps an ordered membership list of session ids; a folder whose
+ * sessions are never named there shows up as an empty workspace. The project directory is derived
+ * with the adapter's own layout rule — the same rule the write-back wrote with — and a directory
+ * holding only an empty placeholder is left out, because the host has no header to read for it.
+ */
+async function readStoredSessionIds(homeRoot: string, workspacePath: string): Promise<readonly string[]> {
+  const projectDirectory = join(homeRoot, 'sessions', nativeProjectDirectory(workspacePath));
+  const stored: string[] = [];
+  for (const entry of await readdir(projectDirectory, { withFileTypes: true }).catch(() => [])) {
+    if (!entry.isDirectory()) continue;
+    const sessionDirectory = join(projectDirectory, entry.name);
+    for (const artifact of await readdir(sessionDirectory, { withFileTypes: true }).catch(() => [])) {
+      if (!artifact.isFile() || !/^session\.v3\.jsonl(?:\.zstd)?$/u.test(artifact.name)) continue;
+      const information = await stat(join(sessionDirectory, artifact.name)).catch(() => undefined);
+      if (information !== undefined && information.size > 0) { stored.push(entry.name); }
+      break;
+    }
+  }
+  return stored;
+}
+
 export class InstanceWorkspaceRuntime {
   readonly policies: SqliteInstanceWorkspacePolicyRepository;
   constructor(private readonly database: DatabaseSync, private readonly instances: readonly RegisteredInstance[],
@@ -26,7 +52,7 @@ export class InstanceWorkspaceRuntime {
     /** Puts the saved range into the instance's own session directory; absent means "record only". */
     private readonly writeBack?: (instanceId: string, profileId: string) => Promise<InstanceWriteBackSummary>,
     /** Registered (directory-connected) instances, whose `profileId` is the Maintenance identity. */
-    private readonly readStandaloneInstances?: () => Promise<readonly { instanceId: string; profileId: string }[]>,
+    private readonly readStandaloneInstances?: () => Promise<readonly { instanceId: string; profileId: string; homeRoot?: string }[]>,
     /** The local root the mapped folders are created under; the instance registers those folders. */
     private readonly workspaceRootPath?: string) {
     this.policies = new SqliteInstanceWorkspacePolicyRepository(database);
@@ -99,13 +125,25 @@ export class InstanceWorkspaceRuntime {
           pendingActivation: activeScopes.some(scope => scope.policyRevision !== policy.revision) };
       },
       writePolicy: (instanceId, input) => this.writes.run("instance-workspace-policy", async () => this.policies.updatePolicy(instanceId, input)),
-      // Which local folders this instance owns: the buckets its saved range selects, named the same
-      // way the write-back names them, under the same root. The instance registers exactly these.
+      // Which local folders this instance owns: the buckets its saved range selects, resolved by the
+      // same rule the write-back writes with, under the same root. The instance registers exactly
+      // these — and it needs the sessions inside each one, because a workspace record with no
+      // membership shows up as an empty workspace.
       readWorkspaceFolders: async (instanceId: string) => {
         const policy = this.policies.getPolicy(instanceId);
         const rows = this.database.prepare("SELECT id, name FROM logical_workspaces WHERE deleted_at IS NULL").all() as { id: string; name: string }[];
-        return rows.filter(row => this.policies.workspaceSelected(policy, row.id as LogicalWorkspaceId))
-          .map(row => ({ name: row.name, path: join(this.workspaceRootPath ?? workspaceRootDefault(), workspaceFolderName(row.name, row.id)) }));
+        const selected = rows.filter(row => this.policies.workspaceSelected(policy, row.id as LogicalWorkspaceId));
+        const homeRoot = (await this.readStandaloneInstances?.().catch(() => []))
+          ?.find(config => config.instanceId === instanceId)?.homeRoot;
+        const registered = homeRoot === undefined ? new Map<string, string>() : await readRegisteredWorkspacePaths(homeRoot);
+        const mapped = mapWorkspaceFolders({ workspaceRoot: this.workspaceRootPath ?? workspaceRootDefault(), registered,
+          buckets: selected.map(row => ({ workspaceId: row.id, name: row.name })) });
+        const folders = [];
+        for (const folder of mapped) {
+          folders.push({ name: folder.folder, path: folder.path,
+            sessions: homeRoot === undefined ? [] : await readStoredSessionIds(homeRoot, folder.path) });
+        }
+        return folders;
       },
       ...(this.writeBack === undefined ? {} : {
         // The saved range is applied to the instance the operator just edited. The profile id is

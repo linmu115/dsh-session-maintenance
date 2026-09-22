@@ -8,6 +8,7 @@ import { MaintenanceGraph, registerMaintenanceGraph } from './session-graph.js';
 import { MaintenanceNativeContext, registerMaintenanceNativeContext, nativeContextReady } from './native-context.js';
 import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-knowledge.js';
 import { registerWorkspaceArchiveBridge } from './workspace-archive-bridge.js';
+import { MappedWorkspaceRegistration, type MappedWorkspaceHost } from './mapped-workspaces.js';
 import { registerAnnotationMirror, type AnnotationMirrorContext } from './annotation-mirror.js';
 import { installRc2LazyProjectionPersistence } from './rc2-lazy-persistence.js';
 import { RegisteredSessionWriteAccess } from './write-access.js';
@@ -142,6 +143,18 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
         }, "dsh-session-maintenance: takeover handshake");
       }
     }
+  }
+  if (identity.declared) {
+    // The folders the Engine maps are the instance's own workspaces, and only the instance can
+    // register them. This is deliberately outside the prepared-run block below: the case that
+    // matters is a plain start, where no run attaches and nothing else would ever create the
+    // workspace the Engine just wrote sessions into.
+    const mapped = new MappedWorkspaceRegistration({
+      host: ctx as unknown as MappedWorkspaceHost,
+      listFolders: async () => (await proxy.invoke({ operation: "workspace-folders" })).folders ?? [],
+      report: message => { if (ctx.logger) ctx.logger.info(message); else console.info(message); },
+    });
+    ctx.effect(() => mapped.start(), "dsh-session-maintenance: mapped workspaces");
   }
   if (launchProfile !== null) {
     const transport = new HttpProjectionRuntimeTransport(fetch, async () => {
