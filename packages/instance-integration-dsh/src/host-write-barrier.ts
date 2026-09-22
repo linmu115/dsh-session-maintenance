@@ -2,7 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 export interface HostWriteHandle { close(): Promise<void> }
 export interface HostBarrierRuntime {
-  agents?: { create(...args: any[]): Promise<any>; resume(...args: any[]): Promise<any> };
+  agents?: { get?(id: string): any; create(...args: any[]): Promise<any>; resume(...args: any[]): Promise<any> };
   sessions: { get(id: string): unknown; prepare(...args: any[]): any; enter(...args: any[]): any; flush(session: any): Promise<boolean> };
   sessionPersistence: { open(...args: any[]): Promise<any>; create(...args: any[]): Promise<any> };
 }
@@ -20,14 +20,19 @@ export class HostWriteBarrier {
   constructor(private readonly runtime: HostBarrierRuntime, private readonly options: { timeoutMs?: number; pollMs?: number } = {}) {
     const patch = (target: any, name: string, wrap: (old: (...args: any[]) => any) => (...args: any[]) => any) => {
       if (typeof target[name] !== 'function') throw new Error(`HOST_BARRIER_UNSUPPORTED: ${name}`);
-      const descriptor = Object.getOwnPropertyDescriptor(target, name), next = wrap(target[name].bind(target));
+      target = target[Symbol.for('cordis.original')] ?? target;
+      const descriptor = Object.getOwnPropertyDescriptor(target, name), original = target[name];
+      // Cordis supplies the caller's scope through `this`. Binding the installation
+      // context here transfers lifecycle ownership away from the actual caller.
+      const next = function(this: any, ...args: any[]) { return wrap((...values) => original.apply(this, values))(...args); };
       Object.defineProperty(target, name, { configurable: true, writable: true, value: next });
       const verify = () => { if (Object.getOwnPropertyDescriptor(target, name)?.value !== next) throw new Error(`HOST_BARRIER_CHANGED: ${name}`); };
       this.patches.push({ verify, restore: () => { verify(); if (descriptor) Object.defineProperty(target, name, descriptor); else delete target[name]; } });
     };
     try {
       patch(runtime.sessions, 'prepare', old => (id, ...args) => { if (typeof id === 'string') this.admit(id); return old(id, ...args); });
-      patch(runtime.sessions, 'enter', old => (session, ...args) => { this.admit(session.id); return old(session, ...args); });
+      patch(runtime.sessions, 'enter', old => (session, ...args) => { this.admit(session.id);
+        return old(session, ...args); });
       patch(runtime.sessionPersistence, 'open', old => (id, access, ...args) => access === 'write'
         ? this.track(id, () => old(id, access, ...args)) : old(id, access, ...args));
       patch(runtime.sessionPersistence, 'create', old => (header, ...args) => this.track(header.id, () => old(header, ...args)));
@@ -82,16 +87,26 @@ export class HostWriteBarrier {
     let entered = false;
     try {
       const deadline = Date.now() + (this.options.timeoutMs ?? 30_000);
-      for (const id of ids) { const live = this.runtime.sessions.get(id); if (live && !await this.runtime.sessions.flush(live)) throw new Error('HOST_FLUSH_UNAVAILABLE'); }
+      for (const id of ids) { const live = this.runtime.sessions.get(id); if (live) { console.info('[dsh-session-maintenance] host flush', id); if (!await this.runtime.sessions.flush(live)) throw new Error('HOST_FLUSH_UNAVAILABLE'); } }
       while ([...ids].some(id => this.runtime.sessions.get(id) !== undefined || (this.writers.get(id) ?? 0) > 0)) {
         // Only the captured owner's disposer may detach a session. Busy turns and queued input
         // retain their owner; a flush alone never pretends the persistence handle was closed.
         for (const id of ids) {
           const owner = this.agents.get(id);
-          if (owner && owner.agent.status === 'idle' && owner.agent.inbox?.hasPending === false) await owner.close();
+          if (owner && owner.agent.status === 'idle' && owner.agent.inbox?.hasPending === false) { console.info('[dsh-session-maintenance] host owner close', id); await owner.close(); }
         }
         if ([...ids].every(id => this.runtime.sessions.get(id) === undefined && (this.writers.get(id) ?? 0) === 0)) break;
-        if (Date.now() >= deadline) throw new Error('DSH_BUSY: existing sessions have not drained');
+        if (Date.now() >= deadline) {
+          console.warn('[dsh-session-maintenance] pending host owners', JSON.stringify([...ids].filter(id =>
+            this.runtime.sessions.get(id) !== undefined || (this.writers.get(id) ?? 0) > 0).map(id => ({
+              sessionId: id, live: this.runtime.sessions.get(id) !== undefined, writers: this.writers.get(id) ?? 0,
+              registeredAgent: !!this.runtime.agents?.get?.(id),
+              registeredStatus: this.runtime.agents?.get?.(id)?.status,
+              captured: this.agents.has(id), status: this.agents.get(id)?.agent.status,
+              pending: this.agents.get(id)?.agent.inbox?.hasPending,
+            }))));
+          throw new Error('DSH_BUSY: existing sessions have not drained');
+        }
         await new Promise(resolve => setTimeout(resolve, this.options.pollMs ?? 25));
       }
       // Plugin admission starts AFTER ordinary host flush listeners have finished. It remains held

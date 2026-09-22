@@ -26,6 +26,21 @@ async function fixture(events: CanonicalEventV1[]) {
 }
 
 describe("bounded canonical reader", () => {
+  it('reads earlier workspace imports from preserved native data without rewriting history', async () => {
+    const rows = [event(0, 'user-message', message('user', 'saved question'), 'user/message'),
+      event(1, 'user-message', message('user', 'PRIVATE_RUNTIME', { kind: 'plugin', plugin: '@deepseek-ai/dsh-system-prompt' }), 'user/message'),
+      event(2, 'assistant-message', { message: message('assistant', 'saved answer') }, 'assistant/message')]
+      .map(row => ({ ...row, content: {}, extensions: { nativeFormatVersion: 3 } }));
+    const f = await fixture(rows);
+    const before = f.engine.repository.database.prepare('SELECT event_json FROM canonical_events ORDER BY sequence').all();
+    const page = await f.client.getSessionReader('reader-session');
+    expect(page.turns).toHaveLength(1);
+    expect(page.turns[0]!.messages.map(row => row.text)).toEqual(['saved question', 'saved answer']);
+    expect(page.turns[0]!.processKinds).toEqual([{ kind: 'runtime-context', label: '运行上下文', count: 1 }]);
+    expect(JSON.stringify(page)).not.toContain('PRIVATE_RUNTIME');
+    expect(f.engine.repository.database.prepare('SELECT event_json FROM canonical_events ORDER BY sequence').all()).toEqual(before);
+    expect(JSON.parse((await f.client.getSessionReaderEvent('reader-session', 'event-0', { snapshot: page.snapshot, format: 'raw' })).text).content).toEqual({});
+  });
   it("reads sessions containing unknown structured data through the client contract without exposing packet bodies", async () => {
     const f = await fixture([
       event(0, "user-message", message("user", "question"), "user/message"),

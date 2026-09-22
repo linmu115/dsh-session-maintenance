@@ -6,6 +6,7 @@ export async function commitEndpointSessionChange(input: {
   readonly endpointId: string; readonly command: EndpointSyncCommand;
   readonly resolve: (endpointId: string, sessionId: string) => Promise<string | undefined>;
   readonly selected: (endpointId: string, logicalSessionId: string) => boolean;
+  readonly acceptsIdentity?: (endpointId: string, sessionId: string, logicalSessionId: string) => Promise<boolean>;
   readonly update: (id: string, patch: CanonicalSessionMaintenancePatch) => Promise<unknown>;
   readonly remove: (id: string) => Promise<CanonicalSessionDeleteResult | undefined>;
   readonly refresh?: (endpointId: string, sessionId: string, logicalSessionId: string | undefined) => Promise<string>;
@@ -14,6 +15,8 @@ export async function commitEndpointSessionChange(input: {
 }): Promise<Omit<EndpointSyncReceipt, 'epoch'>> {
   const { endpointId, command } = input;
   const id = await input.resolve(endpointId, command.sessionId);
+  if (id !== undefined && input.acceptsIdentity && !await input.acceptsIdentity(endpointId, command.sessionId, id))
+    return { logicalSessionId: id, outcome: 'out-of-scope' };
   // A new session has no identity yet; its adapter resolves a selected logical workspace before import.
   if (id !== undefined && !input.selected(endpointId, id)) return { logicalSessionId: id, outcome: 'out-of-scope' };
   if (command.change.kind === 'discover' && id !== undefined) return { logicalSessionId: id,

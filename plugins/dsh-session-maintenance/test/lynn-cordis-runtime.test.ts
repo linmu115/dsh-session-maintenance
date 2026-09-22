@@ -25,6 +25,14 @@ it('captures Core and Sticker services through real Cordis context wrappers and 
     });
     const target = { endpointId: 'fixture', sessionId: 'fixture', context: { profileId: 'web' } };
     expect((await adapter.capture!(target)).map(record => record.dataType)).toEqual(['core/session', 'stickers/session']);
+    const packet = (await adapter.capture!(target))[0]!;
+    const oldRead = coreStore.read;
+    coreStore.read = () => ({ ...oldRead(), restoredGraphReferences: {} });
+    await expect(adapter.validate!(packet, target)).resolves.toBeUndefined();
+    expect((packet.value as any).payload.restoredGraphReferences).toBeUndefined();
+    coreStore.read = () => ({ ...oldRead(), restoredGraphReferences: { reference: { marker: 'new data' } } });
+    await expect(adapter.validate!(packet, target)).rejects.toThrow('LYNN_CHANGED_DURING_SYNC');
+    coreStore.read = oldRead;
     await adapter.withAccess!([target], async () => {});
     await core.dispose();
     await vi.waitFor(async () => expect(await adapter.handshake('core/session')).toBe(false));

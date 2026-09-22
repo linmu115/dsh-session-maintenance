@@ -8,6 +8,16 @@ import { validateV3 } from "./official.js";
 import { currentManifest, currentFormatId } from "./dialect.js";
 import { v3TitleProjection } from "./session-title.js";
 export { rc1NativeSessionId as v3NativeSessionId };
+/** A native log returning to its owning endpoint keeps its identity. Forks and
+ * cross-endpoint projections still receive independent projection identities. */
+export function v3EndpointSessionId(item: CanonicalProjectionSessionInput, run: CanonicalProjectionInput['run']) {
+ const first=item.events[0], original=first?.source.sessionId;
+ if(String(run.id).startsWith('write-back-') && item.session.originKind==='maintenance-native' && typeof original==='string' && /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(original)
+  && !original.startsWith('dsh-maintenance_') && item.events.every(event => event.extensions.nativeFormatVersion===3
+   && event.source.platform==='dsh' && event.source.instanceId===run.instanceId && event.source.sessionId===original))
+  return original as ReturnType<typeof rc1NativeSessionId>;
+ return rc1NativeSessionId(item.session.id);
+}
 export { digest } from "./common.js";
 export function catalogDigest(sessionDigests:Readonly<Record<string,string>>, workspaceIds:readonly string[]):string {return digest({sessions:Object.entries(sessionDigests).sort(([a],[b])=>a.localeCompare(b)),workspaces:[...new Set(workspaceIds)].sort()});}
 export function composeV3ProjectionManifest(input:ProjectionManifestCompositionInput):ProjectionManifest {return {schemaVersion:1,runId:input.run.id,adapterId:currentManifest().id,sessionCount:Object.keys(input.sessionDigests).length,workspaceCount:new Set(input.workspaceIds).size,catalogDigest:catalogDigest(input.sessionDigests,input.workspaceIds),sessionDigests:input.sessionDigests};}
@@ -30,7 +40,7 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
  const sessionDigests:Record<string,string>={};
  for(const workspace of input.workspaces)await output.writeWorkspace(workspace.id,{schemaVersion:1,id:workspace.id,parentId:workspace.parentId,name:workspace.name,sortKey:workspace.sortKey,deletedAt:workspace.deletedAt});
  for(const item of input.sessions) {
-  const nativeId=rc1NativeSessionId(item.session.id), createdAt=Date.parse(item.session.createdAt);count(createdAt,"createdAt");
+  const nativeId=v3EndpointSessionId(item,input.run), createdAt=Date.parse(item.session.createdAt);count(createdAt,"createdAt");
   let base:Record<string,JsonValue>={schemaVersion:1,logicalSessionId:item.session.id,baseVersionId:item.session.headVersionId,projectId:item.projectId??null,projectTitle:item.projectName??null,workspaceId:item.workspaceId,updatedAt:item.session.updatedAt,title:item.session.title,tags:[...item.session.tags],archivedAt:item.session.archivedAt??null,canonicalHistoryMode:"native"};
   const firstV3=item.events.findIndex(e=>e.extensions.nativeFormatVersion===3), prefix=firstV3<0?item.events:item.events.slice(0,firstV3), tail=firstV3<0?[]:item.events.slice(firstV3);
   if(tail.some(e=>e.extensions.nativeFormatVersion!==3))throw new TypeError("Mixed format epochs must be contiguous");
@@ -66,6 +76,20 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
     data:{title:item.session.title,messageSeqs:[],source:{kind:"user"}}});
   }
   const all=[...nativePrefix,...tail.map(e=>{if(!isRecord(e.extensions.nativeProjectionEvent ?? e.rawPayload))throw new TypeError("V3 event evidence is unavailable");return (e.extensions.nativeProjectionEvent ?? e.rawPayload) as unknown as SessionFormatEvent;})];
+  const projectionTitles = item.events[0]?.extensions.nativeProjectionTitles;
+  if (firstV3 === 0 && Array.isArray(projectionTitles)) {
+   for (const value of projectionTitles) {
+    const event = record(value), data = record(event.data);
+    if (event.type !== 'session/title' || record(data.source).kind !== 'user' || !Array.isArray(data.messageSeqs) || data.messageSeqs.length)
+     throw new TypeError('Invalid generated projection title');
+    if (all.some(row => row.seq === event.seq)) throw new TypeError('Projection title overlaps canonical event');
+    all.push(event as unknown as SessionFormatEvent);
+   }
+   all.sort((a,b)=>a.seq-b.seq);
+  }
+  if (String(input.run.id).startsWith('write-back-') && item.session.title.trim() && item.session.title !== nativeId
+    && v3TitleProjection(all, all.length - 1).title !== item.session.title) all.push({ type: 'session/title', seq: all.length,
+      time: Date.parse(item.session.updatedAt), data: { title: item.session.title, messageSeqs: [], source: { kind: 'user' } } });
   const artifact=validateV3({header:converted?.artifact.header??header,events:all,inheritedEventCount:converted?.artifact.inheritedEventCount??count(cut)});
   const titleProjection=v3TitleProjection(artifact.events,artifact.events.length-1);
   const legacyAliases=[...new Set(item.events.map(e=>e.source.sessionId).filter(id=>id!==nativeId))];

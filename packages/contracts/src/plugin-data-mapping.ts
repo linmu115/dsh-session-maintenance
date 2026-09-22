@@ -16,6 +16,8 @@ export interface PluginDataMappingAdapter {
   capture?(target: PluginDataTarget): Promise<readonly PluginDataRecord[]>;
   /** The adapter talks to its own live plugin. Configuration alone is not a handshake. */
   handshake(dataType: string): Promise<boolean>;
+  /** Check conflicts under the adapter write barrier before any host file is changed. */
+  validate?(record: PluginDataRecord, target: PluginDataTarget): Promise<void>;
   /** Idempotent by target + recordId. The adapter chooses where its plugin consumes the data. */
   restore(record: PluginDataRecord, target: PluginDataTarget): Promise<PluginDataPlacement>;
   /** Read through the plugin's normal reader after host persistence completes. */

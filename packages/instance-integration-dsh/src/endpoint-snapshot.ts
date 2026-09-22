@@ -83,10 +83,12 @@ export async function readEndpointSnapshot(input: {
   const now = new Date().toISOString();
   const titleEvent = [...actual.events].reverse().find(value => typeof value === 'object' && value !== null
     && (value as { type?: string }).type === 'session/title') as { data?: { title?: unknown } } | undefined;
-  const title = typeof titleEvent?.data?.title === 'string' ? titleEvent.data.title : existing?.session.title ?? input.nativeSessionId;
+  const observedTitle = typeof titleEvent?.data?.title === 'string' ? titleEvent.data.title : existing?.session.title ?? input.nativeSessionId;
   const archived = state.global.archivedSessionIds.includes(input.nativeSessionId);
   return { logicalSessionId: input.logicalSessionId, baseVersionId: existing?.session.headVersionId ?? null,
-    events: [...baseEvents, ...appended], title, tags: existing?.session.tags ?? [],
-    archivedAt: archived ? existing?.session.archivedAt ?? now : null,
-    workspaceId: folder.workspaceId as LogicalWorkspaceId, observedAt: now };
+    // Before the startup alignment, discovery may advance a verified native prefix
+    // and capture plugin data, but must not erase offline Maintenance edits.
+    events: [...baseEvents, ...appended], title: input.originalOnly && existing ? existing.session.title : observedTitle, tags: existing?.session.tags ?? [],
+    archivedAt: input.originalOnly && existing ? existing.session.archivedAt : archived ? existing?.session.archivedAt ?? now : null,
+    workspaceId: input.originalOnly && existing ? existing.workspaceId : folder.workspaceId as LogicalWorkspaceId, observedAt: now };
 }

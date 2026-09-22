@@ -1,3 +1,4 @@
+import { HostWriteBarrier } from '@linmu/dsh-instance-integration-dsh/host-write-barrier';
 import { retryExtensionConnect } from './retry-extension-connect.js';
 import { GraphDataAdapter } from './graph-data-adapter.js';
 import { registerMaintenanceBusinessPages } from "./business-pages.js";
@@ -29,6 +30,7 @@ import { createLynnAdapter } from '@linmu/dsh-session-adapter-lynn/runtime';
 import { createGptMappingAdapter } from '@linmu/dsh-session-extension-gpt-compat';
 import { createHash } from 'node:crypto';
 import { identityDeclaration } from "./instance-identity.js";
+import { readHostSession } from './host-session-reader.js';
 import { startTakeoverPolling } from "./takeover.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
 import { launchDashboard } from "./dashboard-launcher.js";
@@ -80,6 +82,16 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
   // both must not publish a lease or claim a takeover ticket; it still loads and runs, because
   // refusing to take part in a takeover is not a reason to refuse to work.
   const identity = identityDeclaration(config.dshInstanceId, config.profileId);
+  // Install synchronously, before startup attestation / page registration yields to
+  // WebUI restores. Every resumed owner must retain its original close capability.
+  let earlyBarrier: HostWriteBarrier | undefined;
+  if (identity.declared) {
+    try {
+      earlyBarrier = new HostWriteBarrier(ctx as never);
+      const owned = earlyBarrier;
+      ctx.effect(() => () => owned.dispose(), 'maintenance: early host admission');
+    } catch { /* Unsupported hosts remain unavailable for write-back. */ }
+  }
   const descriptorPath = connectionDescriptorPath(config.connectionId);
   const launchProfile = await (async () => {
     try { const profile = launcherProjectionProfile(config); await assertRegisteredStartup(config, descriptorPath, profile !== null); return profile; }
@@ -134,19 +146,20 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
         stateRoot, ...(stateRoot === undefined ? {} : { stateRoot }), report });
       if (publisher !== null && stateRoot !== undefined) {
         let sync: ReturnType<typeof createHostWorkspaceSync> | undefined;
-        try { sync = createHostWorkspaceSync({ runtime: ctx as never, identity: publisher.identity, stateRoot, connection }); }
+        try { if (!earlyBarrier) throw new Error('SYNC_HOST_UNSUPPORTED');
+          sync = createHostWorkspaceSync({ runtime: ctx as never, identity: publisher.identity, stateRoot, connection, barrier: earlyBarrier }); }
         catch { report('当前宿主未提供完整写入屏障，工作区写回不可用；普通会话继续使用。'); }
         if (sync) {
           const activeSync = sync;
           activeSync.pluginData.register(createLynnAdapter(ctx as never));
           activeSync.pluginData.register(createGptMappingAdapter({ runtime: ctx as never,
-            readSession: async id => await (ctx as any).sessionQuery.readSession(id) }));
+            readSession: async id => readHostSession(ctx.sessionQuery, id) }));
           capturePluginRevision = async sessionId => createHash('sha256').update(JSON.stringify(await activeSync.pluginData.capture({
             endpointId: config.dshInstanceId, sessionId, context: { profileId: config.profileId } }))).digest('hex');
           // Each plugin adapter owns its handshake and registers its opaque-data mapping here.
           (ctx as unknown as Context).provide('maintenancePluginDataMapping' as never, activeSync.pluginData as never);
           const unregisterSync = ctx.webServer.register({ kind: 'prefix', path: '/dsh-session-maintenance/instance/workspace-sync', handler: activeSync.handler });
-          ctx.effect(() => () => { activeSync.dispose(); if (typeof unregisterSync === 'function') unregisterSync(); }, 'maintenance: host write barrier');
+          ctx.effect(() => () => { if (typeof unregisterSync === 'function') unregisterSync(); }, 'maintenance: host write barrier');
         }
         const unregisterLease = ctx.webServer.register({ kind: "prefix", path: "/dsh-session-maintenance/instance/lease",
           handler: createInstanceLeaseHandler({ identity: publisher.identity, publisher }) });
@@ -198,6 +211,8 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
     });
     ctx.effect(() => sessionSync.start(), "dsh-session-maintenance: instance session sync");
     ctx.effect(() => ctx.on('session/flush', session => sessionSync.markDirty(String(session.id))), 'maintenance.sync-flush');
+    // Ordinary turns persist through their writer; they need not emit a control flush.
+    ctx.effect(() => ctx.on('session/event', session => sessionSync.markDirty(String(session.id))), 'maintenance.sync-event');
   }
   if (launchProfile !== null) {
     const transport = new HttpProjectionRuntimeTransport(fetch, async () => {

@@ -44,7 +44,12 @@ it('imports native content, appends, renames, archives and moves through canonic
     projection = { ...projection, sessions: [{ session: current.session, events: head.events, workspaceId: a, projectRoot: cwd, projectId: null, projectName: null }] };
     events.push({ seq: 1, time: Date.parse(at), type: 'session/title', data: { title: 'renamed', messageSeqs: [], source: { kind: 'user' } } });
     await persist(other); await state(true);
-    const next = await read(true); expect(next.events.slice(0, head.events.length)).toEqual(head.events);
+    const discovery = await read(true);
+    expect(discovery.title).toBe(current.session.title);
+    expect(discovery.archivedAt).toBe(current.session.archivedAt);
+    expect(discovery.workspaceId).toBe(a);
+    expect(discovery.events).toHaveLength(2);
+    const next = await read(); expect(next.events.slice(0, head.events.length)).toEqual(head.events);
     const changed = await reconcileEndpointSession(store, next); expect(changed.outcome).toBe('advanced');
     const after = (await store.getSession(logicalSessionId))!;
     expect(after.workspaceId).toBe(b); expect(after.session.title).toBe('renamed'); expect(after.session.archivedAt).not.toBeNull();

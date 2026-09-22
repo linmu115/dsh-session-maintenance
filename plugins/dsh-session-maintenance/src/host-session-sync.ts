@@ -48,6 +48,7 @@ export interface HostSessionSyncOptions {
   readonly intervalMs?: number;
   /** Bound on retained intents, so a host that never becomes reachable cannot grow unbounded. */
   readonly maxPending?: number;
+  readonly maxReportsPerPass?: number;
 }
 
 /** What one pass observed and did. */
@@ -59,12 +60,13 @@ export interface HostSessionSyncPass {
   readonly pending: number;
 }
 
-const DEFAULT_INTERVAL_MS = 30_000;
+const DEFAULT_INTERVAL_MS = 5_000;
 const DEFAULT_MAX_PENDING = 500;
 
 export class HostSessionSync {
   private epoch: string | undefined;
   private readonly dirty = new Set<string>();
+  private readonly retries = new Set<string>();
   private previous: SessionObservation | undefined;
   /** Intent per session, newest wins: the source only needs the state the instance ended at. */
   private readonly pending = new Map<string, SyncIntent & { archived: boolean }>();
@@ -72,11 +74,17 @@ export class HostSessionSync {
   private running: Promise<void> | undefined;
   private disposed = false;
   private reportedFailure = false;
+  private active = false;
+  private readonly revisionFailures = new Set<string>();
 
   constructor(private readonly options: HostSessionSyncOptions) {}
   /** Host flush/event notification. The core never receives host event types. */
   markDirty(sessionId: string): void {
     this.dirty.add(sessionId);
+    // A new turn must not sit behind a complete startup history sweep.
+    if (this.options.trackContent &&
+      (this.pending.has(sessionId) || this.pending.size < (this.options.maxPending ?? DEFAULT_MAX_PENDING)))
+      this.remember({ kind: this.active ? 'refresh' : 'discover', sessionId }, this.previous?.get(sessionId)?.archived === true);
     if (!this.running && !this.disposed) {
       if (this.timer !== undefined) clearTimeout(this.timer);
       this.schedule(200);
@@ -100,17 +108,24 @@ export class HostSessionSync {
     let state: EndpointSyncStatus | undefined;
     if (this.options.syncState) {
       state = await this.options.syncState();
-      if (state.epoch !== this.epoch || state.phase !== 'active') {
-        this.previous = undefined; this.pending.clear(); this.dirty.clear(); this.epoch = state.epoch;
+      const wasActive = this.active;
+      this.active = state.phase === 'active';
+      if (state.epoch !== this.epoch || this.active !== wasActive) {
+        this.previous = undefined; this.pending.clear(); this.retries.clear(); this.epoch = state.epoch;
       }
       if (state.phase !== 'active') {
         // Insert-only discovery cannot change an existing canonical session or infer deletions.
         const current = await this.observe(false);
         let reported = 0, skippedUnmapped = 0;
-        for (const id of current.keys()) {
-          this.remember({ kind: 'discover', sessionId: id }, current.get(id)!.archived);
-          const result = await this.flush(); reported += result.reported; skippedUnmapped += result.skippedUnmapped;
+        for (const id of new Set([...this.dirty, ...current.keys()])) {
+          if (this.previous?.has(id) && !this.dirty.has(id)) continue;
+          if (!this.pending.has(id) && this.pending.size >= (this.options.maxPending ?? DEFAULT_MAX_PENDING)) {
+            const result = await this.flush(); reported += result.reported; skippedUnmapped += result.skippedUnmapped;
+          }
+          this.remember({ kind: 'discover', sessionId: id }, current.get(id)?.archived === true);
         }
+        this.previous = current;
+        const result = await this.flush(); reported += result.reported; skippedUnmapped += result.skippedUnmapped;
         return { observed: current.size, intents: current.size, reported, skippedUnmapped, pending: this.pending.size };
       }
     }
@@ -125,6 +140,7 @@ export class HostSessionSync {
       for (const intent of sessionSyncIntents(previous, current)) {
         if (!this.pending.has(intent.sessionId) && this.pending.size >= (this.options.maxPending ?? DEFAULT_MAX_PENDING)) await flushBatch();
         this.remember(intent, current.get(intent.sessionId)?.archived === true);
+        this.dirty.add(intent.sessionId);
         intentCount += 1;
       }
       if (this.options.trackContent) {
@@ -145,7 +161,6 @@ export class HostSessionSync {
       }
     }
     this.previous = current;
-    this.dirty.clear();
     await flushBatch();
     return { observed: current.size, intents: intentCount, reported, skippedUnmapped, pending: this.pending.size };
   }
@@ -157,7 +172,15 @@ export class HostSessionSync {
     for (const item of await this.options.host.sessionPersistence.list()) {
       const id = String(item.id);
       if (id.length === 0) continue;
-      observed.set(id, { sessionId: id, archived: archived.has(id), ...(this.options.trackContent && includeRevision ? { revision: JSON.stringify([item, await this.options.additionalRevision?.(id)]) } : {}) });
+      let pluginRevision: string | undefined;
+      if (this.options.trackContent && includeRevision) {
+        try { pluginRevision = await this.options.additionalRevision?.(id); this.revisionFailures.delete(id); }
+        catch {
+          if (!this.revisionFailures.has(id)) this.options.onFeedback?.(`[dsh-session-maintenance] 插件快照暂不可读，保留原数据并继续观察其他会话：${id}`);
+          this.revisionFailures.add(id);
+        }
+      }
+      observed.set(id, { sessionId: id, archived: archived.has(id), ...(this.options.trackContent && includeRevision ? { revision: JSON.stringify([item, pluginRevision]) } : {}) });
     }
     return observed;
   }
@@ -176,23 +199,47 @@ export class HostSessionSync {
     if (!(await this.options.engineReady().catch(() => false))) return { reported: 0, skippedUnmapped: 0 };
     let reported = 0;
     let skippedUnmapped = 0;
-    for (const intent of [...this.pending.values()]) {
+    const attempted = new Set<string>();
+    let retried = false;
+    while (!this.disposed && attempted.size < (this.options.maxReportsPerPass ?? 8)) {
+      const candidates = [...this.pending.values()].filter(intent => !attempted.has(intent.sessionId));
+      // Failed old rows cannot monopolize every slot in a bounded batch.
+      const retryId = retried ? undefined : [...this.retries].find(id => candidates.some(intent => intent.sessionId === id));
+      const intent = candidates.find(intent => this.dirty.has(intent.sessionId))
+        ?? candidates.find(intent => intent.sessionId === retryId)
+        ?? candidates.find(intent => !this.retries.has(intent.sessionId));
+      if (!intent) break;
+      if (this.retries.has(intent.sessionId)) retried = true;
+      attempted.add(intent.sessionId);
+      this.dirty.delete(intent.sessionId);
       // Scope first: a session outside the instance's bound workspaces is not this instance's to
       // report, and the Engine would only have to refuse it.
       try {
         // A transient identity error must remain pending. New sessions are scoped by the refresh command.
         if (intent.kind !== 'refresh' && intent.kind !== 'discover' && !(await this.options.mapped(intent.sessionId))) {
-          this.pending.delete(intent.sessionId); skippedUnmapped += 1; continue;
+          this.pending.delete(intent.sessionId); this.retries.delete(intent.sessionId); skippedUnmapped += 1; continue;
         }
         // The push is its own statement on purpose: inside an optional call's argument it would be
         // skipped entirely whenever no feedback sink is configured, and the intent would be counted
         // as sent while never leaving the process.
         const answer = await this.options.report(intent, intent.archived, this.epoch);
-        this.pending.delete(intent.sessionId);
+        // A flush notification may have queued a newer revision during this request.
+        if (this.pending.get(intent.sessionId) === intent) this.pending.delete(intent.sessionId);
+        this.retries.delete(intent.sessionId);
         if (typeof answer !== 'string' && answer.skipped) skippedUnmapped += 1;
         else reported += 1;
         this.options.onFeedback?.(typeof answer === 'string' ? answer : answer.message);
       } catch (error) {
+        this.retries.delete(intent.sessionId); this.retries.add(intent.sessionId);
+        if (this.options.syncState) {
+          const latest = await this.options.syncState().catch(() => undefined);
+          if (latest && latest.epoch !== this.epoch) {
+            // Abort the obsolete sweep instead of sending every remaining row with
+            // a rejected epoch. Keep the failed and newly queued changes first.
+            for (const id of this.pending.keys()) this.dirty.add(id);
+            throw error;
+          }
+        }
         if (!this.reportedFailure) {
           this.reportedFailure = true;
           this.options.onFeedback?.(`[dsh-session-maintenance] 实例侧变更暂未回传真源，将自动重试：${error instanceof Error ? error.message : String(error)}`);
@@ -221,7 +268,8 @@ export class HostSessionSync {
       }
     }).finally(() => {
       this.running = undefined;
-      this.schedule(this.options.intervalMs ?? DEFAULT_INTERVAL_MS);
+      const freshPending = [...this.pending.keys()].some(id => !this.retries.has(id));
+      this.schedule(this.dirty.size || freshPending ? 200 : this.options.intervalMs ?? DEFAULT_INTERVAL_MS);
     });
     return this.running;
   }

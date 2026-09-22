@@ -23,6 +23,24 @@ function host(options: { stored?: readonly string[]; archived?: readonly string[
 
 const ready = async () => true;
 
+it('prioritizes a live turn during the startup sweep and retains another flush arriving during its request', async () => {
+  const fake = host({ stored: ['old-a', 'old-b', 'new-turn'] }), pushed: string[] = [];
+  let again = true;
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true, trackContent: true,
+    syncState: async () => ({ epoch: 'epoch', phase: 'active', policyRevision: 1 }),
+    report: async intent => {
+      pushed.push(intent.sessionId);
+      if (intent.sessionId === 'old-a') sync.markDirty('new-turn');
+      if (intent.sessionId === 'new-turn' && again) { again = false; sync.markDirty('new-turn'); }
+      return 'ok';
+    } });
+  expect((await sync.pass()).pending).toBe(1);
+  expect(pushed).toEqual(['old-a', 'new-turn', 'old-b']);
+  await sync.pass();
+  expect(pushed).toEqual(['old-a', 'new-turn', 'old-b', 'new-turn']);
+  sync.dispose();
+});
+
 it('reports a plugin-only edit even when the native conversation log does not change', async () => {
   const fake = host({ stored: ['session-a'] }), pushed: string[] = [];
   let revision = 'before';
@@ -146,4 +164,94 @@ it('discovers newly created sessions while alignment is blocked, without sending
   expect(intents).toEqual(['discover:old', 'discover:new']);
   phase = 'active'; await sync.pass();
   expect(intents.at(-1)).toBe('refresh:new'); expect(intents.some(item => item.startsWith('delete:'))).toBe(false);
+});
+it('prioritizes dirty sessions during blocked startup discovery instead of the old corpus', async () => {
+  const fake = host({ stored: ['old-1', 'old-2', 'recent'] });
+  const pushed: string[] = [];
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true, trackContent: true,
+    syncState: async () => ({ epoch: 'new-epoch', policyRevision: 1, phase: 'blocked' }),
+    report: async intent => { pushed.push(intent.kind + ':' + intent.sessionId); return 'ok'; } });
+  sync.markDirty('recent');
+  try { await sync.pass(); expect(pushed[0]).toBe('discover:recent'); }
+  finally { sync.dispose(); }
+});
+
+it('abandons a stale discovery sweep and retries its dirty session in the new epoch', async () => {
+  const fake = host({ stored: ['recent', 'old-1', 'old-2'] });
+  let epoch = 'before'; const sent: string[] = [];
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true, trackContent: true,
+    syncState: async () => ({ epoch, policyRevision: 1, phase: 'blocked' }),
+    report: async (intent, _archived, observedEpoch) => {
+      sent.push(observedEpoch + ':' + intent.sessionId);
+      if (epoch === 'before') { epoch = 'after'; throw new Error('stale epoch'); } return 'ok';
+    } });
+  try {
+    await expect(sync.pass()).rejects.toThrow('stale epoch');
+    expect(sent).toEqual(['before:recent']);
+    await sync.pass(); expect(sent[1]).toBe('after:recent');
+  } finally { sync.dispose(); }
+});
+
+it('retries a just-flushed session before the rest of a bounded startup sweep', async () => {
+  const fake = host({ stored: ['recent', 'old-1', 'old-2', 'old-3'] });
+  const sent: string[] = []; let unstable = true;
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true,
+    trackContent: true, maxReportsPerPass: 2,
+    syncState: async () => ({ epoch: 'same', policyRevision: 1, phase: 'blocked' }),
+    report: async intent => { sent.push(intent.sessionId); if (intent.sessionId === 'recent' && unstable) throw new Error('not flushed'); return 'ok'; } });
+  try {
+    sync.markDirty('recent');
+    expect((await sync.pass()).pending).toBe(3);
+    unstable = false;
+    await sync.pass(); await sync.pass();
+    expect(sent).toEqual(['recent', 'old-1', 'recent', 'old-2', 'old-3']);
+  } finally { sync.dispose(); }
+});
+
+it('keeps ordinary changes flowing when another session cannot supply a plugin revision', async () => {
+  const fake = host({ stored: ['damaged-plugin', 'recent'] }); const sent: string[] = [];
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true, trackContent: true,
+    syncState: async () => ({ epoch: 'same', policyRevision: 1, phase: 'active' }),
+    additionalRevision: async id => { if (id === 'damaged-plugin') throw new Error('plugin cannot read old log'); return 'plugin-v1'; },
+    report: async intent => { sent.push(intent.sessionId); return 'ok'; } });
+  try { await sync.pass(); sent.length = 0; sync.markDirty('recent'); await sync.pass(); expect(sent).toEqual(['recent']); }
+  finally { sync.dispose(); }
+});
+
+it('does not starve new edits behind a full batch of permanently rejected historical rows', async () => {
+  const old = Array.from({ length: 10 }, (_, index) => `old-${index}`), fake = host({ stored: old });
+  const sent: string[] = [];
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true, trackContent: true,
+    syncState: async () => ({ epoch: 'same', policyRevision: 1, phase: 'active' }),
+    report: async intent => { sent.push(intent.sessionId); if (intent.sessionId.startsWith('old-')) throw new Error('old prefix refused'); return 'ok'; } });
+  try {
+    await sync.pass(); sent.length = 0; fake.setStored([...old, 'new']); sync.markDirty('new');
+    await sync.pass(); expect(sent[0]).toBe('new'); expect(sent).toContain('old-8'); expect(sent).toContain('old-9');
+  } finally { sync.dispose(); }
+});
+
+it('prioritizes an archive observation over an unfinished initial history sweep', async () => {
+  const old = Array.from({ length: 20 }, (_, index) => `old-${index}`), fake = host({ stored: [...old, 'archived-now'] });
+  const sent: Array<{ id: string; archived: boolean }> = [];
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true, trackContent: true,
+    maxReportsPerPass: 2, syncState: async () => ({ epoch: 'same', policyRevision: 1, phase: 'active' }),
+    report: async (intent, archived) => { sent.push({ id: intent.sessionId, archived }); return 'ok'; } });
+  try {
+    await sync.pass(); sent.length = 0; fake.setArchived(['archived-now']);
+    await sync.pass(); expect(sent[0]).toEqual({ id: 'archived-now', archived: true });
+  } finally { sync.dispose(); }
+});
+
+it('backs off failed history retries while allowing a new notification to wake the queue', async () => {
+  vi.useFakeTimers();
+  const fake = host({ stored: ['old'] }); const sent: string[] = [];
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true, trackContent: true,
+    syncState: async () => ({ epoch: 'same', policyRevision: 1, phase: 'active' }),
+    report: async intent => { sent.push(intent.sessionId); if (intent.sessionId === 'old') throw new Error('bad historical prefix'); return 'ok'; } });
+  const stop = sync.start();
+  try {
+    await vi.advanceTimersByTimeAsync(1000); expect(sent).toEqual(['old']);
+    fake.setStored(['old', 'new']); sync.markDirty('new');
+    await vi.advanceTimersByTimeAsync(200); expect(sent[1]).toBe('new');
+  } finally { stop(); vi.useRealTimers(); }
 });

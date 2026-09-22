@@ -55,6 +55,31 @@ const sync: WorkspaceSyncConfiguration = {
 };
 
 describe("reading-first dashboard behavior", () => {
+  it('updates the directory and selected conversation after sync while preserving search and selection', async () => {
+    let current = directory;
+    let title = '第一条';
+    const getCanonicalSession = vi.fn(async (id: string) => detail(id, title));
+    const api = { listCanonicalWorkspaces: async () => current, getCanonicalSession } as unknown as DashboardApi;
+    await render(<DashboardApp api={api} />);
+    await click(container.querySelector('.workspace-folder-row')!);
+    await click(container.querySelector('[data-testid="canonical-session-one"]')!);
+    const search = container.querySelector('.workspace-search input') as HTMLInputElement;
+    await input(search, '第一');
+    vi.useFakeTimers();
+    // Re-mount starts the polling timer under the fake clock.
+    await render(<DashboardApp key="poll-test" api={api} initialLogicalSessionId="one" />);
+    await input(container.querySelector('.workspace-search input') as HTMLInputElement, '第一');
+    title = '第一条已续写';
+    current = { ...directory, workspaces: directory.workspaces.map(entry => ({ ...entry, sessions: entry.sessions.map(row => row.session.id === 'one'
+      ? { ...row, session: { ...row.session, title, updatedAt: '2026-09-06T00:01:00.000Z' } } : row) })) };
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(container.querySelector('[aria-label="会话阅读"] h2')?.textContent).toBe(title);
+    expect((container.querySelector('.workspace-search input') as HTMLInputElement).value).toBe('第一');
+    const reads = getCanonicalSession.mock.calls.length;
+    await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+    expect(getCanonicalSession).toHaveBeenCalledTimes(reads);
+    vi.useRealTimers();
+  });
   it("opens the compact workspace drawer and closes it after choosing a readable session", async () => {
     await render(<DashboardApp api={{ listCanonicalWorkspaces: async () => directory, getCanonicalSession: async (id: string) => detail(id) } as unknown as DashboardApi} />);
     const toggle = container.querySelector<HTMLButtonElement>(".workspace-panel-toggle");

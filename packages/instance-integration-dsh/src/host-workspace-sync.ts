@@ -4,7 +4,7 @@ import { promisify } from 'node:util';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { IntegrationError, hostWorkspaceSyncSchema, hostWorkspaceSyncReceiptSchema, pluginDataRecordSchema, type PluginDataRecord, type HostWorkspaceSyncRequest } from '@linmu/dsh-session-contracts';
-import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
+import { v3EndpointSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import { inspectInstanceLease } from './instance-lease.js';
 import { readDeclaredProfileIdentity } from './profile-identity.js';
 import { writeBackRunIdentity, type InstanceWriteBackOptions, type InstanceWriteBackRequest } from './instance-write-back.js';
@@ -68,7 +68,7 @@ export async function synchronizeThroughHost(options: InstanceWriteBackOptions &
   const selected = (workspaceId: string | null) => selection.selection.kind === 'all' || (workspaceId === null
     ? selection.selection.includeUnassigned : selection.selection.workspaceIds.includes(workspaceId));
   const scoped = { ...projection, sessions: projection.sessions.filter(item => selected(item.workspaceId)) };
-  for (const item of scoped.sessions) await options.bindIdentity?.(String(v3NativeSessionId(item.session.id)), item.session.id, true);
+  for (const item of scoped.sessions) await options.bindIdentity?.(String(v3EndpointSessionId(item, scoped.run)), item.session.id, true);
   const body: HostWorkspaceSyncRequest = { schemaVersion: 1, operationId: randomUUID(), instanceId: request.instanceId, profileId: request.profileId,
     homeRoot: request.instanceHome, pid: processIdentity.pid, processStartedAt: processIdentity.startedAt,
     workspaceRoot: options.workspaceRoot, projection: scoped,
@@ -85,8 +85,8 @@ export async function synchronizeThroughHost(options: InstanceWriteBackOptions &
     authorization: `Bearer ${descriptor.token}`, 'content-type': 'application/json', ...(compressed ? { 'content-encoding': 'gzip' } : {}) }, body: payload, signal: AbortSignal.timeout(120_000), redirect: 'error' });
   if (!response.ok) {
     const detail = await response.json().catch(() => ({})) as { reason?: unknown; stage?: unknown };
-    const stage = typeof detail.stage === 'string' && ['identity', 'recovery', 'inspect', 'refresh', 'drain', 'materialize', 'lock', 'write', 'plugin-restore'].includes(detail.stage) ? `，阶段 ${detail.stage}` : '';
-    const reason = typeof detail.reason === 'string' && /^(?:SYNC_HOST_[A-Z_]+|HOST_[A-Z_]+|DSH_BUSY|LYNN_BUSY)$/.test(detail.reason) ? detail.reason : 'HOST_SYNC_INCOMPLETE';
+    const stage = typeof detail.stage === 'string' && ['identity', 'recovery', 'inspect', 'refresh', 'drain', 'materialize', 'lock', 'plugin-validate', 'write', 'plugin-restore'].includes(detail.stage) ? `，阶段 ${detail.stage}` : '';
+    const reason = typeof detail.reason === 'string' && /^(?:SYNC_HOST_[A-Z_]+|HOST_[A-Z_]+|DSH_BUSY|LYNN_BUSY|LYNN_CHANGED_DURING_SYNC)$/.test(detail.reason) ? detail.reason : 'HOST_SYNC_INCOMPLETE';
     const hint = response.status === 413 ? '本次对齐数据超过宿主接收上限，需要更新宿主 adapter 或缩小单次传输。'
       : reason === 'DSH_BUSY' ? '目标会话仍被宿主占用，已保留原文件，稍后自动重试。'
       : reason === 'SYNC_HOST_CHANGED_DURING_DRAIN' ? '落盘期间会话发生变化，已停止回写，稍后重试。' : '宿主对齐未完成，将自动重试。';
@@ -98,7 +98,7 @@ export async function synchronizeThroughHost(options: InstanceWriteBackOptions &
   if (result.schemaVersion !== 1 || result.operationId !== body.operationId || result.instanceId !== body.instanceId || result.profileId !== body.profileId
     || result.pid !== body.pid || result.processStartedAt !== body.processStartedAt || !Array.isArray(result.bindings) || !result.summary)
     throw new IntegrationError('SYNC_HOST_RECEIPT_MISMATCH', '宿主回执与当前操作身份不符。');
-  const expected = new Map(scoped.sessions.map(item => [String(v3NativeSessionId(item.session.id)), String(item.session.id)]));
+  const expected = new Map(scoped.sessions.map(item => [String(v3EndpointSessionId(item, scoped.run)), String(item.session.id)]));
   const seen = new Set<string>();
   for (const binding of result.bindings) {
     if (seen.has(binding.nativeSessionId) || expected.get(binding.nativeSessionId) !== binding.logicalSessionId)

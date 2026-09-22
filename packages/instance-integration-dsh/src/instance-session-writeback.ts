@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { CanonicalProjectionInput, JsonValue, NativeSessionId, ProjectionWriter } from '@linmu/dsh-session-contracts';
-import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
+import { v3EndpointSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import { adapter } from '@linmu/dsh-session-extension-gpt-compat';
 import {
   applyNativeOverwrite, planNativeOverwrite, readArchiveMarker,
@@ -124,15 +124,15 @@ export async function writeBackProjectionToInstance(input: WriteBackInput): Prom
   // is tied back to the canonical session it came from through the adapter's own
   // rule rather than a mapping invented here.
   const sessions: NativeOverwriteSession[] = materialized.flatMap(item => {
-    const canonical = admitted.find(session => String(v3NativeSessionId(session.session.id)) === item.nativeSessionId);
+    const canonical = admitted.find(session => String(v3EndpointSessionId(session, input.projection.run)) === item.nativeSessionId);
     if (canonical === undefined) return [];
     return [{ nativeSessionId: item.nativeSessionId, payload: item.payload,
       revision: sessionRevision(item.payload),
       archived: input.archived({ id: canonical.session.id, archivedAt: canonical.session.archivedAt ?? null }) }];
   });
-  const identities = admitted.filter(item => sessions.some(s => s.nativeSessionId === String(v3NativeSessionId(item.session.id))));
+  const identities = admitted.filter(item => sessions.some(s => s.nativeSessionId === String(v3EndpointSessionId(item, input.projection.run))));
   const commit = async () => {
-  for (const item of identities) await input.bindIdentity?.(String(v3NativeSessionId(item.session.id)), String(item.session.id), true);
+  for (const item of identities) await input.bindIdentity?.(String(v3EndpointSessionId(item, input.projection.run)), String(item.session.id), true);
   const { nativeSessionTarget } = await import('./native-session-overwrite.js');
   const state = await readNativeOverwriteState({ stateRoot: input.stateRoot, instanceId: input.instanceId, sessions,
     relativePathFor: session => nativeSessionTarget(session)?.relativePath ?? null });
@@ -154,7 +154,7 @@ export async function writeBackProjectionToInstance(input: WriteBackInput): Prom
     duplicates: observed.copies, codec: input.codec ?? adapter.nativeSessionCodec });
   // Also repair already-materialized identities. A successful unchanged pass is valid evidence.
   for (const item of identities) {
-    const nativeId = String(v3NativeSessionId(item.session.id));
+    const nativeId = String(v3EndpointSessionId(item, input.projection.run));
     await saveEndpointProjection(input.stateRoot, input.instanceId, nativeId, item.events, sessions.find(session => session.nativeSessionId === nativeId)!.payload);
     await input.bindIdentity?.(nativeId, String(item.session.id), false);
   }

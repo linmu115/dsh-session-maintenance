@@ -78,6 +78,10 @@ export function createLynnAdapter(host: LynnHost): PluginDataMappingAdapter {
     const destination = item.dataType === 'core/session' ? { ...target, context: { ...obj(target.context), profileId: host.get('annotationCore').store.options.profileId } } : target;
     const source = item.dataType === 'core/session' && envelope.payload ? { ...origin, profileId: envelope.payload.profileId } : origin;
     const value = relocate(envelope.payload, source, destination, item.dataType === 'dag/extensions');
+    // Core's schema supplies these empty maps when loading older aggregates.
+    // Normalize only its declared defaults at the destination; retain the captured packet verbatim.
+    if (item.dataType === 'core/session' && value) for (const key of
+      ['pendingDiscardJobs', 'committedDeleteJobs', 'deletedReferences', 'restoredGraphReferences']) value[key] ??= {};
     if (item.dataType.endsWith('/extensions')) for (const row of value) {
       if (row.namespace === 'thoughtdag') {
         row.objectId = `graph-${createHash('sha256').update(target.sessionId).digest('hex')}`;
@@ -102,8 +106,20 @@ export function createLynnAdapter(host: LynnHost): PluginDataMappingAdapter {
     }
     return value;
   };
+  const validate = async (item: PluginDataRecord, target: PluginDataTarget) => {
+    const value = mapped(item, target);
+      const envelope = obj(item.value), origin = obj(envelope.origin);
+      if (origin.endpointId === target.endpointId && origin.sessionId === target.sessionId) {
+        const current = await read(item.dataType, target);
+        if (item.dataType === 'core/session' && current) for (const key of
+          ['pendingDiscardJobs', 'committedDeleteJobs', 'deletedReferences', 'restoredGraphReferences']) current[key] ??= {};
+        if (!isDeepStrictEqual(current, envelope.payload) && !isDeepStrictEqual(current, value))
+          { console.warn('[Lynn adapter] conflicting plugin record', JSON.stringify({ sessionId: target.sessionId, dataType: item.dataType, changedFields: [...new Set([...Object.keys(current ?? {}), ...Object.keys(value ?? {})])].filter(key => !isDeepStrictEqual(current?.[key], value?.[key])) }));
+          throw new Error('LYNN_CHANGED_DURING_SYNC: plugin data changed since capture'); }
+      }
+  };
   return {
-    namespace: 'lynn', handshake: async type => available(type),
+    namespace: 'lynn', validate, handshake: async type => available(type),
     withAccess: (targets, work) => gate.exclusive(targets.map(target => target.sessionId), async () => {
       // Include writes admitted before this adapter was loaded, not only intercepted calls.
       const core = host.get('annotationCore')?.store, stickers = host.get('stickerBoard')?.localStore;
@@ -137,12 +153,7 @@ export function createLynnAdapter(host: LynnHost): PluginDataMappingAdapter {
     },
     restore: async (item, target) => {
       const value = mapped(item, target);
-      const envelope = obj(item.value), origin = obj(envelope.origin);
-      if (origin.endpointId === target.endpointId && origin.sessionId === target.sessionId) {
-        const current = await read(item.dataType, target);
-        if (!isDeepStrictEqual(current, envelope.payload) && !isDeepStrictEqual(current, value))
-          throw new Error('LYNN_CHANGED_DURING_SYNC: plugin data changed since capture');
-      }
+      await validate(item, target);
       if (item.dataType === 'core/session') {
         const store = host.get('annotationCore').store, key = `${store.options.profileId}:${target.sessionId}`;
         if (value === null) await store.table.delete(key); else if (store.table.get(key)) await store.table.update(key, () => value); else await store.table.put(key, value);

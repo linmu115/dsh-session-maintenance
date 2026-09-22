@@ -8,7 +8,7 @@ import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
 import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import type { HostWorkspaceSyncRequest, LogicalSessionId } from '@linmu/dsh-session-contracts';
-import { createHostWorkspaceSync, decodeHostSyncPayload } from '../src/host-workspace-sync.js';
+import { createHostWorkspaceSync, decodeHostSyncPayload, pluginIdentityContext } from '../src/host-workspace-sync.js';
 import { readEndpointSnapshot } from '@linmu/dsh-instance-integration-dsh/endpoint-snapshot';
 const at = '2026-09-22T01:00:00.000Z';
 async function fixture() {
@@ -23,8 +23,11 @@ async function fixture() {
   const live = new Map(), cache = new Map(), read = async (id: string) => { const handle = await storage.open(id, 'read'); try { return await handle.read(); } finally { await handle.close(); } };
   const runtime = { sessionPersistence: storage, sessions: { get: (id: string) => live.get(id), prepare: (id: string) => ({ id }), enter: (s: any) => live.set(s.id, s), flush: async () => true },
     workspaceRegistry: { get state() { return state; }, enqueueOperation: async (work: () => Promise<void>) => work(), setState: async (next: typeof state) => { state = next; await persist(); },
+      indexHeader: async (_header: any) => {},
       create: async (_path: string) => ({ attachSession: async (_id: string) => {} }) },
-    storageDomain: { get: () => ({ table: () => ({ delete: async (id: string) => { cache.delete(id); } }) }) }, sessionQuery: { readSession: read } };
+    sessionProjectionCache: { hydratePrepared: () => {}, write: async (session: any) => { cache.set(session.id, true); } },
+    storageDomain: { get: () => ({ table: () => ({ get: (id: string) => cache.get(id), delete: async (id: string) => { cache.delete(id); } }) }) }, sessionQuery: {
+      observeSession: async (id: string) => { const value = await read(id); return { ...value, header: (await storage.stat(id)).header, inheritedEventCount: 0, [Symbol.dispose]() {} }; } } };
   const identity = { instanceId: 'synthetic-instance', profileId: 'web', homeRoot, pid: process.pid, processStartedAt: at, runtimeUrl: null };
   const sync = createHostWorkspaceSync({ runtime, identity, stateRoot: join(root, 'maintenance'), connection: { current: async () => ({ origin: 'http://127.0.0.1:1', token: 'synthetic-secret-'.repeat(3) }) }, timeoutMs: 10 });
   const request = { schemaVersion: 1, operationId: 'operation-one', ...identity, workspaceRoot: join(root, 'workspaces'),
@@ -54,17 +57,57 @@ it('writes under the official kernel lock, restores archive state, reads through
 });
 it('recovers a failed refresh before a retry skips already-written sessions', async () => {
   const f = await fixture();
-  const original = f.runtime.sessionQuery.readSession;
+  const original = f.runtime.sessionQuery.observeSession;
   let broken = true, reads = 0;
-  f.runtime.sessionQuery.readSession = async id => { reads++; if (broken) throw new Error('cache refresh failed'); return original(id); };
+  f.runtime.sessionQuery.observeSession = async id => { reads++; if (broken) throw new Error('cache refresh failed'); return original(id); };
   try {
-    await expect(f.sync.apply(f.body)).rejects.toThrow('cache refresh failed');
+    await expect(f.sync.apply(f.body)).rejects.toMatchObject({ message: 'SYNC_HOST_REFRESH_REPLAY_FAILED', cause: { message: 'cache refresh failed' } });
     broken = false;
     const next = await f.sync.apply({ ...f.body, operationId: 'recovery-retry' });
     expect(next.summary.failures).toEqual([]); expect(next.summary.unchanged).toBe(1);
     expect(reads).toBeGreaterThan(1);
     const writer = await f.storage.open(f.nativeId, 'write'); await writer.close();
   } finally { broken = false; await f.cleanup(); }
+});
+
+it('keeps the original native identity on its owning endpoint across alignment and archive restoration', async () => {
+  const f = await fixture();
+  try {
+    const originalId = 'session-native-owner';
+    const session = f.body.projection.sessions[0]!;
+    const body = { ...f.body, projection: { ...f.body.projection,
+      run: { ...f.body.projection.run, id: `write-back-${f.body.instanceId}` },
+      sessions: [{ ...session, events: session.events.map(event => ({ ...event, source: { ...event.source, sessionId: originalId } })) }] } } as HostWorkspaceSyncRequest;
+    const receipt = await f.sync.apply(body);
+    expect(receipt.bindings).toEqual([{ nativeSessionId: originalId, logicalSessionId: session.session.id }]);
+    expect((await f.storage.list()).map((row: any) => row.header.id)).toEqual([originalId]);
+    expect((await f.sync.apply(body)).summary.written).toBe(0);
+    const renamed = { ...body, projection: { ...body.projection, sessions: body.projection.sessions.map(item => ({ ...item,
+      session: { ...item.session, title: 'Maintenance renamed' } })) } };
+    await f.sync.apply(renamed);
+    expect((await f.read(originalId)).events.at(-1).data.title).toBe('Maintenance renamed');
+    const writer = await f.storage.open(originalId, 'write');
+    const beforeAppend = (await f.read(originalId)).events;
+    await writer.append([{ seq: beforeAppend.length, time: Date.parse(at) + 2, type: 'user/message', surfaceOp: 'append',
+      data: { id: 'after-rename', role: 'user', content: [{ type: 'text', text: 'continued after Maintenance rename' }], source: { kind: 'user' } } }]);
+    await writer.flush(); await writer.close();
+    const snapshot = await readEndpointSnapshot({ homeRoot: f.body.homeRoot, endpointId: f.body.instanceId,
+      nativeSessionId: originalId, logicalSessionId: session.session.id, projection: renamed.projection,
+      stateRoot: join(f.root, 'maintenance'), workspaceRoot: f.body.workspaceRoot,
+      folders: [{ workspaceId: 'w', path: join(f.body.workspaceRoot, 'Synthetic') }] });
+    const continued = { ...renamed, projection: { ...renamed.projection, sessions: [{ ...renamed.projection.sessions[0]!, events: snapshot.events }] } };
+    expect((await f.sync.apply(continued)).summary.failures).toEqual([]);
+    expect((await f.read(originalId)).events.map((event: any) => event.seq)).toEqual([0, 1, 2, 3]);
+    expect((await f.read(originalId)).events.at(-1).data.id).toBe('after-rename');
+    // Archive changes must use the latest complete canonical revision.
+    body.projection = continued.projection;
+    const archived = { ...body, projection: { ...body.projection, sessions: body.projection.sessions.map(item => ({ ...item, session: { ...item.session, archivedAt: at } })) } };
+    await f.sync.apply(archived);
+    expect(f.runtime.workspaceRegistry.state.archivedSessionIds).toContain(originalId);
+    await f.sync.apply(body);
+    expect(f.runtime.workspaceRegistry.state.archivedSessionIds).not.toContain(originalId);
+    expect((await f.storage.list()).map((row: any) => row.header.id)).toEqual([originalId]);
+  } finally { await f.cleanup(); }
 });
 it('respects an existing kernel lock and succeeds after its owner releases it', async () => {
   const f = await fixture(); let lock: { release(): Promise<void> } | undefined;
@@ -186,5 +229,84 @@ it('acknowledges an exact unchanged live session without waiting for it to detac
       data: { id: 'after-check', role: 'user', content: [{ type: 'text', text: 'still writable' }], source: { kind: 'user' } } }]);
     await writer.flush(); await writer.close(); f.live.delete(f.nativeId);
     expect((await f.read(f.nativeId)).events).toHaveLength(2);
+  } finally { await f.cleanup(); }
+});
+
+it('bounds plugin identity context by sessions for a long multi-turn history', async () => {
+  const f = await fixture();
+  try {
+    const item = f.body.projection.sessions[0]!, event = item.events[0]!;
+    const projection = { ...f.body.projection, sessions: [{ ...item,
+      events: Array.from({ length: 20000 }, (_, sequence) => ({ ...event, sequence })) }] };
+    const context = pluginIdentityContext(projection);
+    expect(context.identities).toEqual([{ endpointId: event.source.instanceId, sourceSessionId: event.source.sessionId, targetSessionId: f.nativeId }]);
+    expect(context.sessions).toHaveLength(1);
+  } finally { await f.cleanup(); }
+});
+it('checks plugin conflicts before changing any native session bytes', async () => {
+  const f = await fixture();
+  try {
+    await f.sync.apply(f.body);
+    const before = await f.read(f.nativeId);
+    let blocked = true, writes = 0;
+    f.sync.pluginData.register({ namespace: 'fixture-plugin', handshake: async () => true,
+      validate: async () => { if (blocked) throw new Error('PLUGIN_SOURCE_CONFLICT'); },
+      restore: async record => { writes++; return { kind: 'plugin-storage', receiptId: record.recordId }; },
+      verify: async () => true });
+    const item = f.body.projection.sessions[0]!;
+    const request = { ...f.body, projection: { ...f.body.projection, sessions: [{ ...item,
+      session: { ...item.session, title: 'Changed title' },
+      pluginData: [{ namespace: 'fixture-plugin', dataType: 'fixture', recordId: '1', value: { changed: true } }] }] } };
+    await expect(f.sync.apply(request)).rejects.toThrow('PLUGIN_SOURCE_CONFLICT');
+    expect(await f.read(f.nativeId)).toEqual(before); expect(writes).toBe(0);
+    blocked = false;
+    expect((await f.sync.apply(request)).summary.failures).toEqual([]);
+    expect(writes).toBe(1);
+  } finally { await f.cleanup(); }
+});
+
+it('does not mistake query-only interrupted-turn closers for a persisted runtime tail', async () => {
+  const f = await fixture();
+  try {
+    await f.sync.apply(f.body);
+    const original = f.runtime.sessionQuery.observeSession;
+    f.runtime.sessionQuery.observeSession = async id => {
+      const value = await original(id);
+      return { ...value, events: [...value.events, { seq: value.events.length, time: Date.parse(at), type: 'turn/end', data: {} }] };
+    };
+    (f.body.projection.sessions[0]!.session as any).archivedAt = at;
+    expect((await f.sync.apply(f.body)).summary.failures).toEqual([]);
+    expect((await f.read(f.nativeId)).events).toHaveLength(1);
+  } finally { await f.cleanup(); }
+});
+
+it('refreshes the RC2 workspace header index before attaching a moved session', async () => {
+  const f = await fixture(), headers = new Map<string, string>();
+  f.runtime.workspaceRegistry.indexHeader = async header => { headers.set(header.id, header.cwd); };
+  f.runtime.workspaceRegistry.create = async path => ({ attachSession: async id => { expect(headers.get(id)).toBe(path); } });
+  try {
+    await f.sync.apply(f.body);
+    const previous = headers.get(f.nativeId);
+    const moved = { ...f.body, workspaceNames: [['moved', 'Moved']],
+      selection: { revision: 2, selection: { kind: 'ids', workspaceIds: ['moved'], includeUnassigned: false } },
+      projection: { ...f.body.projection, sessions: f.body.projection.sessions.map(item => ({ ...item, workspaceId: 'moved',
+        projectRoot: join(f.body.workspaceRoot, 'Moved') })) } } as HostWorkspaceSyncRequest;
+    expect((await f.sync.apply(moved)).summary.failures).toEqual([]);
+    expect(headers.get(f.nativeId)).not.toBe(previous);
+    expect(headers.get(f.nativeId)).toBe((await f.storage.stat(f.nativeId)).header.cwd);
+  } finally { await f.cleanup(); }
+});
+
+it('preserves a persisted runtime tail that predates the alignment request', async () => {
+  const f = await fixture();
+  try {
+    await f.sync.apply(f.body);
+    const writer = await f.storage.open(f.nativeId, 'write');
+    await writer.append([{ seq: 1, time: Date.parse(at) + 1, type: 'user/message', surfaceOp: 'append',
+      data: { id: 'new-tail', role: 'user', content: [{ type: 'text', text: 'must survive restart' }], source: { kind: 'user' } } }]);
+    await writer.flush(); await writer.close();
+    const before = await f.read(f.nativeId);
+    await expect(f.sync.apply(f.body)).rejects.toThrow('SYNC_HOST_NATIVE_AHEAD');
+    expect(await f.read(f.nativeId)).toEqual(before);
   } finally { await f.cleanup(); }
 });

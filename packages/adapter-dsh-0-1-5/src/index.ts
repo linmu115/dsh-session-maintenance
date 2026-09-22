@@ -27,6 +27,7 @@ export { filterNativePluginData, remapProjectedAppend } from './filter-plugin-da
 export { manifest } from "./manifest.js";
 export {
   v3NativeSessionId,
+  v3EndpointSessionId,
   v3ProjectedNativeRevision,
   composeV3ProjectionManifest,
   materializeV3,

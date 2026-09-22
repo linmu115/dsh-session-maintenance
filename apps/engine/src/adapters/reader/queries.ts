@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { DatabaseSync } from "node:sqlite";
-import { readStoredReaderPresentation, READER_METADATA_COLUMNS, READER_EVENT_TEXT_SQL, type ReaderStoredMetadata } from "@linmu/dsh-session-adapter-0-1-5";
+import { readStoredReaderPresentation, READER_METADATA_COLUMNS, READER_EVENT_TEXT_SQL, READER_EVENT_SOURCE_SQL, type ReaderStoredMetadata } from "@linmu/dsh-session-adapter-0-1-5";
 import type { ReaderEventPage, ReaderEventQuery, ReaderMessage, ReaderProcessItem, ReaderProcessKind, ReaderProcessPage, ReaderProcessQuery, ReaderTurn, SessionReaderPage, SessionReaderQuery } from "@linmu/dsh-session-contracts";
 
 export class SessionReaderError extends Error {
@@ -12,7 +12,7 @@ interface TurnIndex { id: string; ordinal: number; start: number; end: number; u
 
 // Only scalar attribution fields cross the SQLite boundary. Neither source.sections
 // nor tool arguments/results nor the complete canonical JSON enter a list response.
-const META = `SELECT ${READER_METADATA_COLUMNS} FROM canonical_events WHERE logical_session_id = ?`;
+const META = `SELECT ${READER_METADATA_COLUMNS} FROM ${READER_EVENT_SOURCE_SQL} WHERE logical_session_id = ?`;
 
 function classify(row: Meta, sessionId: string): Classified {
   return { ...row, presentation: readStoredReaderPresentation(row, sessionId) };
@@ -78,7 +78,7 @@ export class SessionReaderQueries {
     const format = query.format ?? "text";
     const expression = format === "raw" ? "event_json" : READER_EVENT_TEXT_SQL;
     const row = this.database.prepare(`SELECT length(body) AS total, substr(body,?,?) AS text FROM
-      (SELECT ${expression} AS body FROM canonical_events WHERE logical_session_id=? AND id=?)`).get(offset + 1, limit, sessionId, eventId) as { total: number; text: string } | undefined;
+      (SELECT ${expression} AS body FROM ${READER_EVENT_SOURCE_SQL} WHERE logical_session_id=? AND id=?)`).get(offset + 1, limit, sessionId, eventId) as { total: number; text: string } | undefined;
     if (!row) throw new SessionReaderError(404, "READER_EVENT_NOT_FOUND", "该记录不存在。");
     if (offset > row.total) throw new SessionReaderError(400, "READER_RANGE", "读取位置超出记录末尾。");
     return { schemaVersion: 1, snapshot, eventId, format, text: row.text, offset, totalChars: row.total,

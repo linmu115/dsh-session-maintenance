@@ -1,6 +1,19 @@
 import type { CanonicalEventV1 } from "@linmu/dsh-session-contracts";
 import { readDshReaderPresentation } from "./reader-presentation.js";
 
+/** Earlier workspace imports preserved the native row but left content empty.
+ * Repair only the read view; immutable history, digests and projection proofs stay intact.
+ */
+export const READER_EVENT_SOURCE_SQL = `(SELECT *, CASE
+ WHEN json_extract(event_json,'$.source.platform')='dsh'
+ AND json_extract(event_json,'$.extensions.nativeFormatVersion')=3
+ AND json_type(event_json,'$.content')='object' AND json_extract(event_json,'$.content')='{}'
+ AND json_type(event_json,'$.rawPayload.data')='object'
+ AND json_type(event_json,'$.rawPayload.type')='text'
+ THEN json_set(event_json,'$.content',json_extract(event_json,'$.rawPayload.data'),
+ '$.extensions.dshEventType',json_extract(event_json,'$.rawPayload.type'))
+ ELSE event_json END AS reader_event_json FROM canonical_events)`;
+
 /** Scalar SQLite projection of this adapter's native message envelope. */
 export interface ReaderStoredMetadata {
   id: string; sequence: number; kind: CanonicalEventV1["kind"]; role: CanonicalEventV1["role"];
@@ -31,7 +44,7 @@ export const READER_METADATA_COLUMNS = `id, sequence, kind,
    OR (json_type(event_json,'$.content.text')='text' AND length(json_extract(event_json,'$.content.text'))>0)
    OR EXISTS (SELECT 1 FROM json_each(event_json,'$.content.message.content') WHERE type='object' AND json_extract(value,'$.type') IN ('text','input_text','output_text') AND length(json_extract(value,'$.text'))>0)
    OR EXISTS (SELECT 1 FROM json_each(event_json,'$.content.content') WHERE type='object' AND json_extract(value,'$.type') IN ('text','input_text','output_text') AND length(json_extract(value,'$.text'))>0)
- END AS has_text`;
+ END AS has_text`.replaceAll('event_json', 'reader_event_json');
 
 export function readStoredReaderPresentation(row: ReaderStoredMetadata, sessionId: string) {
   const source = { kind: row.source_kind, plugin: row.source_plugin, ...(row.source_form === null ? {} : { form: row.source_form }),
@@ -52,4 +65,4 @@ export const READER_EVENT_TEXT_SQL = `COALESCE(
  CASE WHEN json_type(event_json,'$.content.text')='text' THEN json_extract(event_json,'$.content.text') END,
  CASE WHEN json_type(event_json,'$.content.outputText')='text' THEN json_extract(event_json,'$.content.outputText') END,
  ${blocks("$.content.message.content")}, ${blocks("$.content.content")},
- json_extract(event_json,'$.content'), '')`;
+ json_extract(event_json,'$.content'), '')`.replaceAll('event_json', 'reader_event_json');

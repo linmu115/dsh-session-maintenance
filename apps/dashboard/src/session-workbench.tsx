@@ -47,13 +47,13 @@ export function SessionWorkbench(props: {
   readonly api: WorkbenchApi;
   readonly logicalSessionId: string;
   readonly onOpenSession: (id: string) => void;
-  readonly refreshKey?: number;
+  readonly refreshKey?: number | string;
 }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     const controller = new AbortController();
-    setState({ kind: "loading" });
+    setState(previous => previous.kind === 'ready' && previous.value.canonical.session.id === props.logicalSessionId ? previous : { kind: "loading" });
     void loadWorkbenchInitial(props.api, props.logicalSessionId, controller.signal).then(
       (value) => { if (!controller.signal.aborted) setState({ kind: "ready", value }); },
       (error: unknown) => {

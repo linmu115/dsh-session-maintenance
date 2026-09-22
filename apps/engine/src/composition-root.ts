@@ -25,6 +25,7 @@ import { IntegrationError } from './integrations/bindings.js';
 import { createWorkspaceSourceForHome, dshSessionBinding, projectedLogicalSessionId } from '@linmu/dsh-instance-integration-dsh/instance-workspace-source';
 import { ensurePlatformSessionBinding } from './platform-session-binding.js';
 import { commitEndpointSessionChange } from './endpoint-session-commands.js';
+import { v3EndpointSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import { mapJoinedWorkspace, mappedLogicalSessionId } from './workspace-session-mapping.js';
 import { createWorkspaceFolderAdapter, rememberJoinedWorkspace } from '@linmu/dsh-instance-integration-dsh/workspace-folders';
 
@@ -364,6 +365,13 @@ async function createComposition(
         return logicalSessionId;
       };
       return commitEndpointSessionChange({ endpointId, command,
+      acceptsIdentity: async (id, sessionId, logicalSessionId) => {
+        if (projectedLogicalSessionId(sessionId) === undefined) return true;
+        const snapshot = await canonicalProjectionSource.loadSessions(writeBackRunIdentity(id, command.profileId), [logicalSessionId as never]);
+        const item = snapshot.sessions.find(row => row.session.id === logicalSessionId);
+        // A legacy mirror of an endpoint's own original must not overwrite its archive/delete state.
+        return item === undefined || String(v3EndpointSessionId(item, snapshot.run)) === sessionId;
+      },
       resolve: async (id, sessionId) => {
         const projected = projectedLogicalSessionId(sessionId);
         if (projected !== undefined) {

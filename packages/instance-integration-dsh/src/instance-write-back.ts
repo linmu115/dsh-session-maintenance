@@ -3,7 +3,7 @@ import { basename, join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import type { CanonicalProjectionInput, LogicalWorkspaceId, ProjectionRun } from '@linmu/dsh-session-contracts';
 import { adapter, gptCompatExtensionAdapter, filterNativePluginData } from '@linmu/dsh-session-extension-gpt-compat';
-import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
+import { v3EndpointSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import type { PluginDataMappingSession } from '@linmu/dsh-session-adapter-host';
 import type { WorkspaceWriteBackSummary as InstanceWriteBackSummary } from '@linmu/dsh-session-contracts';
 import { sessionRevision, writeBackProjectionToInstance } from './instance-session-writeback.js';
@@ -11,7 +11,7 @@ import { readWorkspaceMappings, saveWorkspaceMappings } from './workspace-mappin
 import { IntegrationError } from '@linmu/dsh-session-contracts';
 import { observeNativeSessionCopies } from './native-session-observation.js';
 import { nativeSessionTarget } from './native-session-overwrite.js';
-import { saveEndpointProjection } from './projection-receipt.js';
+import { saveEndpointProjection, readEndpointProjection, projectionSourceDigest } from './projection-receipt.js';
 
 /**
  * True-source → instance: put a selected workspace's sessions back into the instance.
@@ -214,7 +214,7 @@ async function writeBackWithAccess(options: InstanceWriteBackOptions, request: I
   const projection = await options.loadProjection(writeBackRunIdentity(request.instanceId, request.profileId));
   const archived = await readArchivedSessions(request.instanceHome);
   const archiveChanges = projection.sessions.filter(item => selected(item.workspaceId)).map(item => ({
-    nativeSessionId: String(v3NativeSessionId(item.session.id)), archived: item.session.archivedAt !== null,
+    nativeSessionId: String(v3EndpointSessionId(item, projection.run)), archived: item.session.archivedAt !== null,
   })).filter(item => archived.has(item.nativeSessionId) !== item.archived);
   if (archiveChanges.length > 0 && !options.synchronizeArchived) throw new IntegrationError('SYNC_HOST_ARCHIVE_UNAVAILABLE',
     '宿主 adapter 尚未提供归档状态恢复协议，对齐未执行。');
@@ -245,7 +245,7 @@ async function writeBackWithAccess(options: InstanceWriteBackOptions, request: I
     inScope: session => selected(memberships.get(session.id) ?? null),
     archived: session => session.archivedAt !== null,
     journal: async entry => { journal.push(JSON.stringify({ at: new Date().toISOString(), instanceId: request.instanceId, ...entry })); },
-    materialize: createAdapterMaterializer(failures, folderFor, options.pluginData),
+    materialize: createAdapterMaterializer(failures, folderFor, options.pluginData, options.stateRoot),
     codec: adapter.nativeSessionCodec,
   });
   if (journal.length > 0) {
@@ -279,14 +279,28 @@ async function writeBackWithAccess(options: InstanceWriteBackOptions, request: I
  * the host resolves a session's `cwd` and requires it to equal the registered workspace path, which
  * is the folder we just created for the bucket.
  */
-export function createAdapterMaterializer(failures: WriteBackFailures = [], folders: ReadonlyMap<string, string> = new Map(), pluginData?: PluginDataMappingSession):
+export function createAdapterMaterializer(failures: WriteBackFailures = [], folders: ReadonlyMap<string, string> = new Map(), pluginData?: PluginDataMappingSession, stateRoot?: string):
 (input: CanonicalProjectionInput) => Promise<readonly { readonly nativeSessionId: string; readonly payload: never }[]> {
   return async input => {
     const captured = new Map<string, unknown>();
     for (const session of input.sessions) {
       const folder = session.workspaceId === null ? undefined : folders.get(String(session.workspaceId));
-      const projected = folder === undefined ? session : { ...session, projectRoot: folder };
+      let projected = folder === undefined ? session : { ...session, projectRoot: folder };
       try {
+        // Generated title rows belong to the endpoint projection, not the
+        // immutable canonical source. Retain their positions across later appends.
+        const receipt = stateRoot ? await readEndpointProjection(stateRoot, input.run.instanceId, String(v3EndpointSessionId(session, input.run))) : undefined;
+        if (receipt && session.events.every(event => event.extensions.nativeFormatVersion === 3)) {
+          if (projectionSourceDigest(session.events.slice(0, receipt.sourceCount)) !== receipt.sourceDigest) throw new Error('SYNC_PROJECTION_SOURCE_CHANGED');
+          const occupied = new Set(session.events.map(event => ((event.extensions.nativeProjectionEvent ?? event.rawPayload) as { seq?: number })?.seq));
+          const titles = receipt.nativeEvents.flatMap((raw, index) => {
+            const event = raw as { type?: string; data?: { source?: { kind?: string } } };
+            const seq = receipt.nativeToSource[index]!;
+            return event.type === 'session/title' && event.data?.source?.kind === 'user' && !occupied.has(seq) ? [{ ...(raw as object), seq }] : [];
+          });
+          if (titles.length && projected.events[0]) projected = { ...projected, events: projected.events.map((event, index) => index ? event : {
+            ...event, extensions: { ...event.extensions, nativeProjectionTitles: titles as never } }) };
+        }
         await adapter.materialize({ ...input, sessions: [projected] }, {
           writeWorkspace: async () => undefined,
           writeSession: async (nativeSessionId: string, payload: unknown) => {
@@ -327,17 +341,17 @@ export async function resolveInstanceWorkspaceFolders(input: FolderInspection): 
 /** Read-only evidence: matching bytes, archive state and unique location require no host write lease. */
 export async function inspectUnchangedInstanceSessions(input: FolderInspection): Promise<ReadonlyMap<string, () => Promise<void>>> {
   const folders = await resolveInstanceWorkspaceFolders(input);
-  const materialized = await createAdapterMaterializer([], new Map(folders.map(folder => [folder.workspaceId, folder.path])))(input.projection);
+  const materialized = await createAdapterMaterializer([], new Map(folders.map(folder => [folder.workspaceId, folder.path])), undefined, input.stateRoot)(input.projection);
   const archived = await readArchivedSessions(input.instanceHome);
   const sessions = materialized.map(item => ({ ...item, revision: sessionRevision(item.payload),
-    archived: input.projection.sessions.find(row => String(v3NativeSessionId(row.session.id)) === item.nativeSessionId)!.session.archivedAt !== null }));
+    archived: input.projection.sessions.find(row => String(v3EndpointSessionId(row, input.projection.run)) === item.nativeSessionId)!.session.archivedAt !== null }));
   const observed = await observeNativeSessionCopies({ sessionsRoot: join(input.instanceHome, 'sessions'), sessions, codec: adapter.nativeSessionCodec });
   const matching = new Map<string, () => Promise<void>>();
   for (const session of sessions) {
     const target = nativeSessionTarget(session);
     if (!target || !observed.matching.has(target.relativePath) || observed.copies.has(target.relativePath)
       || archived.has(session.nativeSessionId) !== session.archived) continue;
-    const source = input.projection.sessions.find(row => String(v3NativeSessionId(row.session.id)) === session.nativeSessionId)!;
+    const source = input.projection.sessions.find(row => String(v3EndpointSessionId(row, input.projection.run)) === session.nativeSessionId)!;
     matching.set(session.nativeSessionId, () => saveEndpointProjection(input.stateRoot, input.instanceId, session.nativeSessionId, source.events, session.payload));
   }
   return matching;

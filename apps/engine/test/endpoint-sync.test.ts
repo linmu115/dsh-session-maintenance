@@ -104,6 +104,13 @@ it('discovery never updates an existing binding, even when selected', async () =
     .resolves.toMatchObject({ outcome: 'already-present' });
   expect(refresh).not.toHaveBeenCalled();
 });
+it.each(['archive', 'delete', 'refresh', 'discover'] as const)('does not let a superseded endpoint identity %s the authoritative session', async kind => {
+  const update = vi.fn(), remove = vi.fn(), refresh = vi.fn(), refreshDiscovered = vi.fn();
+  await expect(commitEndpointSessionChange({ endpointId: 'endpoint', command: { ...command('epoch'), change: kind === 'archive' ? { kind, archived: true } : { kind } },
+    resolve: async () => 'logical-one', selected: () => true, acceptsIdentity: async () => false,
+    update, remove, refresh, refreshDiscovered })).resolves.toMatchObject({ outcome: 'out-of-scope' });
+  for (const operation of [update, remove, refresh, refreshDiscovered]) expect(operation).not.toHaveBeenCalled();
+});
 
 it('lets an adapter refresh a proven original session while keeping projected discovery insert-only', async () => {
   const update = vi.fn(), remove = vi.fn(), refresh = vi.fn();

@@ -58,7 +58,7 @@ export function DashboardApp(props: { readonly api: DashboardApi; readonly initi
     <NavButton active={view === "settings"} icon={Settings2} onClick={() => setView("settings")}>设置</NavButton>
   </>} actions={<><DashboardAppearanceControl /><div className="dashboard-refresh"><Button ariaLabel="刷新" onClick={() => setRequest((value) => value + 1)}><RefreshCw size={14} aria-hidden="true" /><span>刷新</span></Button></div></>}>
     <div hidden={view !== "sessions"}>
-      <SessionReader api={props.api} refreshKey={request + restoredRevision} selectedSessionId={selectedSessionId} onOpenSession={openSession} />
+      <SessionReader api={props.api} active={view === 'sessions'} refreshKey={request + restoredRevision} selectedSessionId={selectedSessionId} onOpenSession={openSession} />
     </div>
     <Suspense fallback={<Surface><LoadingState label="正在读取…" /></Surface>}>
       {view === "learning" ? <LearningPage key={request} api={props.api} /> : null}

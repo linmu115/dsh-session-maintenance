@@ -31,6 +31,10 @@ export class PluginDataMappingSession {
   private retained = 0;
   get counts() { return { restored: this.restored, retained: this.retained }; }
   constructor(private readonly find: (namespace: string) => PluginDataMappingAdapter | undefined) {}
+  async validate(record: PluginDataRecord, target: PluginDataTarget): Promise<void> {
+    const adapter = this.find(record.namespace);
+    if (adapter && await adapter.handshake(record.dataType)) await adapter.validate?.(structuredClone(record), structuredClone(target));
+  }
   async map(record: PluginDataRecord, target: PluginDataTarget) {
     const adapter = this.find(record.namespace);
     if (!adapter || !await adapter.handshake(record.dataType)) { this.retained++; return { status: 'retained-only' as const }; }

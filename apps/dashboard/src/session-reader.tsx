@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useId, useState } from "react";
+import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 import { ChevronDown, FolderOpen } from "lucide-react";
 import type { CanonicalWorkspaceDirectory } from "@linmu/dsh-session-contracts";
 import { Button, EmptyState, LoadingState, Surface } from "@linmu/dsh-session-ui";
@@ -6,11 +6,12 @@ import { WorkspaceDirectory } from "./workspace-directory.js";
 import type { WorkbenchApi } from "./session-workbench.js";
 const SessionWorkbench = lazy(async () => ({ default: (await import("./session-workbench.js")).SessionWorkbench }));
 
-export function SessionReader({ api, refreshKey, selectedSessionId, onOpenSession }: {
+export function SessionReader({ api, refreshKey, selectedSessionId, onOpenSession, active = true }: {
   readonly api: WorkbenchApi;
   readonly refreshKey: number;
   readonly selectedSessionId: string | undefined;
   readonly onOpenSession: (id: string) => void;
+  readonly active?: boolean;
 }) {
   const [directory, setDirectory] = useState<CanonicalWorkspaceDirectory>();
   const [error, setError] = useState<string>();
@@ -18,17 +19,29 @@ export function SessionReader({ api, refreshKey, selectedSessionId, onOpenSessio
   const [loading, setLoading] = useState(true);
   const [directoryOpen, setDirectoryOpen] = useState(false);
   const directoryId = useId();
+  const activeRef = useRef(active); activeRef.current = active;
   const openSession = (id: string) => { setDirectoryOpen(false); onOpenSession(id); };
   useEffect(() => {
     const controller = new AbortController();
     setError(undefined); setLoading(true);
-    void api.listCanonicalWorkspaces(controller.signal).then((value) => {
-      if (!controller.signal.aborted) { setDirectory(value); setLoading(false); }
-    }, (reason: unknown) => {
-      if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "无法读取工作区"); setLoading(false); }
-    });
-    return () => controller.abort();
+    let running = false;
+    const load = async () => {
+      if (running) return;
+      running = true;
+      try {
+        const value = await api.listCanonicalWorkspaces(controller.signal);
+        if (!controller.signal.aborted) { setDirectory(value); setLoading(false); setError(undefined); }
+      } catch (reason) {
+        if (!controller.signal.aborted) { setError(reason instanceof Error ? reason.message : "无法读取工作区"); setLoading(false); }
+      } finally { running = false; }
+    };
+    void load();
+    const timer = setInterval(() => { if (activeRef.current && document.visibilityState !== 'hidden') void load(); }, 5000);
+    return () => { controller.abort(); clearInterval(timer); };
   }, [api, refreshKey, retry]);
+  const selectedEntry = [...(directory?.workspaces.flatMap(entry => entry.sessions) ?? []), ...(directory?.unclassified ?? [])]
+    .find(entry => entry.session.id === selectedSessionId);
+  const selectedRevision = JSON.stringify([refreshKey, selectedEntry?.session, selectedEntry?.membership]);
   const selectedWorkspace = directory?.workspaces.find((entry) => entry.sessions.some(({ session }) => session.id === selectedSessionId))?.workspace.name;
   return <div className="session-reading-layout">
       <aside className="session-directory-pane" aria-label="工作区与会话" data-open={directoryOpen}>
@@ -46,7 +59,7 @@ export function SessionReader({ api, refreshKey, selectedSessionId, onOpenSessio
         </div>
       </aside>
       <section className="session-reading-pane" aria-label="会话阅读">
-        {selectedSessionId === undefined ? <Surface><EmptyState title="选择一个会话，开始阅读" description="左侧按工作区收纳会话，也可以搜索标题。这里只展示已保存的内容。" /></Surface> : <Suspense fallback={<Surface><LoadingState label="正在打开会话…" /></Surface>}><SessionWorkbench api={api} logicalSessionId={selectedSessionId} refreshKey={refreshKey} onOpenSession={onOpenSession} /></Suspense>}
+        {selectedSessionId === undefined ? <Surface><EmptyState title="选择一个会话，开始阅读" description="左侧按工作区收纳会话，也可以搜索标题。这里只展示已保存的内容。" /></Surface> : <Suspense fallback={<Surface><LoadingState label="正在打开会话…" /></Surface>}><SessionWorkbench key={selectedSessionId} api={api} logicalSessionId={selectedSessionId} refreshKey={selectedRevision} onOpenSession={onOpenSession} /></Suspense>}
       </section>
     </div>;
 }
