@@ -337,14 +337,19 @@ export class RestrictedEngineProxy {
       const value = await this.engine("/v1/ui/launch-code", "POST", {}) as { launch: { url: string } };
       return { ok: true, message: "已打开会话维护看板", url: value.launch.url };
     }
-    const sessionId = safeId(input.sessionId, "sessionId");
     if (input.operation === "workspace-folders") {
       // The Engine created the mapped folders; the instance is the side that can register them as
       // its own workspaces. The paths come from the Engine's records, never from the caller.
+      //
+      // This branch carries no session: it is the instance asking which folders it owns, so it must
+      // stay *above* the `sessionId` requirement below. Reading the id first made the branch
+      // unreachable and the automatic registration silently impossible.
       const value = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/workspace-folders`) as { folders?: { folders?: readonly { name: string; path: string; sessions?: readonly string[] }[] } };
       const folders = value.folders?.folders ?? [];
       return { ok: true, message: `已读取 ${folders.length} 个映射工作区`, folders };
-    }    if (input.operation === "session-mapped") {
+    }
+    const sessionId = safeId(input.sessionId, "sessionId");
+    if (input.operation === "session-mapped") {
       // "Does this instance own that session?" — asked before any instance-side change is pushed, so
       // a session in a workspace this instance never mapped is never offered to the source.
       const resolution = await this.resolve(instanceId, sessionId);

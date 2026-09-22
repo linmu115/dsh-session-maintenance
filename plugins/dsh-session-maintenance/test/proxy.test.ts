@@ -68,6 +68,24 @@ describe("restricted Engine proxy", () => {
     await expect(proxy.invoke({ operation: "delete-session", sessionId: "native-1" })).rejects.toThrow("匹配的真源删除回执");
   });
 
+  it("answers the session-less workspace-folders operation, which the instance asks on every boot", async () => {
+    // The defect this pins: the branch sat *below* the `sessionId` requirement, so the call always
+    // threw before reaching the Engine and the instance could never learn which folders to register.
+    const provider: EngineConnectionProvider = { current: async () => ({ origin: "http://127.0.0.1:43123", token: "x".repeat(43) }) };
+    const requested: string[] = [];
+    const proxy = new RestrictedEngineProxy(config, provider, async (input) => {
+      requested.push(new URL(String(input)).pathname);
+      return new Response(JSON.stringify({ folders: { schemaVersion: 1, instanceId: "dsh-fixture", folders: [
+        { name: "计算机四大", path: "D:\\DSHworkplace\\计算机四大", sessions: ["dsh-maintenance_one"] },
+      ] } }));
+    });
+    const result = await proxy.invoke({ operation: "workspace-folders" });
+    expect(requested).toEqual(["/v1/instances/dsh-fixture/workspace-folders"]);
+    expect(result.folders).toEqual([{ name: "计算机四大", path: "D:\\DSHworkplace\\计算机四大", sessions: ["dsh-maintenance_one"] }]);
+    // An operation that really does name a session still refuses to work without one.
+    await expect(proxy.invoke({ operation: "session-mapped" })).rejects.toThrow("sessionId");
+  });
+
   it("forwards stable references through the same-origin proxy without exposing the Engine token", async () => {
     const token = "r".repeat(43);
     const provider: EngineConnectionProvider = { current: async () => ({ origin: "http://127.0.0.1:43123", token }) };
