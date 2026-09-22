@@ -14,6 +14,7 @@ export type ProxyOperation =
   | "status"
   | "sync-status"
   | "refresh-session"
+  | "discover-session"
   | "reference:resolve"
   | "resolve"
   | "scan-current"
@@ -209,7 +210,7 @@ function assertRequest(value: unknown): ProxyRequest {
   ]);
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("请求包含未允许字段");
   const operations: readonly ProxyOperation[] = [
-    "identity", "status", "sync-status", "refresh-session", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
+    "identity", "status", "sync-status", "refresh-session", "discover-session", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
     "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "set-archived", "session-mapped", "workspace-folders", "settings:get", "settings:patch", "join-workspace",
   ];
   if (!operations.includes(record.operation as ProxyOperation)) throw new TypeError("未知维护操作");
@@ -371,15 +372,16 @@ export class RestrictedEngineProxy {
       const mapped = status === "available" || status === "mapping-pending" || status === 'offline';
       return { ok: true, message: mapped ? "此会话属于本实例的维护范围" : "此会话不在本实例已勾选的维护工作区内", mapped };
     }
-    if (input.operation === 'set-archived' || input.operation === 'refresh-session' || input.operation === 'delete-session' && (this.projectionRunId === undefined || input.epoch !== undefined)) {
+    if (input.operation === 'set-archived' || input.operation === 'refresh-session' || input.operation === 'discover-session' || input.operation === 'delete-session' && (this.projectionRunId === undefined || input.epoch !== undefined)) {
       const epoch = input.epoch ?? (await this.invoke({ operation: 'sync-status' })).sync!.epoch;
       const change = input.operation === 'set-archived' ? { kind: 'archive', archived: input.archived === true }
-        : { kind: input.operation === 'refresh-session' ? 'refresh' : 'delete' };
+        : { kind: input.operation === 'refresh-session' ? 'refresh' : input.operation === 'discover-session' ? 'discover' : 'delete' };
       const value = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/sync-changes`, 'POST', {
         profileId: this.config.profileId, epoch, sessionId, change,
       }) as { receipt: EndpointSyncReceipt };
       const receipt = value.receipt;
       if (receipt?.epoch === epoch && receipt.outcome === 'out-of-scope') return { ok: true, code: 'not-synced', message: '此会话不在同步范围，未改动真源' };
+      if (receipt?.epoch === epoch && receipt.outcome === 'already-present') return { ok: true, code: 'not-synced', message: '此会话已在真源，待已有会话对齐后同步变化' };
       if (!receipt || receipt.epoch !== epoch || typeof receipt.logicalSessionId !== 'string') throw new Error('同步回执身份不匹配');
       if (change.kind === 'delete') {
         if (!['deleted', 'pending-delete'].includes(receipt.outcome) || !Number.isSafeInteger(receipt.pendingOperations)) throw new Error('删除回执不匹配');

@@ -68,3 +68,19 @@ it('keeps the old recovery and full scope after release fails, before admitting 
   expect(release).toHaveBeenCalledTimes(3);
   expect(f.runtime.sessions.prepare('two')).toEqual({ id: 'two' }); f.barrier.dispose();
 });
+
+it('drains host flush callbacks before taking plugin admission, then retains it through refresh and release', async () => {
+  const f = fixture(); f.live.set('one', { id: 'one' }); let protectedScope = false;
+  f.runtime.sessions.flush = async () => { expect(protectedScope).toBe(false); f.trace.push('flush-plugin-write'); f.live.delete('one'); return true; };
+  await f.barrier.withAccess(['one'], async () => { expect(protectedScope).toBe(true); },
+    async () => { expect(protectedScope).toBe(true); }, async () => { expect(protectedScope).toBe(true); },
+    async work => { protectedScope = true; try { return await work(); } finally { protectedScope = false; } });
+  expect(f.trace).toContain('flush-plugin-write'); expect(protectedScope).toBe(false); f.barrier.dispose();
+});
+it('does not quarantine plugins when host drain failed before any mutation', async () => {
+  const f = fixture(2); f.live.set('one', { id: 'one' }); const pluginAccess = vi.fn(async work => work());
+  await expect(f.barrier.withAccess(['one'], async () => {}, async () => {}, async () => {}, pluginAccess)).rejects.toThrow('DSH_BUSY');
+  expect(pluginAccess).not.toHaveBeenCalled(); f.live.delete('one');
+  await f.barrier.withAccess(['one'], async () => {}, async () => {}, async () => {}, pluginAccess);
+  expect(pluginAccess).toHaveBeenCalledTimes(1); f.barrier.dispose();
+});

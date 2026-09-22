@@ -69,3 +69,50 @@ it('binds stored sessions idempotently without resetting their common version', 
   expect(repository.bindPlatformSession).toHaveBeenCalledTimes(1);
   await expect(ensurePlatformSessionBinding({ ...input, logicalSessionId: 'different', checkOnly: true })).rejects.toMatchObject({ code: 'IDENTITY_CONFLICT' });
 });
+
+it('admits insert-only discovery during a blocked or slow alignment, while preserving stale-epoch and destructive-write guards', async () => {
+  let finish!: () => void;
+  const aligned = new Promise<void>(resolve => { finish = resolve; });
+  const commit = vi.fn(async () => ({ logicalSessionId: 'new', outcome: 'updated' as const }));
+  const f = new EndpointSyncCoordinator({ exclusive: work => work(), revision: () => 1,
+    align: async () => { await aligned; return { written: 0, unchanged: 0, skippedOutOfScope: 0, failures: ['busy'] }; }, commit });
+  const job = f.align('one'); await Promise.resolve();
+  const epoch = f.status('one').epoch;
+  await expect(f.commit('one', { ...command(epoch), change: { kind: 'discover' } })).resolves.toMatchObject({ outcome: 'updated' });
+  await expect(f.commit('one', command(epoch))).rejects.toMatchObject({ code: 'SYNC_NOT_ALIGNED' });
+  finish(); await job;
+  await expect(f.commit('one', { ...command('stale'), change: { kind: 'discover' } })).rejects.toMatchObject({ code: 'SYNC_STALE_EPOCH' });
+  expect(f.progress('one')).toMatchObject({ phase: 'blocked', failures: ['busy'] });
+  await f.close();
+});
+it('coalesces a save during alignment into the newest revision and drains background work at shutdown', async () => {
+  let revision = 1, release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const revisions: number[] = [];
+  const f = new EndpointSyncCoordinator({ exclusive: work => work(), revision: () => revision,
+    align: async () => { revisions.push(revision); if (revisions.length === 1) await gate; return { written: 0, unchanged: 0, skippedOutOfScope: 0, failures: [] }; },
+    commit: async () => ({ logicalSessionId: 'one', outcome: 'updated' }) });
+  const pending = f.align('one'); await Promise.resolve(); revision = 2; f.requestAlignment('one');
+  release(); await pending;
+  expect(revisions).toEqual([1, 2]); expect(f.status('one')).toMatchObject({ phase: 'active', policyRevision: 2 });
+  await f.close(); f.requestAlignment('one'); expect(revisions).toHaveLength(2);
+});
+it('discovery never updates an existing binding, even when selected', async () => {
+  const refresh = vi.fn();
+  await expect(commitEndpointSessionChange({ endpointId: 'one', command: { ...command('e'), change: { kind: 'discover' } },
+    resolve: async () => 'existing', selected: () => true, update: vi.fn(), remove: vi.fn(), refresh }))
+    .resolves.toMatchObject({ outcome: 'already-present' });
+  expect(refresh).not.toHaveBeenCalled();
+});
+
+it('publishes the queued epoch synchronously so the poll response remains valid when discovery arrives', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const f = new EndpointSyncCoordinator({ exclusive: work => work(), revision: () => 1,
+    align: async () => { await gate; return { written: 0, unchanged: 0, skippedOutOfScope: 0, failures: ['busy'] }; },
+    commit: async () => ({ logicalSessionId: 'new', outcome: 'updated' }) });
+  f.requestAlignment('one'); const returned = f.status('one');
+  await Promise.resolve(); expect(f.status('one').epoch).toBe(returned.epoch);
+  await expect(f.commit('one', { ...command(returned.epoch), change: { kind: 'discover' } })).resolves.toMatchObject({ outcome: 'updated' });
+  release(); await f.close();
+});

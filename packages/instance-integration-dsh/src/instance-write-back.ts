@@ -6,9 +6,12 @@ import { adapter, gptCompatExtensionAdapter, filterNativePluginData } from '@lin
 import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import type { PluginDataMappingSession } from '@linmu/dsh-session-adapter-host';
 import type { WorkspaceWriteBackSummary as InstanceWriteBackSummary } from '@linmu/dsh-session-contracts';
-import { writeBackProjectionToInstance } from './instance-session-writeback.js';
+import { sessionRevision, writeBackProjectionToInstance } from './instance-session-writeback.js';
 import { readWorkspaceMappings, saveWorkspaceMappings } from './workspace-mapping-store.js';
 import { IntegrationError } from '@linmu/dsh-session-contracts';
+import { observeNativeSessionCopies } from './native-session-observation.js';
+import { nativeSessionTarget } from './native-session-overwrite.js';
+import { saveEndpointProjection } from './projection-receipt.js';
 
 /**
  * True-source → instance: put a selected workspace's sessions back into the instance.
@@ -221,14 +224,9 @@ async function writeBackWithAccess(options: InstanceWriteBackOptions, request: I
   // workspace path) can hold for it. A bucket the instance already owns a workspace for keeps that
   // workspace's path: reusing it is what the operator asked for, and it is also what keeps the
   // instance's own sessions where the instance put them.
-  const registered = await readRegisteredWorkspacePaths(request.instanceHome);
   const folderFor = new Map<string, string>();
-  const known = new Map((await readWorkspaceMappings(options.stateRoot, request.instanceId)).map(item => [item.workspaceId, item]));
-  const mapped = mapWorkspaceFolders({ workspaceRoot: options.workspaceRoot, registered,
-    verifiedPaths: new Map([...verifiedWorkspacePaths(projection, request.instanceId, registered),
-      ...[...known].map(([id, item]) => [id, item.path] as const)]),
-    buckets: [...names].map(([workspaceId, name]) => ({ workspaceId, name })) })
-    .filter(folder => selected(folder.workspaceId as LogicalWorkspaceId)).map(folder => known.get(folder.workspaceId) ?? folder);
+  const mapped = (await resolveInstanceWorkspaceFolders({ stateRoot: options.stateRoot, workspaceRoot: options.workspaceRoot,
+    instanceHome: request.instanceHome, instanceId: request.instanceId, projection, names })).filter(folder => selected(folder.workspaceId as LogicalWorkspaceId));
   for (const folder of mapped) {
     if (!folder.owned) await mkdir(folder.path, { recursive: true });
     folderFor.set(folder.workspaceId, folder.path);
@@ -313,4 +311,34 @@ export function createAdapterMaterializer(failures: WriteBackFailures = [], fold
     }
     return [...captured].map(([nativeSessionId, payload]) => ({ nativeSessionId, payload: payload as never }));
   };
+}
+
+interface FolderInspection { stateRoot: string; workspaceRoot: string; instanceHome: string; instanceId: string;
+  projection: CanonicalProjectionInput; names: ReadonlyMap<string, string> }
+export async function resolveInstanceWorkspaceFolders(input: FolderInspection): Promise<readonly MappedWorkspaceFolder[]> {
+  const registered = await readRegisteredWorkspacePaths(input.instanceHome);
+  const known = new Map((await readWorkspaceMappings(input.stateRoot, input.instanceId)).map(item => [item.workspaceId, item]));
+  return mapWorkspaceFolders({ workspaceRoot: input.workspaceRoot, registered,
+    verifiedPaths: new Map([...verifiedWorkspacePaths(input.projection, input.instanceId, registered),
+      ...[...known].map(([id, item]) => [id, item.path] as const)]),
+    buckets: [...input.names].map(([workspaceId, name]) => ({ workspaceId, name })) })
+    .map(folder => known.get(folder.workspaceId) ?? folder);
+}
+/** Read-only evidence: matching bytes, archive state and unique location require no host write lease. */
+export async function inspectUnchangedInstanceSessions(input: FolderInspection): Promise<ReadonlyMap<string, () => Promise<void>>> {
+  const folders = await resolveInstanceWorkspaceFolders(input);
+  const materialized = await createAdapterMaterializer([], new Map(folders.map(folder => [folder.workspaceId, folder.path])))(input.projection);
+  const archived = await readArchivedSessions(input.instanceHome);
+  const sessions = materialized.map(item => ({ ...item, revision: sessionRevision(item.payload),
+    archived: input.projection.sessions.find(row => String(v3NativeSessionId(row.session.id)) === item.nativeSessionId)!.session.archivedAt !== null }));
+  const observed = await observeNativeSessionCopies({ sessionsRoot: join(input.instanceHome, 'sessions'), sessions, codec: adapter.nativeSessionCodec });
+  const matching = new Map<string, () => Promise<void>>();
+  for (const session of sessions) {
+    const target = nativeSessionTarget(session);
+    if (!target || !observed.matching.has(target.relativePath) || observed.copies.has(target.relativePath)
+      || archived.has(session.nativeSessionId) !== session.archived) continue;
+    const source = input.projection.sessions.find(row => String(v3NativeSessionId(row.session.id)) === session.nativeSessionId)!;
+    matching.set(session.nativeSessionId, () => saveEndpointProjection(input.stateRoot, input.instanceId, session.nativeSessionId, source.events, session.payload));
+  }
+  return matching;
 }

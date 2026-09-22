@@ -24,7 +24,7 @@ export interface ObservedSession {
 }
 
 export interface SyncIntent {
-  readonly kind: "archive" | "delete" | "refresh";
+  readonly kind: "archive" | "delete" | "refresh" | "discover";
   readonly sessionId: string;
 }
 

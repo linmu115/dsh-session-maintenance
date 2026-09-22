@@ -23,8 +23,8 @@ export interface InstanceWorkspacePorts {
    *
    * Saving a range only records what the operator wants; this is the step that actually puts the
    * selected workspaces' sessions into the instance's own session directory, so a refresh shows
-   * them. It runs inside the same write scope as the policy write, after the policy is durable, so
-   * a failure is reported instead of silently leaving the instance half-synchronised.
+   * them. It runs in a tracked background task after the policy is durable, so
+   * a failure is reported independently without delaying the saved policy response.
    */
   syncToInstance?: (instanceId: string) => Promise<InstanceWriteBackSummary>;
   /**
@@ -52,6 +52,8 @@ export type InstanceWriteBackSummary = import('@linmu/dsh-session-contracts').Wo
 /** Transport boundary only. The provider owns policy writes and active run snapshots. */
 export class InstanceWorkspaceService {
   /** The last write-back this service performed, for the caller to report. */
+  private readonly background = new Set<Promise<void>>();
+  async close(): Promise<void> { await this.sync?.close(); await Promise.allSettled([...this.background]); }
   private lastWriteBack: InstanceWriteBackSummary | undefined;
   private readonly sync: EndpointSyncCoordinator | undefined;
   constructor(private readonly ports: InstanceWorkspacePorts) {
@@ -67,7 +69,7 @@ export class InstanceWorkspaceService {
     await this.requireInstance(endpointId);
     await this.ports.validateProfile?.(endpointId, profileId);
     if (!this.sync) throw new IntegrationError('SYNC_UNAVAILABLE', '当前 adapter 未提供同步协议。', 503);
-    await this.sync.ensureAligned(endpointId);
+    this.sync.requestAlignment(endpointId);
     return this.sync.status(endpointId);
   }
   async syncChange(endpointId: string, command: EndpointSyncCommand): Promise<EndpointSyncReceipt> {
@@ -92,7 +94,7 @@ export class InstanceWorkspaceService {
     await this.requireInstance(instanceId);
     const value = instanceWorkspaceConfigurationSchema.parse(await this.ports.readConfiguration(instanceId));
     if (value.policy.instanceId !== instanceId) throw new IntegrationError("INSTANCE_WORKSPACE_SCOPE_MISMATCH", "实例范围返回了不同实例的配置。", 502);
-    return { ...value, pendingActivation: value.activeScopes.some(scope => scope.policyRevision !== value.policy.revision) };
+    return { ...value, ...(this.sync ? { synchronization: this.sync.progress(instanceId) } : {}), pendingActivation: value.activeScopes.some(scope => scope.policyRevision !== value.policy.revision) };
   }
   async save(instanceId: string, input: InstanceWorkspacePolicyUpdate): Promise<InstanceWorkspaceConfiguration> {
     const update = instanceWorkspacePolicyUpdateSchema.parse(input);
@@ -104,14 +106,14 @@ export class InstanceWorkspaceService {
       if (code === "INSTANCE_WORKSPACE_UNKNOWN") throw new IntegrationError(code, "有工作区已移除或不存在，请刷新名单。", 409);
       throw error;
     }
-    // The range is durable; now make it true in the instance. This is reported, never thrown: the
-    // policy write already succeeded, and the operator must be able to see both facts separately.
-    if (this.ports.syncToInstance !== undefined) {
-      try { this.lastWriteBack = await this.alignOne(instanceId); }
-      catch (error) {
-        this.lastWriteBack = { written: 0, unchanged: 0, skippedOutOfScope: 0,
-          failures: [error instanceof Error ? error.message : "无法把所选工作区写入实例。"] };
-      }
+    // Durable save acknowledgement does not wait for host I/O. The configuration carries progress.
+    if (this.sync) this.sync.requestAlignment(instanceId);
+    else if (this.ports.syncToInstance) {
+      const task = this.alignOne(instanceId).then(result => { this.lastWriteBack = result; })
+        .catch(error => { this.lastWriteBack = { written: 0, unchanged: 0, skippedOutOfScope: 0,
+          failures: [error instanceof Error ? error.message : '对齐未完成。'] }; })
+        .finally(() => this.background.delete(task));
+      this.background.add(task);
     }
     return this.get(instanceId);
   }

@@ -135,3 +135,15 @@ it('keeps observing after a pass that could not read the host records at all', a
   stop();
   expect((await sync.pass()).observed).toBe(1);
 });
+
+it('discovers newly created sessions while alignment is blocked, without sending archive or deletion mutations', async () => {
+  const fake = host({ stored: ['old'] }), intents: string[] = [];
+  let phase: 'blocked' | 'active' = 'blocked';
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true, trackContent: true,
+    syncState: async () => ({ epoch: 'epoch', policyRevision: 1, phase }),
+    report: async intent => { intents.push(intent.kind + ':' + intent.sessionId); return 'ok'; } });
+  await sync.pass(); fake.setStored(['new']); fake.setArchived(['new']); await sync.pass();
+  expect(intents).toEqual(['discover:old', 'discover:new']);
+  phase = 'active'; await sync.pass();
+  expect(intents.at(-1)).toBe('refresh:new'); expect(intents.some(item => item.startsWith('delete:'))).toBe(false);
+});

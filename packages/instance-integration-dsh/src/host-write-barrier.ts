@@ -48,7 +48,7 @@ export class HostWriteBarrier {
     };
     return handle;
   }
-  async withAccess<T>(sessionIds: readonly string[], work: () => Promise<T>, refresh: () => Promise<void>, release: () => Promise<void> = async () => {}): Promise<T> {
+  async withAccess<T>(sessionIds: readonly string[], work: () => Promise<T>, refresh: () => Promise<void>, release: () => Promise<void> = async () => {}, protect: (work: () => Promise<T>) => Promise<T> = work => work()): Promise<T> {
     const ids = new Set(sessionIds);
     if (this.disposed || [...ids].some(id => this.reserved.has(id))) throw new Error('DSH_BUSY: another synchronization owns this scope');
     const recoveries = new Set([...ids].flatMap(id => this.recovery.get(id) ? [this.recovery.get(id)!] : []));
@@ -56,7 +56,7 @@ export class HostWriteBarrier {
     this.patches.forEach(patch => patch.verify());
     ids.forEach(id => this.reserved.add(id));
     const owner = { ids, active: true };
-    let mutated = false;
+    let entered = false;
     try {
       const deadline = Date.now() + (this.options.timeoutMs ?? 30_000);
       for (const id of ids) { const live = this.runtime.sessions.get(id); if (live && !await this.runtime.sessions.flush(live)) throw new Error('HOST_FLUSH_UNAVAILABLE'); }
@@ -64,26 +64,36 @@ export class HostWriteBarrier {
         if (Date.now() >= deadline) throw new Error('DSH_BUSY: existing sessions have not drained');
         await new Promise(resolve => setTimeout(resolve, this.options.pollMs ?? 25));
       }
-      return await this.owner.run(owner, async () => {
-        this.patches.forEach(patch => patch.verify());
-        for (const recovery of recoveries) {
-          await recovery.finish();
-          recovery.ids.forEach(id => { this.quarantine.delete(id); this.recovery.delete(id); });
+      // Plugin admission starts AFTER ordinary host flush listeners have finished. It remains held
+      // through refresh and release, so neither flush deadlocks nor premature plugin writes occur.
+      return await protect(() => this.owner.run(owner, async () => {
+        entered = true;
+        let mutated = false;
+        try {
+          this.patches.forEach(patch => patch.verify());
+          for (const recovery of recoveries) {
+            await recovery.finish();
+            recovery.ids.forEach(id => { this.quarantine.delete(id); this.recovery.delete(id); });
+          }
+          mutated = true;
+          return await work();
+        } finally {
+          try {
+            try { if (mutated) await refresh(); }
+            finally { await release(); }
+          } catch (error) {
+            const recovery = { ids, finish: async () => { try { await refresh(); } finally { await release(); } } };
+            ids.forEach(id => { this.quarantine.add(id); this.recovery.set(id, recovery); });
+            throw error;
+          }
         }
-        mutated = true;
-        return work();
-      });
+      }));
     } finally {
-      try {
-        try { if (mutated) await this.owner.run(owner, refresh); }
-        finally { await release(); }
-      } catch (error) {
-        const recovery = { ids, finish: async () => { try { await refresh(); } finally { await release(); } } };
-        ids.forEach(id => { this.quarantine.add(id); this.recovery.set(id, recovery); }); throw error;
-      }
+      try { if (!entered) await release(); }
       finally { owner.active = false; ids.forEach(id => this.reserved.delete(id)); }
     }
   }
+
   dispose(): void {
     if (this.reserved.size || this.quarantine.size) throw new Error('HOST_BARRIER_BUSY: drain or recover before unloading');
     this.patches.forEach(patch => patch.verify());

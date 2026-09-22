@@ -75,7 +75,13 @@ export class HostSessionSync {
 
   constructor(private readonly options: HostSessionSyncOptions) {}
   /** Host flush/event notification. The core never receives host event types. */
-  markDirty(sessionId: string): void { this.dirty.add(sessionId); }
+  markDirty(sessionId: string): void {
+    this.dirty.add(sessionId);
+    if (!this.running && !this.disposed) {
+      if (this.timer !== undefined) clearTimeout(this.timer);
+      this.schedule(200);
+    }
+  }
 
   /** Observe once, then keep observing. Returns a disposer. */
   start(): () => void {
@@ -97,7 +103,16 @@ export class HostSessionSync {
       if (state.epoch !== this.epoch || state.phase !== 'active') {
         this.previous = undefined; this.pending.clear(); this.dirty.clear(); this.epoch = state.epoch;
       }
-      if (state.phase !== 'active') return { observed: 0, intents: 0, reported: 0, skippedUnmapped: 0, pending: 0 };
+      if (state.phase !== 'active') {
+        // Insert-only discovery cannot change an existing canonical session or infer deletions.
+        const current = await this.observe(false);
+        let reported = 0, skippedUnmapped = 0;
+        for (const id of current.keys()) {
+          this.remember({ kind: 'discover', sessionId: id }, current.get(id)!.archived);
+          const result = await this.flush(); reported += result.reported; skippedUnmapped += result.skippedUnmapped;
+        }
+        return { observed: current.size, intents: current.size, reported, skippedUnmapped, pending: this.pending.size };
+      }
     }
     const current = await this.observe();
     for (const [id, intent] of this.pending) if (intent.kind === 'delete' && current.has(id)) this.pending.delete(id);
@@ -136,13 +151,13 @@ export class HostSessionSync {
   }
 
   /** The instance's own two records, as one observation. */
-  private async observe(): Promise<SessionObservation> {
+  private async observe(includeRevision = true): Promise<SessionObservation> {
     const archived = new Set(this.options.host.workspaceRegistry.archivedSessionIds.map(String));
     const observed = new Map<string, ObservedSession>();
     for (const item of await this.options.host.sessionPersistence.list()) {
       const id = String(item.id);
       if (id.length === 0) continue;
-      observed.set(id, { sessionId: id, archived: archived.has(id), ...(this.options.trackContent ? { revision: JSON.stringify([item, await this.options.additionalRevision?.(id)]) } : {}) });
+      observed.set(id, { sessionId: id, archived: archived.has(id), ...(this.options.trackContent && includeRevision ? { revision: JSON.stringify([item, await this.options.additionalRevision?.(id)]) } : {}) });
     }
     return observed;
   }
@@ -166,7 +181,7 @@ export class HostSessionSync {
       // report, and the Engine would only have to refuse it.
       try {
         // A transient identity error must remain pending. New sessions are scoped by the refresh command.
-        if (intent.kind !== 'refresh' && !(await this.options.mapped(intent.sessionId))) {
+        if (intent.kind !== 'refresh' && intent.kind !== 'discover' && !(await this.options.mapped(intent.sessionId))) {
           this.pending.delete(intent.sessionId); skippedUnmapped += 1; continue;
         }
         // The push is its own statement on purpose: inside an optional call's argument it would be

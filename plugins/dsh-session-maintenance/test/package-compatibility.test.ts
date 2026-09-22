@@ -13,7 +13,7 @@ describe("package compatibility policy", () => {
       dshWorkshop: { compatibility?: unknown };
     };
 
-    expect(packageJson.version).toBe("0.2.27-rc2.46");
+    expect(packageJson.version).toBe("0.2.27-rc2.49");
     for (const [name, version] of Object.entries(packageJson.peerDependencies)) {
       if (name.startsWith("@deepseek-ai/dsh-")) expect(version).toBe("0.1.5-rc.2");
     }

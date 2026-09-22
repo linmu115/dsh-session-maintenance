@@ -190,6 +190,7 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
       mapped: async sessionId => (await proxy.invoke({ operation: "session-mapped", sessionId })).mapped === true,
       report: async (intent, archived, epoch) => { const result = await proxy.invoke({ ...(epoch ? { epoch } : {}), ...(intent.kind === "delete"
         ? { operation: "delete-session" as const, sessionId: intent.sessionId }
+        : intent.kind === 'discover' ? { operation: 'discover-session' as const, sessionId: intent.sessionId }
         : intent.kind === 'refresh' ? { operation: 'refresh-session' as const, sessionId: intent.sessionId }
         : { operation: "set-archived" as const, sessionId: intent.sessionId, archived }) });
         return { message: result.message, skipped: result.code === 'not-synced' }; },

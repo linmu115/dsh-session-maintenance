@@ -4,9 +4,9 @@ import { dirname, join } from 'node:path';
 import { expect, it } from 'vitest';
 import { openMaintenanceDatabase, SqliteCanonicalRepository, SqliteCanonicalSessionEngineStore, ZstdContentObjectStore } from '@linmu/dsh-session-store';
 import { reconcileEndpointSession } from '@linmu/dsh-canonical-session-engine';
-import { v3NativeProjectKey, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
+import { v3NativeProjectKey, v3NativeSessionCodec, v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import { readEndpointSnapshot } from '@linmu/dsh-instance-integration-dsh/endpoint-snapshot';
-import { createInstanceWorkspaceSource } from '@linmu/dsh-instance-integration-dsh/instance-workspace-source';
+import { createInstanceWorkspaceSource, projectedLogicalSessionId } from '@linmu/dsh-instance-integration-dsh/instance-workspace-source';
 import { mapWorkspaceFolders } from '@linmu/dsh-instance-integration-dsh/instance-write-back';
 import type { CanonicalProjectionInput, LogicalSessionId, LogicalWorkspaceId } from '@linmu/dsh-session-contracts';
 
@@ -66,4 +66,28 @@ it('does not reuse unrelated same-name workspaces and assigns collisions indepen
   const mapped = mapWorkspaceFolders(input);
   expect(mapped[0]!.path).not.toBe('D:/unbound');
   expect(mapWorkspaceFolders({ ...input, buckets: [...buckets].reverse() })).toEqual(mapped);
+});
+
+it('discovers a selected native workspace before any successful alignment, with the same collision-safe path plan', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pending-workspace-SYNTHETIC-'));
+  try {
+    const home = join(root, 'home'), workspaceRoot = join(root, 'mapped'), cwd = join(workspaceRoot, 'Selected');
+    await mkdir(join(home, 'storages'), { recursive: true });
+    await writeFile(join(home, 'storages', 'workspace.json'), JSON.stringify({ unit: { name: 'workspace', version: 2 },
+      tables: { workspaces: { native: { path: cwd } } }, global: { archivedSessionIds: [] } }));
+    const projection = { run: { id: 'synthetic' }, sessions: [], workspaces: [{ id: 'selected', name: 'Selected' }] } as unknown as CanonicalProjectionInput;
+    const artifact = { nativeSessionId: 'new', complete: true, events: [], inheritedEventCount: 0, header: { cwd }, relativePath: 'synthetic' };
+    const request = { homeRoot: home, stateRoot: root, workspaceRoot, endpointId: 'endpoint', nativeSessionId: 'new', logicalSessionId: 'logical-new' as LogicalSessionId,
+      projection, inspect: async () => [artifact as never] };
+    expect((await readEndpointSnapshot(request)).workspaceId).toBe('selected');
+    await expect(readEndpointSnapshot({ ...request, projection: { ...projection, workspaces: [] } })).rejects.toMatchObject({ code: 'SESSION_NOT_SYNCED' });
+    artifact.header.cwd = join(root, 'unrelated', 'Selected');
+    await expect(readEndpointSnapshot(request)).rejects.toMatchObject({ code: 'SESSION_NOT_SYNCED' });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+it('recognizes a projected canonical identity without a binding, including deleted or orphaned source IDs', () => {
+  expect(projectedLogicalSessionId(String(v3NativeSessionId('original-canonical' as LogicalSessionId)))).toBe('original-canonical');
+  expect(projectedLogicalSessionId('session-native-new')).toBeUndefined();
+  expect(() => projectedLogicalSessionId('dsh-maintenance_bad!')).toThrow('SYNC_PROJECTED_ID_INVALID');
 });

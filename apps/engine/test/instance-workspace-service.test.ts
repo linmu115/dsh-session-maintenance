@@ -77,3 +77,17 @@ describe("instance workspace API service", () => {
     expect((await call("/v1/workspace-sync")).routed).toBe(false);
   });
 });
+
+it('acknowledges a durable save before a host alignment completes and returns progress separately', async () => {
+  const { ports, writePolicy } = fixture(); let release!: () => void;
+  const host = new Promise<void>(resolve => { release = resolve; });
+  const service = new InstanceWorkspaceService({ ...ports, exclusive: work => work(), policyRevision: () => writePolicy.mock.calls.length + 1,
+    mutateSession: async () => ({ logicalSessionId: 'one', outcome: 'updated' }),
+    syncToInstance: async () => { await host; return { written: 0, unchanged: 0, skippedOutOfScope: 0, failures: ['host busy'] }; } });
+  const saved = await service.save('i-one', { expectedRevision: 1, selection: { kind: 'all' } });
+  expect(saved.policy.revision).toBe(2); expect(saved.synchronization?.phase).toBe('aligning');
+  let drained = false; const closing = service.close().then(() => { drained = true; });
+  await Promise.resolve(); expect(drained).toBe(false);
+  release(); await closing;
+  expect((await service.get('i-one')).synchronization).toMatchObject({ phase: 'blocked', failures: ['host busy'] });
+});

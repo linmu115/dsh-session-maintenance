@@ -620,6 +620,7 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
         audit("shutdown.drain-started");
         await alignment;
         await server.close();
+        await engine.instanceWorkspace?.close();
         audit("shutdown.drained");
         engine.close();
         audit("owner.released");

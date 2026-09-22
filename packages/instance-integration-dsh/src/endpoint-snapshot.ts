@@ -5,7 +5,7 @@ import type { CanonicalEndpointSnapshot, CanonicalProjectionInput, LogicalSessio
 import { IntegrationError } from '@linmu/dsh-session-contracts';
 import { adapter, inspectNativeSpace as inspectV3NativeSpace } from '@linmu/dsh-session-extension-gpt-compat';
 import { canonicalEventsFor } from './instance-workspace-source.js';
-import { readWorkspaceMappings } from './workspace-mapping-store.js';
+import { resolveInstanceWorkspaceFolders } from './instance-write-back.js';
 import { readEndpointProjection, projectionSourceDigest } from './projection-receipt.js';
 import { remapProjectedAppend } from '@linmu/dsh-session-extension-gpt-compat';
 
@@ -15,6 +15,7 @@ export async function readEndpointSnapshot(input: {
   readonly logicalSessionId: LogicalSessionId; readonly projection: CanonicalProjectionInput;
   readonly workspaceRoot: string;
   readonly stateRoot: string;
+  readonly workspaceNames?: ReadonlyMap<string, string>;
   readonly folders?: readonly { readonly workspaceId: string; readonly path: string }[];
   readonly inspect?: (root: string) => Promise<readonly NativeSessionArtifact[]>;
 }): Promise<CanonicalEndpointSnapshot> {
@@ -24,7 +25,13 @@ export async function readEndpointSnapshot(input: {
   const cwd = (actual.header as { cwd?: unknown }).cwd;
   if (typeof cwd !== 'string') throw new IntegrationError('SESSION_NOT_SYNCED', '会话没有已映射的工作区。');
   const selected = new Set(input.projection.workspaces.map(item => String(item.id)));
-  const folders = input.folders ?? (await readWorkspaceMappings(input.stateRoot, input.endpointId)).filter(item => selected.has(item.workspaceId));
+  // A saved selection defines its target paths even before a successful write-back receipt.
+  // Reuse the exact adapter planner, then require a registered native directory. Never infer a
+  // mapping from a display name or import an unrelated same-name directory outside that plan.
+  const folders = input.folders ?? (await resolveInstanceWorkspaceFolders({ stateRoot: input.stateRoot,
+    workspaceRoot: input.workspaceRoot, instanceHome: input.homeRoot, instanceId: input.endpointId,
+    projection: input.projection, names: input.workspaceNames ?? new Map(input.projection.workspaces.map(item => [String(item.id), item.name])) }))
+    .filter(item => selected.has(item.workspaceId) && item.owned);
   const folder = folders.find(item => resolve(item.path).toLowerCase() === resolve(cwd).toLowerCase());
   if (!folder) throw new IntegrationError('SESSION_NOT_SYNCED', '会话已移出当前同步工作区。');
   const existing = input.projection.sessions.find(item => item.session.id === input.logicalSessionId);

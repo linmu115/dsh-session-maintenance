@@ -14,7 +14,8 @@ export async function commitEndpointSessionChange(input: {
   const id = await input.resolve(endpointId, command.sessionId);
   // A new session has no identity yet; its adapter resolves a selected logical workspace before import.
   if (id !== undefined && !input.selected(endpointId, id)) return { logicalSessionId: id, outcome: 'out-of-scope' };
-  if (command.change.kind === 'refresh') {
+  if (command.change.kind === 'discover' && id !== undefined) return { logicalSessionId: id, outcome: 'already-present' };
+  if (command.change.kind === 'refresh' || command.change.kind === 'discover') {
     if (!input.refresh) throw new IntegrationError('SYNC_REFRESH_UNAVAILABLE', '当前 adapter 尚未提供内容同步。', 503);
     try { return { logicalSessionId: await input.refresh(endpointId, command.sessionId, id), outcome: 'updated' }; }
     catch (error) {

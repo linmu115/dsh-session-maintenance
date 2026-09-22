@@ -59,6 +59,8 @@ export const instanceWorkspaceConfigurationSchema = z.strictObject({
     policyRevision: z.number().int().nonnegative(), selection: instanceWorkspaceSelectionSchema })),
   workspaces: z.array(z.strictObject({ id: workspaceId, name: z.string(), deleted: z.boolean() })),
   pendingActivation: z.boolean(),
+  synchronization: z.strictObject({ phase: z.enum(['aligning', 'active', 'blocked']),
+    policyRevision: z.number().int().nonnegative(), failures: z.array(z.string()) }).optional(),
 });
 export type InstanceWorkspaceConfiguration = z.infer<typeof instanceWorkspaceConfigurationSchema>;
 /** The provider lists trusted DSH instances, never Codex sources or integration target hashes. */

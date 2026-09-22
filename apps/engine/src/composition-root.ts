@@ -22,7 +22,7 @@ import { writeBackRunIdentity } from '@linmu/dsh-instance-integration-dsh/instan
 import { synchronizeThroughHost, readHostPluginData } from '@linmu/dsh-instance-integration-dsh/host-workspace-sync';
 import { readEndpointSnapshot } from '@linmu/dsh-instance-integration-dsh/endpoint-snapshot';
 import { IntegrationError } from './integrations/bindings.js';
-import { createWorkspaceSourceForHome, dshSessionBinding } from '@linmu/dsh-instance-integration-dsh/instance-workspace-source';
+import { createWorkspaceSourceForHome, dshSessionBinding, projectedLogicalSessionId } from '@linmu/dsh-instance-integration-dsh/instance-workspace-source';
 import { ensurePlatformSessionBinding } from './platform-session-binding.js';
 import { commitEndpointSessionChange } from './endpoint-session-commands.js';
 import { mapJoinedWorkspace, mappedLogicalSessionId } from './workspace-session-mapping.js';
@@ -317,8 +317,8 @@ async function createComposition(
       const registered = (await readStandaloneInstances(options.stateRoot)).find(item => item.instanceId === instanceId && item.profileId === profileId);
       if (registered === undefined)
         throw new IntegrationError("INSTANCE_WRITE_BACK_NOT_REGISTERED", "该实例尚未接入，无法把工作区写入实例目录。", 404);
-      const policy = new SqliteInstanceWorkspacePolicyRepository(repository.database).getPolicy(instanceId);
       return synchronizeThroughHost({
+        withStoreAccess: work => writes.run('host-sync-snapshot', work),
         bindIdentity: (nativeSessionId, logicalSessionId, checkOnly) => ensurePlatformSessionBinding({ repository,
           ...dshSessionBinding(instanceId, nativeSessionId), logicalSessionId, checkOnly }),
         stateRoot: options.stateRoot,
@@ -328,7 +328,7 @@ async function createComposition(
         // real folders to own them, so each bucket is mapped to its own folder under this root, named
         // after the bucket and reused when it already exists.
         workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(),
-        selectionFor: () => policy,
+        selectionFor: () => new SqliteInstanceWorkspacePolicyRepository(repository.database).getPolicy(instanceId),
         memberships: async () => new Map((repository.database.prepare("SELECT logical_session_id, workspace_id FROM workspace_memberships")
           .all() as { logical_session_id: string; workspace_id: string | null }[]).map(row => [row.logical_session_id, row.workspace_id as LogicalWorkspaceId | null])),
         workspaceNames: async () => new Map((repository.database.prepare("SELECT id, name FROM logical_workspaces WHERE deleted_at IS NULL")
@@ -340,7 +340,16 @@ async function createComposition(
     createWorkspaceFolderAdapter({ stateRoot: options.stateRoot, workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(),
       homeFor: async endpointId => (await readStandaloneInstances(options.stateRoot)).find(item => item.instanceId === endpointId)?.homeRoot }),
     (endpointId, command) => commitEndpointSessionChange({ endpointId, command,
-      resolve: async (id, sessionId) => (await repository.findBinding(dshSessionBinding(id, sessionId).key))?.logicalSessionId,
+      resolve: async (id, sessionId) => {
+        const projected = projectedLogicalSessionId(sessionId);
+        if (projected !== undefined) {
+          if (!repository.database.prepare('SELECT id FROM logical_sessions WHERE id=?').get(projected))
+            throw new IntegrationError('SYNC_PROJECTION_SOURCE_MISSING', '此会话属于旧映射，真源身份不可用，未重复导入。', 409);
+          return projected;
+        }
+        return (await repository.findBinding(dshSessionBinding(id, sessionId).key))?.logicalSessionId
+          ?? (await new SqliteSessionAliasRepository(repository.database).resolve('dsh-session', id, sessionId))?.target.logicalSessionId ?? undefined;
+      },
       selected: (id, logicalSessionId) => {
         const row = repository.database.prepare(`SELECT m.workspace_id FROM logical_sessions s LEFT JOIN workspace_memberships m
           ON m.logical_session_id=s.id WHERE s.id=?`).get(logicalSessionId) as { workspace_id: LogicalWorkspaceId | null } | undefined;
@@ -353,9 +362,14 @@ async function createComposition(
         const registered = (await readStandaloneInstances(options.stateRoot)).find(item => item.instanceId === id && item.profileId === command.profileId);
         if (!registered) throw new IntegrationError('SYNC_PROFILE_MISMATCH', '同步接入身份不存在。');
         const logicalSessionId = (existingId ?? mappedLogicalSessionId(id, sessionId)) as import('@linmu/dsh-session-contracts').LogicalSessionId;
+        // Discovery is insert-only, including an unbound canonical identity or tombstone.
+        if (command.change.kind === 'discover' && repository.database.prepare('SELECT id FROM logical_sessions WHERE id=?').get(logicalSessionId))
+          throw new IntegrationError('SYNC_DISCOVERY_EXISTS', '此会话已有真源记录，需按已有会话协议同步。', 409);
         const projection = await canonicalProjectionSource.load(writeBackRunIdentity(id, registered.profileId));
         const snapshot = await readEndpointSnapshot({ endpointId: id, nativeSessionId: sessionId, logicalSessionId,
-          stateRoot: options.stateRoot, homeRoot: registered.homeRoot, workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(), projection });
+          stateRoot: options.stateRoot, homeRoot: registered.homeRoot, workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(), projection,
+          workspaceNames: new Map((repository.database.prepare('SELECT id,name FROM logical_workspaces WHERE deleted_at IS NULL').all() as { id: string; name: string }[])
+            .map(row => [row.id, row.name])) });
         const policies = new SqliteInstanceWorkspacePolicyRepository(repository.database);
         if (!policies.workspaceSelected(policies.getPolicy(id), snapshot.workspaceId))
           throw new IntegrationError('SESSION_NOT_SYNCED', '目标工作区不在当前同步范围。');

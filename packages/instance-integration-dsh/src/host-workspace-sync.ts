@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { gzip } from 'node:zlib';
+import { promisify } from 'node:util';
 import { readFile, readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { IntegrationError, hostWorkspaceSyncSchema, hostWorkspaceSyncReceiptSchema, pluginDataRecordSchema, type PluginDataRecord, type HostWorkspaceSyncRequest } from '@linmu/dsh-session-contracts';
@@ -8,6 +10,7 @@ import { readDeclaredProfileIdentity } from './profile-identity.js';
 import { writeBackRunIdentity, type InstanceWriteBackOptions, type InstanceWriteBackRequest } from './instance-write-back.js';
 
 export const HOST_WORKSPACE_SYNC_PATH = '/dsh-session-maintenance/instance/workspace-sync';
+const compress = promisify(gzip);
 
 /** The published Maintenance identity is not necessarily the profile directory name. */
 export async function resolveHostProfileRoot(homeRoot: string, instanceId: string, profileId: string): Promise<string | null> {
@@ -47,31 +50,47 @@ export async function readHostPluginData(input: { stateRoot: string; instanceId:
 }
 
 /** No physical write happens in the caller. A timed-out caller cannot retain a stale filesystem lease. */
-export async function synchronizeThroughHost(options: InstanceWriteBackOptions, request: InstanceWriteBackRequest,
+export async function synchronizeThroughHost(options: InstanceWriteBackOptions & { withStoreAccess?: <T>(work: () => Promise<T>) => Promise<T> }, request: InstanceWriteBackRequest,
   transport: typeof fetch = fetch) {
   const inspection = await inspectInstanceLease(options.stateRoot, { instanceId: request.instanceId, profileId: request.profileId,
     expectedHomeRoot: request.instanceHome, profileRoot: await resolveHostProfileRoot(request.instanceHome, request.instanceId, request.profileId) });
   if (!inspection.process || !inspection.runtimeUrl || inspection.state === 'stopping') throw new IntegrationError('SYNC_HOST_UNAVAILABLE', '尚未取得正在运行的宿主身份，请重新检查实例。');
+  const processIdentity = inspection.process;
   const origin = new URL(inspection.runtimeUrl);
   if (origin.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(origin.hostname) || origin.username || origin.password)
     throw new IntegrationError('SYNC_HOST_UNAVAILABLE', '宿主地址未通过本地身份检查。');
   const descriptor = JSON.parse(await readFile(join(options.stateRoot, 'connection.json'), 'utf8'));
   if (descriptor.schemaVersion !== 1 || typeof descriptor.token !== 'string' || descriptor.token.length < 32) throw new IntegrationError('SYNC_HOST_AUTH_UNAVAILABLE', '同步认证尚未就绪。');
-  const projection = await options.loadProjection(writeBackRunIdentity(request.instanceId, request.profileId));
+  const inStore = options.withStoreAccess ?? (<T>(work: () => Promise<T>) => work());
+  const { body, scoped } = await inStore(async () => {
+  const projection = structuredClone(await options.loadProjection(writeBackRunIdentity(request.instanceId, request.profileId)));
   const selection = options.selectionFor(request.instanceId);
   const selected = (workspaceId: string | null) => selection.selection.kind === 'all' || (workspaceId === null
     ? selection.selection.includeUnassigned : selection.selection.workspaceIds.includes(workspaceId));
   const scoped = { ...projection, sessions: projection.sessions.filter(item => selected(item.workspaceId)) };
   for (const item of scoped.sessions) await options.bindIdentity?.(String(v3NativeSessionId(item.session.id)), item.session.id, true);
   const body: HostWorkspaceSyncRequest = { schemaVersion: 1, operationId: randomUUID(), instanceId: request.instanceId, profileId: request.profileId,
-    homeRoot: request.instanceHome, pid: inspection.process.pid, processStartedAt: inspection.process.startedAt,
+    homeRoot: request.instanceHome, pid: processIdentity.pid, processStartedAt: processIdentity.startedAt,
     workspaceRoot: options.workspaceRoot, projection: scoped,
     selection: hostWorkspaceSyncSchema.shape.selection.parse({ revision: selection.revision, selection: selection.selection }),
     workspaceNames: [...await options.workspaceNames()] };
   hostWorkspaceSyncSchema.parse(body);
+  return { body, scoped };
+  });
+  const json = JSON.stringify(body);
+  // Keep small requests compatible with older hosts; large snapshots retain their full identity context.
+  const compressed = Buffer.byteLength(json) > 1024 * 1024;
+  const payload = compressed ? new Uint8Array(await compress(json)) : json;
   const response = await transport(new URL(HOST_WORKSPACE_SYNC_PATH, origin), { method: 'POST', headers: {
-    authorization: `Bearer ${descriptor.token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(120_000), redirect: 'error' });
-  if (!response.ok) throw new IntegrationError('SYNC_HOST_REJECTED', `宿主未完成同步（HTTP ${response.status}），请检查宿主后重试。`);
+    authorization: `Bearer ${descriptor.token}`, 'content-type': 'application/json', ...(compressed ? { 'content-encoding': 'gzip' } : {}) }, body: payload, signal: AbortSignal.timeout(120_000), redirect: 'error' });
+  if (!response.ok) {
+    const detail = await response.json().catch(() => ({})) as { reason?: unknown };
+    const reason = typeof detail.reason === 'string' && /^(?:SYNC_HOST_[A-Z_]+|HOST_[A-Z_]+|DSH_BUSY|LYNN_BUSY)$/.test(detail.reason) ? detail.reason : 'HOST_SYNC_INCOMPLETE';
+    const hint = response.status === 413 ? '本次对齐数据超过宿主接收上限，需要更新宿主 adapter 或缩小单次传输。'
+      : reason === 'DSH_BUSY' ? '目标会话仍被宿主占用，已保留原文件，稍后自动重试。'
+      : reason === 'SYNC_HOST_CHANGED_DURING_DRAIN' ? '落盘期间会话发生变化，已停止回写，稍后重试。' : '宿主对齐未完成，将自动重试。';
+    throw new IntegrationError('SYNC_HOST_REJECTED', `${hint}（HTTP ${response.status}，${reason}）`);
+  }
   const parsed = hostWorkspaceSyncReceiptSchema.safeParse(await response.json());
   if (!parsed.success) throw new IntegrationError('SYNC_HOST_RECEIPT_INVALID', '宿主回执格式不完整，未确认同步完成。');
   const result = parsed.data;
@@ -88,9 +107,15 @@ export async function synchronizeThroughHost(options: InstanceWriteBackOptions, 
   if (result.summary.written + result.summary.unchanged > seen.size || seen.size !== expected.size || result.summary.failures.length)
     throw new IntegrationError('SYNC_HOST_INCOMPLETE', '宿主尚未确认本次范围内的全部会话。');
   // Validate the entire receipt before committing even the first identity.
-  for (const binding of result.bindings) {
-    await options.bindIdentity?.(binding.nativeSessionId, binding.logicalSessionId, false);
-  }
+  await inStore(async () => {
+    const policyNow = options.selectionFor(request.instanceId);
+    const current = await options.loadProjection(writeBackRunIdentity(request.instanceId, request.profileId));
+    const latest = new Map(current.sessions.map(item => [String(item.session.id), item]));
+    if (policyNow.revision !== body.selection.revision || scoped.sessions.some(item => JSON.stringify(latest.get(String(item.session.id))) !== JSON.stringify(item)))
+      throw new IntegrationError('SYNC_SOURCE_CHANGED', '对齐期间真源或范围发生变化，将按最新版本重新同步。');
+    for (const binding of result.bindings) await options.bindIdentity?.(binding.nativeSessionId, binding.logicalSessionId, true);
+    for (const binding of result.bindings) await options.bindIdentity?.(binding.nativeSessionId, binding.logicalSessionId, false);
+  });
   const { workspaceFolders, pluginData, ...summary } = result.summary;
   return { ...summary, ...(workspaceFolders === undefined ? {} : { workspaceFolders }),
     ...(pluginData === undefined ? {} : { pluginData }) };

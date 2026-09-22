@@ -40,13 +40,29 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
     }).catch(reason => { if (!controller.signal.aborted) setError(message(reason)); });
     return () => controller.abort();
   }, [api, instanceId, reload]);
+  useEffect(() => {
+    if (!configuration?.synchronization || !api.getInstanceWorkspaceSync) return;
+    const controller = new AbortController();
+    let running = false;
+    const timer = setInterval(() => {
+      if (running) return;
+      running = true;
+      void api.getInstanceWorkspaceSync!(instanceId, controller.signal).then(value => {
+        if (!controller.signal.aborted && value.policy.instanceId === instanceId) {
+          setConfiguration(previous => !previous || value.policy.revision >= previous.policy.revision ? value : previous);
+          if (!editing && !busy) setSelection(value.policy.selection);
+        }
+      }).catch(() => {}).finally(() => { running = false; });
+    }, 2000);
+    return () => { controller.abort(); clearInterval(timer); };
+  }, [api, instanceId, !!configuration?.synchronization, editing, busy]);
   const save = async () => {
     if (!configuration || !editing || busy || !api.saveInstanceWorkspaceSync) return;
     const signal = lifetime.current!.signal;
     setBusy(true); setError(undefined); setNotice(undefined);
     try {
       const value = await api.saveInstanceWorkspaceSync(instanceId, { expectedRevision: configuration.policy.revision, selection }, signal);
-      if (!signal.aborted) { install(value); setEditing(false); setNotice(value.pendingActivation ? "已保存 · 下次启动生效" : "已保存同步范围"); }
+      if (!signal.aborted) { install(value); setEditing(false); setNotice(value.synchronization ? "已保存同步范围；同步进度单独显示" : value.pendingActivation ? "已保存 · 下次启动生效" : "已保存同步范围"); }
     } catch (reason) {
       if (signal.aborted) return;
       const failure = reason as { status?: number; code?: string };
@@ -73,6 +89,10 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
   return <div className="settings-content instance-workspace-editor">
     {error ? <p role="alert">{error}</p> : null}
     {notice ? <p role="status">{notice}</p> : null}
+    {configuration?.synchronization ? <section aria-label="同步进度">
+      <p role="status">{configuration.synchronization.phase === 'active' ? '同步已完成' : configuration.synchronization.phase === 'aligning' ? '正在同步，已保存的范围不会丢失' : '同步尚未完成，将自动重试；已保存的范围不会丢失'}</p>
+      {configuration.synchronization.failures.map((failure, index) => <p key={index} className="muted">{failure}</p>)}
+    </section> : null}
     {!configuration ? <>{!error ? <LoadingState label="正在读取实例范围…" /> : null}<Button onClick={() => setReload(value => value + 1)}>重新读取范围</Button></> : <>
       <details className="mapping-runtime-details"><summary>运行详情</summary><div className="mapping-policy-status instance-workspace-status">
         <section aria-label="当前运行范围"><h3>当前运行范围</h3>
@@ -84,7 +104,7 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
             </details>)}</div></details>
           </> : <p className="muted">暂无托管运行范围回执；目录接入实例仍可按已保存范围同步。</p>}
         </section>
-        <section aria-label="已保存范围"><h3>已保存范围</h3><p>{summary(configuration.policy.selection, configuration)}</p><small>修订 {configuration.policy.revision} · 下次启动采用此范围</small>
+        <section aria-label="已保存范围"><h3>已保存范围</h3><p>{summary(configuration.policy.selection, configuration)}</p><small>修订 {configuration.policy.revision} · {configuration.synchronization ? "按此范围同步" : "下次启动采用此范围"}</small>
           {configuration.pendingActivation ? <p><Badge tone="warning">有保存的更改等待下次启动</Badge></p> : null}
         </section>
       </div>

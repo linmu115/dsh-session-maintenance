@@ -1,10 +1,13 @@
+import { isDeepStrictEqual } from 'node:util';
+import { promisify } from 'node:util';
+import { gunzip } from 'node:zlib';
 import { timingSafeEqual } from 'node:crypto';
 import { realpath } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { hostWorkspaceSyncSchema, hostPluginDataCaptureSchema, type HostWorkspaceSyncRequest, type HostWorkspaceSyncReceipt, type LogicalWorkspaceId } from '@linmu/dsh-session-contracts';
 import { HostWriteBarrier, type HostBarrierRuntime } from '@linmu/dsh-instance-integration-dsh/host-write-barrier';
-import { writeBackInstanceWorkspaces } from '@linmu/dsh-instance-integration-dsh/instance-write-back';
+import { inspectUnchangedInstanceSessions, writeBackInstanceWorkspaces } from '@linmu/dsh-instance-integration-dsh/instance-write-back';
 import { HOST_WORKSPACE_SYNC_PATH } from '@linmu/dsh-instance-integration-dsh/host-workspace-sync';
 import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import { projectionCacheDomainSpec } from '@deepseek-ai/dsh-session-projection-cache';
@@ -13,6 +16,20 @@ import type { EngineConnectionProvider } from './engine-proxy.js';
 import { PluginDataMappingRegistry } from '@linmu/dsh-session-adapter-host';
 import JsonlPersistence from '@deepseek-ai/dsh-session-persistence-jsonl';
 import { SessionId } from '@deepseek-ai/dsh-session';
+
+const decompress = promisify(gunzip);
+/** Bound decompression before JSON parsing; authentication is checked by the caller first. */
+export async function decodeHostSyncPayload(bytes: Buffer, encoding: string | undefined, limit = 256 * 1024 * 1024): Promise<unknown> {
+  if (encoding !== undefined && encoding !== 'identity' && encoding !== 'gzip') throw new Error('HOST_CONTENT_ENCODING_UNSUPPORTED');
+  let decoded: Buffer;
+  try { decoded = encoding === 'gzip' ? await decompress(bytes, { maxOutputLength: limit }) : bytes; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ERR_BUFFER_TOO_LARGE') throw new Error('HOST_BODY_TOO_LARGE');
+    throw new Error('HOST_PAYLOAD_INVALID');
+  }
+  if (decoded.length > limit) throw new Error('HOST_BODY_TOO_LARGE');
+  return JSON.parse(decoded.toString('utf8'));
+}
 
 /** RC2-only binding. All native service and archive knowledge stays on the host side. */
 export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & Record<string, any>; identity: InstanceLeaseIdentity;
@@ -23,7 +40,8 @@ export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & R
     throw new Error('SYNC_HOST_UNSUPPORTED');
   const barrier = new HostWriteBarrier(ctx, input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs });
   const pluginData = input.pluginData ?? new PluginDataMappingRegistry();
-  const apply = async (body: HostWorkspaceSyncRequest): Promise<HostWorkspaceSyncReceipt> => {
+  const apply = async (body: HostWorkspaceSyncRequest, stage: (value: string) => void = () => {}): Promise<HostWorkspaceSyncReceipt> => {
+    stage('identity');
     hostWorkspaceSyncSchema.parse(body);
     const identity = input.identity;
     if (body.instanceId !== identity.instanceId || body.profileId !== identity.profileId || body.pid !== identity.pid
@@ -35,14 +53,34 @@ export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & R
       ? body.selection.selection.includeUnassigned : body.selection.selection.workspaceIds.includes(id));
     if (body.projection.sessions.some(item => !selected(item.workspaceId) || item.events.some(event => event.logicalSessionId !== item.session.id && item.session.originKind !== 'codex-derived')))
       throw new Error('SYNC_HOST_SCOPE_MISMATCH');
-    const ids = body.projection.sessions.map(item => String(v3NativeSessionId(item.session.id)));
+    const allIds = body.projection.sessions.map(item => String(v3NativeSessionId(item.session.id)));
+    if (new Set(allIds).size !== allIds.length) throw new Error('SYNC_HOST_DUPLICATE_SESSION');
+    stage('inspect');
+    const unchanged = new Set<string>();
+    const evidence = await inspectUnchangedInstanceSessions({ stateRoot: input.stateRoot, workspaceRoot: body.workspaceRoot,
+      instanceHome: identity.homeRoot, instanceId: identity.instanceId, projection: body.projection, names: new Map(body.workspaceNames) });
+    for (const item of body.projection.sessions) {
+      const id = String(v3NativeSessionId(item.session.id)), confirm = evidence.get(id);
+      if (!confirm) continue;
+      const actual = await pluginData.capture({ endpointId: identity.instanceId, sessionId: id, context: { profileId: identity.profileId } });
+      const expected = item.pluginData ?? [];
+      // Missing source data never requests deletion of extra host-owned records.
+      const same = expected.every(record => actual.some(other => other.namespace === record.namespace
+        && other.dataType === record.dataType && other.recordId === record.recordId && isDeepStrictEqual(other.value, record.value)));
+      if (!same) continue;
+      await confirm(); unchanged.add(id);
+    }
+    const projection = { ...body.projection, sessions: body.projection.sessions.filter(item => !unchanged.has(String(v3NativeSessionId(item.session.id)))) };
+    const ids = projection.sessions.map(item => String(v3NativeSessionId(item.session.id)));
     if (new Set(ids).size !== ids.length) throw new Error('SYNC_HOST_DUPLICATE_SESSION');
-    const bindings: HostWorkspaceSyncReceipt['bindings'] = [];
+    const bindings: HostWorkspaceSyncReceipt['bindings'] = body.projection.sessions.filter(item => unchanged.has(String(v3NativeSessionId(item.session.id))))
+      .map(item => ({ nativeSessionId: String(v3NativeSessionId(item.session.id)), logicalSessionId: String(item.session.id) }));
     const mapping = pluginData.begin();
     const held: { release(): Promise<void> }[] = [];
     const before = new Map<string, string>((await storage.list()).filter((row: any) => ids.includes(row.header.id))
       .map((row: any) => [row.header.id, JSON.stringify(row.revision)]));
     const refresh = async () => {
+      stage('refresh');
       const domain = ctx.storageDomain.get(projectionCacheDomainSpec.name);
       if (!domain) throw new Error('SYNC_HOST_CACHE_UNAVAILABLE');
       const table = domain.table('sessions');
@@ -57,14 +95,16 @@ export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & R
       }
       await mapping.verify();
     };
-    const summary = await pluginData.withAccess(ids.map(sessionId => ({ endpointId: identity.instanceId, sessionId, context: { profileId: identity.profileId } })),
-      () => barrier.withAccess(ids, async () => {
+    stage('drain');
+    const summary = await barrier.withAccess(ids, async () => {
+        stage('materialize');
         return await writeBackInstanceWorkspaces({ stateRoot: input.stateRoot, workspaceRoot: body.workspaceRoot, pluginData: mapping,
           backupRoot: join(input.stateRoot, 'backups', 'write-back'), journalPath: join(input.stateRoot, 'logs', 'instance-write-back.jsonl'),
           selectionFor: () => body.selection, memberships: async () => new Map(body.projection.sessions.map(item => [item.session.id, item.workspaceId])),
-          workspaceNames: async () => new Map(body.workspaceNames), loadProjection: async () => body.projection,
+          workspaceNames: async () => new Map(body.workspaceNames), loadProjection: async () => projection,
           withWriteAccess: work => work(),
           withNativeLocks: async (sessions, work) => {
+            stage('lock');
             const current = await storage.list(), keys = new Set<string>();
             for (const header of [...current.filter((row: any) => ids.includes(row.header.id)).map((row: any) => row.header),
               ...sessions.map(session => (session.payload as any).header)]) {
@@ -74,8 +114,10 @@ export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & R
             const after = new Map<string, string>((await storage.list()).filter((row: any) => ids.includes(row.header.id))
               .map((row: any) => [row.header.id, JSON.stringify(row.revision)]));
             if (ids.some(id => before.get(id) !== after.get(id))) throw new Error('SYNC_HOST_CHANGED_DURING_DRAIN');
+            stage('write');
             const result = await work();
-            for (const item of body.projection.sessions) {
+            stage('plugin-restore');
+            for (const item of projection.sessions) {
               const nativeId = String(v3NativeSessionId(item.session.id));
               const header = (sessions.find(session => session.nativeSessionId === nativeId)?.payload as any)?.header;
               if (!header) continue;
@@ -101,12 +143,13 @@ export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & R
       const results = await Promise.allSettled(releasing.map(lock => lock.release()));
       results.forEach((result, index) => { if (result.status === 'rejected') held.push(releasing[index]!); });
       if (results.some(result => result.status === 'rejected')) throw new Error('SYNC_HOST_LOCK_RELEASE_FAILED');
-    }));
+    }, action => pluginData.withAccess(ids.map(sessionId => ({ endpointId: identity.instanceId, sessionId, context: { profileId: identity.profileId } })), action));
     return { schemaVersion: 1, operationId: body.operationId, instanceId: identity.instanceId, profileId: identity.profileId,
-      pid: identity.pid, processStartedAt: identity.processStartedAt, summary: { ...summary, pluginData: mapping.counts }, bindings };
+      pid: identity.pid, processStartedAt: identity.processStartedAt, summary: { ...summary, unchanged: summary.unchanged + unchanged.size, pluginData: mapping.counts }, bindings };
   };
   const handler = async (request: IncomingMessage, response: ServerResponse) => {
     const send = (status: number, value: unknown) => { response.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' }); response.end(JSON.stringify(value)); };
+    let failureStage = 'request';
     try {
       const path = new URL(request.url ?? '/', 'http://localhost').pathname;
       if (request.method !== 'POST' || ![HOST_WORKSPACE_SYNC_PATH, HOST_WORKSPACE_SYNC_PATH + '/plugin-data'].includes(path)) return send(404, { code: 'NOT_FOUND' });
@@ -115,7 +158,7 @@ export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & R
       if (expected.length !== actual.length || !timingSafeEqual(expected, actual)) return send(401, { code: 'UNAUTHORIZED' });
       const chunks: Buffer[] = []; let size = 0;
       for await (const chunk of request) { const bytes = Buffer.from(chunk); size += bytes.length; if (size > 64 * 1024 * 1024) return send(413, { code: 'BODY_TOO_LARGE' }); chunks.push(bytes); }
-      const json = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      const json = await decodeHostSyncPayload(Buffer.concat(chunks), request.headers['content-encoding']);
       if (path.endsWith('/plugin-data')) {
         const query = hostPluginDataCaptureSchema.parse(json), identity = input.identity;
         if (query.instanceId !== identity.instanceId || query.profileId !== identity.profileId || query.pid !== identity.pid
@@ -124,8 +167,14 @@ export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & R
           context: { profileId: identity.profileId } }) });
       }
       const body = hostWorkspaceSyncSchema.parse(json) as unknown as HostWorkspaceSyncRequest;
-      return send(200, await apply(body));
-    } catch { return send(409, { code: 'HOST_SYNC_INCOMPLETE' }); }
+      return send(200, await apply(body, value => { failureStage = value; }));
+    } catch (error) {
+      // Only bounded, recognized codes leave this process; never return paths, payloads or tokens.
+      const raw = error instanceof Error ? error.message : '';
+      const candidate = raw.split(':', 1)[0]!;
+      const reason = /^(?:SYNC_HOST_[A-Z_]+|HOST_[A-Z_]+|DSH_BUSY|LYNN_BUSY)$/.test(candidate) ? candidate : 'HOST_SYNC_INCOMPLETE';
+      return send(reason === 'HOST_BODY_TOO_LARGE' ? 413 : 409, { code: 'HOST_SYNC_INCOMPLETE', reason, stage: failureStage });
+    }
   };
   return { apply, handler, pluginData, dispose: () => barrier.dispose() };
 }

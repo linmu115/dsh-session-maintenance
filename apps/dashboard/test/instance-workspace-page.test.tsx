@@ -119,3 +119,25 @@ it("starts collapsed, keeps a draft when collapsed, and changes all to an explic
   await submit();
   expect(save).toHaveBeenCalledWith("one", { expectedRevision: 1, selection: { kind: "ids", workspaceIds: [], includeUnassigned: true } }, expect.any(AbortSignal));
 });
+
+it('keeps editing explicit while a saved selection aligns, and polls progress without resetting an unsaved draft', async () => {
+  vi.useFakeTimers();
+  try {
+    let value: InstanceWorkspaceConfiguration = { ...configuration('one'), synchronization: { phase: 'active', policyRevision: 1, failures: [] } };
+    const api: InstanceWorkspaceApi = { listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async () => structuredClone(value),
+      saveInstanceWorkspaceSync: async (_id, input) => {
+        value = { ...value, policy: { ...value.policy, revision: 2, selection: input.selection }, synchronization: { phase: 'aligning', policyRevision: 2, failures: [] } };
+        return structuredClone(value);
+      } };
+    await render(api); await click('编辑'); await click('仅同步以下选择'); await submit();
+    expect(container.textContent).toContain('已保存同步范围；同步进度单独显示');
+    expect(container.textContent).toContain('正在同步');
+    expect(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(true);
+    value = { ...value, synchronization: { phase: 'blocked', policyRevision: 2, failures: ['目标会话仍在使用'] } };
+    await click('编辑'); await click('全部工作区及未分组会话');
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+    expect(container.textContent).toContain('目标会话仍在使用');
+    expect(container.querySelector<HTMLInputElement>('input[type="radio"]')!.checked).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('input[type="checkbox"]')!.disabled).toBe(false);
+  } finally { vi.useRealTimers(); }
+});

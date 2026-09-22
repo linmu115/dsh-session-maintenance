@@ -14,6 +14,7 @@ export const endpointSyncCommandSchema = z.strictObject({
     z.strictObject({ kind: z.literal('archive'), archived: z.boolean() }),
     z.strictObject({ kind: z.literal('delete') }),
     z.strictObject({ kind: z.literal('refresh') }),
+    z.strictObject({ kind: z.literal('discover') }),
   ]),
 });
 export type EndpointSyncCommand = z.infer<typeof endpointSyncCommandSchema>;
@@ -21,7 +22,7 @@ export type EndpointSyncCommand = z.infer<typeof endpointSyncCommandSchema>;
 export interface EndpointSyncReceipt {
   readonly epoch: string;
   readonly logicalSessionId: string | null;
-  readonly outcome: 'updated' | 'deleted' | 'pending-delete' | 'out-of-scope';
+  readonly outcome: 'updated' | 'deleted' | 'pending-delete' | 'out-of-scope' | 'already-present';
   readonly archived?: boolean;
   readonly pendingOperations?: number;
 }

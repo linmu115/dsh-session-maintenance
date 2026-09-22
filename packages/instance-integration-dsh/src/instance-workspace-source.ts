@@ -5,7 +5,7 @@ import type { CanonicalEventV1, NativeSessionArtifact, NativeSessionId } from '@
 // The adapter already walks exactly this layout and decodes every generation it
 // finds; the reusable half is its own space inspector, so the Engine reads the
 // instance the same way the projection does rather than with a second reader.
-import { manifest, v3NativeProjectKey } from '@linmu/dsh-session-adapter-0-1-5';
+import { manifest, v3NativeProjectKey, v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import { adapter, inspectNativeSpace as inspectV3NativeSpace } from '@linmu/dsh-session-extension-gpt-compat';
 import type { JoinedWorkspaceSource, MappedNativeSession } from '@linmu/dsh-session-contracts';
 
@@ -133,4 +133,13 @@ export function createInstanceWorkspaceSource(input: {
         events: canonicalEventsFor({ artifact, instanceId: input.instanceId, logicalSessionId: input.logicalSessionId }) };
     },
   };
+}
+
+/** A projected identity must never be imported under a second, invented logical identity. */
+export function projectedLogicalSessionId(nativeSessionId: string): string | undefined {
+  const prefix = 'dsh-maintenance_';
+  if (!nativeSessionId.startsWith(prefix)) return undefined;
+  const encoded = nativeSessionId.slice(prefix.length), logical = Buffer.from(encoded, 'base64url').toString('utf8');
+  if (!logical || String(v3NativeSessionId(logical as never)) !== nativeSessionId) throw new Error('SYNC_PROJECTED_ID_INVALID');
+  return logical;
 }

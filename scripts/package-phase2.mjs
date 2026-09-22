@@ -86,6 +86,7 @@ const pluginHost = await build({
   target: "node24",
   conditions: ["development"],
   external: ["@deepseek-ai/*"],
+  banner: { js: 'import { createRequire as hostRequire } from "node:module"; const require = hostRequire(import.meta.url);' },
   legalComments: "none",
   metafile: true,
 });

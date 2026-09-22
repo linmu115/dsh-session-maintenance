@@ -5,9 +5,10 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer } from 'node:http';
+import { gzipSync } from 'node:zlib';
 import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import type { HostWorkspaceSyncRequest, LogicalSessionId } from '@linmu/dsh-session-contracts';
-import { createHostWorkspaceSync } from '../src/host-workspace-sync.js';
+import { createHostWorkspaceSync, decodeHostSyncPayload } from '../src/host-workspace-sync.js';
 import { readEndpointSnapshot } from '@linmu/dsh-instance-integration-dsh/endpoint-snapshot';
 const at = '2026-09-22T01:00:00.000Z';
 async function fixture() {
@@ -55,6 +56,7 @@ it('respects an existing kernel lock and succeeds after its owner releases it', 
   const f = await fixture(); let lock: { release(): Promise<void> } | undefined;
   try {
     await f.sync.apply(f.body);
+    (f.body.projection.sessions[0]!.session as any).archivedAt = at;
     lock = await f.storage.acquireWriteLease((await f.storage.stat(f.nativeId)).header);
     await expect(f.sync.apply({ ...f.body, operationId: 'contended' })).rejects.toThrow();
     expect((await f.read(f.nativeId)).events).toHaveLength(1);
@@ -66,6 +68,7 @@ it('does not overwrite new conversation data produced while the host is draining
   const f = await fixture();
   try {
     await f.sync.apply(f.body);
+    (f.body.projection.sessions[0]!.session as any).archivedAt = at;
     const writer = await f.storage.open(f.nativeId, 'write'); f.live.set(f.nativeId, { id: f.nativeId });
     f.runtime.sessions.flush = async () => {
       await writer.append([{ seq: 1, time: Date.parse(at) + 1, type: 'user/message', surfaceOp: 'append',
@@ -134,5 +137,40 @@ it('authenticates host-only HTTP requests and returns matching operation receipt
     expect((await fetch(url, { method: 'POST', headers: { ...headers, origin: 'http://localhost' }, body: '{}' })).status).toBe(403);
     const response = await fetch(url, { method: 'POST', headers, body: JSON.stringify(f.body) }); expect(response.status).toBe(200);
     expect((await response.json()).operationId).toBe(f.body.operationId);
+    const zipped = await fetch(url, { method: 'POST', headers: { ...headers, 'content-encoding': 'gzip' }, body: gzipSync(JSON.stringify(f.body)) });
+    expect(zipped.status).toBe(200);
+    expect((await zipped.json()).operationId).toBe(f.body.operationId);
+    f.live.set(f.nativeId, { id: f.nativeId });
+    (f.body.projection.sessions[0]!.session as any).archivedAt = at;
+    const refused = await fetch(url, { method: 'POST', headers, body: JSON.stringify(f.body) });
+    expect(refused.status).toBe(409);
+    expect(await refused.json()).toEqual({ code: 'HOST_SYNC_INCOMPLETE', reason: 'DSH_BUSY', stage: 'drain' });
+    f.live.delete(f.nativeId);
+
   } finally { await new Promise<void>(resolve => server.close(() => resolve())); await f.cleanup(); }
+});
+
+it('decodes compressed snapshots losslessly and bounds decompression before JSON parsing', async () => {
+  const value = { plugin: { unknown: ['原样保留', null, { nested: true }] } };
+  expect(await decodeHostSyncPayload(gzipSync(JSON.stringify(value)), 'gzip')).toEqual(value);
+  await expect(decodeHostSyncPayload(gzipSync('x'.repeat(4096)), 'gzip', 1024)).rejects.toThrow('HOST_BODY_TOO_LARGE');
+  await expect(decodeHostSyncPayload(Buffer.alloc(4096), undefined, 1024)).rejects.toThrow('HOST_BODY_TOO_LARGE');
+  await expect(decodeHostSyncPayload(Buffer.from('bad'), 'gzip')).rejects.toThrow('HOST_PAYLOAD_INVALID');
+  await expect(decodeHostSyncPayload(Buffer.from('{}'), 'br')).rejects.toThrow('HOST_CONTENT_ENCODING_UNSUPPORTED');
+});
+
+it('acknowledges an exact unchanged live session without waiting for it to detach or interrupting its writer', async () => {
+  const f = await fixture();
+  try {
+    await f.sync.apply(f.body);
+    f.live.set(f.nativeId, { id: f.nativeId });
+    const writer = await f.storage.open(f.nativeId, 'write');
+    const result = await f.sync.apply({ ...f.body, operationId: 'unchanged-live' });
+    expect(result.summary).toMatchObject({ written: 0, unchanged: 1, failures: [] });
+    expect(f.live.has(f.nativeId)).toBe(true);
+    await writer.append([{ seq: 1, time: Date.parse(at) + 1, type: 'user/message', surfaceOp: 'append',
+      data: { id: 'after-check', role: 'user', content: [{ type: 'text', text: 'still writable' }], source: { kind: 'user' } } }]);
+    await writer.flush(); await writer.close(); f.live.delete(f.nativeId);
+    expect((await f.read(f.nativeId)).events).toHaveLength(2);
+  } finally { await f.cleanup(); }
 });
