@@ -292,8 +292,9 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly writes?: MaintenanceWriteCoordinator;
     readonly retention?: RetentionService;
     readonly extensions?: ExtensionDataService;
+    readonly sessionLifecycle?: import('./session-lifecycle.js').SessionLifecycle;
     readonly codexImports?: CodexImportService;
-    readonly integrations?: InstanceIntegrationService;
+    readonly integrations?: InstanceIntegrationService | undefined;
     readonly workspaceSync?: WorkspaceSyncPolicyService;
     readonly instanceWorkspace?: InstanceWorkspaceService;
     readonly businessPages?: BusinessPageRegistry;
@@ -340,7 +341,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.sessionQueries = new SessionMaintenanceQueries(input.repository.database);
     this.sessionCommands = new SessionMaintenanceCommands(
       input.repository.database, this.sessionQueries, this.statusLog, this.projectionRunRepository, this.clock,
-      (logicalSessionId, archivedAt) => this.sessionGraph.reconcileSessionArchive(logicalSessionId, archivedAt),
+      (logicalSessionId, archivedAt) => input.sessionLifecycle?.changed({ logicalSessionId, archivedAt, deleted: false }),
     );
     this.canonicalProjectionSource = input.canonicalProjectionSource;
     this.projectionSourceFor = input.projectionSourceFor ?? (() => this.canonicalProjectionSource);

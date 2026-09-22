@@ -112,6 +112,9 @@ export async function createEngineFixture(name: string, input: {
   readonly continuationAdapter?: CodexContinuationPort;
   readonly withContinuationTarget?: boolean;
   readonly enableCodexMirror?: boolean;
+  readonly hostIntegrations?: boolean;
+  readonly extensionAdapters?: readonly import('@linmu/dsh-session-contracts').ExtensionDataAdapter[];
+  readonly sessionLifecycleAdapters?: readonly import('@linmu/dsh-session-contracts').SessionLifecycleAdapter[];
 } = {}) {
   const fixture = await createFixtureSystem(name);
   const options = { stateRoot: fixture.stateRoot, fixturePolicy: fixture.fixturePolicy };
@@ -141,6 +144,9 @@ export async function createEngineFixture(name: string, input: {
   }
   const engine = await createReadOnlyComposition({
     ...options,
+    ...(input.hostIntegrations === undefined ? {} : { hostIntegrations: input.hostIntegrations }),
+    ...(input.extensionAdapters === undefined ? {} : { extensionAdapters: input.extensionAdapters }),
+    ...(input.sessionLifecycleAdapters === undefined ? {} : { sessionLifecycleAdapters: input.sessionLifecycleAdapters }),
     inspectCodexEnvironment: async () => ({ compatible: true, bidirectional: false, reason: 'Synthetic fixture only' }),
     ...(input.continuationAdapter === undefined ? {} : { continuationAdapter: input.continuationAdapter }),
   });

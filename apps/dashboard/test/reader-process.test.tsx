@@ -24,6 +24,22 @@ const body = (text = "PROCESS_SECRET"): ReaderEventPage => ({ schemaVersion: 1, 
 function api(): SessionReaderApi {
   return { getSessionReader: vi.fn(), getSessionReaderProcess: vi.fn(async () => processPage), getSessionReaderEvent: vi.fn(async () => body()) };
 }
+
+it('keeps unknown data in one collapsed bundle and never requests its body when opened', async () => {
+  const service = api();
+  service.getSessionReaderProcess = vi.fn(async () => ({ ...processPage, items: [
+    { id: 'opaque-one', kind: 'opaque-data', label: '未识别数据包', eventIds: ['unknown-one', 'unknown-two'], paired: false },
+  ] }));
+  await render(<ReaderTurnView api={service} logicalSessionId="session" snapshot={snapshot} turn={turn} />);
+  await click('本轮过程');
+  const bundle = container.querySelector('.reader-process-item details') as HTMLDetailsElement;
+  expect(bundle.open).toBe(false);
+  expect(bundle.textContent).toContain('未识别数据包（2 条）');
+  await act(async () => { bundle.open = true; bundle.dispatchEvent(new Event('toggle')); });
+  expect(service.getSessionReaderEvent).not.toHaveBeenCalled();
+  expect(container.textContent).not.toContain('PROCESS_SECRET');
+  expect(bundle.querySelector('pre')).toBeNull();
+});
 function page(id: string): SessionReaderPage {
   return { schemaVersion: 1, snapshot, turns: [turn], nextCursor: null, detail: {
     schemaVersion: 1, session: { schemaVersion: 1, id, authorityScope: "maintenance", originKind: "maintenance-native", headVersionId: null, title: id, tags: [], archivedAt: null, tombstonedAt: null, createdAt: "2026-09-16T00:00:00.000Z", updatedAt: "2026-09-16T00:00:00.000Z" },

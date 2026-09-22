@@ -33,6 +33,11 @@ function unwrapSessionGraph(body: import('@linmu/dsh-session-contracts').JsonVal
   return parsed.success ? parsed.data.content.graph as import('@linmu/dsh-session-contracts').JsonValue : body;
 }
 export const thoughtDagAdapter: ExtensionDataAdapter = {
+  validateWrite(input, current) {
+    const managed = (body: unknown) => Boolean(body && typeof body === 'object' && 'managedSchema' in body && body.managedSchema === 2);
+    if (managed(input.content.body) || managed(current?.content.body)) throw new ExtensionDataError('GRAPH_DOMAIN_REQUIRED',
+      '会话图结构、移除和读取记录必须通过统一图操作保存；当前编辑请保留。', 409);
+  },
   capabilities,
   panelAdapter: { id: "thoughtdag", label: "ThoughtDAG" },
   ownership(content) {
@@ -129,6 +134,7 @@ export const upstreamAdapter: ExtensionDataAdapter = {
   preview(body){const r=sessionContextRecordSchema.parse(body);return {kind:"rows",total:1,rows:[{label:r.sourceTitle,text:r.selectedText.slice(0,2000)}]};},
 };
 export const annotationRecordsAdapter: ExtensionDataAdapter = {
+  validateWrite() { throw new ExtensionDataError('ANNOTATION_SYNC_REQUIRED', '引用条目是 Core 的只读镜像，请通过受信的会话同步更新。', 409); },
   namespace: ANNOTATION_RECORDS_NAMESPACE, label: "引用条目", panelAdapter: obsidianPanel,
   pluginVersions: ["0.3.12-rc2.9", "0.3.12-rc2.10","0.3.12-rc2.11","0.3.12-rc2.12","0.3.12-rc2.19", "0.3.12-rc2.20", "0.3.12-rc2.21"], schemaVersions: [1],
   capabilities: { ...capabilities, write: false, delete: false, restore: false },

@@ -28,10 +28,11 @@ function cursor(value: string | undefined): number {
   return Number(value);
 }
 function processKind(row: Classified): ReaderProcessKind {
+  if (row.kind === 'opaque-unknown' || row.kind === 'other') return 'opaque-data';
   return row.presentation.kind === "user" ? "record" : row.presentation.kind;
 }
 function addProcess(turn: TurnIndex, row: Classified) {
-  const kind = processKind(row), label = kind === "assistant" ? "中间回复" : row.presentation.label;
+  const kind = processKind(row), label = kind === 'opaque-data' ? '未识别数据包' : kind === "assistant" ? "中间回复" : row.presentation.label;
   const current = turn.kinds.get(kind) ?? { label, count: 0 };
   current.count++; turn.kinds.set(kind, current); turn.count++;
 }
@@ -102,10 +103,21 @@ export class SessionReaderQueries {
   process(sessionId: string, query: ReaderProcessQuery): ReaderProcessPage {
     const snapshot = this.snapshot(sessionId, query.snapshot), start = cursor(query.cursor), limit = bounded(query.limit, 25, 50), turn = this.turn(sessionId, query.turnId);
     const items: ReaderProcessItem[] = [], pairs = new Map<string, number>();
+    let opaqueIndex: number | undefined;
     for (const value of this.database.prepare(`${META} AND sequence>=? AND sequence<=? ORDER BY sequence,id`).iterate(sessionId, turn.start, turn.end)) {
       const row = classify(value as unknown as Meta, sessionId);
       if (row.id === turn.user?.id || row.id === turn.answer?.id) continue;
       const kind = processKind(row), callId = row.presentation.toolCallId;
+      if (kind === 'opaque-data') {
+        if (opaqueIndex === undefined) {
+          opaqueIndex = items.length;
+          items.push({ id: `opaque-${row.id}`, kind, label: '未识别数据包', eventIds: [row.id], paired: false });
+        } else {
+          const previous = items[opaqueIndex]!;
+          items[opaqueIndex] = { ...previous, eventIds: [...previous.eventIds, row.id] };
+        }
+        continue;
+      }
       if (kind === "tool-result" && callId && pairs.has(callId)) {
         const index = pairs.get(callId)!, prior = items[index]!;
         items[index] = { ...prior, eventIds: [...prior.eventIds, row.id], paired: true }; pairs.delete(callId); continue;

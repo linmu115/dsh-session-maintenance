@@ -2,6 +2,18 @@ import type { CanonicalDashboardEvent, JsonValue } from "@linmu/dsh-session-cont
 import { useState } from "react";
 import { Badge } from "@linmu/dsh-session-ui";
 import { SafeMarkdown } from "./safe-markdown.js";
+import { isOpaqueEvent, packOpaqueEvents } from '@linmu/dsh-session-contracts';
+
+export function CanonicalEventList({ events }: { readonly events: readonly CanonicalDashboardEvent[] }) {
+  const unknown = events.filter(isOpaqueEvent);
+  const bundle = unknown.length ? packOpaqueEvents(unknown) : undefined;
+  return <>{events.map(event => isOpaqueEvent(event)
+    ? event.id === bundle?.events[0]?.id ? <article key={`opaque-${event.id}`} className="canonical-event" data-held-out="true"><details>
+      <summary>未识别数据包（{bundle.events.length} 条）</summary>
+      <p className="muted">原始数据及来源已完整保留，当前不展示内部结构。</p>
+    </details></article> : null
+    : <CanonicalEventView key={event.id} event={event} />)}</>;
+}
 
 export interface CanonicalEventPresentation { readonly heldOut: boolean; readonly text: string }
 function jsonRecord(content: JsonValue): content is Readonly<Record<string, JsonValue>> {
@@ -13,7 +25,7 @@ export function canonicalEventPresentation(event: CanonicalDashboardEvent): Cano
   return {
     heldOut,
     text: heldOut ? typeof other?.summary === "string" ? other.summary : "此事件类型未被当前适配器解释，原始数据已留置且不会执行。"
-      : event.readableText ?? (typeof event.content === "string" ? event.content : JSON.stringify(event.content, null, 2)),
+      : event.readableText ?? (typeof event.content === "string" ? event.content : "结构化数据已保存，当前没有可读展示。"),
   };
 }
 const labels: Readonly<Record<string, string>> = {
@@ -23,7 +35,10 @@ const labels: Readonly<Record<string, string>> = {
 };
 export function CanonicalEventView({ event }: { readonly event: CanonicalDashboardEvent }) {
   const [expanded, setExpanded] = useState(false), [metadataOpen, setMetadataOpen] = useState(false);
-  const presentation = expanded ? canonicalEventPresentation(event) : { heldOut: event.kind === "opaque-unknown" || event.kind === "other", text: "" };
+  if (isOpaqueEvent(event)) return <article className="canonical-event" data-testid={`canonical-event-${event.id}`} data-held-out="true"><details>
+    <summary>未识别数据包（1 条）</summary><p className="muted">原始数据及来源已完整保留，当前不展示内部结构。</p>
+  </details></article>;
+  const presentation = expanded ? canonicalEventPresentation(event) : { heldOut: false, text: "" };
   const message = event.kind === "user-message" || event.kind === "assistant-message";
   const text = event.readableText ?? undefined;
   const metadata = <details className="event-metadata" onToggle={event => setMetadataOpen(event.currentTarget.open)}><summary>原始记录与来源</summary>{metadataOpen ? <><p>{event.source.platform} · {event.source.instanceId} · #{event.sequence}</p><code>{event.id}</code><pre className="canonical-event-json"><code>{JSON.stringify({ content: event.content, rawPayload: event.rawPayload }, null, 2)}</code></pre></> : null}</details>;

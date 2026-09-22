@@ -63,6 +63,66 @@
       "development": "./src/endpoint-snapshot.ts",
       "types": "./dist/endpoint-snapshot.d.ts",
       "default": "./dist/endpoint-snapshot.js"
+    },
+    "./bindings": {
+      "development": "./src/bindings.ts",
+      "types": "./dist/bindings.d.ts",
+      "default": "./dist/bindings.js"
+    },
+    "./maintenance-policy": {
+      "development": "./src/maintenance-policy.ts",
+      "types": "./dist/maintenance-policy.d.ts",
+      "default": "./dist/maintenance-policy.js"
+    },
+    "./pending-selection": {
+      "development": "./src/pending-selection.ts",
+      "types": "./dist/pending-selection.d.ts",
+      "default": "./dist/pending-selection.js"
+    },
+    "./standalone": {
+      "development": "./src/standalone.ts",
+      "types": "./dist/standalone.d.ts",
+      "default": "./dist/standalone.js"
+    },
+    "./launcher-install": {
+      "development": "./src/launcher-install.ts",
+      "types": "./dist/launcher-install.d.ts",
+      "default": "./dist/launcher-install.js"
+    },
+    "./launcher-instance-directory": {
+      "development": "./src/launcher-instance-directory.ts",
+      "types": "./dist/launcher-instance-directory.d.ts",
+      "default": "./dist/launcher-instance-directory.js"
+    },
+    "./instance-folder": {
+      "development": "./src/instance-folder.ts",
+      "types": "./dist/instance-folder.d.ts",
+      "default": "./dist/instance-folder.js"
+    },
+    "./folder-picker": {
+      "development": "./src/folder-picker.ts",
+      "types": "./dist/folder-picker.d.ts",
+      "default": "./dist/folder-picker.js"
+    },
+    "./folder-script": {
+      "development": "./src/folder-script.ts",
+      "types": "./dist/folder-script.d.ts",
+      "default": "./dist/folder-script.js"
+    },
+    "./instance-lease": {
+      "development": "./src/instance-lease.ts",
+      "types": "./dist/instance-lease.d.ts",
+      "default": "./dist/instance-lease.js"
+    },
+    "./integration-service": {
+      "development": "./src/integration-service.ts",
+      "types": "./dist/integration-service.d.ts",
+      "default": "./dist/integration-service.js"
+    },
+    "./system-evidence": {
+      "development": "./src/system-evidence.ts",
+      "types": "./dist/system-evidence.d.ts",
+      "default": "./dist/system-evidence.js"
     }
   },
   "files": [
@@ -78,6 +138,7 @@
     "@linmu/dsh-session-extension-gpt-compat": "workspace:*",
     "@linmu/dsh-session-adapter-0-1-5": "workspace:*",
     "yaml": "2.8.1",
-    "zod": "4.1.5"
+    "zod": "4.1.5",
+    "@linmu/dsh-session-adapter-host": "workspace:*"
   }
 }

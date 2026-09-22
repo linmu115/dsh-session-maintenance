@@ -4,7 +4,7 @@ import type { CanonicalDashboardSessionDetail, SyncPlan, SessionReaderApi, Sessi
 import { Badge, Button, EmptyState, LoadingState, Surface } from "@linmu/dsh-session-ui";
 
 import { canonicalOriginLabel } from "./canonical-labels.js";
-import { CanonicalEventView } from "./canonical-event-view.js";
+import { CanonicalEventList } from "./canonical-event-view.js";
 import { ReaderTranscript } from "./reader-process.js";
 import { UserRequestIndex, type UserRequestIndexApi } from "./user-request-index.js";
 import { LineageView } from "./lineage-view.js";
@@ -76,7 +76,7 @@ export function SessionWorkbench(props: {
       {metadataState.warning ? <p role="status"><Badge tone="warning">{metadataState.label}</Badge> {metadataState.detail}</p> : null}
       {props.api.getUserRequestIndex ? <UserRequestIndex key={props.logicalSessionId} api={props.api as UserRequestIndexApi} logicalSessionId={props.logicalSessionId}/> : null}
       <section className="canonical-transcript" aria-label="静态会话内容">
-        {state.value.reader ? <ReaderTranscript key={`${props.logicalSessionId}:${state.value.reader.snapshot}`} api={props.api as SessionReaderApi} logicalSessionId={props.logicalSessionId} initial={state.value.reader} onReload={() => setRetry(value => value + 1)} /> : detail.events.length === 0 ? <EmptyState title="还没有会话内容" description="该会话尚未保存可阅读的消息。" /> : detail.events.map((event) => <CanonicalEventView key={event.id} event={event} />)}
+        {state.value.reader ? <ReaderTranscript key={`${props.logicalSessionId}:${state.value.reader.snapshot}`} api={props.api as SessionReaderApi} logicalSessionId={props.logicalSessionId} initial={state.value.reader} onReload={() => setRetry(value => value + 1)} /> : detail.events.length === 0 ? <EmptyState title="还没有会话内容" description="该会话尚未保存可阅读的消息。" /> : <CanonicalEventList events={detail.events} />}
       </section>
       <details className="reader-details"><summary>来源与派生会话</summary><LineageView parent={detail.parent} children={detail.children} onOpenSession={props.onOpenSession} /></details>
       <details className="reader-details"><summary>版本、来源与标识</summary><dl className="canonical-metadata">

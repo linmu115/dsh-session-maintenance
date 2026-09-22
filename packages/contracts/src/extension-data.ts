@@ -64,6 +64,8 @@ export interface ExtensionDataAdapter {
   ownership?(content: ExtensionContent): ExtensionObjectOwnership;
   capabilities: ExtensionCapabilities;
   validate(content: ExtensionContent): void;
+  /** Business-domain write ownership, evaluated before the generic storage mutation. */
+  validateWrite?(input: ExtensionWrite, current: ExtensionObject | undefined): void;
   summarize(body: JsonValue): string;
   preview?(body: JsonValue): ExtensionPreview;
   /** Plugin-owned rows embedded in a host log. This does not create a Harness identity. */

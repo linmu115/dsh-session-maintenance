@@ -383,6 +383,9 @@ importers:
       '@linmu/dsh-session-extension-gpt-compat':
         specifier: workspace:*
         version: link:../extension-gpt-compat
+      '@linmu/dsh-session-store':
+        specifier: workspace:*
+        version: link:../session-store
       zod:
         specifier: 4.1.5
         version: 4.1.5
@@ -404,6 +407,9 @@ importers:
       '@linmu/dsh-session-adapter-0-1-5':
         specifier: workspace:*
         version: link:../adapter-dsh-0-1-5
+      '@linmu/dsh-session-adapter-host':
+        specifier: workspace:*
+        version: link:../adapter-host
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts

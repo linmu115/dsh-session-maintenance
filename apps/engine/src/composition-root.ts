@@ -73,7 +73,8 @@ import { CodexProjectObserver } from "./codex-project-observer.js";
 import type { CodexCanonicalImportOptions } from "./codex-canonical-import.js";
 import { createRetentionComposition } from "./retention-composition.js";
 import { SqliteCodexProjectPort } from "./sqlite-codex-project-port.js";
-import { InstanceIntegrationService } from "./integrations/service.js";
+import { InstanceIntegrationService } from '@linmu/dsh-instance-integration-dsh/integration-service';
+import { scopedRecoveryRuns } from './lifecycle-recovery.js';
 import { WorkspaceSyncPolicyService } from "./integrations/sync-policy.js";
 import { discoverLauncherIntegrations } from "./integrations/launcher-discovery.js";
 import { discoverStandaloneInstances } from './integrations/standalone.js';
@@ -82,7 +83,8 @@ import { readLauncherInstanceDirectory } from "./integrations/launcher-instance-
 import { registerCodexSource, withDefaultCodexSource } from "./integrations/codex-sources.js";
 import type { IntegrationInstallOptions } from "./integrations/launcher-install.js";
 import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
-import { SessionGraphStore } from "./session-graph-store.js";
+import { knowledgeLifecycleAdapters } from '@linmu/dsh-session-extension-knowledge/session-lifecycle';
+import { SessionLifecycle } from './session-lifecycle.js';
 
 const resolveModule = createRequire(import.meta.url).resolve;
 
@@ -106,6 +108,9 @@ function workspaceRootDefault(): string {
 export interface CompositionOptions {
   readonly inspectCodexEnvironment?: typeof checkCodexEnvironment;
   readonly extensionAdapters?: readonly import("@linmu/dsh-session-contracts").ExtensionDataAdapter[];
+  readonly sessionLifecycleAdapters?: readonly import('@linmu/dsh-session-contracts').SessionLifecycleAdapter[];
+  /** Optional host management. Canonical storage and business adapters can run without it. */
+  readonly hostIntegrations?: boolean;
   readonly stateRoot: string;
   /**
    * Where an instance's workspaces are created locally, one folder per Maintenance bucket.
@@ -301,7 +306,7 @@ async function createComposition(
   const canonicalProjectionSource = new SqliteCanonicalProjectionSource(repository.database, objectStore);
   let composedEngine: SessionMaintenanceEngine | undefined;
   const instanceWorkspaceRuntime = new InstanceWorkspaceRuntime(repository.database, instances, writes, runId => composedEngine?.runtimeBroker.isRunActive(runId) ?? false,
-    () => readLauncherInstanceDirectory(options.integrationEnvironment?.launcherDataRoot ?? join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "in.dsh-plug.dsh-launcher")),
+    () => options.hostIntegrations === false ? Promise.resolve(null) : readLauncherInstanceDirectory(options.integrationEnvironment?.launcherDataRoot ?? join(process.env.APPDATA ?? join(homedir(), "AppData", "Roaming"), "in.dsh-plug.dsh-launcher")),
     // Saving a range is what puts it into the instance: the board's save is the operator's
     // "sync this workspace to the instance" action, so the write-back belongs on that path.
     async (instanceId, profileId) => {
@@ -356,18 +361,17 @@ async function createComposition(
         return logicalSessionId;
       },
     }));
-  const graphLifecycle = new SessionGraphStore(repository.database);
-  await writes.run("graph-archive-reconcile", () => {
-    const rows = repository.database.prepare(`SELECT id,archived_at FROM logical_sessions s WHERE s.tombstoned_at IS NULL
-      AND (s.archived_at IS NOT NULL OR EXISTS(SELECT 1 FROM extension_objects o WHERE o.namespace='thoughtdag'
-        AND json_extract(o.content_json,'$.body.ownerSessionId')=s.id AND json_extract(o.content_json,'$.body.archivedAt') IS NOT NULL))`)
-      .all() as { id: string; archived_at: string | null }[];
-    for (const row of rows) graphLifecycle.reconcileSessionArchive(row.id, row.archived_at);
+  const extensionAdapters = [...(options.extensionAdapters ?? builtInExtensionAdapters).filter(adapter => !installedAdapters.entries.some(entry => entry.kind === 'business' && entry.namespace === adapter.namespace)), ...installedAdapters.business];
+  const sessionLifecycle = new SessionLifecycle(options.sessionLifecycleAdapters ?? knowledgeLifecycleAdapters(repository.database, extensionAdapters));
+  await writes.run("session-lifecycle-initialize", () => {
+    const rows = repository.database.prepare('SELECT id,archived_at,tombstoned_at FROM logical_sessions')
+      .all() as { id: string; archived_at: string | null; tombstoned_at: string | null }[];
+    sessionLifecycle.initialize(rows.map(row => ({ logicalSessionId: row.id, archivedAt: row.archived_at, deleted: row.tombstoned_at !== null })));
   });
   const resolveSourceAdapter: SourceAdapterResolver = event => adapterRegistry.list().flatMap(item => { const adapter = adapterRegistry.resolveRuntimeAdapter(item.manifest.id); return adapter ? [adapter] : []; }).find(owner => event.id.startsWith(`${owner.manifest.id}:`) || (typeof event.content === "object" && event.content !== null && !Array.isArray(event.content) && typeof (event.content as Readonly<Record<string, unknown>>).sourceKind === "string" && String((event.content as Readonly<Record<string, unknown>>).sourceKind).startsWith(`${owner.manifest.id}/`)));
   const canonicalEngine = coordinateAsyncMethods(new CanonicalSessionEngine(
     new SqliteCanonicalSessionEngineStore(repository.database, objectStore, writes,
-      session => { if (!session.tombstonedAt) graphLifecycle.reconcileSessionArchive(session.id, session.archivedAt); }, instanceWorkspaceRuntime.assertMutationAllowed),
+      session => sessionLifecycle.changed({ logicalSessionId: session.id, archivedAt: session.archivedAt, deleted: session.tombstonedAt !== null }), instanceWorkspaceRuntime.assertMutationAllowed),
   ), ["observeCodex", "retitleCodexMirror", "appendDsh", "importDshNative", "tombstone", "restore"], writes, "canonical-commit");
   const codexProjectMapping = new CodexProjectMappingService({ database: repository.database, writes, instances,
     ...(options.fixturePolicy === undefined ? {} : { fixtureGuard: options.fixturePolicy }),
@@ -438,7 +442,8 @@ async function createComposition(
     businessPages,
     instanceWorkspace: instanceWorkspaceRuntime.createService(),
     adapterCatalog,
-    extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), [...(options.extensionAdapters ?? builtInExtensionAdapters).filter(adapter => !installedAdapters.entries.some(entry => entry.kind === 'business' && entry.namespace === adapter.namespace)), ...installedAdapters.business], (sessionId, versionId) => canonicalProjectionSource.loadVersionEvents(sessionId, versionId)),
+    sessionLifecycle,
+    extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), extensionAdapters, (sessionId, versionId) => canonicalProjectionSource.loadVersionEvents(sessionId, versionId)),
     codexProjectMapping,
     codexProjectObserver,
     codexMirror,
@@ -452,7 +457,8 @@ async function createComposition(
       });
       codexImports.clearChangeCache();
     },
-    integrations: new InstanceIntegrationService({
+    integrations: options.hostIntegrations === false ? undefined : new InstanceIntegrationService({
+      recoveryRuns: scopedRecoveryRuns,
       stateRoot: options.stateRoot, writes,
       discover: async () => {
         const sources = await withDefaultCodexSource(instances, defaultCodexHome);

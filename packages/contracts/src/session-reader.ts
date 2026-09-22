@@ -1,7 +1,7 @@
 import type { CanonicalDashboardSessionDetail } from "./http.js";
 
 /** Read-only UI semantics. These never alter canonical roles or model exposure. */
-export type ReaderProcessKind = "runtime-context" | "skill-catalog" | "plugin-context" | "tool-call" | "tool-result" | "reasoning" | "record" | "assistant";
+export type ReaderProcessKind = "runtime-context" | "skill-catalog" | "plugin-context" | "tool-call" | "tool-result" | "reasoning" | "record" | "assistant" | "opaque-data";
 export interface ReaderMessage {
   readonly eventId: string;
   readonly role: "user" | "assistant";

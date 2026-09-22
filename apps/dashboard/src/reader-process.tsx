@@ -40,6 +40,10 @@ function EventPages({ scope, eventId, initial }: { scope: Scope; eventId: string
 
 function ProcessItem({ scope, item }: { scope: Scope; item: ReaderProcessItem }) {
   const [open, setOpen] = useState(false), [selected, setSelected] = useState(0);
+  if (item.kind === 'opaque-data') return <li className="reader-process-item"><details>
+    <summary>未识别数据包（{item.eventIds.length} 条）</summary>
+    <p className="muted">原始数据及来源已完整保留，当前不展示内部结构。</p>
+  </details></li>;
   return <li className="reader-process-item">
     <button type="button" aria-expanded={open} onClick={() => setOpen(value => !value)}>{item.label}{item.paired ? " · 调用与结果" : ""}</button>
     {open ? <div className="reader-process-body">

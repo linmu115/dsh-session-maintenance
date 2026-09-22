@@ -8,6 +8,16 @@
       "development": "./src/index.ts",
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./session-graph-store": {
+      "development": "./src/session-graph-store.ts",
+      "types": "./dist/session-graph-store.d.ts",
+      "default": "./dist/session-graph-store.js"
+    },
+    "./session-lifecycle": {
+      "development": "./src/session-lifecycle.ts",
+      "types": "./dist/session-lifecycle.d.ts",
+      "default": "./dist/session-lifecycle.js"
     }
   },
   "files": [
@@ -20,6 +30,7 @@
   "dependencies": {
     "@linmu/dsh-session-contracts": "workspace:*",
     "@linmu/dsh-session-extension-gpt-compat": "workspace:*",
-    "zod": "4.1.5"
+    "zod": "4.1.5",
+    "@linmu/dsh-session-store": "workspace:*"
   }
 }

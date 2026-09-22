@@ -3,7 +3,7 @@ import { ExtensionDataError, extensionConnectSchema, extensionWriteSchema, exten
   type ExtensionDataAdapter, type ExtensionScope, type ExtensionConnect, type ExtensionWrite, type ExtensionPanel, type ExtensionList,
 } from "@linmu/dsh-session-contracts";
 import type { SqliteExtensionRepository } from "@linmu/dsh-session-store";
-import { ANNOTATION_RECORDS_NAMESPACE, type AnnotationMirrorSync, type ExtensionBusinessPanelQuery, type ExtensionDirectoryQuery } from "@linmu/dsh-session-contracts";
+import { type AnnotationMirrorSync, type ExtensionBusinessPanelQuery, type ExtensionDirectoryQuery } from "@linmu/dsh-session-contracts";
 import type { SessionMaintenanceEngine } from "../engine.js";
 import { ExtensionDirectoryService } from "./directory.js";
 import { synchronizeAnnotationMirrors } from "./annotation-sync.js";
@@ -70,14 +70,9 @@ export class ExtensionDataService {
   }
   write(input: ExtensionWrite) {
     const parsed = extensionWriteSchema.parse(input);
-    if (parsed.scope.namespace === ANNOTATION_RECORDS_NAMESPACE)
-      throw new ExtensionDataError("ANNOTATION_SYNC_REQUIRED", "引用条目是 Core 的只读镜像，请通过受信的会话同步更新。", 409);
-    const managed = (body: unknown) => Boolean(body && typeof body === "object" && "managedSchema" in body && body.managedSchema === 2);
-    if (parsed.scope.namespace === "thoughtdag" && (managed(parsed.content.body) ||
-        managed(this.store.get(parsed.scope, parsed.objectId)?.content.body)))
-      throw new ExtensionDataError("GRAPH_DOMAIN_REQUIRED", "会话图结构、移除和读取记录必须通过统一图操作保存；当前编辑请保留。", 409);
     const { adapter, panel } = this.ready(parsed.scope);
     const current = this.store.get(parsed.scope,parsed.objectId);
+    adapter.validateWrite?.(parsed, current);
     if (!adapter.capabilities.write || (parsed.deleted && !adapter.capabilities.delete) || (current?.deleted && !parsed.deleted && !adapter.capabilities.restore)) {
       throw new ExtensionDataError("EXTENSION_WRITE_UNAVAILABLE", "此扩展未提供所请求的写入能力。");
     }
