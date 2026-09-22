@@ -1,5 +1,7 @@
 # testvault Web Viewer 验收与 Lynn 服务身份修复
 
+后续更新：用户正常停机后，Engine **.74** 和接入组件 **.47** 已安装并通过后端校验，测试实例保持停止，后续 UI 由用户亲自验收，不再使用 Computer Use。见 [修复安装与人工验收交接](2026-09-22-lynn-rc47-installed.md)。以下为安装前的实机记录。
+
 2026-09-22 18:22：按用户要求，在 testvault 的 Obsidian 内置 Web Viewer 中验收 DSH WebUI。测试目标为 `i-27c4d5a7-bdb5-4b8a-8d95-6267f47499c5`，物理 profile `web`、Maintenance profile `web-i27c4`。当前 Engine **0.1.43-rc2.73**、实例接入组件 **0.2.27-rc2.46**，目录接入 connected、issues 为空。实例已由正式 Launcher 启动入口启动，当前运行；此前“留待启动”是历史状态。
 
 ## 实机已验证
