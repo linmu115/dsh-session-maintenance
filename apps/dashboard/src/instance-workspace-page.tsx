@@ -91,26 +91,26 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
       </details>
       <details className="maintenance-source-list">
         <summary><strong>Maintenance 真源名单</strong><span className="muted">已保存：{configuration.policy.selection.kind === "all" ? "全部工作区及未分组会话" : `${configuration.policy.selection.workspaceIds.length} 个工作区${configuration.policy.selection.includeUnassigned ? " · 包含未分组会话" : ""}`}{editing && changed ? " · 有未保存的更改" : configuration.pendingActivation ? " · 下次启动生效" : ""}</span></summary>
-      <form ref={editorLayout} className="sync-editor-layout" onChange={event => { if ((event.target as HTMLInputElement).type !== 'search') setEditing(true); }} onSubmit={event => { event.preventDefault(); void save(); }}>
+      <form ref={editorLayout} className="sync-editor-layout" onSubmit={event => { event.preventDefault(); void save(); }}>
         <div className="sync-editor-scroll"><fieldset className="instance-workspace-selection"><legend>此实例的同步范围</legend>
-          <p className="muted">可直接勾选工作区，再点击保存。勾选本身不会立即修改同步范围。</p>
-          <label className="sync-workspace"><input type="radio" disabled={busy} name="instance-selection" checked={selection.kind === "all"} onChange={() => setSelection({ kind: "all" })} />全部工作区及未分组会话</label>
-          <label className="sync-workspace"><input type="radio" disabled={busy} name="instance-selection" checked={selection.kind === "ids"} onChange={() => setSelection({ kind: "ids", workspaceIds: [], includeUnassigned: false })} />仅同步以下选择</label>
+          <p className="muted">点击编辑后调整勾选，再点击保存；撤销可放弃本次修改。</p>
+          <label className="sync-workspace"><input type="radio" disabled={busy || !editing} name="instance-selection" checked={selection.kind === "all"} onChange={() => setSelection({ kind: "all" })} />全部工作区及未分组会话</label>
+          <label className="sync-workspace"><input type="radio" disabled={busy || !editing} name="instance-selection" checked={selection.kind === "ids"} onChange={() => setSelection({ kind: "ids", workspaceIds: [], includeUnassigned: false })} />仅同步以下选择</label>
           <label className="workspace-search"><input aria-label="搜索 Maintenance 真源工作区" type="search" placeholder="搜索工作区名称或标识" value={query} onChange={event => setQuery(event.target.value)} /></label>
           <p className="muted">{visible.length} 个工作区 · 已选 {selectedCount} 个{selection.kind === "all" ? " · 自动包含未来新增工作区" : ""}</p>
           <div className="sync-workspaces">
             {visible.map(workspace => {
               const checked = selection.kind === "all" ? !workspace.deleted : selection.workspaceIds.includes(workspace.id);
               return <div className="mapping-project" key={workspace.id} data-selected={checked}>
-                <label className="mapping-project-choice"><input aria-label={`同步 ${workspace.name}`} type="checkbox" checked={checked} disabled={busy || (workspace.deleted && !checked)} onChange={event => toggle(workspace.id, event.currentTarget.checked)} />
+                <label className="mapping-project-choice"><input aria-label={`同步 ${workspace.name}`} type="checkbox" checked={checked} disabled={busy || !editing || (workspace.deleted && !checked)} onChange={event => toggle(workspace.id, event.currentTarget.checked)} />
                   <span><strong>{workspace.name}</strong><small>{workspace.deleted ? "已删除，请取消选择" : "包含此工作区未来新增会话"}</small></span><Badge>Maintenance 真源</Badge>
                 </label>
                 <div className="mapping-project-detail"><details><summary>工作区详情</summary><p>Maintenance 工作区标识：<code>{workspace.id}</code></p></details></div>
               </div>;
             })}
             {!configuration.workspaces.length ? <EmptyState title="暂无 Maintenance 工作区" description="可单独选择未分组会话；创建工作区后可在此选择。" /> : !visible.length ? <EmptyState title="没有匹配的工作区" description="调整搜索词可查看其他工作区，已有勾选仍然保留。" /> : null}
-            {selection.kind === "ids" ? selection.workspaceIds.filter(id => !configuration.workspaces.some(workspace => workspace.id === id)).map(id => <label className="sync-workspace" key={id}><input type="checkbox" disabled={busy} checked onChange={() => toggle(id, false)} />{id}（已不可用，请取消选择）</label>) : null}
-            <label className="sync-workspace"><input type="checkbox" disabled={busy} checked={selection.kind === "all" || selection.includeUnassigned} onChange={event => { const includeUnassigned = event.currentTarget.checked; setSelection(previous => ({ kind: "ids", workspaceIds: previous.kind === "all" ? configuration.workspaces.filter(workspace => !workspace.deleted).map(workspace => workspace.id) : previous.workspaceIds, includeUnassigned })); }} />包含未分组会话</label>
+            {selection.kind === "ids" ? selection.workspaceIds.filter(id => !configuration.workspaces.some(workspace => workspace.id === id)).map(id => <label className="sync-workspace" key={id}><input type="checkbox" disabled={busy || !editing} checked onChange={() => toggle(id, false)} />{id}（已不可用，请取消选择）</label>) : null}
+            <label className="sync-workspace"><input type="checkbox" disabled={busy || !editing} checked={selection.kind === "all" || selection.includeUnassigned} onChange={event => { const includeUnassigned = event.currentTarget.checked; setSelection(previous => ({ kind: "ids", workspaceIds: previous.kind === "all" ? configuration.workspaces.filter(workspace => !workspace.deleted).map(workspace => workspace.id) : previous.workspaceIds, includeUnassigned })); }} />包含未分组会话</label>
             {selection.kind === "ids" && !selection.workspaceIds.length && !selection.includeUnassigned ? <p role="status">当前选择为空：下次启动不向此实例同步任何会话。</p> : null}
           </div>
         </fieldset>

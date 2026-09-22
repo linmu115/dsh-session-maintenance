@@ -81,13 +81,17 @@ it("shows Launcher names, collapses legacy identities, and keeps historical scop
   await click('编辑');await click('仅同步以下选择');expect(container.textContent).toContain('工作区-legacy');
   expect(save).not.toHaveBeenCalled();
 });
-it('allows a direct checkbox choice without first entering edit mode and only writes on save',async()=>{
+it('requires edit mode, supports cancelling a draft, and returns to read-only after saving',async()=>{
   const save=vi.fn(async(id,input)=>({...configuration(id),activeScopes:[],pendingActivation:false,policy:{...configuration(id).policy,selection:input.selection}}));
   await render({listInstanceWorkspaceInstances:directory,getInstanceWorkspaceSync:async id=>({...configuration(id),activeScopes:[]}),saveInstanceWorkspaceSync:save});
   const box=container.querySelector<HTMLInputElement>('[aria-label="同步 工作区-one"]')!;
-  expect(box.disabled).toBe(false);
-  await act(async()=>box.click());expect(box.checked).toBe(false);expect(save).not.toHaveBeenCalled();
-  await submit();expect(save).toHaveBeenCalledTimes(1);expect(container.textContent).toContain('已保存同步范围');
+  expect(box.disabled).toBe(true);
+  await act(async()=>box.click());expect(box.checked).toBe(true);expect(save).not.toHaveBeenCalled();
+  await click('编辑');expect(box.disabled).toBe(false);
+  await act(async()=>box.click());expect(box.checked).toBe(false);
+  await click('撤销');expect(box.disabled).toBe(true);expect(box.checked).toBe(true);expect(save).not.toHaveBeenCalled();
+  await click('编辑');await act(async()=>box.click());
+  await submit();expect(save).toHaveBeenCalledTimes(1);expect(box.disabled).toBe(true);expect(container.textContent).toContain('已保存同步范围');
   expect(container.textContent).not.toContain('实例当前没有在线运行');
 });
 
