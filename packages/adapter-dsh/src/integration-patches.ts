@@ -13,8 +13,12 @@ export function maintenanceIntegrationBundleReady(patches: readonly unknown[]): 
 /** Conservative offline probe for the verified Alpha2/RC1 profile patch dialect.
  * Custom replacements of session infrastructure require a separate compatibility check.
  * Other plugin settings remain permitted; no user configuration is executed or rewritten.
+ *
+ * `scope` is which instance/profile the patches belong to, when the caller knows. Passing it makes
+ * the declaration on the `session-maintenance` row binding-checked as well; a caller that judges a
+ * patch without knowing its instance stays scope-agnostic.
  */
-export function inspectDshIntegrationOverrides(layers: readonly unknown[]): string[] {
+export function inspectDshIntegrationOverrides(layers: readonly unknown[], scope?: { readonly instanceId: string; readonly profileId: string; readonly sessionSource?: unknown }): string[] {
   const issues = new Set<string>();
   const inspectInsert = (entries: unknown): void => {
     if (!Array.isArray(entries)) { issues.add("配置中存在无法验证的插件插入规则。"); return; }
@@ -40,7 +44,8 @@ export function inspectDshIntegrationOverrides(layers: readonly unknown[]): stri
       // plugin would accept is accepted here, and one it would reject is reported with the field
       // named. Every other infrastructure id keeps being reported unchanged.
       if (patch.id === MAINTENANCE_PLUGIN_ROW_ID) {
-        const reason = maintenancePluginConfigIssue((patch as { readonly config?: unknown }).config, fields);
+        const reason = maintenancePluginConfigIssue((patch as { readonly config?: unknown }).config, fields,
+          scope === undefined ? undefined : { ...scope, pluginName: (patch as { readonly name?: unknown }).name });
         if (reason !== undefined) issues.add(reason);
         continue;
       }

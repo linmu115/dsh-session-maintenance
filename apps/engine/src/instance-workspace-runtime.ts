@@ -92,13 +92,20 @@ export class InstanceWorkspaceRuntime {
       ...(this.writeBack === undefined ? {} : {
         // The saved range is applied to the instance the operator just edited. The profile id is
         // the one its registration carries (the Maintenance identity, e.g. `web-i27c4`) — the same
-        // half every other instance match uses. No registration means there is nothing to write
-        // into, and the range stays a record, which is the pre-existing behaviour.
+        // half every other instance match uses.
+        //
+        // An instance with no directory registration has nothing to write into: saving stays a
+        // record there (the pre-existing behaviour), and the answer says so instead of failing the
+        // save. A write that does run is reported the same way — the range is saved either way, so
+        // a failure here must not turn a successful policy write into an error.
         syncToInstance: async (instanceId: string) => {
           const profileId = await this.readRegisteredProfileId(instanceId);
-          if (profileId === undefined)
-            throw new IntegrationError("INSTANCE_WRITE_BACK_NO_PROFILE", "此实例尚未登记可写入的配置，请先完成接入后再保存同步范围。", 409);
-          return this.writeBack!(instanceId, profileId);
+          if (profileId === undefined) return { written: 0, unchanged: 0, skippedOutOfScope: 0, failures: [] };
+          try { return await this.writeBack!(instanceId, profileId); }
+          catch (error) {
+            return { written: 0, unchanged: 0, skippedOutOfScope: 0,
+              failures: [error instanceof Error ? error.message : "无法把所选工作区写入实例。"] };
+          }
         },
       }),
       readEffectiveScope: async (instanceId, profileId) => {

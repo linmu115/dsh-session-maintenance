@@ -89,10 +89,29 @@ function adapterWorkerEntryPoint(packageName: string, bundledFilename: string): 
   return join(dirname(resolveModule(`${packageName}/package.json`)), "dist", "rpc-worker.js");
 }
 
+/**
+ * The machine's default workspace root for instance-side folders.
+ *
+ * D:\DSHworkplace is the root this machine's operator chose; another machine overrides it with
+ * DSH_SESSION_MAINTENANCE_WORKSPACE_ROOT or with the CLI option, because a path is a machine fact
+ * and must not be baked into the artifact.
+ */
+function workspaceRootDefault(): string {
+  const configured = process.env.DSH_SESSION_MAINTENANCE_WORKSPACE_ROOT?.trim();
+  return configured !== undefined && configured.length > 0 ? configured : 'D:\\\\DSHworkplace';
+}
 export interface CompositionOptions {
   readonly inspectCodexEnvironment?: typeof checkCodexEnvironment;
   readonly extensionAdapters?: readonly import("@linmu/dsh-session-contracts").ExtensionDataAdapter[];
   readonly stateRoot: string;
+  /**
+   * Where an instance's workspaces are created locally, one folder per Maintenance bucket.
+   *
+   * Maintenance stores buckets, not workspaces; the instance needs real directories to own sessions,
+   * so mapping a bucket writes its sessions into `<workspaceRoot>/<bucket name>` and points their
+   * `cwd` there. Overridable per machine (`DSH_SESSION_MAINTENANCE_WORKSPACE_ROOT`).
+   */
+  readonly workspaceRoot?: string;
   readonly ownerMode?: "engine" | "offline";
   readonly clock?: () => string;
   readonly fixturePolicy?: (root: string) => void;
@@ -291,9 +310,15 @@ async function createComposition(
         stateRoot: options.stateRoot,
         backupRoot: join(options.stateRoot, "backups", "write-back"),
         journalPath: join(options.stateRoot, "logs", "instance-write-back.jsonl"),
+        // Maintenance has no workspaces of its own: it keeps buckets of sessions. The instance needs
+        // real folders to own them, so each bucket is mapped to its own folder under this root, named
+        // after the bucket and reused when it already exists.
+        workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(),
         selectionFor: () => policy,
         memberships: async () => new Map((repository.database.prepare("SELECT logical_session_id, workspace_id FROM workspace_memberships")
           .all() as { logical_session_id: string; workspace_id: string | null }[]).map(row => [row.logical_session_id, row.workspace_id as LogicalWorkspaceId | null])),
+        workspaceNames: async () => new Map((repository.database.prepare("SELECT id, name FROM logical_workspaces WHERE deleted_at IS NULL")
+          .all() as { id: string; name: string }[]).map(row => [row.id, row.name])),
         loadProjection: run => canonicalProjectionSource.load(run),
       }, { instanceId, profileId, sessionsRoot: join(registered.homeRoot, "sessions") });
     },

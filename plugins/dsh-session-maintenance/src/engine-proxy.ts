@@ -23,6 +23,8 @@ export type ProxyOperation =
   | "archive-candidate"
   | "delete-candidate"
   | "delete-session"
+  | "set-archived"
+  | "session-mapped"
   | "settings:get"
   | "settings:patch"
   | "join-workspace";
@@ -31,6 +33,8 @@ export interface ProxyRequest {
   readonly operation: ProxyOperation;
   readonly instanceId?: string;
   readonly sessionId?: string;
+  /** The archive state the instance's own sidebar shows; only the boolean is carried. */
+  readonly archived?: boolean;
   readonly applySafe?: boolean;
   readonly settings?: Readonly<Record<string, unknown>>;
   readonly referenceType?: "annotation" | "sticker" | "obsidian-reference";
@@ -56,6 +60,8 @@ export interface ProxyResult {
    * workspace join; they live in the host's configuration, so the host states them
    * here instead of the client guessing.
    */
+  /** Whether the asked session belongs to this instance's mapped workspaces (session-mapped). */
+  readonly mapped?: boolean;
   readonly identity?: {
     readonly apiVersion: 1;
     readonly instanceId: string;
@@ -197,11 +203,19 @@ function assertRequest(value: unknown): ProxyRequest {
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("请求包含未允许字段");
   const operations: readonly ProxyOperation[] = [
     "identity", "status", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
-    "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "settings:get", "settings:patch", "join-workspace",
+    "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "set-archived", "settings:get", "settings:patch", "join-workspace",
   ];
   if (!operations.includes(record.operation as ProxyOperation)) throw new TypeError("未知维护操作");
   if (record.operation === "delete-session" && Object.keys(record).some(key => key !== "operation" && key !== "sessionId")) {
     throw new TypeError("删除只接受当前实例的原生会话 ID，不能指定其他实例或真源 ID");
+  }
+  // Archiving is the instance's own sidebar telling Maintenance which state its session is in, so
+  // it carries one boolean and the same single native session id — never a source-side id.
+  if (record.operation === "set-archived") {
+    if (Object.keys(record).some(key => !["operation", "sessionId", "archived"].includes(key))) {
+      throw new TypeError("归档只接受当前实例的原生会话 ID 与一个布尔状态");
+    }
+    if (typeof record.archived !== "boolean") throw new TypeError("归档状态必须是布尔值");
   }
   // The workspace entry is the only operation that carries a workspace directory, and that
   // directory is resolved by the Engine against its own records — never used as a path here.
@@ -322,6 +336,31 @@ export class RestrictedEngineProxy {
       return { ok: true, message: "已打开会话维护看板", url: value.launch.url };
     }
     const sessionId = safeId(input.sessionId, "sessionId");
+    if (input.operation === "session-mapped") {
+      // "Does this instance own that session?" — asked before any instance-side change is pushed, so
+      // a session in a workspace this instance never mapped is never offered to the source.
+      const resolution = await this.resolve(instanceId, sessionId);
+      if (resolution.logicalSessionId === null) return { ok: true, message: "此会话尚未映射到维护真源", mapped: false };
+      const availability = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/sessions/${encodeURIComponent(resolution.logicalSessionId)}/availability?profileId=${encodeURIComponent(this.config.profileId)}`) as { availability?: { readonly status?: string } };
+      const status = availability.availability?.status;
+      const mapped = status === "available" || status === "mapping-pending";
+      return { ok: true, message: mapped ? "此会话属于本实例的维护范围" : "此会话不在本实例已勾选的维护工作区内", mapped };
+    }
+    if (input.operation === "set-archived") {
+      // The instance's sidebar is the authority for its own archive state while the Engine is
+      // running, so what it reports is written onto the same source session it belongs to. The
+      // native id is resolved against this instance — a caller can never name a source id directly.
+      const resolution = await this.resolve(instanceId, sessionId);
+      if (resolution.logicalSessionId === null) throw new Error("Maintenance 尚未映射此会话，无法同步归档状态");
+      const value = await this.engine(`/v1/canonical/sessions/${encodeURIComponent(resolution.logicalSessionId)}`,
+        "PATCH", { archived: input.archived === true }) as { session?: { archivedAt?: string | null; archived?: boolean } };
+      const session = value.session;
+      const archived = session === undefined ? undefined
+        : session.archivedAt !== undefined ? session.archivedAt !== null : session.archived;
+      if (archived !== (input.archived === true)) throw new Error("Maintenance 未返回匹配的归档回执；请检查状态后重试");
+      return { ok: true, logicalSessionId: resolution.logicalSessionId,
+        message: input.archived === true ? "真源已同步为已归档" : "真源已同步为未归档" };
+    }
     if (input.operation === "delete-session") {
       // Active projection deletion resolves and tombstones in one Engine call.
       const legacy = this.projectionRunId === undefined ? await this.resolve(instanceId, sessionId) : undefined;

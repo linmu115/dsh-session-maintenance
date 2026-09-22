@@ -12,11 +12,20 @@ const webConfig = z.strictObject({
 
 /** Recognize scoped RC2 onboarding settings, never replacement infrastructure. */
 export function inspectRc2ProfileOverrides(layers: readonly unknown[], scope: { runtimeVersion: string; instanceId: string; profileId: string }): string[] {
-  if (scope.runtimeVersion !== '0.1.5-rc.2') return inspectDshIntegrationOverrides(layers);
+  // The declaration on the maintenance row belongs to the RC2 onboarding dialect. A runtime that
+  // predates it has no such declaration to recognize, so the row keeps counting as a component
+  // change there — reported directly, because the shared rule would (correctly) accept the config on
+  // its own terms, and it is the *binding to this runtime* that the old contract refuses.
+  if (scope.runtimeVersion !== '0.1.5-rc.2') {
+    const declaration = z.strictObject({ id: z.literal('session-maintenance'), config: z.record(z.string(), z.unknown()) });
+    const declared = layers.some(layer => Array.isArray(layer) && layer.some(patch => declaration.safeParse(patch).success));
+    return [...inspectDshIntegrationOverrides(layers), ...(declared ? ["用户配置修改了会话或 Web 基础组件，需要单独验证该配置。"] : [])];
+  }
+  const target = { instanceId: scope.instanceId, profileId: scope.profileId, sessionSource: 'maintenance' };
   const maintenance = z.strictObject({ id: z.literal('session-maintenance'), name: z.literal('dsh-session-maintenance').optional(), disabled: z.literal(false).optional(),
     config: z.strictObject({ connectionId: safeId, dshInstanceId: z.literal(scope.instanceId), profileId: z.literal(scope.profileId), sessionSource: z.literal('maintenance'),
       extensionPlugins: extensionConnectSchema.shape.plugins.optional() }) });
   const web = z.strictObject({ id: z.literal('webserver'), name: z.literal('@deepseek-ai/dsh-webserver').optional(), disabled: z.literal(false).optional(), config: webConfig });
   return inspectDshIntegrationOverrides(layers.map(layer => Array.isArray(layer)
-    ? layer.filter(patch => !maintenance.safeParse(patch).success && !web.safeParse(patch).success) : layer));
+    ? layer.filter(patch => !maintenance.safeParse(patch).success && !web.safeParse(patch).success) : layer), target);
 }

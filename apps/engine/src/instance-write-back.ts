@@ -22,11 +22,23 @@ export interface InstanceWriteBackOptions {
   readonly stateRoot: string;
   readonly backupRoot: string;
   readonly journalPath: string;
+  /**
+   * Where the instance's workspaces live locally, one folder per Maintenance workspace.
+   *
+   * Maintenance itself has no workspaces: a "workspace" there is only a bucket that groups sessions,
+   * and the instance needs a real directory to own them (`@deepseek-ai/dsh-workspace` resolves every
+   * session's `cwd` and requires it to equal the registered workspace path). So the Engine maps each
+   * bucket to its own folder under this root, named after the bucket, and writes the sessions with
+   * that folder as their `cwd`. An existing folder is reused, never recreated.
+   */
+  readonly workspaceRoot: string;
   /** The instance's saved range, read from the same table the board writes. */
   readonly selectionFor: (instanceId: string) => { readonly revision: number; readonly selection:
     | { readonly kind: 'all' }
     | { readonly kind: 'ids'; readonly workspaceIds: readonly string[]; readonly includeUnassigned: boolean } };
   readonly memberships: () => Promise<ReadonlyMap<string, LogicalWorkspaceId | null>>;
+  /** The bucket's display name, which also names its local folder. */
+  readonly workspaceNames: () => Promise<ReadonlyMap<string, string>>;
   readonly loadProjection: (run: ProjectionRun) => Promise<CanonicalProjectionInput>;
 }
 
@@ -47,12 +59,46 @@ export function writeBackRunIdentity(instanceId: string, profileId: string): Pro
   return { id: `write-back-${instanceId}`, instanceId, profileId, state: 'closed' } as unknown as ProjectionRun;
 }
 
+/** Characters Windows refuses in a folder name, plus the trailing-dot/space rule. */
+const UNSAFE_FOLDER = /[<>:"/\\|?*\u0000-\u001f]/gu;
+
+/**
+ * The local folder name for one Maintenance bucket.
+ *
+ * The bucket's own name is used so the folder is readable, with path-unsafe characters replaced;
+ * a name that sanitises to nothing keeps a stable fallback instead of an empty path segment.
+ */
+export function workspaceFolderName(name: string, workspaceId: string): string {
+  const cleaned = name.replace(UNSAFE_FOLDER, '_').replace(/[. ]+$/u, '').trim().slice(0, 120);
+  return cleaned.length > 0 ? cleaned : workspaceId.replace(UNSAFE_FOLDER, '_');
+}
+
 export async function writeBackInstanceWorkspaces(options: InstanceWriteBackOptions, request: InstanceWriteBackRequest): Promise<InstanceWriteBackSummary> {
   const { selection } = options.selectionFor(request.instanceId);
   const memberships = await options.memberships();
+  const names = await options.workspaceNames();
   const selected = (workspaceId: LogicalWorkspaceId | null): boolean => selection.kind === 'all'
     || (workspaceId === null ? selection.includeUnassigned : selection.workspaceIds.includes(workspaceId));
   const projection = await options.loadProjection(writeBackRunIdentity(request.instanceId, request.profileId));
+
+  // One local folder per selected bucket, created once and reused afterwards. A projected session's
+  // `cwd` becomes that folder, so the host's own membership rule (cwd must resolve to the registered
+  // workspace path) can hold for it.
+  const folderFor = new Map<string, string>();
+  const claimed = new Map<string, string>();
+  for (const workspaceId of new Set(projection.sessions.map(session => session.workspaceId).filter(id => id !== null && selected(id)))) {
+    const name = workspaceFolderName(names.get(String(workspaceId)) ?? String(workspaceId), String(workspaceId));
+    // Two buckets whose names sanitise to the same folder must not share one: the second one is
+    // distinguished by a short stable suffix rather than silently merging two buckets into one.
+    const owner = claimed.get(name.toLowerCase());
+    const folder = owner === undefined || owner === String(workspaceId)
+      ? name : `${name}-${String(workspaceId).slice(-6)}`;
+    claimed.set(folder.toLowerCase(), String(workspaceId));
+    const path = join(options.workspaceRoot, folder);
+    await mkdir(path, { recursive: true });
+    folderFor.set(String(workspaceId), path);
+  }
+
   const journal: string[] = [];
   const failures: WriteBackFailures = [];
   const result = await writeBackProjectionToInstance({
@@ -64,7 +110,7 @@ export async function writeBackInstanceWorkspaces(options: InstanceWriteBackOpti
     inScope: session => selected(memberships.get(session.id) ?? null),
     archived: session => session.archivedAt !== null,
     journal: async entry => { journal.push(JSON.stringify({ at: new Date().toISOString(), instanceId: request.instanceId, ...entry })); },
-    materialize: createAdapterMaterializer(failures),
+    materialize: createAdapterMaterializer(failures, folderFor),
     codec: v3NativeSessionCodec,
   });
   if (journal.length > 0) {
@@ -74,7 +120,8 @@ export async function writeBackInstanceWorkspaces(options: InstanceWriteBackOpti
   return { written: result.receipt.applied.filter(entry => entry.action === 'write').length,
     unchanged: result.plan.entries.length - result.receipt.applied.length,
     skippedOutOfScope: result.skippedOutOfScope.length,
-    failures: failures.map(failure => `${failure.logicalSessionId}: ${failure.message}`) };
+    failures: failures.map(failure => `${failure.logicalSessionId}: ${failure.message}`),
+    workspaceFolders: [...folderFor.values()] };
 }
 
 /**
@@ -84,13 +131,21 @@ export async function writeBackInstanceWorkspaces(options: InstanceWriteBackOpti
  * One session the adapter refuses (a canonical row whose native payload does not restore) is
  * recorded in `failures` and the rest still go out: one damaged session must not keep a whole
  * workspace out of the instance, and the file it would have overwritten stays untouched.
+ *
+ * `folders` maps a Maintenance bucket to the local folder the instance owns it under. The projected
+ * session's own `projectRoot` is a fact about the *source* machine, so it is replaced by that folder:
+ * the host resolves a session's `cwd` and requires it to equal the registered workspace path, which
+ * is the folder we just created for the bucket.
  */
-export function createAdapterMaterializer(failures: WriteBackFailures = []): (input: CanonicalProjectionInput) => Promise<readonly { readonly nativeSessionId: string; readonly payload: never }[]> {
+export function createAdapterMaterializer(failures: WriteBackFailures = [], folders: ReadonlyMap<string, string> = new Map()):
+(input: CanonicalProjectionInput) => Promise<readonly { readonly nativeSessionId: string; readonly payload: never }[]> {
   return async input => {
     const captured = new Map<string, unknown>();
     for (const session of input.sessions) {
+      const folder = session.workspaceId === null ? undefined : folders.get(String(session.workspaceId));
+      const projected = folder === undefined ? session : { ...session, projectRoot: folder };
       try {
-        await materializeV3({ ...input, sessions: [session] }, {
+        await materializeV3({ ...input, sessions: [projected] }, {
           writeWorkspace: async () => undefined,
           writeSession: async (nativeSessionId: string, payload: unknown) => { captured.set(nativeSessionId, payload); },
         } as never);

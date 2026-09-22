@@ -29,6 +29,8 @@ export interface InstanceWriteBackSummary {
   readonly unchanged: number;
   readonly skippedOutOfScope: number;
   readonly failures: readonly string[];
+  /** The local folders this instance now owns the selected buckets under, if any were mapped. */
+  readonly workspaceFolders?: readonly string[];
 }
 /** Transport boundary only. The provider owns policy writes and active run snapshots. */
 export class InstanceWorkspaceService {
@@ -62,15 +64,13 @@ export class InstanceWorkspaceService {
       if (code === "INSTANCE_WORKSPACE_UNKNOWN") throw new IntegrationError(code, "有工作区已移除或不存在，请刷新名单。", 409);
       throw error;
     }
-    // The range is durable; now make it true in the instance. A write-back that cannot run is
-    // reported with its own code so the operator knows the range was saved but not yet applied.
+    // The range is durable; now make it true in the instance. This is reported, never thrown: the
+    // policy write already succeeded, and the operator must be able to see both facts separately.
     if (this.ports.syncToInstance !== undefined) {
       try { this.lastWriteBack = await this.ports.syncToInstance(instanceId); }
       catch (error) {
-        const code = (error as { code?: string } | null)?.code ?? "INSTANCE_WRITE_BACK_FAILED";
-        const message = error instanceof Error ? error.message : "无法把所选工作区写入实例。";
-        this.lastWriteBack = { written: 0, unchanged: 0, skippedOutOfScope: 0, failures: [] };
-        throw new IntegrationError(code, `同步范围已保存，但写入实例失败：${message}`, 502);
+        this.lastWriteBack = { written: 0, unchanged: 0, skippedOutOfScope: 0,
+          failures: [error instanceof Error ? error.message : "无法把所选工作区写入实例。"] };
       }
     }
     return this.get(instanceId);
