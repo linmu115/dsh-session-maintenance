@@ -11,7 +11,15 @@ const schema=z.strictObject({schemaVersion:z.literal(1),instanceId:z.string(),pr
 export type Dsh015RuntimeAttestation=z.infer<typeof schema>;
 export const DSH015_ATTESTATION_FILE="maintenance-runtime-attestation.json";
 async function hashFile(path:string):Promise<string>{const before=await stat(path,{bigint:true}),hash=createHash("sha256");for await(const bytes of createReadStream(path))hash.update(bytes);const after=await stat(path,{bigint:true});if(before.size!==after.size||before.mtimeNs!==after.mtimeNs||before.ino!==after.ino)throw new TypeError("Attested artifact changed while reading");return hash.digest("hex");}
-/** Read-only attestation check. Receipt producer must run the bounded host/handle capability probes against these exact files. */
+/**
+ * Read-only attestation check. Receipt producer must run the bounded host/handle capability probes against these exact files.
+ *
+ * The identity it compares is the **Maintenance identity** — the `profileId` a profile declares for
+ * its own plugin (`web-i27c4` on a real machine), not the host-side profile directory name (`web`).
+ * A receipt is read from `profiles/<dir>/`, but its `profileId` field states the declared identity,
+ * because that is the same value the plugin publishes in its lease and sends when it joins a
+ * workspace: one value, one match, whole chain. See `profile-identity.ts` for the two names.
+ */
 export async function verifyDsh015RuntimeAttestation(input:{profileRoot:string;instanceId:string;profileId:string;homeRoot:string;cliPath:string;launcherDigest:string|null;resolvedManifests:readonly string[];expectedAdapterId?:string}):Promise<{runtimeCapabilities:readonly string[];digest:string;coreBinding:{path:string;sha256:string}}> {
  const parsed=schema.safeParse(await readJsonIfPresent(join(input.profileRoot,DSH015_ATTESTATION_FILE)));if(!parsed.success)throw new IntegrationError("V3_ATTESTATION_REQUIRED","RC2 缺少实际宿主构件与 handle 能力验证回执。");const receipt=parsed.data;
  if(receipt.instanceId!==input.instanceId||receipt.profileId!==input.profileId||await realpath(receipt.homeRoot)!==await realpath(input.homeRoot)||receipt.launcherCapabilityDigest!==input.launcherDigest)throw new IntegrationError("V3_ATTESTATION_IDENTITY_MISMATCH","RC2 能力回执与实例、Home 或启动接入方式不一致。");

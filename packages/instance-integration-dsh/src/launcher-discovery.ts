@@ -263,10 +263,20 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
         }
         const overrideScope = { runtimeVersion: version.version, instanceId: instance.id, profileId: entry.name };
         issues.push(...inspectRc2ProfileOverrides(patches, overrideScope));
-        // The identity Maintenance matches on is the one the profile declares for its own plugin,
-        // not the directory name; see `profile-identity.ts`. The directory name stays the host-side
-        // name used by the attestation receipt and the override scope above, which is what the
-        // installed receipt states.
+        // Two names describe one profile, and they are not interchangeable. Keep them apart:
+        //
+        //   * the Maintenance identity — what the profile declares for its own plugin in the
+        //     `id: session-maintenance` row (`web-i27c4` on a real machine, see
+        //     `profile-identity.ts`). This is what the Engine *matches* on: the attestation
+        //     receipt's `profileId` (verified below with this value), `target.profile`, the card
+        //     id, and therefore the plugin's lease/handshake and
+        //     `POST /v1/instances/workspace-joins`. The plugin publishes exactly this id, so
+        //     nothing else can ever match it.
+        //   * the host-side directory name (`profiles/web`) — a filesystem fact. It names
+        //     `profileRoot`, the RC2 override scope above, the directory-level checks below
+        //     (e.g. "this batch only supports the web profile"), and the Launcher catalog entry.
+        //     A receipt written with this name would never match the plugin's lease, which is why
+        //     the attestation compare below uses the Maintenance identity.
         const declaredIdentity = declaredIdentityFromPatch(patches[0]);
         const profileId = maintenanceProfileId(entry.name, declaredIdentity);
         if (standalone && profileId !== standalone.profileId) continue;
