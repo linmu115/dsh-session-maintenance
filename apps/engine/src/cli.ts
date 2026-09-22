@@ -607,7 +607,7 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
         // board. It runs after readiness so a large range cannot delay an instance's connection, and
         // each instance's outcome is reported rather than thrown: an alignment failure must not stop
         // the Engine, and a failure for one instance must not hold back another.
-        void (engine.instanceWorkspace?.alignRegisteredInstances() ?? Promise.resolve([])).then(aligned => {
+        const alignment = (engine.instanceWorkspace?.alignRegisteredInstances() ?? Promise.resolve([])).then(aligned => {
           for (const item of aligned) {
             const { written, unchanged, skippedOutOfScope, failures } = item.summary;
             // The first failure is carried into the record: a count alone leaves the operator with
@@ -618,6 +618,7 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
         output(stdout, { origin: server.origin, connectionFile: "connection.json" });
         await stopped;
         audit("shutdown.drain-started");
+        await alignment;
         await server.close();
         audit("shutdown.drained");
         engine.close();

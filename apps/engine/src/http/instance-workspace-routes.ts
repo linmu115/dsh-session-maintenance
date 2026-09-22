@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { instanceWorkspacePolicyUpdateSchema } from "@linmu/dsh-session-contracts";
+import { instanceWorkspacePolicyUpdateSchema, endpointSyncCommandSchema } from "@linmu/dsh-session-contracts";
 import type { InstanceWorkspaceService } from "../instance-workspace-service.js";
 import { IntegrationError } from "../integrations/bindings.js";
 import { readJsonBody } from "./body.js";
@@ -9,6 +9,16 @@ export async function routeInstanceWorkspaceRequest(request: IncomingMessage, re
   input: { instanceWorkspace: InstanceWorkspaceService | undefined }): Promise<boolean> {
   const directory = url.pathname === "/v1/instances/workspace-sync" && request.method === "GET";
   const folders = /^\/v1\/instances\/([^/]+)\/workspace-folders$/u.exec(url.pathname);
+  const sync = /^\/v1\/instances\/([^/]+)\/(sync-state|sync-changes)$/u.exec(url.pathname);
+  if (sync && (sync[2] === 'sync-state' && request.method === 'GET' || sync[2] === 'sync-changes' && request.method === 'POST')) {
+    if (!input.instanceWorkspace) throw new IntegrationError('SYNC_UNAVAILABLE', '同步服务未启用。', 503);
+    const endpointId = decodeURIComponent(sync[1]!);
+    const value = sync[2] === 'sync-state'
+      ? { sync: await input.instanceWorkspace.syncStatus(endpointId, url.searchParams.get('profileId') ?? '') }
+      : { receipt: await input.instanceWorkspace.syncChange(endpointId, endpointSyncCommandSchema.parse(await readJsonBody(request))) };
+    response.statusCode = 200; response.setHeader('content-type', 'application/json; charset=utf-8'); response.end(JSON.stringify(value));
+    return true;
+  }
   const match = /^\/v1\/instances\/([^/]+)\/(workspace-sync|workspace-scope|sessions\/([^/]+)\/availability)$/u.exec(url.pathname);
   if (!directory && folders === null && (!match || !(request.method === "GET" || request.method === "PATCH" && match[2] === "workspace-sync"))) return false;
   if (!input.instanceWorkspace) throw new IntegrationError("INSTANCE_WORKSPACE_UNAVAILABLE", "当前维护引擎尚未提供实例工作区同步范围。", 503);

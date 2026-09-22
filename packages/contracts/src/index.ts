@@ -1,4 +1,5 @@
 export const CONTRACT_SCHEMA_VERSION = 1 as const;
+export * from './workspace-sync.js';
 
 export * from "./adapter-sdk.js";
 export * from "./adapters.js";

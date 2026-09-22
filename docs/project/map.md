@@ -1,5 +1,7 @@
 # Session Maintenance
 
+2026-09-22 当前要求：Maintenance 主体不耦合实例、Launcher 或其他插件；平台读写及协议只发生在 adapter。运行期目标覆盖新建、追加、改名、工作区移动、归档和删除。本轮已拆出通用同步协调与 adapter 物理读写，69 个相关测试文件、369 项测试通过；真实独占写入及宿主归档恢复协议仍未接通，源码候选未部署，整体解耦未完成。详细状态见[Adapter 所有的工作区同步](../changes/2026-09-22-adapter-owned-workspace-sync.md)，[开发历程草稿](history-drafts/2026-09-22-adapter-owned-workspace-sync.md)。下面旧版本记录保留其历史验收边界。
+
 2026-09-20 源码候选的独立运行与接入边界：[[IMP-independent-components-20260920]]。运行副本尚未升级，历史记录按原验证范围阅读。
 
 ## 这个项目做什么

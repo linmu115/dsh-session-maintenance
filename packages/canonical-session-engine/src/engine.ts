@@ -32,6 +32,8 @@ import {
 export type { CanonicalVersionRecord } from "@linmu/dsh-session-contracts";
 
 export interface CanonicalSessionSnapshot {
+  readonly displayOrder?: number;
+  readonly pinned?: boolean;
   readonly session: CanonicalSessionRecord;
   readonly headVersionId: SessionVersionId | null;
   readonly workspaceId: LogicalWorkspaceId | null;
@@ -71,7 +73,7 @@ export interface CanonicalEngineReceipt {
 }
 
 export interface CanonicalEngineMutation {
-  readonly kind: "codex-observation" | "dsh-native-import" | "dsh-append" | "dsh-derivation" | "tombstone" | "restore";
+  readonly kind: "codex-observation" | "dsh-native-import" | "dsh-append" | "dsh-derivation" | "tombstone" | "restore" | "endpoint-sync";
   readonly operationId: OperationId | null;
   readonly session: CanonicalSessionRecord;
   readonly version: CanonicalVersionRecord | null;

@@ -8,6 +8,7 @@ import { MaintenanceGraph, registerMaintenanceGraph } from './session-graph.js';
 import { MaintenanceNativeContext, registerMaintenanceNativeContext, nativeContextReady } from './native-context.js';
 import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-knowledge.js';
 import { registerWorkspaceArchiveBridge } from './workspace-archive-bridge.js';
+import { rc2HostSessionSync } from './rc2-persistence.js';
 import { MappedWorkspaceRegistration, type MappedWorkspaceHost } from './mapped-workspaces.js';
 import { HostSessionSync, type HostSessionSyncHost } from './host-session-sync.js';
 import { registerAnnotationMirror, type AnnotationMirrorContext } from './annotation-mirror.js';
@@ -161,15 +162,20 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
     // must reach the source even with every page closed. Scope is decided before each push (the
     // Engine is asked whether the session is mapped), so an unbound workspace is never reported.
     const sessionSync = new HostSessionSync({
-      host: ctx as unknown as HostSessionSyncHost,
+      host: rc2HostSessionSync(ctx as unknown as Context),
+      syncState: async () => (await proxy.invoke({ operation: 'sync-status' })).sync!,
+      trackContent: true,
       engineReady: async () => (await proxy.invoke({ operation: "status" })).ok,
       mapped: async sessionId => (await proxy.invoke({ operation: "session-mapped", sessionId })).mapped === true,
-      report: async (intent, archived) => (await proxy.invoke(intent.kind === "delete"
-        ? { operation: "delete-session", sessionId: intent.sessionId }
-        : { operation: "set-archived", sessionId: intent.sessionId, archived })).message,
-      onFeedback: message => { if (ctx.logger) ctx.logger.info(message); else console.info(message); },
+      report: async (intent, archived, epoch) => { const result = await proxy.invoke({ ...(epoch ? { epoch } : {}), ...(intent.kind === "delete"
+        ? { operation: "delete-session" as const, sessionId: intent.sessionId }
+        : intent.kind === 'refresh' ? { operation: 'refresh-session' as const, sessionId: intent.sessionId }
+        : { operation: "set-archived" as const, sessionId: intent.sessionId, archived }) });
+        return { message: result.message, skipped: result.code === 'not-synced' }; },
+      onFeedback: message => { console.info(message); },
     });
     ctx.effect(() => sessionSync.start(), "dsh-session-maintenance: instance session sync");
+    ctx.effect(() => ctx.on('session/flush', session => sessionSync.markDirty(String(session.id))), 'maintenance.sync-flush');
   }
   if (launchProfile !== null) {
     const transport = new HttpProjectionRuntimeTransport(fetch, async () => {

@@ -1,48 +1,17 @@
 import type { DatabaseSync } from "node:sqlite";
-import { readdir, stat } from "node:fs/promises";
+
 import type { CanonicalEngineMutation } from "@linmu/dsh-canonical-session-engine";
 import type { InstanceWorkspacePolicy, LogicalSessionId, LogicalWorkspaceId, MaintenanceWriteScope, ProjectionRun, RegisteredInstance, RunId } from "@linmu/dsh-session-contracts";
 import { SqliteInstanceWorkspacePolicyRepository, InstanceWorkspacePolicyError } from "@linmu/dsh-session-store";
 import { InstanceWorkspaceService, type InstanceWriteBackSummary } from "./instance-workspace-service.js";
-import { mapWorkspaceFolders, readRegisteredWorkspacePaths } from "./instance-write-back.js";
-import { nativeProjectDirectory } from "./native-session-overwrite.js";
-import { join } from "node:path";
+
+
+
 import { IntegrationError } from "./integrations/bindings.js";
 
 interface RunRow { id: RunId; instance_id: string; profile_id: string; state: ProjectionRun["state"]; }
 const runIdentity = (row: RunRow) => ({ id: row.id, instanceId: row.instance_id, profileId: row.profile_id, state: row.state });
 const openStates = "'preparing','running','draining','verifying','recovery-required','recovering','quarantined','cleanup-pending'";
-
-/** One provider for projection filtering, canonical commits, UI and Bridge consumers. */
-/** The machine's default root for instance-side workspace folders (see composition-root). */
-function workspaceRootDefault(): string {
-  const configured = process.env.DSH_SESSION_MAINTENANCE_WORKSPACE_ROOT?.trim();
-  return configured !== undefined && configured.length > 0 ? configured : 'D:\\DSHworkplace';
-}
-
-/**
- * The sessions the instance actually stores under one mapped folder.
- *
- * The instance's workspace registry keeps an ordered membership list of session ids; a folder whose
- * sessions are never named there shows up as an empty workspace. The project directory is derived
- * with the adapter's own layout rule — the same rule the write-back wrote with — and a directory
- * holding only an empty placeholder is left out, because the host has no header to read for it.
- */
-async function readStoredSessionIds(homeRoot: string, workspacePath: string): Promise<readonly string[]> {
-  const projectDirectory = join(homeRoot, 'sessions', nativeProjectDirectory(workspacePath));
-  const stored: string[] = [];
-  for (const entry of await readdir(projectDirectory, { withFileTypes: true }).catch(() => [])) {
-    if (!entry.isDirectory()) continue;
-    const sessionDirectory = join(projectDirectory, entry.name);
-    for (const artifact of await readdir(sessionDirectory, { withFileTypes: true }).catch(() => [])) {
-      if (!artifact.isFile() || !/^session\.v3\.jsonl(?:\.zstd)?$/u.test(artifact.name)) continue;
-      const information = await stat(join(sessionDirectory, artifact.name)).catch(() => undefined);
-      if (information !== undefined && information.size > 0) { stored.push(entry.name); }
-      break;
-    }
-  }
-  return stored;
-}
 
 export class InstanceWorkspaceRuntime {
   readonly policies: SqliteInstanceWorkspacePolicyRepository;
@@ -54,7 +23,8 @@ export class InstanceWorkspaceRuntime {
     /** Registered (directory-connected) instances, whose `profileId` is the Maintenance identity. */
     private readonly readStandaloneInstances?: () => Promise<readonly { instanceId: string; profileId: string; homeRoot?: string }[]>,
     /** The local root the mapped folders are created under; the instance registers those folders. */
-    private readonly workspaceRootPath?: string) {
+    private readonly workspaceRootPath?: string, private readonly folderAdapter?: import("@linmu/dsh-session-contracts").WorkspaceFolderAdapter,
+    private readonly syncMutation?: import('./instance-workspace-service.js').InstanceWorkspacePorts['mutateSession']) {
     this.policies = new SqliteInstanceWorkspacePolicyRepository(database);
   }
 
@@ -103,6 +73,13 @@ export class InstanceWorkspaceRuntime {
 
   createService(): InstanceWorkspaceService {
     return new InstanceWorkspaceService({
+      exclusive: work => this.writes.run('endpoint-sync', work),
+      policyRevision: endpointId => this.policies.getPolicy(endpointId).revision,
+      validateProfile: async (endpointId, profileId) => {
+        if ((await this.readRegisteredProfileId(endpointId)) !== profileId)
+          throw new IntegrationError('SYNC_PROFILE_MISMATCH', '同步请求与登记的接入身份不一致。', 409);
+      },
+      ...(this.syncMutation ? { mutateSession: this.syncMutation } : {}),
       listInstances: async () => {
         // Run history retains identities for recovery; it is not the current Launcher catalog.
         const rows = this.database.prepare("SELECT DISTINCT instance_id FROM projection_runs").all() as {instance_id:string}[];
@@ -133,17 +110,7 @@ export class InstanceWorkspaceRuntime {
         const policy = this.policies.getPolicy(instanceId);
         const rows = this.database.prepare("SELECT id, name FROM logical_workspaces WHERE deleted_at IS NULL").all() as { id: string; name: string }[];
         const selected = rows.filter(row => this.policies.workspaceSelected(policy, row.id as LogicalWorkspaceId));
-        const homeRoot = (await this.readStandaloneInstances?.().catch(() => []))
-          ?.find(config => config.instanceId === instanceId)?.homeRoot;
-        const registered = homeRoot === undefined ? new Map<string, string>() : await readRegisteredWorkspacePaths(homeRoot);
-        const mapped = mapWorkspaceFolders({ workspaceRoot: this.workspaceRootPath ?? workspaceRootDefault(), registered,
-          buckets: selected.map(row => ({ workspaceId: row.id, name: row.name })) });
-        const folders = [];
-        for (const folder of mapped) {
-          folders.push({ name: folder.folder, path: folder.path,
-            sessions: homeRoot === undefined ? [] : await readStoredSessionIds(homeRoot, folder.path) });
-        }
-        return folders;
+        return this.folderAdapter?.list({ endpointId: instanceId, buckets: selected.map(row => ({ workspaceId: row.id, name: row.name })) }) ?? [];
       },
       // Engine start aligns every registered instance: a range saved earlier is a standing
       // instruction, and the instance it names is the only one it may ever be applied to.

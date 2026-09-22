@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
 import type { CanonicalProjectionInput, JsonValue, LogicalWorkspaceId } from '@linmu/dsh-session-contracts';
-import { v3NativeProjectKey } from '@linmu/dsh-session-adapter-0-1-5';
+import { v3NativeProjectKey, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
 import { createAdapterMaterializer, writeBackInstanceWorkspaces, workspaceFolderName } from '../src/instance-write-back.js';
 import { writeBackProjectionToInstance } from '../src/instance-session-writeback.js';
 
@@ -52,6 +52,8 @@ function projection(workspaceId: LogicalWorkspaceId): CanonicalProjectionInput {
 
 function options(workspaceId: LogicalWorkspaceId, selected: readonly string[], f: { root: string; workspaceRoot: string }) {
   return {
+    // This fixture owns its temporary home exclusively; production must supply a real host lease.
+    withWriteAccess: async <T>(work: () => Promise<T>) => work(),
     stateRoot: join(f.root, 'engine-state'), backupRoot: join(f.root, 'backups'), journalPath: join(f.root, 'logs', 'write-back.jsonl'),
     workspaceRoot: f.workspaceRoot,
     selectionFor: () => ({ revision: 1, selection: { kind: 'ids' as const, workspaceIds: selected, includeUnassigned: false } }),
@@ -62,6 +64,14 @@ function options(workspaceId: LogicalWorkspaceId, selected: readonly string[], f
 }
 const request = (sessionsRoot: string) => ({ instanceId: INSTANCE, profileId: 'web-i27c4', sessionsRoot,
   instanceHome: join(sessionsRoot, '..') });
+
+it('refuses alignment before touching a home when the adapter has no exclusive host write protocol', async () => {
+  const f = await scratch();
+  const { withWriteAccess: _lease, ...unavailable } = options('workspace-selected' as LogicalWorkspaceId, ['workspace-selected'], f);
+  await expect(writeBackInstanceWorkspaces(unavailable, request(f.sessionsRoot))).rejects.toMatchObject({ code: 'SYNC_HOST_WRITE_OWNERSHIP_UNAVAILABLE' });
+  expect(await readdir(f.sessionsRoot)).toEqual([]);
+  expect(await readdir(f.workspaceRoot)).toEqual([]);
+});
 
 it('writes a selected bucket into its own local folder, with the session pointing at that folder', async () => {
   const f = await scratch();
@@ -162,7 +172,24 @@ it('rewrites content the instance lost to an empty placeholder', async () => {
   expect((await stat(file)).size).toBeGreaterThan(0);
 });
 
-it('reuses a workspace the instance already owns instead of mapping a second folder for it', async () => {
+it('detects valid content drift even when the old revision marker still matches', async () => {
+  const f = await scratch();
+  const workspaceId = 'workspace-selected' as LogicalWorkspaceId;
+  const configured = options(workspaceId, [workspaceId], f);
+  await writeBackInstanceWorkspaces(configured, request(f.sessionsRoot));
+  const folder = join(f.workspaceRoot, BUCKET_NAME);
+  const file = await soleSession(f.sessionsRoot, v3NativeProjectKey(folder));
+  const original = await readFile(file);
+  const [materialized] = await createAdapterMaterializer([], new Map([[workspaceId, folder]]))(projection(workspaceId));
+  const payload = structuredClone(materialized!.payload) as unknown as { header: JsonValue; events: { data: { content: { text: string }[] } }[] };
+  payload.events[0]!.data.content[0]!.text = 'changed outside maintenance';
+  await writeFile(file, v3NativeSessionCodec.encode(payload as unknown as JsonValue, { relativePath: file, header: payload.header }));
+  const summary = await writeBackInstanceWorkspaces(configured, request(f.sessionsRoot));
+  expect(summary.written).toBe(1);
+  expect(await readFile(file)).toEqual(original);
+});
+
+it('reuses an owned workspace with matching endpoint provenance, not merely a matching name', async () => {
   const f = await scratch();
   const workspaceId = 'workspace-selected' as LogicalWorkspaceId;
   // The operator's rule: a workspace that already exists is reused, never recreated. The instance's
@@ -175,20 +202,31 @@ it('reuses a workspace the instance already owns instead of mapping a second fol
     global: { initialized: true, workspaceIds: ['ws-1'], archivedSessionIds: [] },
     tables: { workspaces: { 'ws-1': { path: owned, title: BUCKET_NAME, sessionIds: [] } } },
   }, null, 2)}\n`, 'utf8');
-  const summary = await writeBackInstanceWorkspaces(options(workspaceId, [workspaceId], f), request(f.sessionsRoot));
+  const configured = options(workspaceId, [workspaceId], f);
+  configured.loadProjection = async () => { const p = projection(workspaceId); return { ...p, sessions: p.sessions.map(item => ({ ...item, projectRoot: owned })) }; };
+  const summary = await writeBackInstanceWorkspaces(configured, request(f.sessionsRoot));
   expect(summary.workspaceFolders).toEqual([owned]);
   expect(await readdir(f.workspaceRoot)).toEqual([]);
   expect(await readdir(f.sessionsRoot)).toEqual([v3NativeProjectKey(owned)]);
 });
 
-it('falls back to the mapped folder when the instance registry cannot be interpreted', async () => {
+it('refuses alignment when the instance registry cannot be interpreted', async () => {
   const f = await scratch();
   const workspaceId = 'workspace-selected' as LogicalWorkspaceId;
   await mkdir(join(f.root, 'home', 'storages'), { recursive: true });
   await writeFile(join(f.root, 'home', 'storages', 'workspace.json'), '{ not json', 'utf8');
-  const summary = await writeBackInstanceWorkspaces(options(workspaceId, [workspaceId], f), request(f.sessionsRoot));
-  // A store this reader does not understand is not a reason to fail a sync: the mapped folder is
-  // the documented default.
-  expect(summary.workspaceFolders).toEqual([join(f.workspaceRoot, BUCKET_NAME)]);
-  expect(summary.written).toBe(1);
+  await expect(writeBackInstanceWorkspaces(options(workspaceId, [workspaceId], f), request(f.sessionsRoot)))
+    .rejects.toMatchObject({ code: 'SYNC_HOST_STATE_UNSUPPORTED' });
+  expect(await readdir(f.sessionsRoot)).toEqual([]);
+});
+
+it('does not report archive restoration from a private marker without a host protocol', async () => {
+  const f = await scratch();
+  const workspaceId = 'workspace-selected' as LogicalWorkspaceId;
+  const configured = options(workspaceId, [workspaceId], f);
+  configured.loadProjection = async () => { const p = projection(workspaceId); return { ...p,
+    sessions: p.sessions.map(item => ({ ...item, session: { ...item.session, archivedAt: AT } })) }; };
+  await expect(writeBackInstanceWorkspaces(configured, request(f.sessionsRoot)))
+    .rejects.toMatchObject({ code: 'SYNC_HOST_ARCHIVE_UNAVAILABLE' });
+  expect(await readdir(f.sessionsRoot)).toEqual([]);
 });

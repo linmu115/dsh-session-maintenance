@@ -28,6 +28,41 @@
       "development": "./src/windows-tools.ts",
       "types": "./dist/windows-tools.d.ts",
       "default": "./dist/windows-tools.js"
+    },
+    "./instance-write-back": {
+      "development": "./src/instance-write-back.ts",
+      "types": "./dist/instance-write-back.d.ts",
+      "default": "./dist/instance-write-back.js"
+    },
+    "./instance-session-writeback": {
+      "development": "./src/instance-session-writeback.ts",
+      "types": "./dist/instance-session-writeback.d.ts",
+      "default": "./dist/instance-session-writeback.js"
+    },
+    "./native-session-overwrite": {
+      "development": "./src/native-session-overwrite.ts",
+      "types": "./dist/native-session-overwrite.d.ts",
+      "default": "./dist/native-session-overwrite.js"
+    },
+    "./native-session-observation": {
+      "development": "./src/native-session-observation.ts",
+      "types": "./dist/native-session-observation.d.ts",
+      "default": "./dist/native-session-observation.js"
+    },
+    "./instance-workspace-source": {
+      "development": "./src/instance-workspace-source.ts",
+      "types": "./dist/instance-workspace-source.d.ts",
+      "default": "./dist/instance-workspace-source.js"
+    },
+    "./workspace-folders": {
+      "development": "./src/workspace-folders.ts",
+      "types": "./dist/workspace-folders.d.ts",
+      "default": "./dist/workspace-folders.js"
+    },
+    "./endpoint-snapshot": {
+      "development": "./src/endpoint-snapshot.ts",
+      "types": "./dist/endpoint-snapshot.d.ts",
+      "default": "./dist/endpoint-snapshot.js"
     }
   },
   "files": [

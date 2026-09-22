@@ -29,10 +29,10 @@ export function decodeGeneration(bytes:Buffer, compression:"none"|"zstd", versio
  const restore=currentCatalog().createRestore(physical,{recovery:"strict",validation:"current"});for(const row of rows)restore.decodeRow(row);
  return {artifact:restore.finish(),complete};
 }
-export async function inspectV3NativeSpace(root:string):Promise<readonly NativeSessionArtifact[]> {
+export async function inspectV3NativeSpace(root:string, options: { readonly projectDirectory?: string; readonly nativeSessionId?: string } = {}):Promise<readonly NativeSessionArtifact[]> {
  const rootInfo=await lstat(root);if(!rootInfo.isDirectory()||rootInfo.isSymbolicLink())throw new TypeError("Invalid native root");const rootReal=await realpath(root), result:NativeSessionArtifact[]=[], ids=new Set<string>();
  async function walk(dir:string,depth:number):Promise<void>{if(depth>3)throw new TypeError("Unexpected native directory depth");const entries=await readdir(dir,{withFileTypes:true}), generations=entries.flatMap(e=>{const g=generationName(e.name);return g?[{...g,path:join(dir,e.name)}]:[];});
- for(const e of entries){if(e.isSymbolicLink())throw new TypeError("Native symlink refused");if(e.isDirectory())await walk(join(dir,e.name),depth+1);}
+ for(const e of entries){if(depth===0 && options.projectDirectory!==undefined && e.name!==options.projectDirectory)continue;if(depth===1 && options.nativeSessionId!==undefined && e.name!==options.nativeSessionId)continue;if(e.isSymbolicLink())throw new TypeError("Native symlink refused");if(e.isDirectory())await walk(join(dir,e.name),depth+1);}
  if(!generations.length)return;
  if(new Set(generations.map(g=>g.version)).size!==generations.length)throw new TypeError("Conflicting native encodings");
  const version=Math.max(...generations.map(g=>g.version));if(version>3)throw new TypeError("Future Session generation refused");

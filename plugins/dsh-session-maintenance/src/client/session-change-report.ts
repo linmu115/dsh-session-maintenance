@@ -18,12 +18,13 @@ import type { SessionListSnapshot } from "./context.js";
  * this" into "the user deleted this".
  */
 export interface ObservedSession {
+  readonly revision?: string;
   readonly sessionId: string;
   readonly archived: boolean;
 }
 
 export interface SyncIntent {
-  readonly kind: "archive" | "delete";
+  readonly kind: "archive" | "delete" | "refresh";
   readonly sessionId: string;
 }
 

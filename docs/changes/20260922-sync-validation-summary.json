@@ -1,0 +1,25 @@
+{
+  "date": "2026-09-22",
+  "baselineCommit": "eb7c5c5",
+  "validation": {
+    "files": 69,
+    "passed": 369,
+    "failed": 0
+  },
+  "retry": {
+    "passed": 20,
+    "failed": 0
+  },
+  "baselineFailures": [
+    "portable workspace contains no machine-bound runtime dependencies or credentials",
+    "offline Codex project policy inheritance freezes explicit scope, preserves policy in backup, and rejects activation after policy edits",
+    "M06 RC1 conversation topology repair stages a synthetic active candidate without widening derived history",
+    "M06 RC1 conversation topology repair stages a synthetic tombstoned candidate without widening derived history",
+    "M06 RC1 conversation topology repair stages a synthetic invalid-native candidate without widening derived history",
+    "pluggable extension data rejects incompatible versions, malformed graphs, oversized edits and bounds unresolved candidates"
+  ],
+  "typecheck": "passed",
+  "build": "passed",
+  "deployed": false,
+  "liveAcceptance": "not-performed"
+}

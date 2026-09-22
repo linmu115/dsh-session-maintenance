@@ -4,9 +4,15 @@ import {
   type InstanceWorkspaceConfiguration, type InstanceWorkspaceEffectiveScope, type InstanceSessionAvailability,
   type InstanceWorkspaceInstanceDirectory, type InstanceWorkspacePolicyUpdate,
 } from "@linmu/dsh-session-contracts";
-import { IntegrationError } from "./integrations/bindings.js";
+import { IntegrationError } from '@linmu/dsh-session-contracts';
+import { EndpointSyncCoordinator } from './endpoint-sync.js';
+import type { EndpointSyncCommand, EndpointSyncReceipt } from '@linmu/dsh-session-contracts';
 
 export interface InstanceWorkspacePorts {
+  exclusive?: <T>(work: () => Promise<T>) => Promise<T>;
+  policyRevision?: (endpointId: string) => number;
+  validateProfile?: (endpointId: string, profileId: string) => Promise<void>;
+  mutateSession?: (endpointId: string, command: EndpointSyncCommand) => Promise<Omit<EndpointSyncReceipt, 'epoch'>>;
   listInstances(): Promise<InstanceWorkspaceInstanceDirectory>;
   readConfiguration(instanceId: string): Promise<InstanceWorkspaceConfiguration>;
   writePolicy(instanceId: string, update: InstanceWorkspacePolicyUpdate): Promise<unknown>;
@@ -42,19 +48,34 @@ export interface InstanceWorkspacePorts {
 }
 
 /** What one write-back pass did, in the words the operator sees. */
-export interface InstanceWriteBackSummary {
-  readonly written: number;
-  readonly unchanged: number;
-  readonly skippedOutOfScope: number;
-  readonly failures: readonly string[];
-  /** The local folders this instance now owns the selected buckets under, if any were mapped. */
-  readonly workspaceFolders?: readonly string[];
-}
+export type InstanceWriteBackSummary = import('@linmu/dsh-session-contracts').WorkspaceWriteBackSummary;
 /** Transport boundary only. The provider owns policy writes and active run snapshots. */
 export class InstanceWorkspaceService {
   /** The last write-back this service performed, for the caller to report. */
   private lastWriteBack: InstanceWriteBackSummary | undefined;
-  constructor(private readonly ports: InstanceWorkspacePorts) {}
+  private readonly sync: EndpointSyncCoordinator | undefined;
+  constructor(private readonly ports: InstanceWorkspacePorts) {
+    if (ports.exclusive && ports.policyRevision && ports.mutateSession && ports.syncToInstance) {
+      this.sync = new EndpointSyncCoordinator({ exclusive: ports.exclusive, revision: ports.policyRevision,
+        align: ports.syncToInstance, commit: async (endpointId, command) => {
+          await ports.validateProfile?.(endpointId, command.profileId);
+          return ports.mutateSession!(endpointId, command);
+        } });
+    }
+  }
+  async syncStatus(endpointId: string, profileId: string) {
+    await this.requireInstance(endpointId);
+    await this.ports.validateProfile?.(endpointId, profileId);
+    if (!this.sync) throw new IntegrationError('SYNC_UNAVAILABLE', '当前 adapter 未提供同步协议。', 503);
+    return this.sync.status(endpointId);
+  }
+  async syncChange(endpointId: string, command: EndpointSyncCommand): Promise<EndpointSyncReceipt> {
+    await this.syncStatus(endpointId, command.profileId);
+    return this.sync!.commit(endpointId, command);
+  }
+  private alignOne(endpointId: string) {
+    return this.sync ? this.sync.align(endpointId) : this.ports.syncToInstance!(endpointId);
+  }
   /** What the most recent successful save actually wrote into the instance. */
   writeBackSummary(): InstanceWriteBackSummary | undefined { return this.lastWriteBack; }
   async listInstances(): Promise<InstanceWorkspaceInstanceDirectory> {
@@ -85,7 +106,7 @@ export class InstanceWorkspaceService {
     // The range is durable; now make it true in the instance. This is reported, never thrown: the
     // policy write already succeeded, and the operator must be able to see both facts separately.
     if (this.ports.syncToInstance !== undefined) {
-      try { this.lastWriteBack = await this.ports.syncToInstance(instanceId); }
+      try { this.lastWriteBack = await this.alignOne(instanceId); }
       catch (error) {
         this.lastWriteBack = { written: 0, unchanged: 0, skippedOutOfScope: 0,
           failures: [error instanceof Error ? error.message : "无法把所选工作区写入实例。"] };
@@ -113,7 +134,7 @@ export class InstanceWorkspaceService {
     const aligned: { instanceId: string; summary: InstanceWriteBackSummary }[] = [];
     for (const instanceId of instances) {
       try {
-        const summary = await this.ports.syncToInstance(instanceId);
+        const summary = await this.alignOne(instanceId);
         this.lastWriteBack = summary;
         aligned.push({ instanceId, summary });
       } catch (error) {

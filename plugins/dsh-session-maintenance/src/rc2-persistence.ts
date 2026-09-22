@@ -6,6 +6,15 @@ import { SessionLogOffset, type SessionHeader, type SessionEvent } from '@deepse
 import type { SessionHandle } from '@deepseek-ai/dsh-session-persistence';
 import type { SessionPersistenceProjectionContext } from './projection-runtime.js';
 import { assertReleasedV3Header } from '@deepseek-ai/dsh-session-format-v2-to-v3';
+import type { HostSessionSyncHost } from './host-session-sync.js';
+
+/** RC2 returns persistence snapshots, not bare session headers. Keep that knowledge in the adapter. */
+export function rc2HostSessionSync(ctx: Pick<Context, 'sessionPersistence' | 'workspaceRegistry'>): HostSessionSyncHost {
+  return { get workspaceRegistry() { return ctx.workspaceRegistry; },
+    sessionPersistence: { list: async () => (await ctx.sessionPersistence.list()).map(row => ({
+      id: String(row.header.id), revision: String(row.revision), cwd: row.header.cwd,
+    })) } };
+}
 
 /** Match the official RC2 JSONL writer's default at the live-session boundary. */
 export function rc2RuntimeHeader(header: SessionHeader): SessionHeader {

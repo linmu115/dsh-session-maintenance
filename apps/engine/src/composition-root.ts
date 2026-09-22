@@ -15,11 +15,14 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import type { DiscoveredIntegration, InstanceLeaseInspection, LogicalWorkspace, LogicalWorkspaceId, RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
-import { nativeProjectDirectory } from './native-session-overwrite.js';
-import { writeBackInstanceWorkspaces } from './instance-write-back.js';
+import { writeBackInstanceWorkspaces, writeBackRunIdentity } from '@linmu/dsh-instance-integration-dsh/instance-write-back';
+import { readEndpointSnapshot } from '@linmu/dsh-instance-integration-dsh/endpoint-snapshot';
 import { IntegrationError } from './integrations/bindings.js';
-import { createInstanceWorkspaceSource } from './instance-workspace-source.js';
+import { createWorkspaceSourceForHome, dshSessionBinding } from '@linmu/dsh-instance-integration-dsh/instance-workspace-source';
+import { ensurePlatformSessionBinding } from './platform-session-binding.js';
+import { commitEndpointSessionChange } from './endpoint-session-commands.js';
 import { mapJoinedWorkspace, mappedLogicalSessionId } from './workspace-session-mapping.js';
+import { createWorkspaceFolderAdapter } from '@linmu/dsh-instance-integration-dsh/workspace-folders';
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
@@ -42,7 +45,7 @@ import {
   type SyncPlan,
 } from "@linmu/dsh-session-contracts";
 import { ContinuationService } from "@linmu/dsh-session-continuation-engine";
-import { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
+import { CanonicalSessionEngine, reconcileEndpointSession } from "@linmu/dsh-canonical-session-engine";
 import { StatusLog, SqliteStatusEventAdapter } from "@linmu/dsh-session-status-log";
 import { ProjectionLifecycle, sourceWithEvidence, type SourceAdapterResolver } from "@linmu/dsh-session-projection-lifecycle";
 import { MaintenanceWriteCoordinator, coordinateAsyncMethods, SqliteCanonicalRepository, SqliteCanonicalProjectionSource, SqliteAdapterEvidenceStore, SqliteAdapterRegistryRepository, SqliteCanonicalSessionEngineStore, SqliteProjectionRunRepository, SqliteInstanceWorkspacePolicyRepository, SqliteSessionAliasRepository, SqliteSessionRepository, SqliteStatusEventRepository, ZstdContentObjectStore, openMaintenanceDatabase } from "@linmu/dsh-session-store";
@@ -307,6 +310,8 @@ async function createComposition(
         throw new IntegrationError("INSTANCE_WRITE_BACK_NOT_REGISTERED", "该实例尚未接入，无法把工作区写入实例目录。", 404);
       const policy = new SqliteInstanceWorkspacePolicyRepository(repository.database).getPolicy(instanceId);
       return writeBackInstanceWorkspaces({
+        bindIdentity: (nativeSessionId, logicalSessionId, checkOnly) => ensurePlatformSessionBinding({ repository,
+          ...dshSessionBinding(instanceId, nativeSessionId), logicalSessionId, checkOnly }),
         stateRoot: options.stateRoot,
         backupRoot: join(options.stateRoot, "backups", "write-back"),
         journalPath: join(options.stateRoot, "logs", "instance-write-back.jsonl"),
@@ -322,7 +327,35 @@ async function createComposition(
         loadProjection: run => canonicalProjectionSource.load(run),
       }, { instanceId, profileId, sessionsRoot: join(registered.homeRoot, "sessions"), instanceHome: registered.homeRoot });
     },
-    () => readStandaloneInstances(options.stateRoot));
+    () => readStandaloneInstances(options.stateRoot), options.workspaceRoot,
+    createWorkspaceFolderAdapter({ stateRoot: options.stateRoot, workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(),
+      homeFor: async endpointId => (await readStandaloneInstances(options.stateRoot)).find(item => item.instanceId === endpointId)?.homeRoot }),
+    (endpointId, command) => commitEndpointSessionChange({ endpointId, command,
+      resolve: async (id, sessionId) => (await repository.findBinding(dshSessionBinding(id, sessionId).key))?.logicalSessionId,
+      selected: (id, logicalSessionId) => {
+        const row = repository.database.prepare(`SELECT m.workspace_id FROM logical_sessions s LEFT JOIN workspace_memberships m
+          ON m.logical_session_id=s.id WHERE s.id=?`).get(logicalSessionId) as { workspace_id: LogicalWorkspaceId | null } | undefined;
+        const policies = new SqliteInstanceWorkspacePolicyRepository(repository.database);
+        return row !== undefined && policies.workspaceSelected(policies.getPolicy(id), row.workspace_id);
+      },
+      update: (id, patch) => composedEngine!.sessionCommands.updateSession(id, patch),
+      remove: id => composedEngine!.sessionCommands.deleteSession(id),
+      refresh: async (id, sessionId, existingId) => {
+        const registered = (await readStandaloneInstances(options.stateRoot)).find(item => item.instanceId === id && item.profileId === command.profileId);
+        if (!registered) throw new IntegrationError('SYNC_PROFILE_MISMATCH', '同步接入身份不存在。');
+        const logicalSessionId = (existingId ?? mappedLogicalSessionId(id, sessionId)) as import('@linmu/dsh-session-contracts').LogicalSessionId;
+        const projection = await canonicalProjectionSource.load(writeBackRunIdentity(id, registered.profileId));
+        const snapshot = await readEndpointSnapshot({ endpointId: id, nativeSessionId: sessionId, logicalSessionId,
+          stateRoot: options.stateRoot, homeRoot: registered.homeRoot, workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(), projection });
+        const policies = new SqliteInstanceWorkspacePolicyRepository(repository.database);
+        if (!policies.workspaceSelected(policies.getPolicy(id), snapshot.workspaceId))
+          throw new IntegrationError('SESSION_NOT_SYNCED', '目标工作区不在当前同步范围。');
+        await ensurePlatformSessionBinding({ repository, ...dshSessionBinding(id, sessionId), logicalSessionId, checkOnly: true });
+        await reconcileEndpointSession(canonicalEngine.store, snapshot);
+        await ensurePlatformSessionBinding({ repository, ...dshSessionBinding(id, sessionId), logicalSessionId });
+        return logicalSessionId;
+      },
+    }));
   const graphLifecycle = new SessionGraphStore(repository.database);
   await writes.run("graph-archive-reconcile", () => {
     const rows = repository.database.prepare(`SELECT id,archived_at FROM logical_sessions s WHERE s.tombstoned_at IS NULL
@@ -470,13 +503,11 @@ async function createComposition(
       // directory is derived from the instance's Home and the workspace path, so
       // the instance never sends a location the Engine just obeys.
       mapWorkspace: async ({ target, request }) => {
-        const projectDirectory = nativeProjectDirectory(request.workspacePath);
-        // The adapter's layout rule derives the project directory from each session's own `cwd`, so the
-        // root handed to it is the sessions root — appending the key here applied it twice.
-        const sessionsRoot = join(target.homeRoot, "sessions");
-        const source = createInstanceWorkspaceSource({ sessionsRoot, projectDirectory, instanceId: request.instanceId,
+        const source = createWorkspaceSourceForHome({ homeRoot: target.homeRoot, workspacePath: request.workspacePath, instanceId: request.instanceId,
           logicalSessionId: nativeSessionId => mappedLogicalSessionId(request.instanceId, nativeSessionId) });
         const mapped = await mapJoinedWorkspace({ engine: canonicalEngine, instanceId: request.instanceId,
+          bindIdentity: (nativeSessionId, logicalSessionId, checkOnly) => ensurePlatformSessionBinding({ repository,
+            ...dshSessionBinding(request.instanceId, nativeSessionId), logicalSessionId, checkOnly }),
           workspaceKey: request.workspaceId, workspaceName: request.workspaceName, source,
           workspaces: {
             // Reading the folder row is a plain lookup against the same table the

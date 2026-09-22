@@ -1,4 +1,5 @@
 export * from "./engine.js";
+export * from './endpoint-reconcile.js';
 export * from "./codex-observation.js";
 export * from "./dsh-append.js";
 export * from "./dsh-native-import.js";

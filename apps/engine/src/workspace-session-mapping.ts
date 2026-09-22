@@ -20,26 +20,8 @@ import type { CanonicalSessionEngine } from '@linmu/dsh-canonical-session-engine
  */
 
 /** One native session read from the instance, ready to become a canonical row. */
-export interface MappedNativeSession {
-  readonly nativeSessionId: NativeSessionId;
-  readonly title: string;
-  readonly tags: readonly string[];
-  readonly archivedAt: string | null;
-  readonly events: readonly CanonicalEventV1[];
-}
-
-/**
- * Reads the sessions of the joined workspace out of the instance.
- *
- * Returning the sessions already present is the caller's job because only it
- * knows which directory belongs to the workspace; this port keeps the mapping
- * service independent of how the instance's files are laid out.
- */
-export interface JoinedWorkspaceSource {
-  /** Native sessions currently present in the joined workspace. */
-  list(): Promise<readonly NativeSessionId[]>;
-  read(nativeSessionId: NativeSessionId): Promise<MappedNativeSession>;
-}
+import type { JoinedWorkspaceSource } from '@linmu/dsh-session-contracts';
+export type { JoinedWorkspaceSource, MappedNativeSession } from '@linmu/dsh-session-contracts';
 
 export interface WorkspaceMappingReceipt {
   readonly workspaceId: LogicalWorkspaceId;
@@ -75,6 +57,7 @@ export function joinedWorkspaceId(instanceId: string, workspaceKey: string): Log
 }
 
 export interface MapJoinedWorkspaceInput {
+  readonly bindIdentity?: (nativeSessionId: string, logicalSessionId: string, checkOnly: boolean) => Promise<void>;
   readonly engine: Pick<CanonicalSessionEngine, 'importDshNative' | 'store'>;
   /** Reads a workspace folder row and writes it back; the canonical repository provides this. */
   readonly workspaces: {
@@ -114,14 +97,19 @@ export async function mapJoinedWorkspace(input: MapJoinedWorkspaceInput): Promis
   for (const nativeSessionId of await input.source.list()) {
     const logicalSessionId = mappedLogicalSessionId(input.instanceId, String(nativeSessionId));
     try {
+      await input.bindIdentity?.(String(nativeSessionId), String(logicalSessionId), true);
       // Already canonical means already mapped; the import is keyed by a
       // deterministic operation id, so a retry finds the same session instead of
       // creating a second row for it.
-      if (await input.engine.store.getSession(logicalSessionId) !== undefined) { alreadyPresent.push(nativeSessionId); continue; }
+      if (await input.engine.store.getSession(logicalSessionId) !== undefined) {
+        await input.bindIdentity?.(String(nativeSessionId), String(logicalSessionId), false);
+        alreadyPresent.push(nativeSessionId); continue;
+      }
       const session = await input.source.read(nativeSessionId);
       await input.engine.importDshNative({ operationId: joinWorkspaceOperationId(input.instanceId, workspaceId, String(nativeSessionId)),
         logicalSessionId, nativeSessionId, title: session.title, tags: [...session.tags], archivedAt: session.archivedAt,
         workspaceId, events: session.events, importedAt: clock() });
+      await input.bindIdentity?.(String(nativeSessionId), String(logicalSessionId), false);
       mapped.push(logicalSessionId);
     } catch (error) {
       failures.push({ nativeSessionId: String(nativeSessionId), reason: error instanceof Error ? error.message : String(error) });

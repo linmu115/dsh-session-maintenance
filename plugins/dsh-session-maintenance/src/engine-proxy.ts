@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { readFile, stat } from "node:fs/promises";
 
 import type { Config } from "./config.js";
+import { endpointSyncStatusSchema, type EndpointSyncStatus, type EndpointSyncReceipt } from '@linmu/dsh-session-contracts';
 import { identityDeclaration } from "./instance-identity.js";
 
 const MAX_REQUEST_BYTES = 16 * 1024;
@@ -11,6 +12,8 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u;
 export type ProxyOperation =
   | "identity"
   | "status"
+  | "sync-status"
+  | "refresh-session"
   | "reference:resolve"
   | "resolve"
   | "scan-current"
@@ -31,6 +34,7 @@ export type ProxyOperation =
   | "join-workspace";
 
 export interface ProxyRequest {
+  readonly epoch?: string;
   readonly operation: ProxyOperation;
   readonly instanceId?: string;
   readonly sessionId?: string;
@@ -50,10 +54,11 @@ export interface ProxyRequest {
 }
 
 export interface ProxyResult {
+  readonly sync?: EndpointSyncStatus;
   readonly ok: true;
   readonly message: string;
   /** Machine-readable outcome for callers that must distinguish an idempotent repeat. */
-  readonly code?: "joined" | "already-joined";
+  readonly code?: "joined" | "already-joined" | 'not-synced';
   /**
    * The declared identity, answered by the `identity` operation.
    *
@@ -197,24 +202,26 @@ function assertRequest(value: unknown): ProxyRequest {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new TypeError("请求必须是对象");
   const record = value as Record<string, unknown>;
   const allowed = new Set([
-    "operation", "instanceId", "sessionId", "applySafe", "settings", "referenceType",
+    "operation", "instanceId", "sessionId", "applySafe", "settings", "referenceType", "archived", "epoch",
     "logicalSessionId", "logicalAnchorId", "legacyNativeSessionId", "legacyNativeAnchorId",
     // The workspace-level entry: which workspace it is, and where its sessions live.
     "workspaceId", "workspaceName", "workspacePath",
   ]);
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("请求包含未允许字段");
   const operations: readonly ProxyOperation[] = [
-    "identity", "status", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
+    "identity", "status", "sync-status", "refresh-session", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
     "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "set-archived", "session-mapped", "workspace-folders", "settings:get", "settings:patch", "join-workspace",
   ];
   if (!operations.includes(record.operation as ProxyOperation)) throw new TypeError("未知维护操作");
-  if (record.operation === "delete-session" && Object.keys(record).some(key => key !== "operation" && key !== "sessionId")) {
+  if (record.epoch !== undefined) safeId(record.epoch, 'epoch');
+  if (record.archived !== undefined && record.operation !== 'set-archived') throw new TypeError('归档字段只适用于归档请求');
+  if (record.operation === "delete-session" && Object.keys(record).some(key => !['operation', 'sessionId', 'epoch'].includes(key))) {
     throw new TypeError("删除只接受当前实例的原生会话 ID，不能指定其他实例或真源 ID");
   }
   // Archiving is the instance's own sidebar telling Maintenance which state its session is in, so
   // it carries one boolean and the same single native session id — never a source-side id.
   if (record.operation === "set-archived") {
-    if (Object.keys(record).some(key => !["operation", "sessionId", "archived"].includes(key))) {
+    if (Object.keys(record).some(key => !["operation", "sessionId", "archived", "epoch"].includes(key))) {
       throw new TypeError("归档只接受当前实例的原生会话 ID 与一个布尔状态");
     }
     if (typeof record.archived !== "boolean") throw new TypeError("归档状态必须是布尔值");
@@ -287,6 +294,11 @@ export class RestrictedEngineProxy {
       await this.engine("/v1/health");
       return { ok: true, message: "维护引擎在线" };
     }
+    if (input.operation === 'sync-status') {
+      const value = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/sync-state?profileId=${encodeURIComponent(this.config.profileId)}`) as { sync: unknown };
+      const sync = endpointSyncStatusSchema.parse(value.sync);
+      return { ok: true, sync, message: sync.phase === 'active' ? '同步已就绪' : '同步正在对齐或需要处理' };
+    }
     if (input.operation === "reference:resolve") {
       const value = await this.engine("/v1/references/resolve", "POST", {
         targetInstanceId: this.config.dshInstanceId,
@@ -356,23 +368,26 @@ export class RestrictedEngineProxy {
       if (resolution.logicalSessionId === null) return { ok: true, message: "此会话尚未映射到维护真源", mapped: false };
       const availability = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/sessions/${encodeURIComponent(resolution.logicalSessionId)}/availability?profileId=${encodeURIComponent(this.config.profileId)}`) as { availability?: { readonly status?: string } };
       const status = availability.availability?.status;
-      const mapped = status === "available" || status === "mapping-pending";
+      const mapped = status === "available" || status === "mapping-pending" || status === 'offline';
       return { ok: true, message: mapped ? "此会话属于本实例的维护范围" : "此会话不在本实例已勾选的维护工作区内", mapped };
     }
-    if (input.operation === "set-archived") {
-      // The instance's sidebar is the authority for its own archive state while the Engine is
-      // running, so what it reports is written onto the same source session it belongs to. The
-      // native id is resolved against this instance — a caller can never name a source id directly.
-      const resolution = await this.resolve(instanceId, sessionId);
-      if (resolution.logicalSessionId === null) throw new Error("Maintenance 尚未映射此会话，无法同步归档状态");
-      const value = await this.engine(`/v1/canonical/sessions/${encodeURIComponent(resolution.logicalSessionId)}`,
-        "PATCH", { archived: input.archived === true }) as { session?: { archivedAt?: string | null; archived?: boolean } };
-      const session = value.session;
-      const archived = session === undefined ? undefined
-        : session.archivedAt !== undefined ? session.archivedAt !== null : session.archived;
-      if (archived !== (input.archived === true)) throw new Error("Maintenance 未返回匹配的归档回执；请检查状态后重试");
-      return { ok: true, logicalSessionId: resolution.logicalSessionId,
-        message: input.archived === true ? "真源已同步为已归档" : "真源已同步为未归档" };
+    if (input.operation === 'set-archived' || input.operation === 'refresh-session' || input.operation === 'delete-session' && (this.projectionRunId === undefined || input.epoch !== undefined)) {
+      const epoch = input.epoch ?? (await this.invoke({ operation: 'sync-status' })).sync!.epoch;
+      const change = input.operation === 'set-archived' ? { kind: 'archive', archived: input.archived === true }
+        : { kind: input.operation === 'refresh-session' ? 'refresh' : 'delete' };
+      const value = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/sync-changes`, 'POST', {
+        profileId: this.config.profileId, epoch, sessionId, change,
+      }) as { receipt: EndpointSyncReceipt };
+      const receipt = value.receipt;
+      if (receipt?.epoch === epoch && receipt.outcome === 'out-of-scope') return { ok: true, code: 'not-synced', message: '此会话不在同步范围，未改动真源' };
+      if (!receipt || receipt.epoch !== epoch || typeof receipt.logicalSessionId !== 'string') throw new Error('同步回执身份不匹配');
+      if (change.kind === 'delete') {
+        if (!['deleted', 'pending-delete'].includes(receipt.outcome) || !Number.isSafeInteger(receipt.pendingOperations)) throw new Error('删除回执不匹配');
+        return { ok: true, logicalSessionId: receipt.logicalSessionId, deletion: { logicalSessionId: receipt.logicalSessionId,
+          state: receipt.outcome as 'deleted' | 'pending-delete', pendingOperations: receipt.pendingOperations! }, message: '真源已记录删除状态' };
+      }
+      if (change.kind === 'archive' && receipt.archived !== input.archived) throw new Error('归档回执不匹配');
+      return { ok: true, logicalSessionId: receipt.logicalSessionId, message: '实例变化已同步到真源' };
     }
     if (input.operation === "delete-session") {
       // Active projection deletion resolves and tombstones in one Engine call.

@@ -28,6 +28,7 @@ export const createRuntimeBridge = host.createRuntimeBridge;
 export const bindNativeAppend = host.bindNativeAppend;
 export const recoverRuntimeTail = host.recoverRuntimeTail;
 export const validateArtifact = host.validateArtifact;
+export const inspectNativeSpace = host.inspectNativeSpace;
 export const verifyNativeContextMaterials = host.verifyNativeContextMaterials;
 export const verifyNativeContextRelease = host.verifyNativeContextRelease;
 

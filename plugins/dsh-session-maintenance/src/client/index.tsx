@@ -7,7 +7,7 @@ import { registerSettingsSection } from "./settings-actions.js";
 import { installStyles } from "./styles.js";
 import { verifyUiContract } from "./ui-contract.js";
 import { BrowserPendingIntentStore, WorkspaceJoinQueue } from "./workspace-join.js";
-import { observeSessions, reportSessionChanges, sessionSyncIntents } from "./session-change-report.js";
+
 import { createWorkspaceBridge, installWorkspaceBridge } from "./workspace-bridge.js";
 
 export const inject = ["sessions", "slots"] as const;
@@ -61,27 +61,7 @@ export function apply(ctx: ClientContext): void {
       // Registering the Engine's mapped folders as this instance's own workspaces belongs to the
       // host half, which runs on every boot whether or not a page is open. It is deliberately not
       // done here: two registrars for one registry is one rule too many.
-      // The instance is the authority for its own sessions while the Engine runs, so a session the
-      // operator archives or deletes here is written onto the same source session. Only changes seen
-      // after this page's own first observation count — and the Engine's start overwrites the mapped
-      // workspaces anyway, so nothing seen across a restart could be trusted as a user action.
-      (() => {
-        let previous = observeSessions(injected.sessions.list.getSnapshot());
-        return injected.sessions.list.subscribe(() => {
-          const current = observeSessions(injected.sessions.list.getSnapshot());
-          const intents = sessionSyncIntents(previous, current);
-          previous = current;
-          if (intents.length === 0) return;
-          void reportSessionChanges({
-            engineReady: async () => (await actions.invoke({ operation: "status" })).ok,
-            mapped: async sessionId => (await actions.invoke({ operation: "session-mapped", sessionId })).mapped === true,
-            report: async intent => (await actions.invoke(intent.kind === "delete"
-              ? { operation: "delete-session", sessionId: intent.sessionId }
-              : { operation: "set-archived", sessionId: intent.sessionId, archived: current.get(intent.sessionId)?.archived === true })).message,
-            onFeedback: feedback,
-          }, intents);
-        });
-      })(),
+      // The host adapter owns automatic synchronization and its epoch baseline.
     ];
     const contract = verifyUiContract(injected);
     if (!contract.compatible) {

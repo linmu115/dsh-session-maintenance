@@ -5,10 +5,12 @@ import { V3RuntimeBridge, bindV3NativeAppend, type V3RuntimeRegistrar } from "./
 import { recoverV3RuntimeTail } from "./runtime-tail-recovery.js";
 import { validateV3 } from "./official.js";
 import { verifyV3NativeContextMaterials, verifyV3NativeContextRelease } from "./native-context-evidence.js";
+import { inspectV3NativeSpace } from './generation-reader.js';
 
 /** Compose trusted native event extensions into a host service without global mutations. */
 export function createV3DialectAdapter(dialect: V3AdapterDialect) {
   const services = scopeV3Service({ bindNativeAppend: bindV3NativeAppend, recoverRuntimeTail: recoverV3RuntimeTail,
+    inspectNativeSpace: inspectV3NativeSpace,
     prepareLearningV3, appendLearningV3, validateArtifact: validateV3, verifyNativeContextMaterials: verifyV3NativeContextMaterials, verifyNativeContextRelease: verifyV3NativeContextRelease,
   }, dialect);
   return {

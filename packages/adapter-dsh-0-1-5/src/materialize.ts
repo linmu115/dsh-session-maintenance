@@ -40,7 +40,7 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
   for(const source of exported)verifySourceExport(source);
   const nativeHeader=exported.find(e=>e.header!==undefined)?.header??item.events.find(e=>e.extensions.nativeHeader!==undefined)?.extensions.nativeHeader;
   let cut=exported.find(e=>e.header!==undefined)?.inheritedEventCount??item.events.find(e=>e.extensions.nativeHeader!==undefined)?.extensions.inheritedEventCount??0;
-  if(nativeHeader!==undefined)header={...record(nativeHeader),id:nativeId,version:firstV3===0?3:Number(prefix[0]?.extensions.nativeFormatVersion??0)} as unknown as SessionFormatHeader;
+  if(nativeHeader!==undefined)header={...record(nativeHeader),id:nativeId,version:firstV3===0?3:Number(prefix[0]?.extensions.nativeFormatVersion??0),...(item.projectRoot?{cwd:item.projectRoot}:{})} as unknown as SessionFormatHeader;
   let portable: ReturnType<typeof materializePortableV3> | undefined;
   if(firstV3===0){header={...header,version:3};raw=[];cut=header.isSeeded?count(cut):0;}
   else if(rawNative)raw=prefix.map(e=>e.rawPayload as unknown as SessionFormatEvent);

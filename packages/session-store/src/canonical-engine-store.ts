@@ -71,6 +71,8 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
       headVersionId: session.headVersionId,
       workspaceId: membership?.workspaceId ?? null,
       membershipRevision: membership?.revision ?? -1,
+      displayOrder: membership?.displayOrder ?? 0,
+      pinned: membership?.pinned ?? false,
       tombstone: tombstone ?? null,
     };
   }

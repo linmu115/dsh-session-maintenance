@@ -1,4 +1,5 @@
 import { sessionSyncIntents, type ObservedSession, type SessionObservation, type SyncIntent } from "./client/session-change-report.js";
+import type { EndpointSyncStatus } from '@linmu/dsh-session-contracts';
 
 /**
  * The instance side reporting its own archive/delete changes **without a page being open**.
@@ -32,13 +33,15 @@ export interface HostSessionSyncHost {
 }
 
 export interface HostSessionSyncOptions {
+  readonly syncState?: () => Promise<EndpointSyncStatus>;
+  readonly trackContent?: boolean;
   readonly host: HostSessionSyncHost;
   /** Only while the Engine is reachable; the caller decides how that is answered. */
   readonly engineReady: () => Promise<boolean>;
   /** Whether this instance has mapped the session's workspace; unmapped sessions are never pushed. */
   readonly mapped: (sessionId: string) => Promise<boolean>;
   /** Push one intent; the returned text is the Engine's own answer, for the log. */
-  readonly report: (intent: SyncIntent, archived: boolean) => Promise<string>;
+  readonly report: (intent: SyncIntent, archived: boolean, epoch?: string) => Promise<string | { readonly message: string; readonly skipped: boolean }>;
   readonly onFeedback?: (message: string) => void;
   /** How long between safety passes; a test injects a shorter one. */
   readonly intervalMs?: number;
@@ -59,6 +62,8 @@ const DEFAULT_INTERVAL_MS = 30_000;
 const DEFAULT_MAX_PENDING = 500;
 
 export class HostSessionSync {
+  private epoch: string | undefined;
+  private readonly dirty = new Set<string>();
   private previous: SessionObservation | undefined;
   /** Intent per session, newest wins: the source only needs the state the instance ended at. */
   private readonly pending = new Map<string, SyncIntent & { archived: boolean }>();
@@ -68,6 +73,8 @@ export class HostSessionSync {
   private reportedFailure = false;
 
   constructor(private readonly options: HostSessionSyncOptions) {}
+  /** Host flush/event notification. The core never receives host event types. */
+  markDirty(sessionId: string): void { this.dirty.add(sessionId); }
 
   /** Observe once, then keep observing. Returns a disposer. */
   start(): () => void {
@@ -83,19 +90,48 @@ export class HostSessionSync {
 
   /** One pass, exposed so a caller (and a test) can drive it without the timer. */
   async pass(): Promise<HostSessionSyncPass> {
+    let state: EndpointSyncStatus | undefined;
+    if (this.options.syncState) {
+      state = await this.options.syncState();
+      if (state.epoch !== this.epoch || state.phase !== 'active') {
+        this.previous = undefined; this.pending.clear(); this.dirty.clear(); this.epoch = state.epoch;
+      }
+      if (state.phase !== 'active') return { observed: 0, intents: 0, reported: 0, skippedUnmapped: 0, pending: 0 };
+    }
     const current = await this.observe();
+    for (const [id, intent] of this.pending) if (intent.kind === 'delete' && current.has(id)) this.pending.delete(id);
     const previous = this.previous;
-    this.previous = current;
     let intentCount = 0;
+    let reported = 0, skippedUnmapped = 0;
+    const flushBatch = async () => { const result = await this.flush(); reported += result.reported; skippedUnmapped += result.skippedUnmapped; };
     // The first observation is the baseline: it says what the instance holds now, not what changed.
     if (previous !== undefined) {
       for (const intent of sessionSyncIntents(previous, current)) {
+        if (!this.pending.has(intent.sessionId) && this.pending.size >= (this.options.maxPending ?? DEFAULT_MAX_PENDING)) await flushBatch();
         this.remember(intent, current.get(intent.sessionId)?.archived === true);
         intentCount += 1;
       }
+      if (this.options.trackContent) {
+        for (const [id, item] of current) {
+          if (!previous.has(id) || previous.get(id)?.revision !== item.revision || this.dirty.has(id)) {
+            if (!this.pending.has(id) && this.pending.size >= (this.options.maxPending ?? DEFAULT_MAX_PENDING)) await flushBatch();
+            this.remember({ kind: 'refresh', sessionId: id }, item.archived); intentCount += 1;
+          }
+        }
+      }
     }
-    const flush = await this.flush();
-    return { observed: current.size, intents: intentCount, ...flush, pending: this.pending.size };
+    // A session can change between successful alignment and this first observation. Refreshing
+    // current rows closes that gap without inventing deletions from a previous epoch's baseline.
+    if (previous === undefined && state && this.options.trackContent) {
+      for (const [id, item] of current) {
+        if (!this.pending.has(id) && this.pending.size >= (this.options.maxPending ?? DEFAULT_MAX_PENDING)) await flushBatch();
+        this.remember({ kind: 'refresh', sessionId: id }, item.archived); intentCount += 1;
+      }
+    }
+    this.previous = current;
+    this.dirty.clear();
+    await flushBatch();
+    return { observed: current.size, intents: intentCount, reported, skippedUnmapped, pending: this.pending.size };
   }
 
   /** The instance's own two records, as one observation. */
@@ -105,14 +141,16 @@ export class HostSessionSync {
     for (const item of await this.options.host.sessionPersistence.list()) {
       const id = String(item.id);
       if (id.length === 0) continue;
-      observed.set(id, { sessionId: id, archived: archived.has(id) });
+      observed.set(id, { sessionId: id, archived: archived.has(id), ...(this.options.trackContent ? { revision: JSON.stringify(item) } : {}) });
     }
     return observed;
   }
 
   private remember(intent: SyncIntent, archived: boolean): void {
     const limit = this.options.maxPending ?? DEFAULT_MAX_PENDING;
-    if (!this.pending.has(intent.sessionId) && this.pending.size >= limit) return;
+    if (!this.pending.has(intent.sessionId) && this.pending.size >= limit) {
+      throw new Error(`同步待处理记录达到 ${limit} 项，下一轮将重新观察`);
+    }
     this.pending.set(intent.sessionId, { ...intent, archived });
   }
 
@@ -125,19 +163,19 @@ export class HostSessionSync {
     for (const intent of [...this.pending.values()]) {
       // Scope first: a session outside the instance's bound workspaces is not this instance's to
       // report, and the Engine would only have to refuse it.
-      if (!(await this.options.mapped(intent.sessionId).catch(() => false))) {
-        this.pending.delete(intent.sessionId);
-        skippedUnmapped += 1;
-        continue;
-      }
       try {
+        // A transient identity error must remain pending. New sessions are scoped by the refresh command.
+        if (intent.kind !== 'refresh' && !(await this.options.mapped(intent.sessionId))) {
+          this.pending.delete(intent.sessionId); skippedUnmapped += 1; continue;
+        }
         // The push is its own statement on purpose: inside an optional call's argument it would be
         // skipped entirely whenever no feedback sink is configured, and the intent would be counted
         // as sent while never leaving the process.
-        const answer = await this.options.report(intent, intent.archived);
+        const answer = await this.options.report(intent, intent.archived, this.epoch);
         this.pending.delete(intent.sessionId);
-        reported += 1;
-        this.options.onFeedback?.(answer);
+        if (typeof answer !== 'string' && answer.skipped) skippedUnmapped += 1;
+        else reported += 1;
+        this.options.onFeedback?.(typeof answer === 'string' ? answer : answer.message);
       } catch (error) {
         if (!this.reportedFailure) {
           this.reportedFailure = true;

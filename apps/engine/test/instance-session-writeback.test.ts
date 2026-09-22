@@ -122,11 +122,11 @@ it("treats a changed body and a changed archive state as changes, and an identic
   expect((await write("hello", true)).plan.changed).toEqual([]);
   expect(journal).toHaveLength(journalAfterFirst);
 
-  // The canonical session carries its archive state, so un-archiving reaches the
-  // instance as a changed payload; the Engine records the new archive state with it.
+  // Archive metadata is independent of native bytes. This primitive updates its marker only;
+  // the host adapter must separately provide and verify the actual archive-state protocol.
   const restored = await write("hello", false);
-  expect(restored.plan.entries[0]!.action).toBe("write");
-  void before;
+  expect(restored.plan.entries[0]!.action).toBe("restore-unarchived");
+  expect(await readFile(join(f.sessionsRoot, ...first.plan.entries[0]!.relativePath.split("/")))).toEqual(before);
   expect(await readFile(join(f.stateRoot, "native-archive-markers", INSTANCE, ...restored.plan.entries[0]!.relativePath.split("/").slice(0, 2)) + ".json", "utf8"))
     .toContain("\"archived\":false");
   // The restore is recorded, so it is not replayed on the next identical run.

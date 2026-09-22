@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { CanonicalSessionEngine } from "@linmu/dsh-canonical-session-engine";
 import type { CanonicalEventV1, LogicalWorkspace, LogicalWorkspaceId, NativeSessionId } from "@linmu/dsh-session-contracts";
-import { v3NativeSessionCodec } from "@linmu/dsh-session-adapter-0-1-5";
+import { v3NativeSessionCodec, v3NativeProjectKey } from "@linmu/dsh-session-adapter-0-1-5";
 import { openMaintenanceDatabase, SqliteCanonicalRepository, SqliteCanonicalSessionEngineStore, ZstdContentObjectStore } from "@linmu/dsh-session-store";
 import { createInstanceWorkspaceSource } from "../src/instance-workspace-source.js";
 import { SessionMaintenanceQueries } from "../src/session-maintenance-queries.js";
@@ -79,21 +79,21 @@ it("reads a joined workspace's existing sessions out of the instance directory",
   // A synthetic instance tree, written with the adapter's own encoder so the
   // inspector sees exactly what a real DSH Home holds.
   const instanceRoot = join(f.root, "instance");
-  const projectDirectory = "--D-~5402~5408~5DE5~4F5C~533A--";
   const sessionId = "session-77777777-8888-9999-aaaa-bbbbbbbbbbbb";
   const payload = { header: { version: 3, id: sessionId, cwd: "D:\\合成\\工作区", createdAt: Date.parse(at),
       delegationDepth: 0, isSeeded: false }, inheritedEventCount: 0,
     events: [{ seq: 0, time: Date.parse(at), type: "user/message", surfaceOp: "append",
       data: { id: "e0", role: "user", content: [{ type: "text", text: "hello" }], source: { kind: "user" } } }] };
-  const projectRoot = join(instanceRoot, "sessions", projectDirectory);
+  const projectRoot = join(instanceRoot, "sessions");
   const description = await v3NativeSessionCodec.describe(payload as never, projectRoot);
+  const projectDirectory = description.relativePath.split(/[\\/]/u)[0]!;
   const file = join(projectRoot, description.relativePath);
   await mkdir(dirname(file), { recursive: true });
   await writeFile(file, v3NativeSessionCodec.encode(payload as never, description));
 
   const receipt = await mapJoinedWorkspace({ engine: f.engine, workspaces: f.workspaces, instanceId: "i-one",
     workspaceKey: "project-joined", workspaceName: "工作区",
-    source: createInstanceWorkspaceSource({ sessionsRoot: projectRoot, instanceId: "i-one",
+    source: createInstanceWorkspaceSource({ sessionsRoot: projectRoot, projectDirectory, instanceId: "i-one",
       logicalSessionId: nativeSessionId => mappedLogicalSessionId("i-one", nativeSessionId) }), clock: () => at });
   expect(receipt.failures).toEqual([]);
   expect(receipt.mapped).toHaveLength(1);
