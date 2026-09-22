@@ -176,7 +176,7 @@ it('shows one card per instance, labelled with the source that is actually bound
     target: { id, kind: 'dsh', name: 'home', version: '0.1.5-rc.2', profile: declared.profileId,
       status: 'available', adapterId: 'dsh-0.1.5', capabilities: [
         { id: 'projection', label: '会话读取与增量提交', status: 'supported', detail: 'ok' },
-        { id: 'lifecycle', label: '随实例启动和收尾', status: 'unchecked', detail: 'x' }], issues: [] },
+        { id: 'lifecycle', label: '随实例启动和收尾', status: 'unchecked', detail: 'x' }], issues: connectionKind === 'launcher' ? ['Launcher attestation differs'] : [] },
     instanceId: declared.instanceId, connectionKind, fingerprint: 'fingerprint-a', launcherDataRoot,
     homeRoot: f.homeRoot, versionRoot: join(f.homeRoot, 'runtime'), profileRoot: f.webRoot, cliPath: null,
     packageVersions: {}, pluginReady: true,
@@ -190,4 +190,5 @@ it('shows one card per instance, labelled with the source that is actually bound
   // Nothing is bound yet, so the folder connection is the one that survives: it asks nothing of
   // the instance at launch.
   expect(directory.targets[0]!.connectionKind).toBe('directory');
+  expect(directory.targets[0]!.issues).toEqual([]);
 });

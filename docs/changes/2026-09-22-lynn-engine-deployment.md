@@ -1,5 +1,7 @@
 # Lynn / GPT adapter 当前安装回执
 
+后续安装已完成：用户正常停机后，Engine 升级为 **0.1.43-rc2.73**、实例接入组件 **0.2.27-rc2.46**，正式目录接入为 connected、无错误；实例留待用户启动验收。见[最终安装与修复回执](2026-09-22-lynn-instance-installed.md)。以下是此前 .71 阶段的历史记录，不代表当前仍待安装。
+
 2026-09-22：Engine **0.1.43-rc2.71** 已安装并运行，Lynn adapter **0.1.0** 与 gpt-compat adapter **0.1.0** 已加载。7 个内部 namespace 条目全部启用，业务面板聚合为 Lynn 与 GPT 两个入口，加载错误为 0。实例接入组件新版 **0.2.27-rc2.45** 已构建，测试实例仍运行旧版 **0.2.26-rc2.44**，等待用户通过 Launcher 正常停止后安装。
 
 发行目录：`D:/AI/DeepSeekHarness-Plugin/artifacts/lynn-adapters-20260922/engine-0.1.43-rc2.71-release`。58 个发行文件校验通过；隔离环境的初始化、状态与两个 adapter 包加载通过。完整 typecheck / build 及 88 文件、416 项回归测试通过；当前真实插件组件的隔离读写回验通过。

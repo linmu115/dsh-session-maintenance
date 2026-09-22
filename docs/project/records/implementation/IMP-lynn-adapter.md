@@ -5,7 +5,7 @@ title: Lynn 组合与独立 GPT 数据映射
 status: current
 summary: Maintenance 原样保留插件数据，Lynn 与 GPT adapter 负责真实插件握手、位置映射和正常回读。
 progress: implemented
-gap: Engine 与两个 adapter 包已升级；测试实例仍运行旧接入组件，等待正常停止后安装。真实连接未验收。
+gap: Engine .73、接入组件 .46 及两个 adapter 已安装，目录接入 connected；实例留待用户启动，运行期连接和 UI 未验收。
 ---
 
 用户于 2026-09-22 确认：主体不建立插件业务模型，保留原数据与类型来源。插件缺席时不映射，未知结构保留且折叠。综合包名为 **Lynn adapter**，gpt-compat 保持独立。
@@ -21,3 +21,5 @@ GPT adapter 独立核验运行插件，恢复原始检查点/操作数据；过�
 实现与证据：[本轮报告](../../../changes/2026-09-22-lynn-and-gpt-adapters.md)。安装状态与真实连接验收不得由合成测试代替。
 
 当前安装与保留证据：[Engine 部署回执](../../../changes/2026-09-22-lynn-engine-deployment.md)。
+
+用户正常停机后的[最终安装与加载修复](../../../changes/2026-09-22-lynn-instance-installed.md)：实际模块 import 及宿主读写探针通过；修正声明身份与物理 profile 比较错误，并移除目录卡片中的 Launcher 专属误报。

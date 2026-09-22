@@ -352,12 +352,15 @@ export class InstanceIntegrationService {
       const key = `${entry.target.kind}\u0000${entry.item.instanceId}\u0000${entry.target.profile ?? ""}`;
       const existing = seen.get(key);
       if (existing === undefined) { seen.set(key, entry.target); merged.push(entry.target); continue; }
-      for (const issue of entry.target.issues) if (!existing.issues.includes(issue)) existing.issues.push(issue);
+      // A directory connection does not own Launcher attestation or lifecycle hooks.
+      if (existing.connectionKind === entry.target.connectionKind)
+        for (const issue of entry.target.issues) if (!existing.issues.includes(issue)) existing.issues.push(issue);
       if (existing.status !== "connected" && entry.target.status === "connected") {
         existing.status = "connected";
         existing.adapterId = entry.target.adapterId;
         existing.connectionKind = entry.target.connectionKind;
         existing.capabilities = entry.target.capabilities;
+        existing.issues = [...entry.target.issues];
       }
     }
     const targets = merged;

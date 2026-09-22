@@ -38,6 +38,9 @@ if (!pluginCheck.ready) throw new Error(`${pluginCheck.issue.code}: ${pluginChec
 // Match the installed plugin's actual importer, including its pnpm peer closure.
 const selectedRequire = createRequire(pluginCheck.plugin.path);
 const anchor = await realpath(selectedRequire.resolve('dsh-session-maintenance')), require = createRequire(anchor);
+// Parsing the bundle is insufficient: bundled CommonJS dependencies must load under Node ESM.
+const hostModule = await import(pathToFileURL(anchor).href);
+assert.equal(typeof hostModule.apply, 'function', 'Installed Maintenance host module must load');
 const entry = await realpath(require.resolve('@deepseek-ai/dsh-session-persistence-jsonl'));
 const backendRequire = createRequire(entry);
 const { Context } = await import(pathToFileURL(backendRequire.resolve('@deepseek-ai/cordis')).href);

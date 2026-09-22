@@ -261,7 +261,9 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
             } catch { issues.push("用户配置无法解析，请在 Launcher 中修复配置后重新检查接入。"); }
           }
         }
-        const overrideScope = { runtimeVersion: version.version, instanceId: instance.id, profileId: entry.name };
+        const declaredIdentity = declaredIdentityFromPatch(patches[0]);
+        const profileId = maintenanceProfileId(entry.name, declaredIdentity);
+        const overrideScope = { runtimeVersion: version.version, instanceId: instance.id, profileId };
         issues.push(...inspectRc2ProfileOverrides(patches, overrideScope));
         // Two names describe one profile, and they are not interchangeable. Keep them apart:
         //
@@ -273,12 +275,10 @@ export async function discoverLauncherIntegrations(launcherDataRoot: string, cod
         //     `POST /v1/instances/workspace-joins`. The plugin publishes exactly this id, so
         //     nothing else can ever match it.
         //   * the host-side directory name (`profiles/web`) — a filesystem fact. It names
-        //     `profileRoot`, the RC2 override scope above, the directory-level checks below
+        //     `profileRoot`, the directory-level checks below
         //     (e.g. "this batch only supports the web profile"), and the Launcher catalog entry.
         //     A receipt written with this name would never match the plugin's lease, which is why
         //     the attestation compare below uses the Maintenance identity.
-        const declaredIdentity = declaredIdentityFromPatch(patches[0]);
-        const profileId = maintenanceProfileId(entry.name, declaredIdentity);
         if (standalone && profileId !== standalone.profileId) continue;
         const npmRoot = join(versionRoot, "node_modules", "@deepseek-ai", "dsh");
         const checkoutRoot = join(versionRoot, "apps", "cli");

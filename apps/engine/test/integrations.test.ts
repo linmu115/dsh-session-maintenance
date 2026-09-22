@@ -67,6 +67,18 @@ async function fixture(withPlugin = true) {
 }
 
 describe("instance onboarding", () => {
+  it('validates the declared Maintenance profile independently of the physical directory', async () => {
+    const f = await fixture();
+    f.catalog.versions[0]!.version = '0.1.5-rc.2';
+    await json(join(f.dataRoot, 'config.json'), f.catalog);
+    await writeFile(join(f.profileRoot, 'cordis.patch.yml'), JSON.stringify([{ id: 'session-maintenance',
+      config: { connectionId: 'primary', dshInstanceId: 'instance-a', profileId: 'web-declared', sessionSource: 'maintenance' } }]));
+    const found = await f.discover();
+    const target = found.targets.find(item => item.instanceId === 'instance-a')!;
+    expect(target.target.profile).toBe('web-declared');
+    expect(target.target.issues.some(issue => issue.includes('config.profileId'))).toBe(false);
+    expect(found.targets.find(item => item.instanceId === 'instance-b')!.target.issues.some(issue => issue.includes('config.dshInstanceId'))).toBe(true);
+  });
   it('registers, rechecks and deregisters a standalone profile without Launcher files or hooks', async () => {
     const f = await fixture();
     await unlink(join(f.dataRoot, 'config.json'));

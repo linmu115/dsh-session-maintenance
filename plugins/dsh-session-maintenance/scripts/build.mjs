@@ -27,6 +27,8 @@ await build({
   platform: "node",
   format: "esm",
   target: "node24",
+  // Bundled CommonJS dependencies still require Node builtins in this ESM entry.
+  banner: { js: 'import { createRequire as hostRequire } from "node:module"; const require = hostRequire(import.meta.url);' },
   conditions: ["development"],
   external: ["@deepseek-ai/*"],
   legalComments: "none",
