@@ -8,9 +8,10 @@ import { installStyles } from "./styles.js";
 import { verifyUiContract } from "./ui-contract.js";
 import { BrowserPendingIntentStore, WorkspaceJoinQueue } from "./workspace-join.js";
 import { observeSessions, reportSessionChanges, sessionSyncIntents } from "./session-change-report.js";
+import { registerMappedWorkspaces } from "./workspace-registration.js";
 import { createWorkspaceBridge, installWorkspaceBridge } from "./workspace-bridge.js";
 
-export const inject = ["sessions", "slots"] as const;
+export const inject = ["sessions", "slots", "workspaces"] as const;
 
 /**
  * The instance-side entry point for "add this workspace to sessionmaintenance".
@@ -58,6 +59,11 @@ export function apply(ctx: ClientContext): void {
         snapshot: () => injected.sessions.list.getSnapshot(),
         onFeedback: feedback,
       }),
+      // The mapped folders must exist as *this instance's* workspaces, or the sessions written into
+      // them stay invisible: the host keeps a session only under the workspace whose registered path
+      // equals its `cwd`. The host's `create` is idempotent, so doing this on every load is the
+      // cheapest way to stay correct when the Engine later maps one more workspace.
+      (() => { void registerMappedWorkspaces({ actions, workspaces: injected.workspaces, onFeedback: feedback }); return () => undefined; })(),
       // The instance is the authority for its own sessions while the Engine runs, so a session the
       // operator archives or deletes here is written onto the same source session. Only changes seen
       // after this page's own first observation count — and the Engine's start overwrites the mapped

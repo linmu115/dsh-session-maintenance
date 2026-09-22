@@ -18,6 +18,12 @@ export const instanceWorkspacePolicySchema = z.strictObject({
   updatedAt: z.iso.datetime().nullable(),
 });
 export type InstanceWorkspacePolicy = z.infer<typeof instanceWorkspacePolicySchema>;
+/** The local folders an instance currently owns its mapped buckets under. */
+export const instanceWorkspaceFoldersSchema = z.strictObject({
+  schemaVersion: z.literal(1), instanceId: instanceWorkspaceInstanceIdSchema,
+  folders: z.array(z.strictObject({ name: z.string().min(1).max(200), path: z.string().min(1) })).max(10_000),
+});
+export type InstanceWorkspaceFolders = z.infer<typeof instanceWorkspaceFoldersSchema>;
 export const instanceWorkspacePolicyUpdateSchema = z.strictObject({
   expectedRevision: z.number().int().nonnegative(), selection: instanceWorkspaceSelectionSchema,
 });

@@ -36,6 +36,13 @@ export interface ClientConversationEvents {
 export interface ClientContext {
   readonly sessions: { readonly list: ObservableSnapshot<SessionListSnapshot> };
   readonly slots: ClientSlots;
+  /**
+   * The host's own workspace registry.
+   *
+   * A mapped folder is only visible in the sidebar once it is registered here, and `create` is the
+   * host's idempotent "adopt this existing directory" call — no session or directory is written by it.
+   */
+  readonly workspaces?: { readonly create?: (input: { readonly path: string; readonly title: string }) => Promise<unknown> };
   readonly uiConversation: { readonly events: ClientConversationEvents };
   inject(names: readonly string[], callback: (ctx: ClientContext) => void | Promise<void> | (() => void)): { dispose(): void | Promise<void> };
   effect(callback: () => void | (() => void), label?: string): void;

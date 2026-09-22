@@ -21,6 +21,14 @@ export interface InstanceWorkspacePorts {
    * a failure is reported instead of silently leaving the instance half-synchronised.
    */
   syncToInstance?: (instanceId: string) => Promise<InstanceWriteBackSummary>;
+  /**
+   * The local folders the instance should own as its workspaces.
+   *
+   * Maintenance stores buckets; the instance can only show sessions under a *registered* workspace
+   * whose path equals the session's `cwd`. The Engine creates the folders, and the instance
+   * registers them, so the mapping is complete on both sides.
+   */
+  readWorkspaceFolders(instanceId: string): Promise<readonly { readonly name: string; readonly path: string }[]>;
 }
 
 /** What one write-back pass did, in the words the operator sees. */
@@ -74,6 +82,11 @@ export class InstanceWorkspaceService {
       }
     }
     return this.get(instanceId);
+  }
+  /** The local folders this instance's mapped buckets live in, for the instance to register. */
+  workspaceFolders(instanceId: string): Promise<{ readonly schemaVersion: 1; readonly instanceId: string;
+    readonly folders: readonly { readonly name: string; readonly path: string }[] }> {
+    return this.ports.readWorkspaceFolders(instanceId).then(folders => ({ schemaVersion: 1 as const, instanceId, folders }));
   }
   async effectiveScope(instanceId: string, profileId: string): Promise<InstanceWorkspaceEffectiveScope> {
     instanceWorkspaceEffectiveScopeSchema.shape.profileId.parse(profileId);

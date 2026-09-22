@@ -3,6 +3,8 @@ import type { CanonicalEngineMutation } from "@linmu/dsh-canonical-session-engin
 import type { InstanceWorkspacePolicy, LogicalSessionId, LogicalWorkspaceId, MaintenanceWriteScope, ProjectionRun, RegisteredInstance, RunId } from "@linmu/dsh-session-contracts";
 import { SqliteInstanceWorkspacePolicyRepository, InstanceWorkspacePolicyError } from "@linmu/dsh-session-store";
 import { InstanceWorkspaceService, type InstanceWriteBackSummary } from "./instance-workspace-service.js";
+import { workspaceFolderName } from "./instance-write-back.js";
+import { join } from "node:path";
 import { IntegrationError } from "./integrations/bindings.js";
 
 interface RunRow { id: RunId; instance_id: string; profile_id: string; state: ProjectionRun["state"]; }
@@ -10,6 +12,12 @@ const runIdentity = (row: RunRow) => ({ id: row.id, instanceId: row.instance_id,
 const openStates = "'preparing','running','draining','verifying','recovery-required','recovering','quarantined','cleanup-pending'";
 
 /** One provider for projection filtering, canonical commits, UI and Bridge consumers. */
+/** The machine's default root for instance-side workspace folders (see composition-root). */
+function workspaceRootDefault(): string {
+  const configured = process.env.DSH_SESSION_MAINTENANCE_WORKSPACE_ROOT?.trim();
+  return configured !== undefined && configured.length > 0 ? configured : 'D:\\DSHworkplace';
+}
+
 export class InstanceWorkspaceRuntime {
   readonly policies: SqliteInstanceWorkspacePolicyRepository;
   constructor(private readonly database: DatabaseSync, private readonly instances: readonly RegisteredInstance[],
@@ -18,7 +26,9 @@ export class InstanceWorkspaceRuntime {
     /** Puts the saved range into the instance's own session directory; absent means "record only". */
     private readonly writeBack?: (instanceId: string, profileId: string) => Promise<InstanceWriteBackSummary>,
     /** Registered (directory-connected) instances, whose `profileId` is the Maintenance identity. */
-    private readonly readStandaloneInstances?: () => Promise<readonly { instanceId: string; profileId: string }[]>) {
+    private readonly readStandaloneInstances?: () => Promise<readonly { instanceId: string; profileId: string }[]>,
+    /** The local root the mapped folders are created under; the instance registers those folders. */
+    private readonly workspaceRootPath?: string) {
     this.policies = new SqliteInstanceWorkspacePolicyRepository(database);
   }
 
@@ -89,6 +99,14 @@ export class InstanceWorkspaceRuntime {
           pendingActivation: activeScopes.some(scope => scope.policyRevision !== policy.revision) };
       },
       writePolicy: (instanceId, input) => this.writes.run("instance-workspace-policy", async () => this.policies.updatePolicy(instanceId, input)),
+      // Which local folders this instance owns: the buckets its saved range selects, named the same
+      // way the write-back names them, under the same root. The instance registers exactly these.
+      readWorkspaceFolders: async (instanceId: string) => {
+        const policy = this.policies.getPolicy(instanceId);
+        const rows = this.database.prepare("SELECT id, name FROM logical_workspaces WHERE deleted_at IS NULL").all() as { id: string; name: string }[];
+        return rows.filter(row => this.policies.workspaceSelected(policy, row.id as LogicalWorkspaceId))
+          .map(row => ({ name: row.name, path: join(this.workspaceRootPath ?? workspaceRootDefault(), workspaceFolderName(row.name, row.id)) }));
+      },
       ...(this.writeBack === undefined ? {} : {
         // The saved range is applied to the instance the operator just edited. The profile id is
         // the one its registration carries (the Maintenance identity, e.g. `web-i27c4`) — the same

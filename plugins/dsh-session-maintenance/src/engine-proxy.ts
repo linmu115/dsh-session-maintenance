@@ -25,6 +25,7 @@ export type ProxyOperation =
   | "delete-session"
   | "set-archived"
   | "session-mapped"
+  | "workspace-folders"
   | "settings:get"
   | "settings:patch"
   | "join-workspace";
@@ -62,7 +63,8 @@ export interface ProxyResult {
    */
   /** Whether the asked session belongs to this instance's mapped workspaces (session-mapped). */
   readonly mapped?: boolean;
-  readonly identity?: {
+  /** The local folders this instance should own as workspaces (workspace-folders). */
+  readonly folders?: readonly { readonly name: string; readonly path: string }[];  readonly identity?: {
     readonly apiVersion: 1;
     readonly instanceId: string;
     readonly profileId: string;
@@ -203,7 +205,7 @@ function assertRequest(value: unknown): ProxyRequest {
   if (Object.keys(record).some((key) => !allowed.has(key))) throw new TypeError("请求包含未允许字段");
   const operations: readonly ProxyOperation[] = [
     "identity", "status", "reference:resolve", "resolve", "scan-current", "sync-current", "dashboard", "compare", "graph", "checkpoint",
-    "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "set-archived", "settings:get", "settings:patch", "join-workspace",
+    "unlink-candidate", "archive-candidate", "delete-candidate", "delete-session", "set-archived", "session-mapped", "workspace-folders", "settings:get", "settings:patch", "join-workspace",
   ];
   if (!operations.includes(record.operation as ProxyOperation)) throw new TypeError("未知维护操作");
   if (record.operation === "delete-session" && Object.keys(record).some(key => key !== "operation" && key !== "sessionId")) {
@@ -336,7 +338,13 @@ export class RestrictedEngineProxy {
       return { ok: true, message: "已打开会话维护看板", url: value.launch.url };
     }
     const sessionId = safeId(input.sessionId, "sessionId");
-    if (input.operation === "session-mapped") {
+    if (input.operation === "workspace-folders") {
+      // The Engine created the mapped folders; the instance is the side that can register them as
+      // its own workspaces. The paths come from the Engine's records, never from the caller.
+      const value = await this.engine(`/v1/instances/${encodeURIComponent(this.defaultInstanceId)}/workspace-folders`) as { folders?: { folders?: readonly { name: string; path: string }[] } };
+      const folders = value.folders?.folders ?? [];
+      return { ok: true, message: `已读取 ${folders.length} 个映射工作区`, folders };
+    }    if (input.operation === "session-mapped") {
       // "Does this instance own that session?" — asked before any instance-side change is pushed, so
       // a session in a workspace this instance never mapped is never offered to the source.
       const resolution = await this.resolve(instanceId, sessionId);
