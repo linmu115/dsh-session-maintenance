@@ -1,5 +1,15 @@
 # 看板精简、空闲会话释放和未分组副本清理
 
+## 22:35 最终安装回执
+
+用户确认通过 Launcher 正常停止后，核验旧宿主 PID 68924 已消失、19876 监听关闭；随后 Engine PID 65540 经正常停止脚本退出，drain/owner-release 回执通过。备份最新状态后安装最终宿主 **0.2.27-rc2.50**（含 agents 显式依赖），实际安装路径的模块加载和隔离持久化探针通过，重新生成并安装能力回执。下文“等待停机”是此前阶段记录。
+
+Engine **0.1.43-rc2.82** / Dashboard **0.1.18** 已重新就绪，当前 PID 59120；正式 repair 返回 connected，issues 为空。64 项发行哈希和 1,160 项保留文件校验通过。四个指定副本未重建，原生文件仍为 64 个；工作区范围仍是修订 8、原三个工作区、不含未分组。未改变 Vault 绑定、其他插件或用户历史。
+
+`/dashboard/` 和入口资源均 HTTP 200，接入目录本次 1,720 ms 返回；这是停机后恢复可用的证据，不代表运行期 20 秒超时根因已修复。实例保持停止供用户启动验收；同步状态因此显示等待运行宿主，不能据此宣称 DSH_BUSY 或完整双向同步已通过。四个副本已在文件层面完成移除，实际会话列表及 UI 未验收。
+
+最终证据：`dashboard-cleanup-20260922/final-verification82.json`、`final-connection82.json`、`verified-stop-and-native.json`、`final-preservation.json`、`final-engine82-host50-receipts`。最新备份在同目录 `backup-final`；四个副本的原始备份和恢复目录继续保留。
+
 ## 当前交付边界
 
 Engine **0.1.43-rc2.82** / Dashboard **0.1.18** 已安装；Engine PID 65540 已写入 startup.ready。宿主接入 **0.2.27-rc2.50** 最终包已构建并验证实际依赖加载，新增显式 agents 服务依赖，等待测试实例通过 Launcher 正常停止后完成安装和重新签发回执。尚不能宣称运行期 DSH_BUSY 已消除或完整双向同步通过。未使用 Computer Use，UI 由用户验收。
