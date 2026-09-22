@@ -11,6 +11,10 @@ export interface LynnHost {
   effect?(callback: () => (() => void), label: string): unknown;
 }
 const live = (host: LynnHost, name: string) => [...host.registry.values()].some(runtime => runtime.name === name && [...runtime.fibers].some(fiber => fiber.state === 2));
+// Cordis returns a context-specific proxy for Service objects on every lookup.
+// Compare the provider behind that proxy so a live, guarded service is recognized,
+// while a replacement provider still has to install its own mutation guards.
+const serviceIdentity = (service: any): object | undefined => service?.[Symbol.for('cordis.original')] ?? service;
 const obj = (value: any): Record<string, any> => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Lynn: invalid plugin snapshot'); return value;
 };
@@ -48,15 +52,15 @@ export function createLynnAdapter(host: LynnHost): PluginDataMappingAdapter {
   ];
   for (const [name, ports] of hooks) host.inject?.([name], scope => {
     const disposers = ports(scope.get(name)).filter(([target, method]) => typeof target?.[method] === 'function').map(([target, method]) => gate.instrument(target, method));
-    const service = scope.get(name);
-    if (disposers.length === ports(service).length) guarded.set(name, service);
+    const service = serviceIdentity(scope.get(name));
+    if (service && disposers.length === ports(scope.get(name)).length) guarded.set(name, service);
     scope.effect?.(() => () => { if (guarded.get(name) === service) guarded.delete(name); for (const dispose of disposers.reverse()) dispose(); }, 'Lynn plugin mutation gate');
   });
   const available = (type: string) => {
-    if (type === 'core/session') return guarded.get('annotationCore') === host.get('annotationCore') && live(host, 'dsh-annotation-core') && !!host.get('annotationCore')?.store?.table;
-    if (type === 'core/extensions') return guarded.get('sessionExtensionData') === host.get('sessionExtensionData') && live(host, 'dsh-annotation-core') && host.get('sessionExtensionData')?.protocolVersion === 1;
-    if (type === 'dag/extensions') return guarded.get('sessionExtensionData') === host.get('sessionExtensionData') && live(host, 'thoughtdag') && host.get('sessionExtensionData')?.protocolVersion === 1;
-    if (type === 'stickers/session') return guarded.get('stickerBoard') === host.get('stickerBoard') && live(host, 'dsh-session-sticker-board') && !!host.get('stickerBoard')?.localStore;
+    if (type === 'core/session') return guarded.get('annotationCore') === serviceIdentity(host.get('annotationCore')) && live(host, 'dsh-annotation-core') && !!host.get('annotationCore')?.store?.table;
+    if (type === 'core/extensions') return guarded.get('sessionExtensionData') === serviceIdentity(host.get('sessionExtensionData')) && live(host, 'dsh-annotation-core') && host.get('sessionExtensionData')?.protocolVersion === 1;
+    if (type === 'dag/extensions') return guarded.get('sessionExtensionData') === serviceIdentity(host.get('sessionExtensionData')) && live(host, 'thoughtdag') && host.get('sessionExtensionData')?.protocolVersion === 1;
+    if (type === 'stickers/session') return guarded.get('stickerBoard') === serviceIdentity(host.get('stickerBoard')) && live(host, 'dsh-session-sticker-board') && !!host.get('stickerBoard')?.localStore;
     return false;
   };
   const readNative = async (type: string, target: PluginDataTarget) => {
