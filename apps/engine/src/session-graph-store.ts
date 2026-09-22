@@ -1,1 +1,1 @@
-export * from "@linmu/dsh-session-extension-knowledge/session-graph-store";
+export * from "@linmu/dsh-session-adapter-lynn/session-graph-store";

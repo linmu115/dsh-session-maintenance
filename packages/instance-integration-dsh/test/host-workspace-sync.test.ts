@@ -1,12 +1,27 @@
 import { expect, it, vi } from 'vitest';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, rm, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { synchronizeThroughHost } from '../src/host-workspace-sync.js';
+import { synchronizeThroughHost, resolveHostProfileRoot } from '../src/host-workspace-sync.js';
 import { v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
 import type { CanonicalProjectionInput, LogicalSessionId } from '@linmu/dsh-session-contracts';
 vi.mock('../src/instance-lease.js', () => ({ inspectInstanceLease: async () => ({ state: 'running',
   runtimeUrl: 'http://127.0.0.1:12345', process: { pid: 123, startedAt: 'synthetic-process' } }) }));
+
+it('resolves physical profiles by the complete declared identity and rejects duplicate declarations', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'host-profile-SYNTHETIC-'));
+  try {
+    expect(await resolveHostProfileRoot(root, 'instance', 'logical-profile')).toBeNull();
+    const patch = (instance: string, profile: string) => JSON.stringify([{ id: 'session-maintenance', config: { dshInstanceId: instance, profileId: profile } }]);
+    for (const name of ['web', 'logical-profile']) await mkdir(join(root, 'profiles', name), { recursive: true });
+    await writeFile(join(root, 'profiles', 'web', 'cordis.patch.yml'), patch('instance', 'logical-profile'));
+    await writeFile(join(root, 'profiles', 'logical-profile', 'cordis.patch.yml'), patch('foreign', 'logical-profile'));
+    expect(await resolveHostProfileRoot(root, 'instance', 'logical-profile')).toBe(join(root, 'profiles', 'web'));
+    expect(await resolveHostProfileRoot(root, 'instance', 'absent')).toBeNull();
+    await writeFile(join(root, 'profiles', 'logical-profile', 'cordis.patch.yml'), patch('instance', 'logical-profile'));
+    await expect(resolveHostProfileRoot(root, 'instance', 'logical-profile')).rejects.toMatchObject({ code: 'SYNC_HOST_PROFILE_AMBIGUOUS' });
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
 
 it('validates the complete host receipt before recording identities, and rejects stale, malformed or partial acknowledgements', async () => {
   const root = await mkdtemp(join(tmpdir(), 'host-sync-client-SYNTHETIC-'));

@@ -5,11 +5,6 @@ import { resolveDerivedReference } from "./derived-reference.js";
 import { LearningService } from "./learning-service.js";
 import type { CodexContinuationTarget, LearningCodexPort } from "@linmu/dsh-session-contracts";
 import type { ExtensionDataService } from "./extensions/service.js";
-import { SessionContextService } from "./session-context-service.js";
-import { NativeContextService } from "./native-context-service.js";
-import { UserRequestIndexService } from "./user-request-index-service.js";
-import { SessionGraphService } from "./session-graph-service.js";
-import { SessionKnowledgeService } from "./session-knowledge-service.js";
 import {
   SessionMaintenanceError,
   normalizedSessionSchema,
@@ -215,11 +210,9 @@ function prefix(left: readonly string[], right: readonly string[]): boolean {
 
 export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   readonly learning: LearningService;
-  readonly sessionContext = new SessionContextService(this);
-  readonly nativeContext = new NativeContextService(this);
-  readonly userRequests = new UserRequestIndexService(this);
-  readonly sessionGraph = new SessionGraphService(this);
-  readonly sessionKnowledge = new SessionKnowledgeService(this);
+  readonly extensionRoutes: ((request: import("node:http").IncomingMessage, response: import("node:http").ServerResponse, url: URL, browser: boolean) => Promise<boolean>)[] = [];
+  readonly descendantReferenceTypes = new Set<string>();
+  readonly runClosed = new Set<() => void>();
   readonly instances: readonly RegisteredInstance[];
   readonly adapters: readonly SessionReadAdapter[];
   readonly repository: SqliteSessionRepository;
@@ -292,6 +285,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     readonly writes?: MaintenanceWriteCoordinator;
     readonly retention?: RetentionService;
     readonly extensions?: ExtensionDataService;
+    readonly readerProvider?: import("./session-reader-port.js").SessionReaderProvider;
     readonly sessionLifecycle?: import('./session-lifecycle.js').SessionLifecycle;
     readonly codexImports?: CodexImportService;
     readonly integrations?: InstanceIntegrationService | undefined;
@@ -338,7 +332,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
     this.statusLog = input.statusLog;
     this.adapterRegistry = input.adapterRegistry;
     this.projectionRunRepository = input.projectionRunRepository;
-    this.sessionQueries = new SessionMaintenanceQueries(input.repository.database);
+    this.sessionQueries = new SessionMaintenanceQueries(input.repository.database, input.readerProvider);
     this.sessionCommands = new SessionMaintenanceCommands(
       input.repository.database, this.sessionQueries, this.statusLog, this.projectionRunRepository, this.clock,
       (logicalSessionId, archivedAt) => input.sessionLifecycle?.changed({ logicalSessionId, archivedAt, deleted: false }),
@@ -369,7 +363,6 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
       })).adapterId,
     });
     if (this.writes !== undefined) {
-      coordinateAsyncMethods(this.sessionContext, ["read", "endExecution"], this.writes, "context-execution");
       coordinateAsyncMethods(this.runtimeBroker, ["prepareRun", "attachRun", "append", "registerSession", "flush", "drainRun", "closeRun", "recoverRun"], this.writes, "runtime-lifecycle");
       coordinateSyncMethods(this.sessionCommands, ["restoreSession", "deleteWorkspace"], this.writes, "session-maintenance");
       coordinateAsyncMethods(this.sessionCommands, ["updateSession", "deleteSession", "deleteProjectedSession"], this.writes, "session-maintenance");
@@ -432,7 +425,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
   async closeProjectionRuntimeRun(input: RuntimeBrokerCloseRunRequest): Promise<RuntimeBrokerClosedRun> {
     return this.runWrite("context-run-close",async()=>{
       try{return await this.runtimeBroker.closeRun(input);}
-      finally{this.sessionContext.cleanupExecutions();}
+      finally{for (const cleanup of this.runClosed) cleanup();}
     });
   }
 
@@ -501,7 +494,7 @@ export class SessionMaintenanceEngine implements ReadOnlyEngine, WriteEngine {
           legacyNativeSessionId: resolution.nativeSessionId,
         }, run, new JsonProjectionDirectory(projectionRootFor(this.projectionRuntimeRoot, run.id)));
         const anchor = input.logicalAnchorId ?? input.legacyNativeAnchorId;
-        if (native.status !== "resolved" && anchor && anchor !== "@session" && input.referenceType === "obsidian-reference") {
+        if (native.status !== "resolved" && anchor && anchor !== "@session" && this.descendantReferenceTypes.has(input.referenceType)) {
           const descendant = await resolveDerivedReference(this.repository.database, run.id, resolution.logicalSessionId,
             async (logicalId, nativeId) => {
               const candidate = await adapter.resolveReference({ logicalSessionId: logicalId as LogicalSessionId,

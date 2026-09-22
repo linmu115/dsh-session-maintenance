@@ -7,6 +7,23 @@ export class PluginDataMappingRegistry {
     return () => { if (this.adapters.get(adapter.namespace) === adapter) this.adapters.delete(adapter.namespace); };
   }
   begin() { return new PluginDataMappingSession(namespace => this.adapters.get(namespace)); }
+  async withAccess<T>(targets: readonly PluginDataTarget[], work: () => Promise<T>): Promise<T> {
+    let action = work;
+    for (const adapter of [...this.adapters.values()].reverse()) if (adapter.withAccess) {
+      const next = action; action = () => adapter.withAccess!(targets, next);
+    }
+    return action();
+  }
+  async capture(target: PluginDataTarget): Promise<PluginDataRecord[]> {
+    const records: PluginDataRecord[] = [];
+    for (const adapter of this.adapters.values()) {
+      for (const record of await adapter.capture?.(structuredClone(target)) ?? []) {
+        if (record.namespace !== adapter.namespace) throw new Error('Plugin capture claimed a foreign namespace');
+        records.push(structuredClone(record));
+      }
+    }
+    return records;
+  }
 }
 export class PluginDataMappingSession {
   private readonly checks: (() => Promise<void>)[] = [];

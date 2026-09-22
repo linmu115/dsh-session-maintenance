@@ -1,8 +1,10 @@
+import { remapGptEvent } from "./remap.js";
 import { createV3DialectAdapter, REQUIRED_CAPABILITIES, REQUIRED_PACKAGES, manifest } from "@linmu/dsh-session-adapter-0-1-5";
 import type { DshEnvironmentDescriptor } from "@linmu/dsh-session-adapter-sdk";
 import { catalog, knownEventTypes, PLUGIN_EVENTS } from "./codec.js";
 import { CAPABILITY, FORMAT_ID, supportsPluginVersion } from "./manifest.js";
 export * from "./manifest.js";
+export * from './mapping.js';
 export { catalog, PLUGIN_EVENTS, validatePluginEvent } from "./codec.js";
 export { gptCompatExtensionAdapter, summarizeSessionEvents } from "./extension.js";
 /** Host probe remains DSH. A configured plugin additionally requires its own attestation. */
@@ -20,7 +22,7 @@ export function probe(environment: DshEnvironmentDescriptor) {
 }
 /** Trusted extension codecs compose into the existing host; they never register a Harness. */
 const host = createV3DialectAdapter({ manifest, formatId: FORMAT_ID, catalog, knownEventTypes, probe,
-  eventOwners: new Map([...PLUGIN_EVENTS].map(type => [type, "gpt-compat"])),
+  remapEvent: remapGptEvent, eventOwners: new Map([...PLUGIN_EVENTS].map(type => [type, "gpt-compat"])),
   legacyOwners: [{adapterId:"dsh-gpt-compat", formatId:"dsh-gpt-compat-v1-jsonl-zstd"}],
 });
 export const adapter: typeof import("@linmu/dsh-session-adapter-0-1-5").adapter = host.adapter;
@@ -34,3 +36,6 @@ export const verifyNativeContextRelease = host.verifyNativeContextRelease;
 
 export const prepareLearningV3 = host.prepareLearningV3;
 export const appendLearningV3 = host.appendLearningV3;
+
+export const filterNativePluginData = host.filterNativePluginData;
+export const remapProjectedAppend = host.remapProjectedAppend;

@@ -26,6 +26,7 @@
 | 非维护工作区的会话不进真源，但在 DSH 里照常对话 | [[REQ-detached-instance-attach-sync]] 第 12 条（已实现，仅合成测试） |
 | 内部责任及生命周期 | [Engine 编排](records/modules/engine/overview.md)、[宿主接入](records/modules/host/overview.md)、[维护看板](records/modules/dashboard/overview.md) |
 | 接 Codex/DSH 平台 | [平台适配](records/modules/adapters/harness/overview.md) → [平台合同](records/modules/adapters/harness/contract.md) → [平台已知接入](records/modules/adapters/harness/connected.md) |
+| Lynn 组合、独立 GPT 适配和本次验证边界 | [[IMP-lynn-adapter]]；[本轮变更报告](../changes/2026-09-22-lynn-and-gpt-adapters.md) |
 | 接业务插件 | [业务数据适配](records/modules/adapters/business/overview.md) → [对象合同](records/modules/adapters/business/contract.md) → [业务已知接入](records/modules/adapters/business/connected.md) |
 | 主干、引用与释放怎样协作 | [主干与固定引用](records/modules/engine/graph/contract.md)、[原生上下文释放](records/modules/engine/native-context/contract.md) |
 | GPT 插件接入与本次误解 | [[INT-gpt-format]]、[[HIST-gpt-extension-boundary]] |

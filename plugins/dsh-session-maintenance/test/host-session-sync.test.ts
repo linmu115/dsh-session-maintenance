@@ -23,6 +23,15 @@ function host(options: { stored?: readonly string[]; archived?: readonly string[
 
 const ready = async () => true;
 
+it('reports a plugin-only edit even when the native conversation log does not change', async () => {
+  const fake = host({ stored: ['session-a'] }), pushed: string[] = [];
+  let revision = 'before';
+  const sync = new HostSessionSync({ host: fake.host, engineReady: ready, mapped: async () => true,
+    trackContent: true, additionalRevision: async () => revision, report: async intent => { pushed.push(intent.kind); return 'ok'; } });
+  await sync.pass(); revision = 'after'; await sync.pass(); await sync.pass();
+  expect(pushed).toEqual(['refresh']);
+});
+
 it('reports a deletion the instance made, without any page being open', async () => {
   const fake = host({ stored: ['session-a', 'session-b'] });
   const pushed: string[] = [];

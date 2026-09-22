@@ -47,15 +47,18 @@ interface WorkspaceRow {
   readonly updated_at: string;
 }
 
+import { SqlitePluginData } from './plugin-data.js';
 interface EventRow { readonly event_json: string }
 
 export class SqliteCanonicalProjectionSource implements IncrementalCanonicalProjectionSource {
   readonly database: DatabaseSync;
   readonly objectStore: ContentObjectStore | undefined;
+  readonly pluginData: SqlitePluginData;
 
   constructor(database: DatabaseSync, objectStore?: ContentObjectStore) {
     this.database = database;
     this.objectStore = objectStore;
+    this.pluginData = new SqlitePluginData(database);
   }
 
   async load(run: ProjectionRun): Promise<CanonicalProjectionInput> {
@@ -206,6 +209,7 @@ export class SqliteCanonicalProjectionSource implements IncrementalCanonicalProj
         projectId: row.project_id as never,
         projectName: row.project_name,
         projectRoot: row.project_root,
+        pluginData: this.pluginData.read(row.id),
       };
     }));
     return { run, workspaces, sessions };

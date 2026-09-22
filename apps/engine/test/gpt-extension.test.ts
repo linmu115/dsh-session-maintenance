@@ -1,3 +1,4 @@
+import { synchronizeGptIndex } from "../src/adapters/gpt-compat/gpt-sync.js";
 import { expect, it } from "vitest";
 import { createEngineFixture } from "./helpers.js";
 import { SqliteExtensionRepository } from "@linmu/dsh-session-store";
@@ -24,7 +25,7 @@ it("keeps the Harness registry unchanged and indexes plugin events under extensi
       INSERT INTO projection_runs(id,lease_id,branch_id,instance_id,profile_id,dsh_version,adapter_id,state,started_at,heartbeat_at) VALUES('run','lease','main','copy','web','0.1.5-rc.2','dsh-0.1.5','closed','2026-09-17','2026-09-17');
       INSERT INTO projection_sessions(run_id,native_session_id,logical_session_id,mode,native_revision) VALUES('run','native','target','maintenance-write',3);`);
     let reads = 0;
-    const service = new ExtensionDataService(store,builtInExtensionAdapters,async()=>{reads++;return normalized.events;});
+    const service = new ExtensionDataService(store,builtInExtensionAdapters,async()=>{reads++;return normalized.events;}, { refresh: () => synchronizeGptIndex(store, async () => { reads++; return normalized.events; }) });
     const scope = {instanceId:"copy",profileId:"web",namespace:"gpt-compat"};
     const plugins = [{namespace:scope.namespace,pluginVersion:"0.5.0-dev.3",writerId:"maintenance-gpt-compat-index"}];
     service.connect({instanceId:scope.instanceId,profileId:scope.profileId,plugins});

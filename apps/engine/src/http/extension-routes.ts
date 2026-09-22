@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { z } from "zod";
 import { ExtensionDataError, extensionScopeSchema, extensionConnectSchema, extensionWriteSchema, extensionListSchema } from "@linmu/dsh-session-contracts";
-import { extensionDirectoryQuerySchema, extensionBusinessPanelQuerySchema, annotationMirrorSyncSchema } from "@linmu/dsh-session-contracts";
+import { extensionDirectoryQuerySchema, extensionBusinessPanelQuerySchema } from "@linmu/dsh-session-contracts";
 import type { SessionMaintenanceEngine } from "../engine.js";
 import { readJsonBody } from "./body.js";
 
@@ -21,10 +21,7 @@ export async function routeExtensionRequest(request: IncomingMessage, response: 
     send(await engine.runWrite('adapter-configuration', () => engine.adapterCatalog!.setEnabled(body.id, body.enabled))); return true;
   }
   if (request.method === "GET") {
-    // Navigation must not wait for GPT event decoding. Refresh its derived index
-    // only for a GPT data request; other namespaces have independent ownership.
-    if (query.namespace === "gpt-compat" || query.adapterId === "gpt-compat")
-      await engine.runWrite("native-extension-index", () => service.refreshNativeIndexes());
+    await engine.runWrite("native-extension-index", () => service.refreshNativeIndexes(query));
     if (url.pathname === "/v1/extensions/business-panels") {
       const panels = service.businessPanels(extensionBusinessPanelQuerySchema.parse(query));
       send(await Promise.all(panels.map(async panel => ({ ...panel, instanceLabel:
@@ -44,10 +41,6 @@ export async function routeExtensionRequest(request: IncomingMessage, response: 
     }
   }
   if (request.method !== "POST") return false;
-  if (url.pathname === "/v1/extensions/annotation-sync") {
-    const body = annotationMirrorSyncSchema.parse(await readJsonBody(request, 512 * 1024));
-    send(await engine.runWrite("annotation-mirror-sync", () => service.syncAnnotation(body, engine))); return true;
-  }
   if (url.pathname === "/v1/extensions/connect") {
     const body = extensionConnectSchema.parse(await readJsonBody(request)); send(await engine.runWrite("extension-connect",()=>service.connect(body))); return true;
   }

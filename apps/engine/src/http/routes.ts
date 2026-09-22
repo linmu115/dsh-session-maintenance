@@ -7,10 +7,6 @@ import { ExtensionDataError } from "@linmu/dsh-session-contracts";
 import { codexMirrorPreferencesSchema, runtimeBrokerReadyRequestSchema } from '@linmu/dsh-session-contracts';
 import { routeExtensionRequest } from "./extension-routes.js";
 import { routeSessionReader } from "./session-reader-routes.js";
-import { routeSessionContext } from "./session-context-routes.js";
-import { routeNativeContext } from "./native-context-routes.js";
-import { routeSessionGraph } from "./session-graph-routes.js";
-import { routeSessionKnowledge } from "./session-knowledge-routes.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { once } from "node:events";
 import { z, ZodError } from "zod";
@@ -286,6 +282,7 @@ export async function routeRequest(
     if (await routeIntegrationRequest(request, response, url, context.engine)) return;
     if (await routeInstanceWorkspaceRequest(request, response, url, context.engine)) return;
     if (await routeBusinessPageRequest(request, response, url, {businessPages:context.engine.businessPages,hostAuthenticated:bearer})) return;
+    for (const route of context.engine.extensionRoutes) if (await route(request, response, url, !bearer)) return;
     if (await routeExtensionRequest(request, response, url, context.engine)) return;
     if (url.pathname === '/v1/codex-mirror' || url.pathname === '/v1/codex-mirror/check') {
       const policy = context.engine.codexMirror;
@@ -299,10 +296,6 @@ export async function routeRequest(
       }
     }
     if (await routeSessionReader(request, response, url, context.engine)) return;
-    if (await routeNativeContext(request, response, url, context.engine, !bearer)) return;
-    if (await routeSessionContext(request, response, url, context.engine)) return;
-    if (await routeSessionGraph(request, response, url, context.engine)) return;
-    if (await routeSessionKnowledge(request, response, url, context.engine)) return;
     if (request.method === "GET" && url.pathname === "/v1/instances") {
       send(response, 200, { instances: await context.engine.listInstances() });
       return;

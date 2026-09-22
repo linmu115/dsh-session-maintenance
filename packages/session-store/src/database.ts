@@ -1,3 +1,4 @@
+import { MIGRATION_029 } from "./migrations/029-opaque-plugin-data.js";
 import { MIGRATION_025 } from "./migrations/025-learning-roundtrip.js";
 import { MIGRATION_026 } from "./migrations/026-instance-workspace-policy.js";
 import { MIGRATION_027 } from "./migrations/027-run-workspace-scope.js";
@@ -489,6 +490,14 @@ export function openMaintenanceDatabase(path: string): DatabaseSync {
       try { database.exec("ROLLBACK"); } catch { /* preserve migration failure */ }
       database.close(); throw error;
     }
+  }
+  if (currentVersion < 29) {
+    database.exec("BEGIN IMMEDIATE");
+    try {
+      database.exec(MIGRATION_029);
+      database.prepare("INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)").run(29, new Date().toISOString());
+      database.exec("COMMIT");
+    } catch (error) { try { database.exec("ROLLBACK"); } catch {} database.close(); throw error; }
   }
   return database;
 }

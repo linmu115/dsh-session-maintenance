@@ -112,6 +112,7 @@ export interface NativeSourceExportV1 {
 }
 
 export interface CanonicalProjectionSessionInput {
+  readonly pluginData?: readonly import('./plugin-data-mapping.js').PluginDataRecord[];
   readonly nativeSourceExports?: readonly NativeSourceExportV1[];
   readonly session: CanonicalSessionRecord;
   readonly events: readonly CanonicalEventV1[];

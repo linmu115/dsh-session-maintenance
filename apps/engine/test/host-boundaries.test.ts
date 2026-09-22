@@ -8,6 +8,8 @@ it('runs canonical storage and metadata changes without host management or busin
   const f = await createEngineFixture('core-without-host-SYNTHETIC', { enableCodexMirror: false, hostIntegrations: false, extensionAdapters: [], sessionLifecycleAdapters: [] });
   try {
     expect(f.engine.integrations).toBeUndefined();
+    expect(f.engine.extensionRoutes).toEqual([]);
+    expect(Object.hasOwn(f.engine, 'sessionGraph')).toBe(false);
     const id = 'independent-session' as LogicalSessionId;
     await reconcileEndpointSession(f.engine.canonicalEngine.store, { logicalSessionId: id, baseVersionId: null, events: [],
       title: 'independent', tags: [], archivedAt: null, workspaceId: null, observedAt: new Date().toISOString() });

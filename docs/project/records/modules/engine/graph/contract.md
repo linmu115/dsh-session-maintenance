@@ -14,6 +14,8 @@ sources:
 
 # 主干图与固定来源怎样交接
 
+2026-09-22 架构归属修正：以下是 Lynn adapter 的兼容业务协议，不是 Maintenance 核心的通用图模型。实现与领域路由已迁到 `apps/engine/src/adapters/lynn`，旧路径仅转发；核心保存原数据和通用会话版本。见 [[IMP-lynn-adapter]]。保留本协议用于已有插件消费者。
+
 用户从 X 的已完成回复向 Y 引用，宿主先 flush 涉及会话，Engine 固定 X 的版本与截止。Y 主干显示该关系；ThoughtDAG 保存布局只能引用此关系，不能改大授权。
 
 唯一技术合同：[图协议及 schema](../../../../../../packages/contracts/src/session-graph.ts)、[固定引用与读取合同](../../../../../../packages/contracts/src/session-context.ts)。

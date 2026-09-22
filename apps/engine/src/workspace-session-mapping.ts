@@ -57,6 +57,7 @@ export function joinedWorkspaceId(instanceId: string, workspaceKey: string): Log
 }
 
 export interface MapJoinedWorkspaceInput {
+  readonly capturePluginData?: (nativeSessionId: string, logicalSessionId: string) => Promise<void>;
   readonly bindIdentity?: (nativeSessionId: string, logicalSessionId: string, checkOnly: boolean) => Promise<void>;
   readonly engine: Pick<CanonicalSessionEngine, 'importDshNative' | 'store'>;
   /** Reads a workspace folder row and writes it back; the canonical repository provides this. */
@@ -102,6 +103,7 @@ export async function mapJoinedWorkspace(input: MapJoinedWorkspaceInput): Promis
       // deterministic operation id, so a retry finds the same session instead of
       // creating a second row for it.
       if (await input.engine.store.getSession(logicalSessionId) !== undefined) {
+        await input.capturePluginData?.(String(nativeSessionId), String(logicalSessionId));
         await input.bindIdentity?.(String(nativeSessionId), String(logicalSessionId), false);
         alreadyPresent.push(nativeSessionId); continue;
       }
@@ -110,6 +112,7 @@ export async function mapJoinedWorkspace(input: MapJoinedWorkspaceInput): Promis
         logicalSessionId, nativeSessionId, title: session.title, tags: [...session.tags], archivedAt: session.archivedAt,
         workspaceId, events: session.events, importedAt: clock() });
       await input.bindIdentity?.(String(nativeSessionId), String(logicalSessionId), false);
+      await input.capturePluginData?.(String(nativeSessionId), String(logicalSessionId));
       mapped.push(logicalSessionId);
     } catch (error) {
       failures.push({ nativeSessionId: String(nativeSessionId), reason: error instanceof Error ? error.message : String(error) });

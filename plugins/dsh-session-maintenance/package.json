@@ -1,6 +1,6 @@
 {
   "name": "dsh-session-maintenance",
-  "version": "0.2.26-rc2.44",
+  "version": "0.2.27-rc2.45",
   "description": "DSH 0.1.5-rc.2 entry for Maintenance-backed canonical sessions and V3 projections",
   "type": "module",
   "license": "MIT",
@@ -62,7 +62,9 @@
     "@deepseek-ai/dsh-storage": "0.1.5-rc.2",
     "@linmu/dsh-instance-integration-dsh": "workspace:*",
     "@linmu/dsh-session-adapter-0-1-5": "workspace:*",
-    "@linmu/dsh-session-adapter-host": "workspace:*"
+    "@linmu/dsh-session-adapter-host": "workspace:*",
+    "@linmu/dsh-session-adapter-lynn": "workspace:*",
+    "@linmu/dsh-session-extension-gpt-compat": "workspace:*"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "*",

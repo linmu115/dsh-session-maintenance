@@ -1,3 +1,4 @@
+import { SqlitePluginData } from "./plugin-data.js";
 import { coordinateAsyncMethods } from "./write-coordinator.js";
 import type { DatabaseSync } from "node:sqlite";
 
@@ -203,7 +204,11 @@ export class SqliteCanonicalSessionEngineStore implements CanonicalSessionEngine
       }
       this.updateSession(input.session);
       if (input.membership !== null) await this.workspaces.setMembership(input.membership);
-      if (input.derivation !== null) this.putDerivation(input.derivation);
+      if (input.derivation !== null) {
+        this.putDerivation(input.derivation);
+        new SqlitePluginData(this.database).fork(input.derivation.parentSessionId, input.derivation.baseVersionId, input.derivation.childSessionId);
+      }
+      if (input.session.headVersionId) new SqlitePluginData(this.database).pin(input.session.id, input.session.headVersionId);
       if (input.tombstone !== null) await this.canonical.saveTombstone(input.tombstone);
       if (input.projectionReceipt !== null) this.putProjectionReceipt(input.projectionReceipt);
       if (previousArchive?.archived_at !== input.session.archivedAt) this.onSessionArchiveChange?.(input.session);

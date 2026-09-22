@@ -11,16 +11,12 @@ const unbound = "@unbound", ungrouped = "@ungrouped";
 const identityJoin = "i.instance_id=o.instance_id AND i.profile_id=o.profile_id AND i.namespace=o.namespace AND i.object_id=o.object_id";
 const workspace = `CASE WHEN i.owner_session_id IS NULL OR s.id IS NULL THEN '${unbound}' ELSE COALESCE(p.id,'${ungrouped}') END`;
 const owner = `COALESCE(i.owner_session_id,'${unbound}')`;
-const distinctBusinessObject = `NOT (i.canonical_reference_id IS NOT NULL AND EXISTS(SELECT 1 FROM extension_objects canonical
-  WHERE canonical.instance_id=o.instance_id AND canonical.profile_id=o.profile_id AND canonical.namespace='annotation-upstream'
-  AND canonical.object_id=i.canonical_reference_id AND canonical.deleted=0
-  AND json_extract(canonical.content_json,'$.body.targetSessionId')=i.owner_session_id))`;
 type IndexedRow = { namespace: string; object_id: string; revision: number; schema_version: number };
 
 /** Derived ownership metadata. Body interpretation remains exclusively in trusted Adapters. */
 export class ExtensionDirectoryService {
   constructor(private readonly store: SqliteExtensionRepository, private readonly adapters: () => ReadonlyMap<string, ExtensionDataAdapter>,
-    private readonly panels: () => ExtensionPanel[]) {}
+    private readonly panels: () => ExtensionPanel[], private readonly visibilitySql = "1") {}
   invalidate(namespace: string): void {
     this.store.database.prepare("DELETE FROM extension_object_owners WHERE namespace=?").run(namespace);
   }
@@ -58,7 +54,7 @@ export class ExtensionDirectoryService {
       this.rebuild(panel.scope, namespaces);
       panel.objectCount = Number(this.store.database.prepare(`SELECT COUNT(*) count FROM extension_objects o
         JOIN extension_object_owners i ON ${identityJoin} WHERE o.instance_id=? AND o.profile_id=?
-        AND o.namespace IN (${namespaces.map(() => "?").join(",")}) AND o.deleted=0 AND i.parent_object_id IS NULL AND ${distinctBusinessObject}`)
+        AND o.namespace IN (${namespaces.map(() => "?").join(",")}) AND o.deleted=0 AND i.parent_object_id IS NULL AND ${this.visibilitySql}`)
         .get(panel.scope.instanceId, panel.scope.profileId, ...namespaces)?.count ?? 0);
     }
     return [...grouped.values()].sort((a, b) => JSON.stringify([a.scope, a.adapterId]).localeCompare(JSON.stringify([b.scope, b.adapterId])));
@@ -114,7 +110,7 @@ export class ExtensionDirectoryService {
     let where = `WHERE o.instance_id=? AND o.profile_id=? AND o.namespace IN (${namespaces.map(() => "?").join(",")})`;
     if (q.deleted !== "all") { where += " AND o.deleted=?"; params.push(q.deleted === "deleted" ? 1 : 0); }
     // A lightweight Core mirror does not create a second row for the same authoritative upstream relation.
-    where += ` AND ${distinctBusinessObject}`;
+    where += ` AND ${this.visibilitySql}`;
     if (q.parentObjectId) { where += " AND i.parent_object_id=?"; params.push(q.parentObjectId); }
     else where += " AND i.parent_object_id IS NULL";
     if (q.level === "objects" && q.workspaceId) { where += ` AND ${workspace}=?`; params.push(q.workspaceId); }

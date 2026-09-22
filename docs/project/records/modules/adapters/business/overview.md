@@ -19,7 +19,7 @@ sources:
 
 # 业务插件／扩展数据适配器
 
-2026-09-22 当前职责：插件 adapter 拥有对应插件的握手、目标定位、数据恢复和正常读取验证；Maintenance 保留带来源/类型标记的原数据。宿主 adapter 提供不透明目标上下文，核心不解释宿主路径或插件图模型。新增恢复注册机制已完成合成验收，真实插件尚未接入验收；见[本轮报告](../../../../../changes/2026-09-22-host-write-barrier-and-plugin-mapping.md)。下面保留的旧业务入口仍待迁出，不是当前架构目标。
+2026-09-22 当前职责：插件 adapter 拥有对应插件的握手、目标定位、数据恢复和正常读取验证；Maintenance 保留带来源/类型标记的原数据。宿主 adapter 提供不透明目标上下文，核心不解释宿主路径或插件图模型。Lynn adapter 已接入当前 Core、贴纸、DAG 的实际存储与正常读取接口并完成组件验收；GPT 独立适配。旧图、引用、知识服务和路由已经迁入 Engine 的 adapters/lynn 目录，旧路径仅作兼容转发。真实实例连接验收与实现分开记录，见 [[IMP-lynn-adapter]] 和[本轮报告](../../../../../changes/2026-09-22-lynn-and-gpt-adapters.md)。
 
 ExtensionDataAdapter 声明 namespace、支持插件/schema 版本、校验、摘要和能力，必要时提供 ownership 与预览；数据由 [扩展存储、冲突与目录](../../engine/extensions/overview.md) 保存。
 
@@ -29,9 +29,9 @@ ExtensionDataAdapter 声明 namespace、支持插件/schema 版本、校验、�
 
 合同 [对象合同](contract.md)；已知目录 [业务已知接入](connected.md)；具体接入 [Core 的固定引用、镜像与原生接入](integrations/annotation.md)、[贴纸：对象、会话与引用接入](integrations/stickers.md)、[ThoughtDAG：主干领域与上下文视图](integrations/thoughtdag.md)、[Obsidian：链接与引用分别接入](integrations/obsidian.md)。
 
-Obsidian 系列面板聚合多个 namespace，ThoughtDAG 聚合主干与附属日志；面板数量不等于平台 Adapter 数。另一责任分支 [平台适配](../harness/overview.md) 不共享业务写权限。
+Lynn adapter 将组合内的六个历史 namespace 聚合为一个面板，内部按实际运行成员握手；缺少成员保留其原数据，不投放到目标。未知扩展数据作为不透明包保留。另一责任分支 [平台适配](../harness/overview.md) 不共享业务写权限。
 
-GPT 兼容插件是第三类面板，见 [[INT-gpt-format]]；其原生扩展事件解析与宿主 codec 组合，不新增 Harness 身份。
+GPT 兼容插件保留独立 adapter 与面板，见 [[INT-gpt-format]]；其原生扩展事件解析及检查点/操作引用重映射与宿主 codec 组合，不新增 Harness 身份。
 
 ## 公开页面与栏目贡献（待实现）
 

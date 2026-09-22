@@ -1,3 +1,4 @@
+import { filterNativePluginData, remapProjectedAppend } from "./filter-plugin-data.js";
 import { prepareLearningV3, appendLearningV3 } from "./learning.js";
 import { adapter } from "./index.js";
 import { scopeV3Service, type V3AdapterDialect } from "./dialect.js";
@@ -9,7 +10,7 @@ import { inspectV3NativeSpace } from './generation-reader.js';
 
 /** Compose trusted native event extensions into a host service without global mutations. */
 export function createV3DialectAdapter(dialect: V3AdapterDialect) {
-  const services = scopeV3Service({ bindNativeAppend: bindV3NativeAppend, recoverRuntimeTail: recoverV3RuntimeTail,
+  const services = scopeV3Service({ filterNativePluginData, remapProjectedAppend, bindNativeAppend: bindV3NativeAppend, recoverRuntimeTail: recoverV3RuntimeTail,
     inspectNativeSpace: inspectV3NativeSpace,
     prepareLearningV3, appendLearningV3, validateArtifact: validateV3, verifyNativeContextMaterials: verifyV3NativeContextMaterials, verifyNativeContextRelease: verifyV3NativeContextRelease,
   }, dialect);

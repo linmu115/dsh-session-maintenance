@@ -93,6 +93,9 @@ importers:
       '@linmu/dsh-session-adapter-host':
         specifier: workspace:*
         version: link:../../packages/adapter-host
+      '@linmu/dsh-session-adapter-lynn':
+        specifier: workspace:*
+        version: link:../../packages/adapter-lynn
       '@linmu/dsh-session-adapter-rc1':
         specifier: workspace:*
         version: link:../../packages/adapter-dsh-rc1
@@ -269,6 +272,21 @@ importers:
         specifier: workspace:*
         version: link:../session-store
 
+  packages/adapter-lynn:
+    dependencies:
+      '@linmu/dsh-session-adapter-host':
+        specifier: workspace:*
+        version: link:../adapter-host
+      '@linmu/dsh-session-contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@linmu/dsh-session-store':
+        specifier: workspace:*
+        version: link:../session-store
+      zod:
+        specifier: 4.1.5
+        version: 4.1.5
+
   packages/canonical-session-engine:
     dependencies:
       '@linmu/dsh-session-contracts':
@@ -377,6 +395,9 @@ importers:
 
   packages/extension-knowledge:
     dependencies:
+      '@linmu/dsh-session-adapter-lynn':
+        specifier: workspace:*
+        version: link:../adapter-lynn
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../contracts
@@ -584,9 +605,15 @@ importers:
       '@linmu/dsh-session-adapter-host':
         specifier: workspace:*
         version: link:../../packages/adapter-host
+      '@linmu/dsh-session-adapter-lynn':
+        specifier: workspace:*
+        version: link:../../packages/adapter-lynn
       '@linmu/dsh-session-contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+      '@linmu/dsh-session-extension-gpt-compat':
+        specifier: workspace:*
+        version: link:../../packages/extension-gpt-compat
       '@types/node':
         specifier: 24.3.0
         version: 24.3.0

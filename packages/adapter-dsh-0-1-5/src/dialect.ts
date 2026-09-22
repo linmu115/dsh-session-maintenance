@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 import type { AdapterManifestV1, DshEnvironmentDescriptor, AdapterProbeResult } from "@linmu/dsh-session-adapter-sdk";
-import type { SessionFormatCatalog } from "@deepseek-ai/dsh-session-format";
+import type { SessionFormatCatalog, SessionFormatEvent } from "@deepseek-ai/dsh-session-format";
 import { manifest } from "./manifest.js";
 
 /** A host codec composition. Extension event ownership never changes the Harness identity. */
@@ -9,6 +9,7 @@ export interface V3AdapterDialect {
   readonly formatId: string;
   readonly catalog: SessionFormatCatalog;
   readonly knownEventTypes: ReadonlySet<string>;
+  readonly remapEvent?: (event: SessionFormatEvent, source: SessionFormatEvent, mapping: readonly (number | undefined)[]) => SessionFormatEvent;
   readonly eventOwners?: ReadonlyMap<string, string>;
   readonly legacyOwners?: readonly { readonly adapterId: string; readonly formatId: string }[];
   readonly probe: (environment: DshEnvironmentDescriptor) => AdapterProbeResult;

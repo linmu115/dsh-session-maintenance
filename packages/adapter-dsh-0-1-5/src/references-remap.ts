@@ -1,3 +1,4 @@
+import { currentDialect } from "./dialect.js";
 import type { SessionFormatEvent, SessionFormatJsonValue, SessionFormatJsonObject } from "@deepseek-ai/dsh-session-format";
 import { count, record } from "./common.js";
 import { canonicalEventV1Schema, canonicalEventProjectionPolicy } from "@linmu/dsh-session-contracts";
@@ -13,7 +14,8 @@ export function remap(event: SessionFormatEvent, seq: number, mapping: readonly 
  if(event.type==="command/done" && objectData?.sourceEventSeq!==undefined) data={...objectData,sourceEventSeq:one(objectData.sourceEventSeq)};
  if(["compaction/summary","compaction/prune","compact/summary","compact/prune"].includes(event.type)){const value=record(data);data={...value,...(value.shadowedRange===undefined?{}:{shadowedRange:range(value.shadowedRange)}),...(value.shadowedSeqs===undefined?{}:{shadowedSeqs:list(value.shadowedSeqs)})};}
  if(["session/title","session/title-llm-request"].includes(event.type) && objectData?.messageSeqs!==undefined) data={...objectData,messageSeqs:list(objectData.messageSeqs)};
- return {...event,seq,data,...(event.sourceEventSeqs===undefined?{}:{sourceEventSeqs:list(event.sourceEventSeqs)}),...(event.surfaceOp===undefined||event.surfaceOp==="append"?{}:{surfaceOp:range(event.surfaceOp)})};
+ const result = {...event,seq,data,...(event.sourceEventSeqs===undefined?{}:{sourceEventSeqs:list(event.sourceEventSeqs)}),...(event.surfaceOp===undefined||event.surfaceOp==="append"?{}:{surfaceOp:range(event.surfaceOp)})} as SessionFormatEvent;
+ return currentDialect()?.remapEvent?.(result, event, mapping) ?? result;
 }
 export function assertInformational(event: SessionFormatEvent): void {
  // A DSH fork can inherit our portable projection receipts. Their coordinates

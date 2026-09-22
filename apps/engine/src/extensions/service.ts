@@ -1,21 +1,24 @@
-import { synchronizeGptIndex, type ExtensionVersionReader } from "./gpt-sync.js";
+import type { CanonicalEventV1, LogicalSessionId, SessionVersionId, ExtensionPage } from "@linmu/dsh-session-contracts";
+export type ExtensionVersionReader = (sessionId: LogicalSessionId, versionId: SessionVersionId) => Promise<readonly CanonicalEventV1[]>;
+export interface ExtensionDataHooks {
+  presentList?(query: ExtensionList, page: ExtensionPage): ExtensionPage;
+  refresh?(query: { namespace?: string; adapterId?: string }): Promise<void>;
+  directoryVisibilitySql?: string;
+}
 import { ExtensionDataError, extensionConnectSchema, extensionWriteSchema, extensionScopeSchema,
   type ExtensionDataAdapter, type ExtensionScope, type ExtensionConnect, type ExtensionWrite, type ExtensionPanel, type ExtensionList,
 } from "@linmu/dsh-session-contracts";
 import type { SqliteExtensionRepository } from "@linmu/dsh-session-store";
-import { type AnnotationMirrorSync, type ExtensionBusinessPanelQuery, type ExtensionDirectoryQuery } from "@linmu/dsh-session-contracts";
-import type { SessionMaintenanceEngine } from "../engine.js";
+import { type ExtensionBusinessPanelQuery, type ExtensionDirectoryQuery } from "@linmu/dsh-session-contracts";
 import { ExtensionDirectoryService } from "./directory.js";
-import { synchronizeAnnotationMirrors } from "./annotation-sync.js";
-import { presentGraphList } from "../session-graph-titles.js";
 
 /** Independent from the platform/version adapter registry. No automatic context injection. */
 export class ExtensionDataService {
   private readonly adapters = new Map<string, ExtensionDataAdapter>();
   private readonly directoryService: ExtensionDirectoryService;
   private initialized = false;
-  constructor(private readonly store: SqliteExtensionRepository, adapters: readonly ExtensionDataAdapter[], private readonly readVersion?: ExtensionVersionReader) {
-    this.directoryService = new ExtensionDirectoryService(store, () => this.adapters, () => this.panels());
+  constructor(private readonly store: SqliteExtensionRepository, adapters: readonly ExtensionDataAdapter[], readonly readVersion?: ExtensionVersionReader, readonly hooks: ExtensionDataHooks = {}) {
+    this.directoryService = new ExtensionDirectoryService(store, () => this.adapters, () => this.panels(), hooks.directoryVisibilitySql);
     for (const adapter of adapters) this.register(adapter);
     this.initialized = true;
   }
@@ -44,14 +47,11 @@ export class ExtensionDataService {
     this.store.connect(parsed); return this.panels();
   }
   enable(scope: ExtensionScope, enabled: boolean) { this.store.enable(extensionScopeSchema.parse(scope),enabled); return this.panels(); }
-  list(query: ExtensionList) { return presentGraphList(this.store.database, query, this.store.list(query)); }
-  async refreshNativeIndexes() { if (this.readVersion) await synchronizeGptIndex(this.store, this.readVersion); }
+  list(query: ExtensionList) { const page = this.store.list(query); return this.hooks.presentList?.(query, page) ?? page; }
+  async refreshNativeIndexes(query: { namespace?: string; adapterId?: string } = {}) { await this.hooks.refresh?.(query); }
   businessPanels(query: ExtensionBusinessPanelQuery = {}) { return this.directoryService.businessPanels(query); }
   directory(query: ExtensionDirectoryQuery) { return this.directoryService.list(query); }
   rebuildOwnerIndex(scope: { instanceId: string; profileId: string }, namespaces: readonly string[]) { this.directoryService.rebuild(scope, namespaces, true); }
-  syncAnnotation(input: AnnotationMirrorSync, engine: SessionMaintenanceEngine) {
-    return synchronizeAnnotationMirrors(this.store, engine, input, scope => this.ready(scope).panel.writerId);
-  }
   transaction<T>(action: () => T): T { return this.store.transaction(action); }
   private ready(scope: ExtensionScope): { adapter: ExtensionDataAdapter; panel: ExtensionPanel } {
     extensionScopeSchema.parse(scope);

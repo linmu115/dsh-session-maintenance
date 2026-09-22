@@ -1,3 +1,6 @@
+import { nativeReaderProvider } from "./adapters/reader/composition.js";
+import { attachLynn, lynnExtensionHooks } from "./adapters/lynn/composition.js";
+import { synchronizeGptIndex } from "./adapters/gpt-compat/gpt-sync.js";
 import { BusinessPageRegistry } from "./business-pages.js";
 import { AdapterCatalog } from './adapter-catalog.js';
 import { CodexMirrorPolicy } from './codex-mirror-policy.js';
@@ -16,7 +19,7 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import type { DiscoveredIntegration, InstanceLeaseInspection, LogicalWorkspace, LogicalWorkspaceId, RuntimeBrokerPrepareRunRequest } from "@linmu/dsh-session-contracts";
 import { writeBackRunIdentity } from '@linmu/dsh-instance-integration-dsh/instance-write-back';
-import { synchronizeThroughHost } from '@linmu/dsh-instance-integration-dsh/host-workspace-sync';
+import { synchronizeThroughHost, readHostPluginData } from '@linmu/dsh-instance-integration-dsh/host-workspace-sync';
 import { readEndpointSnapshot } from '@linmu/dsh-instance-integration-dsh/endpoint-snapshot';
 import { IntegrationError } from './integrations/bindings.js';
 import { createWorkspaceSourceForHome, dshSessionBinding } from '@linmu/dsh-instance-integration-dsh/instance-workspace-source';
@@ -84,7 +87,7 @@ import { readLauncherInstanceDirectory } from "./integrations/launcher-instance-
 import { registerCodexSource, withDefaultCodexSource } from "./integrations/codex-sources.js";
 import type { IntegrationInstallOptions } from "./integrations/launcher-install.js";
 import { SessionMaintenanceQueries } from "./session-maintenance-queries.js";
-import { knowledgeLifecycleAdapters } from '@linmu/dsh-session-extension-knowledge/session-lifecycle';
+import { knowledgeLifecycleAdapters } from '@linmu/dsh-session-adapter-lynn/session-lifecycle';
 import { SessionLifecycle } from './session-lifecycle.js';
 
 const resolveModule = createRequire(import.meta.url).resolve;
@@ -357,7 +360,10 @@ async function createComposition(
         if (!policies.workspaceSelected(policies.getPolicy(id), snapshot.workspaceId))
           throw new IntegrationError('SESSION_NOT_SYNCED', '目标工作区不在当前同步范围。');
         await ensurePlatformSessionBinding({ repository, ...dshSessionBinding(id, sessionId), logicalSessionId, checkOnly: true });
+        const pluginData = await readHostPluginData({ stateRoot: options.stateRoot, instanceId: id, profileId: registered.profileId,
+          homeRoot: registered.homeRoot, sessionId });
         await reconcileEndpointSession(canonicalEngine.store, snapshot);
+        canonicalProjectionSource.pluginData.retain(logicalSessionId, pluginData);
         await ensurePlatformSessionBinding({ repository, ...dshSessionBinding(id, sessionId), logicalSessionId });
         return logicalSessionId;
       },
@@ -439,12 +445,15 @@ async function createComposition(
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
   const businessPages = await BusinessPageRegistry.create({stateRoot:options.stateRoot,writes});
+  const extensionStore = new SqliteExtensionRepository(repository.database);
+  const readExtensionVersion = (sessionId: import("@linmu/dsh-session-contracts").LogicalSessionId, versionId: import("@linmu/dsh-session-contracts").SessionVersionId) => canonicalProjectionSource.loadVersionEvents(sessionId, versionId);
   composedEngine = new SessionMaintenanceEngine({
+    readerProvider: nativeReaderProvider,
     businessPages,
     instanceWorkspace: instanceWorkspaceRuntime.createService(),
     adapterCatalog,
     sessionLifecycle,
-    extensions: new ExtensionDataService(new SqliteExtensionRepository(repository.database), extensionAdapters, (sessionId, versionId) => canonicalProjectionSource.loadVersionEvents(sessionId, versionId)),
+    extensions: new ExtensionDataService(extensionStore, extensionAdapters, readExtensionVersion, { ...lynnExtensionHooks(extensionStore), refresh: async query => { if (query.namespace === "gpt-compat" || query.adapterId === "gpt-compat") await synchronizeGptIndex(extensionStore, readExtensionVersion); } }),
     codexProjectMapping,
     codexProjectObserver,
     codexMirror,
@@ -513,6 +522,9 @@ async function createComposition(
         const source = createWorkspaceSourceForHome({ homeRoot: target.homeRoot, workspacePath: request.workspacePath, instanceId: request.instanceId,
           logicalSessionId: nativeSessionId => mappedLogicalSessionId(request.instanceId, nativeSessionId) });
         const mapped = await mapJoinedWorkspace({ engine: canonicalEngine, instanceId: request.instanceId,
+          capturePluginData: async (sessionId, logicalSessionId) => canonicalProjectionSource.pluginData.retain(logicalSessionId,
+            await readHostPluginData({ stateRoot: options.stateRoot, instanceId: request.instanceId, profileId: request.profileId,
+              homeRoot: target.homeRoot, sessionId })),
           bindIdentity: (nativeSessionId, logicalSessionId, checkOnly) => ensurePlatformSessionBinding({ repository,
             ...dshSessionBinding(request.instanceId, nativeSessionId), logicalSessionId, checkOnly }),
           workspaceKey: request.workspaceId, workspaceName: request.workspaceName, source,
@@ -582,6 +594,7 @@ async function createComposition(
     ...(writeService === undefined ? {} : { writeService }),
     ...(options.clock === undefined ? {} : { clock: options.clock }),
   });
+  if (extensionAdapters.some(adapter => adapter.panelAdapter?.id === "lynn")) attachLynn(composedEngine, extensionStore);
   return composedEngine;
   } catch (error) { closeRepository?.(); writes.close(); throw error; }
 }

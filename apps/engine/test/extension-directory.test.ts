@@ -1,3 +1,4 @@
+import { attachLynnExtensionService, lynnExtensionHooks } from "../src/adapters/lynn/composition.js";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { createFixtureSandbox } from "../../../packages/test-support/src/index.js";
@@ -26,7 +27,8 @@ const plugins = [
 async function fixture() {
   const f = await createFixtureSandbox("extension-owner-directory"), db = openMaintenanceDatabase(join(f.root, "index.sqlite"));
   cleanup.push(async () => { db.close(); await f.cleanup(); });
-  const store = new SqliteExtensionRepository(db), service = new ExtensionDataService(store, builtInExtensionAdapters);
+  const store = new SqliteExtensionRepository(db), service = new ExtensionDataService(store, builtInExtensionAdapters, undefined, lynnExtensionHooks(store));
+  attachLynnExtensionService(service, store);
   service.connect({ ...scope, plugins });
   for (const id of ["source", "target"]) db.prepare("INSERT INTO logical_sessions(id,display_title,sync_mode,archived,labels_json,created_at) VALUES(?,?,'continuation',0,'[]','2026-09-15')").run(id, id === "source" ? "来源会话" : "接收会话");
   db.exec("INSERT INTO logical_workspaces VALUES('parent',NULL,'原始目录','a',NULL,'2026-09-15','2026-09-15'); INSERT INTO logical_workspaces VALUES('work','parent','子工作区','b',NULL,'2026-09-15','2026-09-15'); INSERT INTO workspace_memberships VALUES('target','work',0,0,0,0)");
@@ -46,7 +48,7 @@ async function fixture() {
 function upstream() { return { schemaVersion: 1, referenceId: "upstream-one", sourceSessionId: "source", sourceVersionId: "version-one",
   cutoffEventId: "event-one", cutoffDigest: "digest", targetSessionId: "target", selectedText: "重点", sourceTitle: "来源", sourceAnchorId: "anchor-one",
   state: "sent", targetMessageId: "message-one", createdAt: "2026-09-15" }; }
-const query = { ...scope, adapterId: "obsidian-series" };
+const query = { ...scope, adapterId: "lynn" };
 const entry = (referenceId = "reference-one"): AnnotationMirrorSync["entries"][number] => ({ referenceId, setId: "set-one", sourceType: "dsh-message",
   state: "pending", selectedText: "重点", userComment: "注释", source: { nativeSessionId: "native-source", title: "来源" } });
 const sync = (entries = [entry()], sourceRevision = 1): AnnotationMirrorSync => ({ runId: "run", nativeSessionId: "native-target", sourceRevision, entries });
@@ -56,15 +58,15 @@ describe("business extension directory", () => {
     const f = await fixture(); f.write("annotation-upstream", "upstream-one", upstream());
     f.write("stickers", "sticker", { kind: "session", logicalSessionId: "target", source: { logicalSessionId: "source", sourceVersionId: "version-one", sourceAnchorId: "anchor-one" } });
     const panels = f.service.businessPanels(scope);
-    expect(panels.map(p => p.adapterId).sort()).toEqual(["obsidian-series", "thoughtdag"]);
-    expect(panels.find(p => p.adapterId === "obsidian-series")).toMatchObject({ status: "ready", objectCount: 2 });
+    expect(panels.map(p => p.adapterId).sort()).toEqual(["lynn"]);
+    expect(panels.find(p => p.adapterId === "lynn")).toMatchObject({ status: "ready", objectCount: 2 });
     expect(f.service.directory({ ...query, level: "workspaces" }).items).toEqual([expect.objectContaining({ id: "work", label: "原始目录 / 子工作区", count: 2 })]);
     expect(f.service.directory({ ...query, level: "sessions", workspaceId: "work" }).items).toEqual([expect.objectContaining({ id: "target", count: 2 })]);
     const objects = f.service.directory({ ...query, level: "objects", ownerSessionId: "target" });
     expect(objects.items).toHaveLength(2); expect(JSON.stringify(objects)).not.toContain('"content"');
     expect(f.service.directory({ ...query, level: "objects", ownerSessionId: "source" }).items).toHaveLength(0);
     f.service.enable({ ...scope, namespace: "stickers" }, false);
-    expect(f.service.businessPanels(scope).find(p => p.adapterId === "obsidian-series")?.status).toBe("partial");
+    expect(f.service.businessPanels(scope).find(p => p.adapterId === "lynn")?.status).toBe("partial");
     expect(f.service.directory({ ...query, level: "objects", ownerSessionId: "target" }).items).toContainEqual(expect.objectContaining({ objectId: "sticker", readOnly: true, unavailableReason: "会话贴纸：已停用" }));
   });
   it("rebuilds the disposable index without touching object versions and follows native workspace moves and membership archives", async () => {
@@ -85,8 +87,8 @@ describe("business extension directory", () => {
     const graphs = new SessionGraphStore(f.db), graph = graphs.ensure({ ...scope, namespace: "thoughtdag" }, "dsh-thoughtdag", "target", "主干");
     f.store.write({ scope: { ...scope, namespace: "thoughtdag" }, objectId: "log", expectedRevision: 0, writerId: "dsh-thoughtdag", deleted: false,
       content: { schemaVersion: 2, title: "读取记录", body: { kind: "disclosure-log", managedSchema: 2, ownerSessionId: "target", graphObjectId: graph.objectId, trimmed: false, trimmedCount: 0, items: [] }, references: [] } });
-    const q = { ...scope, adapterId: "thoughtdag" };
-    expect(f.service.businessPanels(scope).find(p => p.adapterId === "thoughtdag")?.objectCount).toBe(2);
+    const q = { ...scope, adapterId: "lynn" };
+    expect(f.service.businessPanels(scope).find(p => p.adapterId === "lynn")?.objectCount).toBe(2);
     expect(f.service.directory({ ...q, level: "objects", ownerSessionId: "target" }).items).toEqual([expect.objectContaining({ objectId: graph.objectId, count: 1 })]);
     expect(f.service.directory({ ...q, level: "objects", ownerSessionId: "target", parentObjectId: graph.objectId, deleted: "all" }).items).toEqual([expect.objectContaining({ objectId: "log", readOnly: true })]);
     expect(f.service.directory({ ...q, level: "objects", ownerSessionId: "@unbound" }).items).toEqual([expect.objectContaining({ objectId: "old", ownerSessionId: null })]);
@@ -147,7 +149,7 @@ describe("Annotation metadata mirrors", () => {
     const f = await fixture(); f.write("annotation-upstream", "upstream-one", upstream());
     const item = { ...entry(), source: { ...entry().source, upstreamReferenceId: "upstream-one" } };
     const first = await f.service.syncAnnotation(sync([item]), f.fake);
-    expect(f.service.businessPanels(scope).find(p => p.adapterId === "obsidian-series")?.objectCount).toBe(1);
+    expect(f.service.businessPanels(scope).find(p => p.adapterId === "lynn")?.objectCount).toBe(1);
     expect(f.service.directory({ ...query, level: "objects", ownerSessionId: "target" }).items.map(i => (i as ExtensionDirectoryObject).scope.namespace)).toEqual(["annotation-upstream"]);
     const deleted = { ...item, state: "deleted" as const, selectedText: "", userComment: "", source: {} };
     expect((await f.service.syncAnnotation(sync([deleted], 2), f.fake)).items[0]?.status).toBe("saved");
@@ -182,8 +184,8 @@ describe("Annotation metadata mirrors", () => {
     const server = await f.startServer(), client = new MaintenanceClient({ origin: server.origin, token: server.token });
     await client.connectExtensions({ instanceId: "codex-fixture", profileId: "web", plugins });
     const panels = await client.listExtensionBusinessPanels({ instanceId: "codex-fixture" });
-    expect(panels).toHaveLength(2); expect(panels.every(p => p.instanceLabel === "Codex fixture")).toBe(true);
-    expect(await client.listExtensionDirectory({ instanceId: "codex-fixture", profileId: "web", adapterId: "obsidian-series", level: "workspaces" })).toMatchObject({ items: [] });
+    expect(panels).toHaveLength(1); expect(panels.every(p => p.instanceLabel === "Codex fixture")).toBe(true);
+    expect(await client.listExtensionDirectory({ instanceId: "codex-fixture", profileId: "web", adapterId: "lynn", level: "workspaces" })).toMatchObject({ items: [] });
     const denied = await fetch(server.origin + "/v1/extensions/directory?instanceId=codex-fixture&profileId=web&adapterId=obsidian-series&level=workspaces");
     expect(denied.status).toBe(401); await denied.arrayBuffer();
     await expect(client.syncAnnotationMirror(sync())).rejects.toThrow();

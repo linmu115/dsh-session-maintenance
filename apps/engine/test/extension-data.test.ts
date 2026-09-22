@@ -116,7 +116,7 @@ describe("pluggable extension data",()=>{
   });
   it("rejects incompatible versions, malformed graphs, oversized edits and bounds unresolved candidates",async()=>{
     const f=await fixture(),s=f.make();s.connect({...connect,plugins:[{...plugins[0]!,pluginVersion:"99.0.0"}]});expect(()=>s.write(graph())).toThrow("尚未启用");
-    s.connect(connect);expect(()=>s.write({...graph(),content:{...graph().content,schemaVersion:3}})).toThrow("格式");
+    s.connect(connect);expect(()=>s.write({...graph(),content:{...graph().content,schemaVersion:99}})).toThrow("格式");
     expect(()=>s.write({...graph(),content:{...graph().content,body:{nodes:[],edges:[{id:"a",source:"missing",target:"missing"}]}}})).toThrow("不存在");
     s.write(graph());
     expect(()=>s.write({...graph(),content:{...graph().content,body:{nodes:[],edges:[],large:"x".repeat(600000)}}})).toThrow("512 KiB");

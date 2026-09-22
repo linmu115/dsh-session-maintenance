@@ -10,8 +10,8 @@ describe("native context with the actual Engine and authenticated HTTP", () => {
       const written = await f.mutate("source-set", { referenceId: f.ref.referenceId, enabled: false }); expect(written.status, JSON.stringify(written.body)).toBe(200);
       const object = f.engine.extensions!.get(f.extensionScope, doc.objectId).object;
       const panels = f.engine.extensions!.businessPanels({ instanceId: f.extensionScope.instanceId, profileId: f.extensionScope.profileId });
-      expect(panels.map(panel => panel.adapterId).sort()).toEqual(["obsidian-series", "thoughtdag"]);
-      expect(panels.find(panel => panel.adapterId === "obsidian-series")?.members.some(member => member.scope.namespace === "annotation-context")).toBe(true);
+      expect(panels.map(panel => panel.adapterId).sort()).toEqual(["lynn"]);
+      expect(panels.find(panel => panel.adapterId === "lynn")?.members.some(member => member.scope.namespace === "annotation-context")).toBe(true);
       expect(() => f.engine.extensions!.write({ scope: f.extensionScope, objectId: object.objectId, writerId: object.writerId, expectedRevision: object.revision, deleted: false, content: object.content })).toThrow();
       const other = await f.post("window-set", { targetNativeSessionId: "foreign-native", referenceId: f.ref.referenceId, ranges: null, expectedRevision: 0, operationId: "foreign-ref" }); expect(other.status).toBe(409);
       f.engine.extensions!.enable(f.extensionScope, false); expect((await f.post("status")).status).toBe(409);

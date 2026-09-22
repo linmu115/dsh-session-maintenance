@@ -1,7 +1,5 @@
 import type { DatabaseSync } from "node:sqlite";
-import { readRc1CanonicalEventText } from "@linmu/dsh-session-adapter-rc1";
-import { readCodexCanonicalEventText } from "@linmu/dsh-adapter-codex-read";
-import { SessionReaderQueries } from "./session-reader-queries.js";
+import type { SessionReaderPort, SessionReaderProvider } from "./session-reader-port.js";
 import type { SessionReaderPage, SessionReaderQuery } from "@linmu/dsh-session-contracts";
 
 import {
@@ -214,9 +212,9 @@ function getProjectRoots(database: DatabaseSync, id: string | null): readonly Pr
 
 /** Stable Maintenance read models; platform homes are never opened. */
 export class SessionMaintenanceQueries {
-  constructor(readonly database: DatabaseSync) {}
+  constructor(readonly database: DatabaseSync, private readonly reader?: SessionReaderProvider) {}
 
-  readonlyReader(): SessionReaderQueries { return new SessionReaderQueries(this.database); }
+  readonlyReader(): SessionReaderPort { if (!this.reader) throw new Error("Reader adapter is not installed"); return this.reader.create(this.database); }
   async readSessionReader(logicalSessionId: string, query: SessionReaderQuery = {}): Promise<SessionReaderPage> {
     const reader = this.readonlyReader(), page = reader.page(logicalSessionId, query);
     const detail = await this.readCanonicalDashboardSession(logicalSessionId, false);
@@ -360,10 +358,7 @@ export class SessionMaintenanceQueries {
       projectRoots: getProjectRoots(database, projectMembership?.projectId ?? null),
       nativeReferences,
       events: events.map((event) => ({ ...event,
-        readableText: event.source.platform === "dsh"
-          ? readRc1CanonicalEventText(event as never)
-          : event.source.platform === "codex" ? readCodexCanonicalEventText(event)
-          : typeof event.content === "string" ? event.content : null,
+        readableText: this.reader?.text(event as import("@linmu/dsh-session-contracts").CanonicalEventV1) ?? (typeof event.content === "string" ? event.content : null),
       })) as never,
       parent,
       children,

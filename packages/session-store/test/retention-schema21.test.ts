@@ -45,7 +45,7 @@ describe("retention schema 21 compatibility boundary", () => {
     } finally { await f.close(); }
   });
 
-  it.each([15, 18, 29, 999])("continues to reject unsupported schema %s for references and static candidates", async (schema) => {
+  it.each([15, 18, 30, 999])("continues to reject unsupported schema %s for references and static candidates", async (schema) => {
     const f = await retentionFixture();
     try {
       await f.addVersion("head");

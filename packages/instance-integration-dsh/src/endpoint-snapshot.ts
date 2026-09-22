@@ -7,7 +7,7 @@ import { adapter, inspectNativeSpace as inspectV3NativeSpace } from '@linmu/dsh-
 import { canonicalEventsFor } from './instance-workspace-source.js';
 import { readWorkspaceMappings } from './workspace-mapping-store.js';
 import { readEndpointProjection, projectionSourceDigest } from './projection-receipt.js';
-import { remapProjectedAppend } from '@linmu/dsh-session-adapter-0-1-5';
+import { remapProjectedAppend } from '@linmu/dsh-session-extension-gpt-compat';
 
 /** Translate native rows only here. The engine never inspects cwd, seq, or host event types. */
 export async function readEndpointSnapshot(input: {

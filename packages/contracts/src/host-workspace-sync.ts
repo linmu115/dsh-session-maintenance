@@ -2,8 +2,11 @@ import { z } from 'zod';
 import { canonicalEventV1Schema, canonicalSessionRecordSchema, logicalWorkspaceSchema, jsonValueSchema } from './schemas.js';
 import type { CanonicalProjectionInput } from './adapter-sdk.js';
 import type { WorkspaceWriteBackSummary } from './workspace-sync.js';
+import { pluginDataRecordSchema } from './plugin-data-mapping.js';
 
 const id = z.string().min(1).max(512);
+export const hostPluginDataCaptureSchema = z.strictObject({ schemaVersion: z.literal(1), instanceId: id, profileId: id,
+  pid: z.number().int().positive(), processStartedAt: id, homeRoot: id, sessionId: id });
 export const hostWorkspaceSyncSchema = z.strictObject({
   schemaVersion: z.literal(1), operationId: id, instanceId: id, profileId: id,
   pid: z.number().int().positive(), processStartedAt: id, homeRoot: id,
@@ -18,7 +21,7 @@ export const hostWorkspaceSyncSchema = z.strictObject({
     workspaces: z.array(logicalWorkspaceSchema),
     sessions: z.array(z.object({ session: canonicalSessionRecordSchema, events: z.array(canonicalEventV1Schema), workspaceId: id.nullable(),
       projectId: id.nullable().optional(), projectName: z.string().nullable().optional(), projectRoot: z.string().nullable().optional(),
-      nativeSourceExports: z.array(jsonValueSchema).optional(),
+      nativeSourceExports: z.array(jsonValueSchema).optional(), pluginData: z.array(pluginDataRecordSchema).optional(),
     }).strict()),
   }),
 });

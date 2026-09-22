@@ -46,3 +46,4 @@ export * from "./instance-workspace-policy-repository.js";
 export * from "./migrations/026-instance-workspace-policy.js";
 
 export * from "./migrations/027-run-workspace-scope.js";
+export * from './plugin-data.js';

@@ -25,6 +25,9 @@ import type { JsonValue } from "@linmu/dsh-session-contracts";
 import { connectionDescriptorPath, launcherProjectionProfile, launcherCoreBinding, maintenanceStateRoot, normalizeConfig, withLauncherNativeExtensions, type Config as PluginConfig } from "./config.js";
 import { createInstanceLeaseHandler, startInstanceLease } from "./instance-lease.js";
 import { createHostWorkspaceSync } from './host-workspace-sync.js';
+import { createLynnAdapter } from '@linmu/dsh-session-adapter-lynn/runtime';
+import { createGptMappingAdapter } from '@linmu/dsh-session-extension-gpt-compat';
+import { createHash } from 'node:crypto';
 import { identityDeclaration } from "./instance-identity.js";
 import { startTakeoverPolling } from "./takeover.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
@@ -110,6 +113,7 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
     ? { current: async () => { throw new Error("维护引擎连接尚未由可信安装器登记"); } }
     : new FileConnectionProvider(descriptorPath);
   const proxy = new RestrictedEngineProxy(config, connection, fetch, launchProfile?.runId);
+  let capturePluginRevision: ((sessionId: string) => Promise<string>) | undefined;
   await registerMaintenanceBusinessPages(ctx as unknown as Context, connection, {instanceId:config.dshInstanceId,profileId:config.profileId});
   (ctx as unknown as Context).provide("maintenanceReferenceResolver", {
     resolve: (location: import("./engine-proxy.js").ProxyRequest) => proxy.invoke({ ...location, operation: "reference:resolve" }),
@@ -134,6 +138,11 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
         catch { report('当前宿主未提供完整写入屏障，工作区写回不可用；普通会话继续使用。'); }
         if (sync) {
           const activeSync = sync;
+          activeSync.pluginData.register(createLynnAdapter(ctx as never));
+          activeSync.pluginData.register(createGptMappingAdapter({ runtime: ctx as never,
+            readSession: async id => await (ctx as any).sessionQuery.readSession(id) }));
+          capturePluginRevision = async sessionId => createHash('sha256').update(JSON.stringify(await activeSync.pluginData.capture({
+            endpointId: config.dshInstanceId, sessionId, context: { profileId: config.profileId } }))).digest('hex');
           // Each plugin adapter owns its handshake and registers its opaque-data mapping here.
           (ctx as unknown as Context).provide('maintenancePluginDataMapping' as never, activeSync.pluginData as never);
           const unregisterSync = ctx.webServer.register({ kind: 'prefix', path: '/dsh-session-maintenance/instance/workspace-sync', handler: activeSync.handler });
@@ -173,6 +182,7 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
     // must reach the source even with every page closed. Scope is decided before each push (the
     // Engine is asked whether the session is mapped), so an unbound workspace is never reported.
     const sessionSync = new HostSessionSync({
+      additionalRevision: async sessionId => await capturePluginRevision?.(sessionId) ?? '',
       host: rc2HostSessionSync(ctx as unknown as Context),
       syncState: async () => (await proxy.invoke({ operation: 'sync-status' })).sync!,
       trackContent: true,

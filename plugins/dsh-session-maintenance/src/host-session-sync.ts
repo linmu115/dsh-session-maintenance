@@ -35,6 +35,7 @@ export interface HostSessionSyncHost {
 export interface HostSessionSyncOptions {
   readonly syncState?: () => Promise<EndpointSyncStatus>;
   readonly trackContent?: boolean;
+  readonly additionalRevision?: (sessionId: string) => Promise<string>;
   readonly host: HostSessionSyncHost;
   /** Only while the Engine is reachable; the caller decides how that is answered. */
   readonly engineReady: () => Promise<boolean>;
@@ -141,7 +142,7 @@ export class HostSessionSync {
     for (const item of await this.options.host.sessionPersistence.list()) {
       const id = String(item.id);
       if (id.length === 0) continue;
-      observed.set(id, { sessionId: id, archived: archived.has(id), ...(this.options.trackContent ? { revision: JSON.stringify(item) } : {}) });
+      observed.set(id, { sessionId: id, archived: archived.has(id), ...(this.options.trackContent ? { revision: JSON.stringify([item, await this.options.additionalRevision?.(id)]) } : {}) });
     }
     return observed;
   }

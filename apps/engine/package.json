@@ -1,6 +1,6 @@
 {
   "name": "@linmu/dsh-session-maintenance-engine",
-  "version": "0.1.42-rc2.70",
+  "version": "0.1.43-rc2.71",
   "private": true,
   "type": "module",
   "bin": {
@@ -45,6 +45,7 @@
     "yaml": "2.8.1",
     "zod": "4.1.5",
     "@linmu/dsh-instance-integration-dsh": "workspace:*",
-    "@linmu/dsh-session-extension-knowledge": "workspace:*"
+    "@linmu/dsh-session-extension-knowledge": "workspace:*",
+    "@linmu/dsh-session-adapter-lynn": "workspace:*"
   }
 }

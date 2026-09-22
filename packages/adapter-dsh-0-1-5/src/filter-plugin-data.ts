@@ -9,7 +9,7 @@ export async function filterNativePluginData(payload: JsonValue, map: (event: Se
   const mapping: (number | undefined)[] = []; let count = 0;
   selected.forEach((event, index) => { if (event) mapping[events[index]!.seq] = count++; });
   if (selected.every((event, index) => event !== null && digest(event) === digest(events[index]))) return payload;
-  const filtered = selected.flatMap((event, index) => event === null ? [] : [remap(event, mapping[events[index]!.seq]!, mapping)]);
+  const filtered = selected.flatMap((event, index) => event === null ? [] : [Object.assign(event, remap(event, mapping[events[index]!.seq]!, mapping))]);
   const inherited = Number(source.inheritedEventCount ?? 0);
   const ledger = source.conversionLedger === undefined ? {} : record(source.conversionLedger);
   return { ...source, events: filtered, inheritedEventCount: selected.slice(0, inherited).filter(Boolean).length,
