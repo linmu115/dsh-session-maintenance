@@ -70,7 +70,7 @@ export const adapter = defineDshSessionAdapter({
 
 export { REQUIRED_CAPABILITIES, REQUIRED_PACKAGES } from "./probe.js";
 
-export { expectedV3ArtifactPath as v3NativeArtifactPath } from "./layout.js";
+export { expectedV3ArtifactPath as v3NativeArtifactPath, projectKey as v3NativeProjectKey } from "./layout.js";
 export { validateV3 as validateV3Artifact } from "./official.js";
 export * from "./reader-storage.js";
 export * from "./request-index.js";

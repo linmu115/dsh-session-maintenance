@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import type { NativeSessionCodec, NativeSessionFileDescription, JsonValue } from '@linmu/dsh-session-contracts';
-import { v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
+import { v3NativeProjectKey, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
 
 /**
  * Writing the true source back into the instance's own session directory.
@@ -155,20 +155,11 @@ export function nativeSessionTarget(session: Pick<NativeOverwriteSession, 'nativ
  * be built before anything is written.
  */
 export function nativeProjectDirectory(cwd: unknown): string {
+  // One rule, one implementation: the adapter owns the platform layout, and this only adapts its
+  // "absent cwd" spelling. A second copy here once drifted from it, and a caller that also applied
+  // the project key produced a path one level too deep ("Misplaced native artifact" on read).
   if (typeof cwd !== 'string' || cwd.length === 0) return '_no-cwd';
-  let readable = '';
-  let separatorRun = false;
-  for (let index = 0; index < cwd.length; index += 1) {
-    const code = cwd.charCodeAt(index);
-    const character = String.fromCharCode(code);
-    if (character === '/' || character === '\\' || character === ':') {
-      if (!separatorRun) readable += '-';
-      separatorRun = true;
-    } else if (character !== '~' && /^[A-Za-z0-9._-]$/u.test(character)) {
-      readable += character; separatorRun = false;
-    } else { readable += `~${code.toString(16).toUpperCase().padStart(4, '0')}`; separatorRun = false; }
-  }
-  return `--${(readable.replace(/^-+/u, '') || 'root').slice(0, 251)}--`;
+  return v3NativeProjectKey(cwd);
 }
 
 /**

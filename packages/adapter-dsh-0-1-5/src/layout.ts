@@ -16,7 +16,7 @@ function encodeSegment(raw: string): string {
   return encoded;
 }
 
-function projectKey(cwd: string): string {
+export function projectKey(cwd: string): string {
   if (cwd.length === 0) fail("RECOVERY_HEADER_MISMATCH", "Rc1 SessionHeader.cwd cannot be empty");
   let readable = "";
   let separatorRun = false;

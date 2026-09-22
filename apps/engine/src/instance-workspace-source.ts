@@ -1,4 +1,4 @@
-import { basename, join } from 'node:path';
+import { join } from 'node:path';
 import type { CanonicalEventV1, NativeSessionArtifact, NativeSessionId } from '@linmu/dsh-session-contracts';
 // The adapter already walks exactly this layout and decodes every generation it
 // finds; the reusable half is its own space inspector, so the Engine reads the
@@ -91,7 +91,11 @@ export function canonicalEventsFor(input: {
  * workspace with one unreadable session still maps the rest.
  */
 export function createInstanceWorkspaceSource(input: {
+  /** The instance's native sessions root (`<DSH_HOME>/sessions`) — the root the adapter walks. */
   readonly sessionsRoot: string;
+  /** The project key this source covers, passed in: deriving it from the root would recreate the
+   * confusion this argument exists to remove (the key is applied by the layout rule, not by us). */
+  readonly projectDirectory: string;
   readonly instanceId: string;
   /** The canonical session identity rule, so imported rows belong to the right session. */
   readonly logicalSessionId: (nativeSessionId: string) => string;
@@ -99,7 +103,7 @@ export function createInstanceWorkspaceSource(input: {
 }): JoinedWorkspaceSource & { readonly projectDirectory: string } {
   const inspect = input.inspect ?? inspectV3NativeSpace;
   return {
-    projectDirectory: basename(input.sessionsRoot),
+    projectDirectory: input.projectDirectory,
     list: async () => (await inspect(input.sessionsRoot)).map(artifact => artifact.nativeSessionId),
     read: async (nativeSessionId: NativeSessionId): Promise<MappedNativeSession> => {
       const artifact = (await inspect(input.sessionsRoot)).find(item => item.nativeSessionId === nativeSessionId);
