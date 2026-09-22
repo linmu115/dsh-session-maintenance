@@ -51,7 +51,21 @@ export class InstanceWorkspaceRuntime {
   private async readRegisteredProfileId(instanceId: string): Promise<string | undefined> {
     if (this.readStandaloneInstances === undefined) return undefined;
     const configs = await this.readStandaloneInstances().catch(() => []);
-    return configs.find(config => config.instanceId === instanceId)?.profileId;
+    const profiles = [...new Set(configs.filter(config => config.instanceId === instanceId).map(config => config.profileId))];
+    if (profiles.length > 1) throw new IntegrationError('SYNC_PROFILE_AMBIGUOUS', '该实例有多个有效接入身份，无法选择同步目标。', 409);
+    return profiles[0];
+  }
+
+  /** Joining from an endpoint is an explicit request to keep this bucket in that endpoint's range. */
+  enrollWorkspace(instanceId: string, workspaceId: LogicalWorkspaceId): Promise<void> {
+    return this.writes.run('joined-workspace-policy', async () => {
+      const policy = this.policies.getPolicy(instanceId);
+      if (this.policies.workspaceSelected(policy, workspaceId)) return;
+      if (policy.selection.kind !== 'ids') return;
+      this.policies.updatePolicy(instanceId, { expectedRevision: policy.revision, selection: {
+        ...policy.selection, workspaceIds: [...policy.selection.workspaceIds, workspaceId],
+      } });
+    });
   }
 
   /** Called again within the canonical store transaction, including WAL recovery. */

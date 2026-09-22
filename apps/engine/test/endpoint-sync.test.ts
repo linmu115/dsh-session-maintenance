@@ -39,6 +39,19 @@ it('does not confuse epochs between endpoints', async () => {
   const f = fixture(); await f.coordinator.align('one'); await f.coordinator.align('two');
   await expect(f.coordinator.commit('two', command(f.coordinator.status('one').epoch))).rejects.toMatchObject({ code: 'SYNC_STALE_EPOCH' });
 });
+it('retries when a host appears after startup, coalesces polls and never aligns an active unchanged scope', async () => {
+  vi.useFakeTimers();
+  try {
+    let online=false;
+    const align=vi.fn(async()=>({written:0,unchanged:0,skippedOutOfScope:0,failures:online?[]:['offline']}));
+    const f=new EndpointSyncCoordinator({exclusive:work=>work(),revision:()=>1,align,commit:async()=>({logicalSessionId:'one',outcome:'updated'})});
+    await Promise.all([f.ensureAligned('one'),f.ensureAligned('one')]);
+    expect(align).toHaveBeenCalledTimes(1);expect(f.status('one').phase).toBe('blocked');
+    online=true;await f.ensureAligned('one');expect(align).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30_000);await f.ensureAligned('one');
+    expect(f.status('one').phase).toBe('active');await f.ensureAligned('one');expect(align).toHaveBeenCalledTimes(2);
+  } finally { vi.useRealTimers(); }
+});
 it.each(['archive', 'delete', 'refresh'] as const)('enforces selection at the %s write boundary', async kind => {
   const update = vi.fn(), remove = vi.fn(), refresh = vi.fn();
   await expect(commitEndpointSessionChange({ endpointId: 'endpoint', command: { ...command('epoch'), change: kind === 'archive' ? { kind, archived: true } : { kind } },

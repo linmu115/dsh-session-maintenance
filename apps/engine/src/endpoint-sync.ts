@@ -6,6 +6,7 @@ import { IntegrationError } from '@linmu/dsh-session-contracts';
 export class EndpointSyncCoordinator {
   private readonly states = new Map<string, EndpointSyncStatus>();
   private readonly boot = randomUUID();
+  private readonly attempts = new Map<string, { after: number; pending?: Promise<WorkspaceWriteBackSummary> }>();
   constructor(private readonly ports: {
     readonly exclusive: <T>(work: () => Promise<T>) => Promise<T>;
     readonly revision: (endpointId: string) => number;
@@ -15,6 +16,20 @@ export class EndpointSyncCoordinator {
 
   status(endpointId: string): EndpointSyncStatus {
     return this.states.get(endpointId) ?? { epoch: this.boot, phase: 'aligning', policyRevision: this.ports.revision(endpointId) };
+  }
+
+  /** A host may come online after Engine startup. Retry blocked alignment, with one bounded attempt per endpoint. */
+  async ensureAligned(endpointId: string): Promise<void> {
+    const current = this.status(endpointId);
+    if (current.phase === 'active' && current.policyRevision === this.ports.revision(endpointId)) return;
+    const previous = this.attempts.get(endpointId);
+    if (previous?.pending) { await previous.pending; return; }
+    if (previous && Date.now() < previous.after) return;
+    const attempt: { after: number; pending?: Promise<WorkspaceWriteBackSummary> } = { after: Infinity };
+    this.attempts.set(endpointId, attempt);
+    attempt.pending = this.align(endpointId);
+    try { await attempt.pending; }
+    finally { delete attempt.pending; attempt.after = Date.now() + 30_000; }
   }
 
   /** New epochs invalidate all previous observations before the adapter touches external state. */

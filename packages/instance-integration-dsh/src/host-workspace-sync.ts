@@ -65,7 +65,9 @@ export async function synchronizeThroughHost(options: InstanceWriteBackOptions, 
   for (const item of scoped.sessions) await options.bindIdentity?.(String(v3NativeSessionId(item.session.id)), item.session.id, true);
   const body: HostWorkspaceSyncRequest = { schemaVersion: 1, operationId: randomUUID(), instanceId: request.instanceId, profileId: request.profileId,
     homeRoot: request.instanceHome, pid: inspection.process.pid, processStartedAt: inspection.process.startedAt,
-    workspaceRoot: options.workspaceRoot, projection: scoped, selection: hostWorkspaceSyncSchema.shape.selection.parse(selection), workspaceNames: [...await options.workspaceNames()] };
+    workspaceRoot: options.workspaceRoot, projection: scoped,
+    selection: hostWorkspaceSyncSchema.shape.selection.parse({ revision: selection.revision, selection: selection.selection }),
+    workspaceNames: [...await options.workspaceNames()] };
   hostWorkspaceSyncSchema.parse(body);
   const response = await transport(new URL(HOST_WORKSPACE_SYNC_PATH, origin), { method: 'POST', headers: {
     authorization: `Bearer ${descriptor.token}`, 'content-type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(120_000), redirect: 'error' });

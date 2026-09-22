@@ -67,6 +67,7 @@ export class InstanceWorkspaceService {
     await this.requireInstance(endpointId);
     await this.ports.validateProfile?.(endpointId, profileId);
     if (!this.sync) throw new IntegrationError('SYNC_UNAVAILABLE', '当前 adapter 未提供同步协议。', 503);
+    await this.sync.ensureAligned(endpointId);
     return this.sync.status(endpointId);
   }
   async syncChange(endpointId: string, command: EndpointSyncCommand): Promise<EndpointSyncReceipt> {

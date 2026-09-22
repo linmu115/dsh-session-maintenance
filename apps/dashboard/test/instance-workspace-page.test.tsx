@@ -81,6 +81,15 @@ it("shows Launcher names, collapses legacy identities, and keeps historical scop
   await click('编辑');await click('仅同步以下选择');expect(container.textContent).toContain('工作区-legacy');
   expect(save).not.toHaveBeenCalled();
 });
+it('allows a direct checkbox choice without first entering edit mode and only writes on save',async()=>{
+  const save=vi.fn(async(id,input)=>({...configuration(id),activeScopes:[],pendingActivation:false,policy:{...configuration(id).policy,selection:input.selection}}));
+  await render({listInstanceWorkspaceInstances:directory,getInstanceWorkspaceSync:async id=>({...configuration(id),activeScopes:[]}),saveInstanceWorkspaceSync:save});
+  const box=container.querySelector<HTMLInputElement>('[aria-label="同步 工作区-one"]')!;
+  expect(box.disabled).toBe(false);
+  await act(async()=>box.click());expect(box.checked).toBe(false);expect(save).not.toHaveBeenCalled();
+  await submit();expect(save).toHaveBeenCalledTimes(1);expect(container.textContent).toContain('已保存同步范围');
+  expect(container.textContent).not.toContain('实例当前没有在线运行');
+});
 
 it("disambiguates duplicate Launcher names by stable identity", async () => {
   await render({listInstanceWorkspaceInstances:async()=>({instances:[{instanceId:'one',name:'测试'},{instanceId:'two',name:'测试'}]}),getInstanceWorkspaceSync:async id=>configuration(id)});

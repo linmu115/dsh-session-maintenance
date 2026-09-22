@@ -1,7 +1,7 @@
 import { AdapterCatalog } from '@linmu/dsh-session-adapter-host';
 import { join } from 'node:path';
 import { standaloneInstanceSchema, type StandaloneInstance } from '@linmu/dsh-session-contracts';
-import { IntegrationError, readJsonIfPresent, writeJsonAtomically } from './bindings.js';
+import { IntegrationError, readIntegrationBindings, readJsonIfPresent, writeJsonAtomically } from './bindings.js';
 import { inspectStandaloneInstance, type DiscoveredIntegration } from './launcher-discovery.js';
 
 export async function readStandaloneInstances(root: string): Promise<StandaloneInstance[]> {
@@ -9,6 +9,13 @@ export async function readStandaloneInstances(root: string): Promise<StandaloneI
   const keys = configs.map(item => JSON.stringify([item.instanceId, item.profileId]));
   if (new Set(keys).size !== keys.length) throw new IntegrationError('INSTANCE_ID_AMBIGUOUS', '独立实例标识重复，请修复配置。');
   return configs;
+}
+/** Runtime selection uses durable bindings, not the order of historical directory registrations. */
+export async function readBoundStandaloneInstances(root: string): Promise<StandaloneInstance[]> {
+  const [configs, bindings] = await Promise.all([readStandaloneInstances(root), readIntegrationBindings(root)]);
+  return configs.filter(config => bindings.some(binding => binding.kind === 'dsh'
+    && binding.instanceId === config.instanceId && binding.profileId === config.profileId
+    && binding.connectionKind === 'directory'));
 }
 export async function saveStandaloneInstance(root: string, config: StandaloneInstance): Promise<DiscoveredIntegration> {
   const input = standaloneInstanceSchema.parse(config), checked = await inspectConfiguredInstance(root, input);

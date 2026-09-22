@@ -34,12 +34,13 @@ it('validates the complete host receipt before recording identities, and rejects
         archivedAt: null, tombstonedAt: null, createdAt: at, updatedAt: at } })) } as unknown as CanonicalProjectionInput;
     const bindIdentity = vi.fn(async () => {});
     const options = { stateRoot: root, backupRoot: root, journalPath: join(root, 'journal'), workspaceRoot: root,
-      selectionFor: () => ({ revision: 1, selection: { kind: 'all' as const } }), memberships: async () => new Map(),
+      selectionFor: () => ({ schemaVersion: 1, instanceId: 'instance', updatedAt: at, revision: 1, selection: { kind: 'all' as const } }), memberships: async () => new Map(),
       workspaceNames: async () => new Map(), loadProjection: async () => projection, bindIdentity };
     const request = { instanceId: 'instance', profileId: 'profile', instanceHome: root, sessionsRoot: join(root, 'sessions') };
     const bindings = ['one', 'two'].map(id => ({ nativeSessionId: String(v3NativeSessionId(id as LogicalSessionId)), logicalSessionId: id }));
     const run = (alter: (receipt: any) => void, status = 200) => synchronizeThroughHost(options, request, (async (_url, init) => {
       const body = JSON.parse(String(init!.body));
+      expect(body.selection).toEqual({ revision: 1, selection: { kind: 'all' } });
       const receipt = { schemaVersion: 1, operationId: body.operationId, instanceId: body.instanceId, profileId: body.profileId,
         pid: body.pid, processStartedAt: body.processStartedAt, summary: { written: 2, unchanged: 0, skippedOutOfScope: 0, failures: [] },
         bindings: structuredClone(bindings) };

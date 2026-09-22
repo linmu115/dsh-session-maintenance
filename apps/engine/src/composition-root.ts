@@ -26,7 +26,7 @@ import { createWorkspaceSourceForHome, dshSessionBinding } from '@linmu/dsh-inst
 import { ensurePlatformSessionBinding } from './platform-session-binding.js';
 import { commitEndpointSessionChange } from './endpoint-session-commands.js';
 import { mapJoinedWorkspace, mappedLogicalSessionId } from './workspace-session-mapping.js';
-import { createWorkspaceFolderAdapter } from '@linmu/dsh-instance-integration-dsh/workspace-folders';
+import { createWorkspaceFolderAdapter, rememberJoinedWorkspace } from '@linmu/dsh-instance-integration-dsh/workspace-folders';
 
 import { CodexReadAdapter } from "@linmu/dsh-adapter-codex-read";
 import { CodexContinuationAdapter } from "@linmu/dsh-adapter-codex-continuation";
@@ -82,7 +82,7 @@ import { scopedRecoveryRuns } from './lifecycle-recovery.js';
 import { WorkspaceSyncPolicyService } from "./integrations/sync-policy.js";
 import { discoverLauncherIntegrations } from "./integrations/launcher-discovery.js";
 import { discoverStandaloneInstances } from './integrations/standalone.js';
-import { readStandaloneInstances } from './integrations/standalone.js';
+import { readBoundStandaloneInstances as readStandaloneInstances } from './integrations/standalone.js';
 import { readLauncherInstanceDirectory } from "./integrations/launcher-instance-directory.js";
 import { registerCodexSource, withDefaultCodexSource } from "./integrations/codex-sources.js";
 import type { IntegrationInstallOptions } from "./integrations/launcher-install.js";
@@ -518,7 +518,7 @@ async function createComposition(
       // that workspace's existing sessions into Maintenance's own storage. The
       // directory is derived from the instance's Home and the workspace path, so
       // the instance never sends a location the Engine just obeys.
-      mapWorkspace: async ({ target, request }) => {
+      mapWorkspace: async ({ target, request }) => writes.run('join-workspace', async () => {
         const source = createWorkspaceSourceForHome({ homeRoot: target.homeRoot, workspacePath: request.workspacePath, instanceId: request.instanceId,
           logicalSessionId: nativeSessionId => mappedLogicalSessionId(request.instanceId, nativeSessionId) });
         const mapped = await mapJoinedWorkspace({ engine: canonicalEngine, instanceId: request.instanceId,
@@ -537,9 +537,12 @@ async function createComposition(
               .get(id) as unknown as LogicalWorkspace | undefined,
             upsert: async (workspace: LogicalWorkspace) => new SqliteCanonicalRepository(repository.database).upsertLogicalWorkspace(workspace),
           } });
+        await rememberJoinedWorkspace({ stateRoot: options.stateRoot, endpointId: request.instanceId,
+          homeRoot: target.homeRoot, workspaceId: mapped.workspaceId, path: request.workspacePath });
+        await instanceWorkspaceRuntime.enrollWorkspace(request.instanceId, mapped.workspaceId);
         return { workspaceId: mapped.workspaceId as unknown as string, created: mapped.created,
           mapped: mapped.mapped.map(String), alreadyPresent: mapped.alreadyPresent, failures: mapped.failures };
-      },
+      }),
     }),
     workspaceSync: new WorkspaceSyncPolicyService({ stateRoot: options.stateRoot, writes, directory: () => new SessionMaintenanceQueries(repository.database).readCanonicalWorkspaceDirectory() }),
     instances,

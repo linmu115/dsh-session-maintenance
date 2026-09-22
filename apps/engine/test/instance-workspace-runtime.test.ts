@@ -35,6 +35,17 @@ async function fixture() {
   return {root,db,writes,objects,online,runtime,policies,service,source,engine,run};
 }
 
+it('enrolls an endpoint-origin workspace once while preserving its existing selection',async()=>{
+  const f=await fixture();
+  f.policies.updatePolicy('i-one',{expectedRevision:0,selection:{kind:'ids',workspaceIds:['a' as never],includeUnassigned:true}});
+  await f.runtime.enrollWorkspace('i-one','b' as never);
+  const saved=f.policies.getPolicy('i-one');
+  expect(saved.selection).toEqual({kind:'ids',workspaceIds:['a','b'],includeUnassigned:true});
+  await f.runtime.enrollWorkspace('i-one','b' as never);
+  expect(f.policies.getPolicy('i-one').revision).toBe(saved.revision);
+  expect(f.policies.getPolicy('another').selection).toEqual({kind:'ids',workspaceIds:[],includeUnassigned:false});
+});
+
 it('uses Launcher names for current instances and retains historical configuration without creating runs',async()=>{
   const f=await fixture();f.run('old','closed');
   f.policies.updatePolicy('i-one',{expectedRevision:0,selection:{kind:'ids',workspaceIds:[],includeUnassigned:false}});

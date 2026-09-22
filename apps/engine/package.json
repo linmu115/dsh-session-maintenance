@@ -1,6 +1,6 @@
 {
   "name": "@linmu/dsh-session-maintenance-engine",
-  "version": "0.1.43-rc2.74",
+  "version": "0.1.43-rc2.76",
   "private": true,
   "type": "module",
   "bin": {
