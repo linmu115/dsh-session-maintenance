@@ -38,6 +38,29 @@ describe("instance workspace API service", () => {
     ports.readSessionAvailability = async () => ({ ...availability, logicalSessionId: "another" as never });
     await expect(service.sessionAvailability("i-one", "logical", "web")).rejects.toMatchObject({ status: 502 });
   });
+  it("aligns every registered instance at start, and one instance's failure never stops another", async () => {
+    const { service, ports } = fixture();
+    const synced: string[] = [];
+    ports.registeredInstances = async () => ["i-one", "i-two", "i-one"];
+    ports.syncToInstance = async instanceId => {
+      synced.push(instanceId);
+      if (instanceId === "i-one") throw new Error("实例目录不可写");
+      return { written: 3, unchanged: 1, skippedOutOfScope: 5, failures: [] };
+    };
+    const aligned = await service.alignRegisteredInstances();
+    // The duplicate registration is aligned once; the failing instance is reported, not thrown.
+    expect(synced).toEqual(["i-one", "i-two"]);
+    expect(aligned.map(item => item.instanceId)).toEqual(["i-one", "i-two"]);
+    expect(aligned[0]!.summary.failures).toEqual(["实例目录不可写"]);
+    expect(aligned[1]!.summary).toMatchObject({ written: 3, skippedOutOfScope: 5 });
+  });
+  it("does nothing at start when this Engine has no registered instance to align", async () => {
+    const { service, ports } = fixture();
+    let called = 0;
+    ports.syncToInstance = async () => { called += 1; return { written: 0, unchanged: 0, skippedOutOfScope: 0, failures: [] }; };
+    expect(await service.alignRegisteredInstances()).toEqual([]);
+    expect(called).toBe(0);
+  });
   it("routes the four bounded resources and leaves unrelated paths/methods to the common server", async () => {
     const { service } = fixture();
     const call = async (path: string, method = "GET", body?: unknown) => {

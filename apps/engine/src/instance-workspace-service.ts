@@ -29,6 +29,16 @@ export interface InstanceWorkspacePorts {
    * registers them, so the mapping is complete on both sides.
    */
   readWorkspaceFolders(instanceId: string): Promise<readonly { readonly name: string; readonly path: string }[]>;
+  /**
+   * The instances this Engine is registered with, for the alignment that happens at start.
+   *
+   * A saved range is a standing instruction for as long as it lasts, and the moment the Engine
+   * starts is the moment the true source is authoritative: every registered instance's range is
+   * made true in that instance before the operator reads either side as current. Only registered
+   * (directory-connected) instances can be aligned — an instance with no directory has nowhere to
+   * write, and one that was never registered must not be touched at all.
+   */
+  registeredInstances?: () => Promise<readonly string[]>;
 }
 
 /** What one write-back pass did, in the words the operator sees. */
@@ -87,6 +97,31 @@ export class InstanceWorkspaceService {
   workspaceFolders(instanceId: string): Promise<{ readonly schemaVersion: 1; readonly instanceId: string;
     readonly folders: readonly { readonly name: string; readonly path: string }[] }> {
     return this.ports.readWorkspaceFolders(instanceId).then(folders => ({ schemaVersion: 1 as const, instanceId, folders }));
+  }
+  /**
+   * Engine start: make every registered instance's saved range true in that instance.
+   *
+   * The operator's rule is that the Engine's start is the moment the true source is authoritative,
+   * and a saved range is a standing instruction rather than a one-off action — so a range saved
+   * before this start has to reach the instance without anyone opening the board. Each instance is
+   * aligned with exactly the same scoped write-back a save uses, one at a time, and one instance's
+   * failure never stops another: the result is reported per instance, never thrown.
+   */
+  async alignRegisteredInstances(): Promise<readonly { readonly instanceId: string; readonly summary: InstanceWriteBackSummary }[]> {
+    if (this.ports.syncToInstance === undefined || this.ports.registeredInstances === undefined) return [];
+    const instances = [...new Set(await this.ports.registeredInstances())];
+    const aligned: { instanceId: string; summary: InstanceWriteBackSummary }[] = [];
+    for (const instanceId of instances) {
+      try {
+        const summary = await this.ports.syncToInstance(instanceId);
+        this.lastWriteBack = summary;
+        aligned.push({ instanceId, summary });
+      } catch (error) {
+        aligned.push({ instanceId, summary: { written: 0, unchanged: 0, skippedOutOfScope: 0,
+          failures: [error instanceof Error ? error.message : "引擎启动时无法把所选工作区写入实例。"] } });
+      }
+    }
+    return aligned;
   }
   async effectiveScope(instanceId: string, profileId: string): Promise<InstanceWorkspaceEffectiveScope> {
     instanceWorkspaceEffectiveScopeSchema.shape.profileId.parse(profileId);

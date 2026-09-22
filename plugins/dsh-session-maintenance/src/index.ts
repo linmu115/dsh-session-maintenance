@@ -9,6 +9,7 @@ import { MaintenanceNativeContext, registerMaintenanceNativeContext, nativeConte
 import { MaintenanceKnowledge, registerMaintenanceKnowledge } from './session-knowledge.js';
 import { registerWorkspaceArchiveBridge } from './workspace-archive-bridge.js';
 import { MappedWorkspaceRegistration, type MappedWorkspaceHost } from './mapped-workspaces.js';
+import { HostSessionSync, type HostSessionSyncHost } from './host-session-sync.js';
 import { registerAnnotationMirror, type AnnotationMirrorContext } from './annotation-mirror.js';
 import { installRc2LazyProjectionPersistence } from './rc2-lazy-persistence.js';
 import { RegisteredSessionWriteAccess } from './write-access.js';
@@ -155,6 +156,20 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
       report: message => { if (ctx.logger) ctx.logger.info(message); else console.info(message); },
     });
     ctx.effect(() => mapped.start(), "dsh-session-maintenance: mapped workspaces");
+    // And the other direction, for the times nobody is looking at the instance: an archive or a
+    // deletion the operator makes is the instance's authority for as long as the Engine runs, so it
+    // must reach the source even with every page closed. Scope is decided before each push (the
+    // Engine is asked whether the session is mapped), so an unbound workspace is never reported.
+    const sessionSync = new HostSessionSync({
+      host: ctx as unknown as HostSessionSyncHost,
+      engineReady: async () => (await proxy.invoke({ operation: "status" })).ok,
+      mapped: async sessionId => (await proxy.invoke({ operation: "session-mapped", sessionId })).mapped === true,
+      report: async (intent, archived) => (await proxy.invoke(intent.kind === "delete"
+        ? { operation: "delete-session", sessionId: intent.sessionId }
+        : { operation: "set-archived", sessionId: intent.sessionId, archived })).message,
+      onFeedback: message => { if (ctx.logger) ctx.logger.info(message); else console.info(message); },
+    });
+    ctx.effect(() => sessionSync.start(), "dsh-session-maintenance: instance session sync");
   }
   if (launchProfile !== null) {
     const transport = new HttpProjectionRuntimeTransport(fetch, async () => {

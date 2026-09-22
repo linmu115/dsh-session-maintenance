@@ -145,6 +145,10 @@ export class InstanceWorkspaceRuntime {
         }
         return folders;
       },
+      // Engine start aligns every registered instance: a range saved earlier is a standing
+      // instruction, and the instance it names is the only one it may ever be applied to.
+      registeredInstances: async () => [...new Set(((await this.readStandaloneInstances?.().catch(() => [])) ?? [])
+        .map(config => config.instanceId))],
       ...(this.writeBack === undefined ? {} : {
         // The saved range is applied to the instance the operator just edited. The profile id is
         // the one its registration carries (the Maintenance identity, e.g. `web-i27c4`) — the same

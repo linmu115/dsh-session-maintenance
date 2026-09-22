@@ -602,6 +602,17 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
         });
         ready = true;
         audit("startup.ready");
+        // The Engine's start is the moment the true source is authoritative, so every registered
+        // instance's saved range is made true in that instance now — without anyone opening the
+        // board. It runs after readiness so a large range cannot delay an instance's connection, and
+        // each instance's outcome is reported rather than thrown: an alignment failure must not stop
+        // the Engine, and a failure for one instance must not hold back another.
+        void (engine.instanceWorkspace?.alignRegisteredInstances() ?? Promise.resolve([])).then(aligned => {
+          for (const item of aligned) {
+            const { written, unchanged, skippedOutOfScope, failures } = item.summary;
+            audit("startup.alignment", `${item.instanceId} written=${written} unchanged=${unchanged} skipped=${skippedOutOfScope} failures=${failures.length}`);
+          }
+        }).catch(error => audit("startup.alignment-failed", lifecycleErrorCode(error)));
         output(stdout, { origin: server.origin, connectionFile: "connection.json" });
         await stopped;
         audit("shutdown.drain-started");
