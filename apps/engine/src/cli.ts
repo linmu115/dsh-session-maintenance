@@ -610,7 +610,9 @@ export async function runCli(argv: readonly string[], options: CliOptions = {}):
         void (engine.instanceWorkspace?.alignRegisteredInstances() ?? Promise.resolve([])).then(aligned => {
           for (const item of aligned) {
             const { written, unchanged, skippedOutOfScope, failures } = item.summary;
-            audit("startup.alignment", `${item.instanceId} written=${written} unchanged=${unchanged} skipped=${skippedOutOfScope} failures=${failures.length}`);
+            // The first failure is carried into the record: a count alone leaves the operator with
+            // nothing to act on, and this is the one moment the reason is known.
+            audit("startup.alignment", `${item.instanceId} written=${written} unchanged=${unchanged} skipped=${skippedOutOfScope} failures=${failures.length}${failures.length === 0 ? "" : ` first=${failures[0]}`}`);
           }
         }).catch(error => audit("startup.alignment-failed", lifecycleErrorCode(error)));
         output(stdout, { origin: server.origin, connectionFile: "connection.json" });
