@@ -2,7 +2,8 @@ import type { DatabaseSync } from "node:sqlite";
 import type { CanonicalEngineMutation } from "@linmu/dsh-canonical-session-engine";
 import type { InstanceWorkspacePolicy, LogicalSessionId, LogicalWorkspaceId, MaintenanceWriteScope, ProjectionRun, RegisteredInstance, RunId } from "@linmu/dsh-session-contracts";
 import { SqliteInstanceWorkspacePolicyRepository, InstanceWorkspacePolicyError } from "@linmu/dsh-session-store";
-import { InstanceWorkspaceService } from "./instance-workspace-service.js";
+import { InstanceWorkspaceService, type InstanceWriteBackSummary } from "./instance-workspace-service.js";
+import { IntegrationError } from "./integrations/bindings.js";
 
 interface RunRow { id: RunId; instance_id: string; profile_id: string; state: ProjectionRun["state"]; }
 const runIdentity = (row: RunRow) => ({ id: row.id, instanceId: row.instance_id, profileId: row.profile_id, state: row.state });
@@ -13,7 +14,11 @@ export class InstanceWorkspaceRuntime {
   readonly policies: SqliteInstanceWorkspacePolicyRepository;
   constructor(private readonly database: DatabaseSync, private readonly instances: readonly RegisteredInstance[],
     private readonly writes: MaintenanceWriteScope, private readonly isRunOnline: (runId: RunId) => boolean = () => false,
-    private readonly readLauncherInstances?: () => Promise<readonly { instanceId: string; name: string }[] | null>) {
+    private readonly readLauncherInstances?: () => Promise<readonly { instanceId: string; name: string }[] | null>,
+    /** Puts the saved range into the instance's own session directory; absent means "record only". */
+    private readonly writeBack?: (instanceId: string, profileId: string) => Promise<InstanceWriteBackSummary>,
+    /** Registered (directory-connected) instances, whose `profileId` is the Maintenance identity. */
+    private readonly readStandaloneInstances?: () => Promise<readonly { instanceId: string; profileId: string }[]>) {
     this.policies = new SqliteInstanceWorkspacePolicyRepository(database);
   }
 
@@ -28,6 +33,19 @@ export class InstanceWorkspaceRuntime {
   private effective(instanceId: string, profileId: string): { policy: InstanceWorkspacePolicy; run: RunRow | undefined } {
     const runs = this.runs(instanceId, profileId), run = runs.find(item => this.isRunOnline(item.id));
     return { policy: run ? this.policies.policyForRun(runIdentity(run)) : this.policies.getPolicy(instanceId), run };
+  }
+
+  /**
+   * The profile the instance itself was registered under.
+   *
+   * A directory-registered instance is recorded in `standalone-instances.json`, whose `profileId`
+   * is the Maintenance identity the instance's own plugin publishes in its lease. Reading it there
+   * (rather than guessing from a stored run) keeps write-back and takeover on the same identity.
+   */
+  private async readRegisteredProfileId(instanceId: string): Promise<string | undefined> {
+    if (this.readStandaloneInstances === undefined) return undefined;
+    const configs = await this.readStandaloneInstances().catch(() => []);
+    return configs.find(config => config.instanceId === instanceId)?.profileId;
   }
 
   /** Called again within the canonical store transaction, including WAL recovery. */
@@ -71,6 +89,18 @@ export class InstanceWorkspaceRuntime {
           pendingActivation: activeScopes.some(scope => scope.policyRevision !== policy.revision) };
       },
       writePolicy: (instanceId, input) => this.writes.run("instance-workspace-policy", async () => this.policies.updatePolicy(instanceId, input)),
+      ...(this.writeBack === undefined ? {} : {
+        // The saved range is applied to the instance the operator just edited. The profile id is
+        // the one its registration carries (the Maintenance identity, e.g. `web-i27c4`) — the same
+        // half every other instance match uses. No registration means there is nothing to write
+        // into, and the range stays a record, which is the pre-existing behaviour.
+        syncToInstance: async (instanceId: string) => {
+          const profileId = await this.readRegisteredProfileId(instanceId);
+          if (profileId === undefined)
+            throw new IntegrationError("INSTANCE_WRITE_BACK_NO_PROFILE", "此实例尚未登记可写入的配置，请先完成接入后再保存同步范围。", 409);
+          return this.writeBack!(instanceId, profileId);
+        },
+      }),
       readEffectiveScope: async (instanceId, profileId) => {
         const { policy } = this.effective(instanceId, profileId);
         return { schemaVersion: 1, instanceId, profileId, policyRevision: policy.revision, selection: policy.selection,

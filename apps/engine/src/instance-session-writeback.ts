@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { CanonicalProjectionInput, JsonValue, NativeSessionId, ProjectionWriter } from '@linmu/dsh-session-contracts';
-import { materializeV3, v3NativeSessionId } from '@linmu/dsh-session-adapter-0-1-5';
+import { materializeV3, v3NativeSessionId, v3NativeSessionCodec } from '@linmu/dsh-session-adapter-0-1-5';
 import {
   applyNativeOverwrite, planNativeOverwrite, readArchiveMarker,
   type NativeOverwritePlan, type NativeOverwriteReceipt, type NativeOverwriteSession, type NativeOverwriteState,
@@ -131,7 +131,7 @@ export async function writeBackProjectionToInstance(input: WriteBackInput): Prom
   const plan = planNativeOverwrite({ sessionsRoot: input.sessionsRoot, sessions, state });
   const receipt = await applyNativeOverwrite({ sessionsRoot: input.sessionsRoot, sessions, plan,
     journal: input.journal, backupRoot: input.backupRoot, stateRoot: input.stateRoot, instanceId: input.instanceId,
-    ...(input.codec === undefined ? {} : { codec: input.codec }) });
+    codec: input.codec ?? v3NativeSessionCodec });
   return { plan, receipt, skippedOutOfScope };
 }
 

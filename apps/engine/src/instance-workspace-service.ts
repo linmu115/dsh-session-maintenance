@@ -12,10 +12,31 @@ export interface InstanceWorkspacePorts {
   writePolicy(instanceId: string, update: InstanceWorkspacePolicyUpdate): Promise<unknown>;
   readEffectiveScope(instanceId: string, profileId: string): Promise<InstanceWorkspaceEffectiveScope>;
   readSessionAvailability(instanceId: string, logicalSessionId: string, profileId: string): Promise<InstanceSessionAvailability>;
+  /**
+   * Hand the newly saved range to the instance itself.
+   *
+   * Saving a range only records what the operator wants; this is the step that actually puts the
+   * selected workspaces' sessions into the instance's own session directory, so a refresh shows
+   * them. It runs inside the same write scope as the policy write, after the policy is durable, so
+   * a failure is reported instead of silently leaving the instance half-synchronised.
+   */
+  syncToInstance?: (instanceId: string) => Promise<InstanceWriteBackSummary>;
+}
+
+/** What one write-back pass did, in the words the operator sees. */
+export interface InstanceWriteBackSummary {
+  readonly written: number;
+  readonly unchanged: number;
+  readonly skippedOutOfScope: number;
+  readonly failures: readonly string[];
 }
 /** Transport boundary only. The provider owns policy writes and active run snapshots. */
 export class InstanceWorkspaceService {
+  /** The last write-back this service performed, for the caller to report. */
+  private lastWriteBack: InstanceWriteBackSummary | undefined;
   constructor(private readonly ports: InstanceWorkspacePorts) {}
+  /** What the most recent successful save actually wrote into the instance. */
+  writeBackSummary(): InstanceWriteBackSummary | undefined { return this.lastWriteBack; }
   async listInstances(): Promise<InstanceWorkspaceInstanceDirectory> {
     return instanceWorkspaceInstanceDirectorySchema.parse(await this.ports.listInstances());
   }
@@ -40,6 +61,17 @@ export class InstanceWorkspaceService {
       if (code === "INSTANCE_WORKSPACE_POLICY_CONFLICT") throw new IntegrationError(code, "同步范围已在别处修改，已请求重新读取；请核对后再次保存。", 409);
       if (code === "INSTANCE_WORKSPACE_UNKNOWN") throw new IntegrationError(code, "有工作区已移除或不存在，请刷新名单。", 409);
       throw error;
+    }
+    // The range is durable; now make it true in the instance. A write-back that cannot run is
+    // reported with its own code so the operator knows the range was saved but not yet applied.
+    if (this.ports.syncToInstance !== undefined) {
+      try { this.lastWriteBack = await this.ports.syncToInstance(instanceId); }
+      catch (error) {
+        const code = (error as { code?: string } | null)?.code ?? "INSTANCE_WRITE_BACK_FAILED";
+        const message = error instanceof Error ? error.message : "无法把所选工作区写入实例。";
+        this.lastWriteBack = { written: 0, unchanged: 0, skippedOutOfScope: 0, failures: [] };
+        throw new IntegrationError(code, `同步范围已保存，但写入实例失败：${message}`, 502);
+      }
     }
     return this.get(instanceId);
   }
