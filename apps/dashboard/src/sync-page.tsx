@@ -6,7 +6,7 @@ import { InstanceWorkspacePage, type InstanceWorkspaceApi } from "./instance-wor
 import { CodexMirrorSettings, type CodexMirrorApi } from './codex-mirror-settings.js';
 
 const syncSections = [
-  { id: "maintenance", title: "Maintenance 工作区同步" },
+  { id: "maintenance", title: "DSH 同步" },
   { id: "codex", title: "Codex 项目同步" },
 ] as const;
 type SyncSection = typeof syncSections[number]["id"];
@@ -128,7 +128,6 @@ export function SyncPage({ api }: { readonly api: WorkspaceSyncApi }) {
   const editingRef = useRef(false);
   const setEditing = (value: boolean) => { editingRef.current = value; setEditingState(value); };
   const [refreshing, setRefreshing] = useState(false);
-  const [advanced, setAdvanced] = useState(false);
   const lifetime = useRef<AbortController | undefined>(undefined);
   useEffect(() => {
     const controller = new AbortController(); lifetime.current = controller;
@@ -217,6 +216,5 @@ export function SyncPage({ api }: { readonly api: WorkspaceSyncApi }) {
         </div>}
       </div>
     </Surface>
-    <details className="mapping-advanced" onToggle={(event) => setAdvanced(event.currentTarget.open)}><summary>高级：历史工作区原生回写配置</summary>{advanced ? <NativeWorkspaceSyncPage api={api} /> : null}</details>
   </>;
 }

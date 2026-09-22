@@ -93,7 +93,7 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
       <p role="status">{configuration.synchronization.phase === 'active' ? '同步已完成' : configuration.synchronization.phase === 'aligning' ? '正在同步，已保存的范围不会丢失' : '同步尚未完成，将自动重试；已保存的范围不会丢失'}</p>
       {configuration.synchronization.failures.map((failure, index) => <p key={index} className="muted">{failure}</p>)}
     </section> : null}
-    {!configuration ? <>{!error ? <LoadingState label="正在读取实例范围…" /> : null}<Button onClick={() => setReload(value => value + 1)}>重新读取范围</Button></> : <>
+    {!configuration ? <>{!error ? <LoadingState label="正在读取实例范围…" /> : null}{error ? <Button onClick={() => setReload(value => value + 1)}>重试</Button> : null}</> : <>
       <details className="mapping-runtime-details"><summary>运行详情</summary><div className="mapping-policy-status instance-workspace-status">
         <section aria-label="当前运行范围"><h3>当前运行范围</h3>
           {configuration.activeScopes.length ? <>
@@ -109,7 +109,7 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
         </section>
       </div>
       </details>
-      <details className="maintenance-source-list">
+      <details className="maintenance-source-list" open>
         <summary><strong>Maintenance 真源名单</strong><span className="muted">已保存：{configuration.policy.selection.kind === "all" ? "全部工作区及未分组会话" : `${configuration.policy.selection.workspaceIds.length} 个工作区${configuration.policy.selection.includeUnassigned ? " · 包含未分组会话" : ""}`}{editing && changed ? " · 有未保存的更改" : configuration.pendingActivation ? " · 下次启动生效" : ""}</span></summary>
       <form ref={editorLayout} className="sync-editor-layout" onSubmit={event => { event.preventDefault(); void save(); }}>
         <div className="sync-editor-scroll"><fieldset className="instance-workspace-selection"><legend>此实例的同步范围</legend>
@@ -123,7 +123,7 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
               const checked = selection.kind === "all" ? !workspace.deleted : selection.workspaceIds.includes(workspace.id);
               return <div className="mapping-project" key={workspace.id} data-selected={checked}>
                 <label className="mapping-project-choice"><input aria-label={`同步 ${workspace.name}`} type="checkbox" checked={checked} disabled={busy || !editing || (workspace.deleted && !checked)} onChange={event => toggle(workspace.id, event.currentTarget.checked)} />
-                  <span><strong>{workspace.name}</strong><small>{workspace.deleted ? "已删除，请取消选择" : "包含此工作区未来新增会话"}</small></span><Badge>Maintenance 真源</Badge>
+                  <span><strong>{workspace.name}</strong><small>{workspace.deleted ? "已删除，请取消选择" : "包含此工作区未来新增会话"}</small></span>
                 </label>
                 <div className="mapping-project-detail"><details><summary>工作区详情</summary><p>Maintenance 工作区标识：<code>{workspace.id}</code></p></details></div>
               </div>;
@@ -131,7 +131,7 @@ function InstanceEditor({ api, instanceId }: { api: InstanceWorkspaceApi; instan
             {!configuration.workspaces.length ? <EmptyState title="暂无 Maintenance 工作区" description="可单独选择未分组会话；创建工作区后可在此选择。" /> : !visible.length ? <EmptyState title="没有匹配的工作区" description="调整搜索词可查看其他工作区，已有勾选仍然保留。" /> : null}
             {selection.kind === "ids" ? selection.workspaceIds.filter(id => !configuration.workspaces.some(workspace => workspace.id === id)).map(id => <label className="sync-workspace" key={id}><input type="checkbox" disabled={busy || !editing} checked onChange={() => toggle(id, false)} />{id}（已不可用，请取消选择）</label>) : null}
             <label className="sync-workspace"><input type="checkbox" disabled={busy || !editing} checked={selection.kind === "all" || selection.includeUnassigned} onChange={event => { const includeUnassigned = event.currentTarget.checked; setSelection(previous => ({ kind: "ids", workspaceIds: previous.kind === "all" ? configuration.workspaces.filter(workspace => !workspace.deleted).map(workspace => workspace.id) : previous.workspaceIds, includeUnassigned })); }} />包含未分组会话</label>
-            {selection.kind === "ids" && !selection.workspaceIds.length && !selection.includeUnassigned ? <p role="status">当前选择为空：下次启动不向此实例同步任何会话。</p> : null}
+            {selection.kind === "ids" && !selection.workspaceIds.length && !selection.includeUnassigned ? <p role="status">当前选择为空：保存后不向此实例同步任何会话。</p> : null}
           </div>
         </fieldset>
         <p className="muted">同一实例的所有配置与已绑定 Vault 共用此范围。所选工作区未来新增的会话也包含在内。取消选择保留历史与链接。</p>
@@ -158,8 +158,8 @@ export function InstanceWorkspacePage({ api }: { api: InstanceWorkspaceApi }) {
     return () => controller.abort();
   }, [api, reload]);
   return <Surface title="DSH 实例同步范围" action={<Button onClick={() => setReload(value => value + 1)}>刷新实例</Button>}>
-    <div className="settings-content instance-workspace-intro"><p>为每个 DSH 实例选择与真源双向同步的 Maintenance 工作区。保存后在实例下次启动时生效。</p>
-      {error ? <p role="alert">{error}</p> : !directory ? <LoadingState label="正在读取 DSH 实例…" /> : !directory.instances.length ? <EmptyState title="没有当前 Launcher 实例" description="在 Launcher 新建实例后刷新此列表。" /> : <label className="field">DSH 实例<select value={directory.instances.some(item => item.instanceId === instanceId) ? instanceId : ""} onChange={event => setInstanceId(event.currentTarget.value)}><option value="" disabled>请选择 Launcher 实例</option>{directory.instances.map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}{directory.instances.filter(item => item.name === instance.name).length > 1 ? ` · ${instance.instanceId}` : ""}</option>)}</select></label>}
+    <div className="settings-content instance-workspace-intro"><p>为每个 DSH 实例选择与真源双向同步的 Maintenance 工作区。保存后自动同步，进度在下方显示。</p>
+      {error ? <p role="alert">{error}</p> : !directory ? <LoadingState label="正在读取 DSH 实例…" /> : !directory.instances.length ? <EmptyState title="没有当前 Launcher 实例" description="在 Launcher 新建实例后刷新此列表。" /> : <label className="field">DSH 实例<select value={directory.instances.some(item => item.instanceId === instanceId) ? instanceId : ""} onChange={event => setInstanceId(event.currentTarget.value)}><option value="" disabled>请选择实例</option>{directory.instances.map(instance => <option key={instance.instanceId} value={instance.instanceId}>{instance.name}{directory.instances.filter(item => item.name === instance.name).length > 1 ? ` · ${instance.instanceId}` : ""}</option>)}</select></label>}
       {directory?.notice ? <p role="status">{directory.notice}</p> : null}
       {directory?.historicalInstances?.length ? <details className="historical-instance-list"><summary>历史及未关联实例（{directory.historicalInstances.length}）</summary><p>这些条目来自历史运行或手工登记，不在当前 Launcher 实例列表中。保留其同步配置和历史记录。</p>{directory.historicalInstances.map(instance => <div key={instance.instanceId}><Button aria-pressed={instanceId === instance.instanceId} onClick={() => setInstanceId(instance.instanceId)}>{instance.name}</Button>{instance.name !== instance.instanceId ? <small>{instance.instanceId}</small> : null}</div>)}</details> : null}
     </div>

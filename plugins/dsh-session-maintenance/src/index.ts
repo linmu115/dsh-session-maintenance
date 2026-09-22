@@ -57,7 +57,7 @@ export const Config: s = s.object({
   extensionPlugins: s.array(s.object({ namespace:s.string(),pluginVersion:s.string(),writerId:s.string() })),
 });
 
-export const inject = ["webServer", "appExit", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery", "storageDomain"] as const;
+export const inject = ["webServer", "appExit", "agents", "sessions", "sessionPersistence", "workspaceRegistry", "sessionProjectionCache", "sessionQuery", "storageDomain"] as const;
 
 interface HostContext extends CoreRuntimeContext {
   readonly appExit: (code: number) => void;

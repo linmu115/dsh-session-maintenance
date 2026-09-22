@@ -84,3 +84,28 @@ it('does not quarantine plugins when host drain failed before any mutation', asy
   await f.barrier.withAccess(['one'], async () => {}, async () => {}, async () => {}, pluginAccess);
   expect(pluginAccess).toHaveBeenCalledTimes(1); f.barrier.dispose();
 });
+
+it('releases only idle captured owners through flush, drain and the official disposer', async () => {
+  const f = fixture(8); f.barrier.dispose();
+  const make = async ({ id, status = 'idle', queued = false }: any) => {
+    const writer = await (f.runtime.sessionPersistence.open as any)(id, 'write');
+    const agent = { id, status, inbox: { hasPending: queued }, send: vi.fn() };
+    f.live.set(id, agent);
+    return { agent, dispose: async () => { f.trace.push('drain'); await writer.close(); f.live.delete(id); } };
+  };
+  const runtime = { ...f.runtime, agents: { create: make, resume: make } };
+  const barrier = new HostWriteBarrier(runtime, { timeoutMs: 8, pollMs: 1 });
+  const idle = await runtime.agents.resume({ id: 'idle' });
+  await barrier.withAccess(['idle'], async () => {
+    f.trace.push('write'); expect(f.live.has('idle')).toBe(false);
+    expect(() => idle.agent.send()).toThrow('DSH_BUSY');
+  }, async () => {});
+  expect(f.trace).toEqual(['flush', 'drain', 'close', 'write']);
+  const active = await runtime.agents.create({ id: 'active', status: 'running' });
+  const queued = await runtime.agents.create({ id: 'queued', queued: true });
+  const write = vi.fn();
+  await expect(barrier.withAccess(['active', 'queued'], write, async () => {})).rejects.toThrow('DSH_BUSY');
+  expect(write).not.toHaveBeenCalled(); expect(f.live.size).toBe(2);
+  active.agent.send(); expect(active.agent.send).toBeDefined();
+  await active.dispose(); await queued.dispose(); barrier.dispose();
+});

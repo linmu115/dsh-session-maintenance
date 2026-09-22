@@ -114,24 +114,24 @@ export function IntegrationPage({ api }: { readonly api: IntegrationApi }) {
   return <Surface title="接入管理" action={<Button disabled={busy} onClick={() => setRetry((value) => value + 1)}>重新发现</Button>}>
     <div className="settings-content">
       <p>发现本机 DSH 与 Codex，检查当前版本能提供哪些能力。</p>
-      <InstanceFolderBar key={retry} api={api} signal={lifetimeSignal} onRegistered={(next) => { setDirectory(next); setNotice("已登记为实例文件夹连接；没有写入启动门，实例照常启动。"); }} />
+      <details><summary>添加实例</summary><InstanceFolderBar key={retry} api={api} signal={lifetimeSignal} onRegistered={(next) => { setDirectory(next); setNotice("已登记为实例文件夹连接；没有写入启动门，实例照常启动。"); }} /></details>
       {error === undefined ? null : <p role="alert" className="inline-error">{error}</p>}
       {notice === undefined ? null : <p role="status">{notice}</p>}
       {directory === undefined ? error === undefined ? <LoadingState label="正在发现本机应用…" /> : null : <>
-        <p className="capability-notice">{directory.nativeSyncReason}</p>
-        {directory.launcherDetected ? <p className="muted">已发现本机启动入口。</p> : <p className="muted">尚未发现本机启动入口；接入检查会列出需要处理的项目。</p>}
+
+
         {directory.targets.length === 0 ? <EmptyState title="没有发现可接入的应用" description="安装或打开 DSH、Codex 后，使用“重新发现”再次检查。" /> : <div className="integration-list">{directory.targets.map((target) => <article className="integration-card" key={target.id}>
           <header><div><h3>{target.name}</h3><p>{target.kind === "dsh" ? "DSH" : "Codex"} · {target.version || "版本未知"}{target.profile === null ? "" : ` · ${target.profile}`}</p></div><Badge tone={target.status === "connected" ? "success" : target.status === "needs-attention" ? "warning" : "neutral"}>{targetLabels[target.status]}</Badge></header>
           {target.connectionKind === undefined ? null : <p className="muted">{sourceLabels[target.connectionKind]}</p>}
-          <ul className="capability-list">{target.capabilities.map((capability) => <li key={capability.id}><strong>{capability.label}</strong><Badge tone={capability.status === "supported" ? "success" : "neutral"}>{capabilityLabels[capability.status]}</Badge><p>{capability.detail}</p></li>)}</ul>
+          <details><summary>能力详情</summary><ul className="capability-list">{target.capabilities.map((capability) => <li key={capability.id}><strong>{capability.label}</strong><Badge tone={capability.status === "supported" ? "success" : "neutral"}>{capabilityLabels[capability.status]}</Badge><p>{capability.detail}</p></li>)}</ul></details>
           {target.issues.length === 0 ? null : <div><strong>需要处理</strong><ul>{target.issues.map((issue, index) => <li key={index}>{issue}</li>)}</ul></div>}
           <div className="dsm-action-row">
             {target.status === "available" ? <Button tone="primary" disabled={busy || api.integrationAction === undefined} onClick={() => void act(target.id, "connect")}>接入并检查</Button> : null}
-            <Button disabled={busy || api.integrationAction === undefined} onClick={() => void act(target.id, "check")}>重新检查</Button>
+
             {target.status === "needs-attention" ? <Button disabled={busy || api.integrationAction === undefined} onClick={() => void act(target.id, "repair")}>修复</Button> : null}
-            {target.status === "connected" || target.status === "needs-attention" ? <Button disabled={busy || api.integrationAction === undefined} onClick={() => void act(target.id, "disconnect")}>断开</Button> : null}
+
           </div>
-          <details><summary>接入标识</summary><p>{target.id}</p><p>适配器：{target.adapterId ?? "尚未匹配"}</p></details>
+          <details><summary>更多操作与标识</summary><div className="dsm-action-row"><Button disabled={busy || api.integrationAction === undefined} onClick={() => void act(target.id, "check")}>重新检查</Button>{target.status === "connected" || target.status === "needs-attention" ? <Button disabled={busy || api.integrationAction === undefined} onClick={() => void act(target.id, "disconnect")}>断开</Button> : null}</div><p>{target.id}</p><p>适配器：{target.adapterId ?? "尚未匹配"}</p></details>
         </article>)}</div>}
         {api.integrationAction === undefined ? <p role="alert">当前维护引擎未提供接入操作。</p> : null}
       </>}

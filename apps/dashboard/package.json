@@ -1,6 +1,6 @@
 {
   "name": "@linmu/dsh-session-maintenance-dashboard",
-  "version": "0.1.17",
+  "version": "0.1.18",
   "private": true,
   "type": "module",
   "scripts": {

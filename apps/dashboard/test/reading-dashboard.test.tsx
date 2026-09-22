@@ -78,7 +78,7 @@ describe("reading-first dashboard behavior", () => {
     const overview = vi.fn(() => Promise.reject(new Error("Harness offline")));
     const api = { listCanonicalWorkspaces, getCanonicalSession, overview, getWorkspaceSync: async () => sync } as unknown as DashboardApi;
     await render(<DashboardApp api={api} />);
-    expect([...container.querySelectorAll("nav button")].map((item) => item.textContent)).toEqual(["会话", "同步", "学习双向维护", "恢复点", "存储空间", "扩展", "设置"]);
+    expect([...container.querySelectorAll("nav button")].map((item) => item.textContent)).toEqual(["会话", "同步", "Codex–DSH 双向维护", "恢复点", "存储空间", "扩展", "设置"]);
     expect(container.querySelector('nav button[data-active="true"]')?.textContent).toBe("会话");
     if (!container.querySelector('[data-testid="canonical-session-one"]')) await click(container.querySelector('.workspace-folder-row')!);
     await click(container.querySelector('[data-testid="canonical-session-one"]')!);

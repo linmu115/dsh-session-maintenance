@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 
 export interface HostWriteHandle { close(): Promise<void> }
 export interface HostBarrierRuntime {
+  agents?: { create(...args: any[]): Promise<any>; resume(...args: any[]): Promise<any> };
   sessions: { get(id: string): unknown; prepare(...args: any[]): any; enter(...args: any[]): any; flush(session: any): Promise<boolean> };
   sessionPersistence: { open(...args: any[]): Promise<any>; create(...args: any[]): Promise<any> };
 }
@@ -15,6 +16,7 @@ export class HostWriteBarrier {
   private readonly recovery = new Map<string, { ids: ReadonlySet<string>; finish: () => Promise<void> }>();
   private readonly patches: { verify(): void; restore(): void }[] = [];
   private disposed = false;
+  private readonly agents = new Map<string, { agent: any; close(): Promise<void>; restore(): void }>();
   constructor(private readonly runtime: HostBarrierRuntime, private readonly options: { timeoutMs?: number; pollMs?: number } = {}) {
     const patch = (target: any, name: string, wrap: (old: (...args: any[]) => any) => (...args: any[]) => any) => {
       if (typeof target[name] !== 'function') throw new Error(`HOST_BARRIER_UNSUPPORTED: ${name}`);
@@ -29,6 +31,25 @@ export class HostWriteBarrier {
       patch(runtime.sessionPersistence, 'open', old => (id, access, ...args) => access === 'write'
         ? this.track(id, () => old(id, access, ...args)) : old(id, access, ...args));
       patch(runtime.sessionPersistence, 'create', old => (header, ...args) => this.track(header.id, () => old(header, ...args)));
+      if (runtime.agents) for (const method of ['create', 'resume']) patch(runtime.agents, method, old => async (...args) => {
+        const handle = await old(...args), agent = handle.agent;
+        if (!agent || typeof agent.id !== 'string' || typeof handle.dispose !== 'function') return handle;
+        let closed = false, closing: Promise<void> | undefined;
+        const disposeOwner = handle.dispose.bind(handle);
+        const originalSend = agent.send, descriptor = Object.getOwnPropertyDescriptor(agent, 'send');
+        if (typeof originalSend !== 'function') return handle;
+        Object.defineProperty(agent, 'send', { configurable: true, writable: true, value: (...values: any[]) => {
+          if (closed || closing) throw new Error('DSH_BUSY: session owner is closing');
+          this.admit(agent.id); return originalSend.apply(agent, values);
+        } });
+        const entry = { agent, restore: () => { if (descriptor) Object.defineProperty(agent, 'send', descriptor); else delete agent.send; },
+          close: () => closing ??= Promise.resolve().then(() => disposeOwner()).then(() => {
+            closed = true; if (this.agents.get(agent.id) === entry) this.agents.delete(agent.id);
+          }) };
+        this.agents.set(agent.id, entry);
+        handle.dispose = entry.close;
+        return handle;
+      });
     } catch (error) { this.patches.reverse().forEach(patch => patch.restore()); throw error; }
   }
   private admit(id: string): void {
@@ -61,6 +82,13 @@ export class HostWriteBarrier {
       const deadline = Date.now() + (this.options.timeoutMs ?? 30_000);
       for (const id of ids) { const live = this.runtime.sessions.get(id); if (live && !await this.runtime.sessions.flush(live)) throw new Error('HOST_FLUSH_UNAVAILABLE'); }
       while ([...ids].some(id => this.runtime.sessions.get(id) !== undefined || (this.writers.get(id) ?? 0) > 0)) {
+        // Only the captured owner's disposer may detach a session. Busy turns and queued input
+        // retain their owner; a flush alone never pretends the persistence handle was closed.
+        for (const id of ids) {
+          const owner = this.agents.get(id);
+          if (owner && owner.agent.status === 'idle' && owner.agent.inbox?.hasPending === false) await owner.close();
+        }
+        if ([...ids].every(id => this.runtime.sessions.get(id) === undefined && (this.writers.get(id) ?? 0) === 0)) break;
         if (Date.now() >= deadline) throw new Error('DSH_BUSY: existing sessions have not drained');
         await new Promise(resolve => setTimeout(resolve, this.options.pollMs ?? 25));
       }
@@ -97,6 +125,8 @@ export class HostWriteBarrier {
   dispose(): void {
     if (this.reserved.size || this.quarantine.size) throw new Error('HOST_BARRIER_BUSY: drain or recover before unloading');
     this.patches.forEach(patch => patch.verify());
+    for (const owner of this.agents.values()) owner.restore();
+    this.agents.clear();
     this.patches.reverse().forEach(patch => patch.restore()); this.disposed = true;
   }
 }

@@ -18,7 +18,7 @@ it("saves explicit empty selection without rewriting current active scope", asyn
   const save = vi.fn(async (id, input) => ({ ...configuration(id, 2), policy: { ...configuration(id, 2).policy, selection: input.selection } }));
   await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async id => configuration(id), saveInstanceWorkspaceSync: save });
   await click("编辑"); await click("仅同步以下选择");
-  expect(container.textContent).toContain("下次启动不向此实例同步任何会话");
+  expect(container.textContent).toContain("保存后不向此实例同步任何会话");
   await submit();
   expect(save).toHaveBeenCalledWith("one", { expectedRevision: 1, selection: { kind: "ids", workspaceIds: [], includeUnassigned: false } }, expect.any(AbortSignal));
   expect(container.textContent).toContain("生效修订 1");
@@ -101,11 +101,11 @@ it("disambiguates duplicate Launcher names by stable identity", async () => {
   expect(labels).toContain('测试 · one');expect(labels).toContain('测试 · two');
 });
 
-it("starts collapsed, keeps a draft when collapsed, and changes all to an explicit Maintenance list", async () => {
+it("shows the selection directly, keeps a draft when collapsed, and changes all to an explicit Maintenance list", async () => {
   const save = vi.fn(async (id, input) => ({ ...configuration(id, 2), policy: { ...configuration(id, 2).policy, selection: input.selection } }));
   await render({ listInstanceWorkspaceInstances: directory, getInstanceWorkspaceSync: async id => configuration(id), saveInstanceWorkspaceSync: save });
   const list = container.querySelector<HTMLDetailsElement>(".maintenance-source-list")!;
-  expect(list.open).toBe(false);
+  expect(list.open).toBe(true);
   await act(async () => { list.open = true; list.dispatchEvent(new Event("toggle")); });
   await click("编辑");
   const workspace = container.querySelector<HTMLInputElement>('[aria-label="同步 工作区-one"]')!;
