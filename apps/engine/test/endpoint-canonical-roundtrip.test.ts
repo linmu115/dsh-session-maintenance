@@ -36,7 +36,7 @@ it('imports native content, appends, renames, archives and moves through canonic
     }
     await persist(cwd);
     let projection = { run: { id: 'fixture' }, workspaces, sessions: [] } as unknown as CanonicalProjectionInput;
-    const read = () => readEndpointSnapshot({ homeRoot: home, stateRoot: root, workspaceRoot: root, endpointId: 'endpoint', nativeSessionId: sessionId,
+    const read = (originalOnly = false) => readEndpointSnapshot({ originalOnly, homeRoot: home, stateRoot: root, workspaceRoot: root, endpointId: 'endpoint', nativeSessionId: sessionId,
       logicalSessionId, projection, folders: [{ workspaceId: a, path: cwd }, { workspaceId: b, path: other }] });
     const first = await read(); const created = await reconcileEndpointSession(store, first); expect(created.outcome).toBe('created');
     const current = (await store.getSession(logicalSessionId))!;
@@ -44,12 +44,16 @@ it('imports native content, appends, renames, archives and moves through canonic
     projection = { ...projection, sessions: [{ session: current.session, events: head.events, workspaceId: a, projectRoot: cwd, projectId: null, projectName: null }] };
     events.push({ seq: 1, time: Date.parse(at), type: 'session/title', data: { title: 'renamed', messageSeqs: [], source: { kind: 'user' } } });
     await persist(other); await state(true);
-    const next = await read(); expect(next.events.slice(0, head.events.length)).toEqual(head.events);
+    const next = await read(true); expect(next.events.slice(0, head.events.length)).toEqual(head.events);
     const changed = await reconcileEndpointSession(store, next); expect(changed.outcome).toBe('advanced');
     const after = (await store.getSession(logicalSessionId))!;
     expect(after.workspaceId).toBe(b); expect(after.session.title).toBe('renamed'); expect(after.session.archivedAt).not.toBeNull();
     expect((await store.getVersion(after.headVersionId!))!.events).toHaveLength(2);
     expect((await store.getVersion(head.id))!.events).toHaveLength(1);
+    const savedProjection = projection;
+    projection = { ...projection, sessions: [{ ...projection.sessions[0]!, events: head.events.map(event => ({ ...event, source: { ...event.source, instanceId: 'other-endpoint' } })) }] };
+    await expect(read(true)).rejects.toMatchObject({ code: 'SYNC_DISCOVERY_EXISTING_UNVERIFIED' });
+    projection = savedProjection;
     await expect(reconcileEndpointSession(store, next)).rejects.toMatchObject({ code: 'SYNC_STALE_HEAD' });
     const matching = { ...next, baseVersionId: after.headVersionId };
     expect((await reconcileEndpointSession(store, matching)).outcome).toBe('noop');

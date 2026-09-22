@@ -105,6 +105,20 @@ it('discovery never updates an existing binding, even when selected', async () =
   expect(refresh).not.toHaveBeenCalled();
 });
 
+it('lets an adapter refresh a proven original session while keeping projected discovery insert-only', async () => {
+  const update = vi.fn(), remove = vi.fn(), refresh = vi.fn();
+  let proven = false;
+  const refreshDiscovered = vi.fn(async () => proven);
+  const input = { endpointId: 'one', command: { ...command('e'), change: { kind: 'discover' as const } },
+    resolve: async () => 'existing', selected: () => true, update, remove, refresh, refreshDiscovered };
+  expect((await commitEndpointSessionChange(input)).outcome).toBe('already-present');
+  proven = true;
+  expect((await commitEndpointSessionChange(input)).outcome).toBe('updated');
+  expect(refresh).not.toHaveBeenCalled(); expect(update).not.toHaveBeenCalled(); expect(remove).not.toHaveBeenCalled();
+  refreshDiscovered.mockRejectedValueOnce(new Error('native prefix changed'));
+  await expect(commitEndpointSessionChange(input)).rejects.toThrow('native prefix changed');
+});
+
 it('publishes the queued epoch synchronously so the poll response remains valid when discovery arrives', async () => {
   let release!: () => void;
   const gate = new Promise<void>(resolve => { release = resolve; });

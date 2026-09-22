@@ -57,6 +57,8 @@ export class HostWriteBarrier {
     const owner = this.owner.getStore();
     if ((this.reserved.has(id) || this.quarantine.has(id)) && !(owner?.active && owner.ids.has(id))) throw new Error('DSH_BUSY: session is being synchronized');
   }
+  /** A retry must finish the entire prior refresh/release scope before reclassifying unchanged rows. */
+  pendingRecoverySessionIds(): readonly string[] { return [...this.quarantine]; }
   private async track(id: string, open: () => Promise<any>) {
     this.admit(id);
     this.writers.set(id, (this.writers.get(id) ?? 0) + 1);

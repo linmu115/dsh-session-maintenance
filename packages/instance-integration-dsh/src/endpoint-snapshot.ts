@@ -5,6 +5,7 @@ import type { CanonicalEndpointSnapshot, CanonicalProjectionInput, LogicalSessio
 import { IntegrationError } from '@linmu/dsh-session-contracts';
 import { adapter, inspectNativeSpace as inspectV3NativeSpace } from '@linmu/dsh-session-extension-gpt-compat';
 import { canonicalEventsFor } from './instance-workspace-source.js';
+import { projectedLogicalSessionId } from './instance-workspace-source.js';
 import { resolveInstanceWorkspaceFolders } from './instance-write-back.js';
 import { readEndpointProjection, projectionSourceDigest } from './projection-receipt.js';
 import { remapProjectedAppend } from '@linmu/dsh-session-extension-gpt-compat';
@@ -18,6 +19,7 @@ export async function readEndpointSnapshot(input: {
   readonly workspaceNames?: ReadonlyMap<string, string>;
   readonly folders?: readonly { readonly workspaceId: string; readonly path: string }[];
   readonly inspect?: (root: string) => Promise<readonly NativeSessionArtifact[]>;
+  readonly originalOnly?: boolean;
 }): Promise<CanonicalEndpointSnapshot> {
   const artifacts = await (input.inspect ?? inspectV3NativeSpace)(join(input.homeRoot, 'sessions'), { nativeSessionId: input.nativeSessionId });
   const actual = artifacts.find(item => String(item.nativeSessionId) === input.nativeSessionId);
@@ -35,13 +37,22 @@ export async function readEndpointSnapshot(input: {
   const folder = folders.find(item => resolve(item.path).toLowerCase() === resolve(cwd).toLowerCase());
   if (!folder) throw new IntegrationError('SESSION_NOT_SYNCED', '会话已移出当前同步工作区。');
   const existing = input.projection.sessions.find(item => item.session.id === input.logicalSessionId);
+  const original = projectedLogicalSessionId(input.nativeSessionId) === undefined && existing?.session.originKind === 'maintenance-native'
+    && existing.events.every(event => event.extensions.nativeFormatVersion === 3 && event.source.platform === 'dsh'
+      && event.source.instanceId === input.endpointId && String(event.source.sessionId) === input.nativeSessionId);
+  if (input.originalOnly && (!original || existing?.session.tombstonedAt !== null))
+    throw new IntegrationError('SYNC_DISCOVERY_EXISTING_UNVERIFIED', '已有会话需要完成投影对齐后再同步。', 409);
   const receipt = await readEndpointProjection(input.stateRoot, input.endpointId, input.nativeSessionId);
   let nativePrefix = 0;
   let sourceNativeCount = 0;
   let nativeToSource: number[] = [];
   if (existing) {
     let expected: readonly unknown[] | undefined;
-    if (receipt) {
+    if (original && !receipt) {
+      // An imported endpoint log already carries the original native sequence. Re-materializing
+      // it would invent projection-only rows and incorrectly gate its own subsequent input.
+      expected = existing.events.map(event => event.rawPayload);
+    } else if (receipt) {
       if (projectionSourceDigest(existing.events.slice(0, receipt.sourceCount)) !== receipt.sourceDigest) throw new Error('SYNC_PROJECTION_SOURCE_CHANGED');
       const later = existing.events.slice(receipt.sourceCount);
       if (later.some(event => event.source.instanceId !== input.endpointId || String(event.source.sessionId) !== input.nativeSessionId)) throw new Error('SYNC_PROJECTION_REBASE_REQUIRED');

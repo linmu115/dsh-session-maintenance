@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { canonicalDashboardSessionDetailSchema } from "./schemas.js";
-const kind = z.enum(["runtime-context", "skill-catalog", "plugin-context", "tool-call", "tool-result", "reasoning", "record", "assistant"]);
+export const readerProcessKindSchema = z.enum(["runtime-context", "skill-catalog", "plugin-context", "tool-call", "tool-result", "reasoning", "record", "assistant", "opaque-data"]);
+const kind = readerProcessKindSchema;
 const snapshot = z.string().regex(/^[a-f0-9]{64}$/);
 const next = z.string().nullable();
 export const readerMessageSchema = z.strictObject({ eventId: z.string(), role: z.enum(["user", "assistant"]), text: z.string(), totalChars: z.number().int().nonnegative(), nextOffset: z.number().int().nonnegative().nullable() });

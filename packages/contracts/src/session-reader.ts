@@ -1,7 +1,9 @@
 import type { CanonicalDashboardSessionDetail } from "./http.js";
+import type { z } from "zod";
+import type { readerProcessKindSchema } from "./session-reader-schemas.js";
 
 /** Read-only UI semantics. These never alter canonical roles or model exposure. */
-export type ReaderProcessKind = "runtime-context" | "skill-catalog" | "plugin-context" | "tool-call" | "tool-result" | "reasoning" | "record" | "assistant" | "opaque-data";
+export type ReaderProcessKind = z.infer<typeof readerProcessKindSchema>;
 export interface ReaderMessage {
   readonly eventId: string;
   readonly role: "user" | "assistant";

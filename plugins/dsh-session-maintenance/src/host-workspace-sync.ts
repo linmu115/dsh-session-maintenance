@@ -55,6 +55,13 @@ export function createHostWorkspaceSync(input: { runtime: HostBarrierRuntime & R
       throw new Error('SYNC_HOST_SCOPE_MISMATCH');
     const allIds = body.projection.sessions.map(item => String(v3NativeSessionId(item.session.id)));
     if (new Set(allIds).size !== allIds.length) throw new Error('SYNC_HOST_DUPLICATE_SESSION');
+    const recoveryIds = barrier.pendingRecoverySessionIds();
+    if (recoveryIds.length) {
+      stage('recovery');
+      await barrier.withAccess(recoveryIds, async () => {}, async () => {}, undefined,
+        action => pluginData.withAccess(recoveryIds.map(sessionId => ({ endpointId: identity.instanceId, sessionId,
+          context: { profileId: identity.profileId } })), action));
+    }
     stage('inspect');
     const unchanged = new Set<string>();
     const evidence = await inspectUnchangedInstanceSessions({ stateRoot: input.stateRoot, workspaceRoot: body.workspaceRoot,

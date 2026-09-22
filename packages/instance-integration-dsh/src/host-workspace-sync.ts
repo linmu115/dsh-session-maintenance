@@ -84,12 +84,13 @@ export async function synchronizeThroughHost(options: InstanceWriteBackOptions &
   const response = await transport(new URL(HOST_WORKSPACE_SYNC_PATH, origin), { method: 'POST', headers: {
     authorization: `Bearer ${descriptor.token}`, 'content-type': 'application/json', ...(compressed ? { 'content-encoding': 'gzip' } : {}) }, body: payload, signal: AbortSignal.timeout(120_000), redirect: 'error' });
   if (!response.ok) {
-    const detail = await response.json().catch(() => ({})) as { reason?: unknown };
+    const detail = await response.json().catch(() => ({})) as { reason?: unknown; stage?: unknown };
+    const stage = typeof detail.stage === 'string' && ['identity', 'recovery', 'inspect', 'refresh', 'drain', 'materialize', 'lock', 'write', 'plugin-restore'].includes(detail.stage) ? `，阶段 ${detail.stage}` : '';
     const reason = typeof detail.reason === 'string' && /^(?:SYNC_HOST_[A-Z_]+|HOST_[A-Z_]+|DSH_BUSY|LYNN_BUSY)$/.test(detail.reason) ? detail.reason : 'HOST_SYNC_INCOMPLETE';
     const hint = response.status === 413 ? '本次对齐数据超过宿主接收上限，需要更新宿主 adapter 或缩小单次传输。'
       : reason === 'DSH_BUSY' ? '目标会话仍被宿主占用，已保留原文件，稍后自动重试。'
       : reason === 'SYNC_HOST_CHANGED_DURING_DRAIN' ? '落盘期间会话发生变化，已停止回写，稍后重试。' : '宿主对齐未完成，将自动重试。';
-    throw new IntegrationError('SYNC_HOST_REJECTED', `${hint}（HTTP ${response.status}，${reason}）`);
+    throw new IntegrationError('SYNC_HOST_REJECTED', `${hint}（HTTP ${response.status}，${reason}${stage}）`);
   }
   const parsed = hostWorkspaceSyncReceiptSchema.safeParse(await response.json());
   if (!parsed.success) throw new IntegrationError('SYNC_HOST_RECEIPT_INVALID', '宿主回执格式不完整，未确认同步完成。');

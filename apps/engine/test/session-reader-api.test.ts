@@ -26,6 +26,21 @@ async function fixture(events: CanonicalEventV1[]) {
 }
 
 describe("bounded canonical reader", () => {
+  it("reads sessions containing unknown structured data through the client contract without exposing packet bodies", async () => {
+    const f = await fixture([
+      event(0, "user-message", message("user", "question"), "user/message"),
+      event(1, "opaque-unknown", { unknown: "PRIVATE_UNKNOWN_PACKET" }, "future-plugin/data"),
+      { ...event(2, "other", { schemaVersion: 1, type: "other", reason: "unsupported-source-event", sourceKind: "future-host/data", label: "data", summary: "retained", evidenceRef: null }, "future-host/data"), role: "unknown", rawPayload: null },
+      event(3, "assistant-message", { message: message("assistant", "answer") }, "assistant/message"),
+    ]);
+    const page = await f.client.getSessionReader("reader-session");
+    expect(page.turns[0]?.messages.map(item => item.text)).toEqual(["question", "answer"]);
+    expect(page.turns[0]?.processKinds).toEqual([{ kind: "opaque-data", label: "未识别数据包", count: 2 }]);
+    const process = await f.client.getSessionReaderProcess("reader-session", { snapshot: page.snapshot, turnId: page.turns[0]!.id });
+    expect(process.items).toMatchObject([{ kind: "opaque-data", eventIds: ["event-1", "event-2"] }]);
+    expect(JSON.stringify({ page, process })).not.toContain("PRIVATE_");
+    expect((await f.client.getSessionReaderEvent("reader-session", "event-1", { snapshot: page.snapshot, format: "raw" })).text).toContain("PRIVATE_UNKNOWN_PACKET");
+  });
   it("keeps literal user input and final answers, folding attributed context and pairing tools without loading their bodies", async () => {
     const literal = "Current runtime context. <available_skills> pasted by the user";
     const large = "TOOL_PRIVATE_BODY ".repeat(80_000);

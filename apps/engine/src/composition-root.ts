@@ -339,7 +339,31 @@ async function createComposition(
     () => readStandaloneInstances(options.stateRoot), options.workspaceRoot,
     createWorkspaceFolderAdapter({ stateRoot: options.stateRoot, workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(),
       homeFor: async endpointId => (await readStandaloneInstances(options.stateRoot)).find(item => item.instanceId === endpointId)?.homeRoot }),
-    (endpointId, command) => commitEndpointSessionChange({ endpointId, command,
+    (endpointId, command) => {
+      const refresh = async (id: string, sessionId: string, existingId: string | undefined, originalOnly = false) => {
+        const registered = (await readStandaloneInstances(options.stateRoot)).find(item => item.instanceId === id && item.profileId === command.profileId);
+        if (!registered) throw new IntegrationError('SYNC_PROFILE_MISMATCH', '同步接入身份不存在。');
+        const logicalSessionId = (existingId ?? mappedLogicalSessionId(id, sessionId)) as import('@linmu/dsh-session-contracts').LogicalSessionId;
+        // Discovery is insert-only, including an unbound canonical identity or tombstone.
+        if (command.change.kind === 'discover' && !originalOnly && repository.database.prepare('SELECT id FROM logical_sessions WHERE id=?').get(logicalSessionId))
+          throw new IntegrationError('SYNC_DISCOVERY_EXISTS', '此会话已有真源记录，需按已有会话协议同步。', 409);
+        const projection = await canonicalProjectionSource.loadSessions(writeBackRunIdentity(id, registered.profileId), [logicalSessionId]);
+        const snapshot = await readEndpointSnapshot({ endpointId: id, nativeSessionId: sessionId, logicalSessionId,
+          originalOnly, stateRoot: options.stateRoot, homeRoot: registered.homeRoot, workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(), projection,
+          workspaceNames: new Map((repository.database.prepare('SELECT id,name FROM logical_workspaces WHERE deleted_at IS NULL').all() as { id: string; name: string }[])
+            .map(row => [row.id, row.name])) });
+        const policies = new SqliteInstanceWorkspacePolicyRepository(repository.database);
+        if (!policies.workspaceSelected(policies.getPolicy(id), snapshot.workspaceId))
+          throw new IntegrationError('SESSION_NOT_SYNCED', '目标工作区不在当前同步范围。');
+        await ensurePlatformSessionBinding({ repository, ...dshSessionBinding(id, sessionId), logicalSessionId, checkOnly: true });
+        const pluginData = await readHostPluginData({ stateRoot: options.stateRoot, instanceId: id, profileId: registered.profileId,
+          homeRoot: registered.homeRoot, sessionId });
+        await reconcileEndpointSession(canonicalEngine.store, snapshot);
+        canonicalProjectionSource.pluginData.retain(logicalSessionId, pluginData);
+        await ensurePlatformSessionBinding({ repository, ...dshSessionBinding(id, sessionId), logicalSessionId });
+        return logicalSessionId;
+      };
+      return commitEndpointSessionChange({ endpointId, command,
       resolve: async (id, sessionId) => {
         const projected = projectedLogicalSessionId(sessionId);
         if (projected !== undefined) {
@@ -358,30 +382,14 @@ async function createComposition(
       },
       update: (id, patch) => composedEngine!.sessionCommands.updateSession(id, patch),
       remove: id => composedEngine!.sessionCommands.deleteSession(id),
-      refresh: async (id, sessionId, existingId) => {
-        const registered = (await readStandaloneInstances(options.stateRoot)).find(item => item.instanceId === id && item.profileId === command.profileId);
-        if (!registered) throw new IntegrationError('SYNC_PROFILE_MISMATCH', '同步接入身份不存在。');
-        const logicalSessionId = (existingId ?? mappedLogicalSessionId(id, sessionId)) as import('@linmu/dsh-session-contracts').LogicalSessionId;
-        // Discovery is insert-only, including an unbound canonical identity or tombstone.
-        if (command.change.kind === 'discover' && repository.database.prepare('SELECT id FROM logical_sessions WHERE id=?').get(logicalSessionId))
-          throw new IntegrationError('SYNC_DISCOVERY_EXISTS', '此会话已有真源记录，需按已有会话协议同步。', 409);
-        const projection = await canonicalProjectionSource.load(writeBackRunIdentity(id, registered.profileId));
-        const snapshot = await readEndpointSnapshot({ endpointId: id, nativeSessionId: sessionId, logicalSessionId,
-          stateRoot: options.stateRoot, homeRoot: registered.homeRoot, workspaceRoot: options.workspaceRoot ?? workspaceRootDefault(), projection,
-          workspaceNames: new Map((repository.database.prepare('SELECT id,name FROM logical_workspaces WHERE deleted_at IS NULL').all() as { id: string; name: string }[])
-            .map(row => [row.id, row.name])) });
-        const policies = new SqliteInstanceWorkspacePolicyRepository(repository.database);
-        if (!policies.workspaceSelected(policies.getPolicy(id), snapshot.workspaceId))
-          throw new IntegrationError('SESSION_NOT_SYNCED', '目标工作区不在当前同步范围。');
-        await ensurePlatformSessionBinding({ repository, ...dshSessionBinding(id, sessionId), logicalSessionId, checkOnly: true });
-        const pluginData = await readHostPluginData({ stateRoot: options.stateRoot, instanceId: id, profileId: registered.profileId,
-          homeRoot: registered.homeRoot, sessionId });
-        await reconcileEndpointSession(canonicalEngine.store, snapshot);
-        canonicalProjectionSource.pluginData.retain(logicalSessionId, pluginData);
-        await ensurePlatformSessionBinding({ repository, ...dshSessionBinding(id, sessionId), logicalSessionId });
-        return logicalSessionId;
+      refresh,
+      refreshDiscovered: async (id, sessionId, existingId) => {
+        if (projectedLogicalSessionId(sessionId) !== undefined) return false;
+        try { await refresh(id, sessionId, existingId, true); return true; }
+        catch (error) { if ((error as { code?: string }).code === 'SYNC_DISCOVERY_EXISTING_UNVERIFIED') return false; throw error; }
       },
-    }));
+    });
+    });
   const extensionAdapters = [...(options.extensionAdapters ?? builtInExtensionAdapters).filter(adapter => !installedAdapters.entries.some(entry => entry.kind === 'business' && entry.namespace === adapter.namespace)), ...installedAdapters.business];
   const sessionLifecycle = new SessionLifecycle(options.sessionLifecycleAdapters ?? knowledgeLifecycleAdapters(repository.database, extensionAdapters));
   await writes.run("session-lifecycle-initialize", () => {

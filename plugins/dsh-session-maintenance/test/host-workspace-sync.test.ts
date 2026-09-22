@@ -52,6 +52,20 @@ it('writes under the official kernel lock, restores archive state, reads through
     const second = await f.sync.apply({ ...f.body, operationId: 'operation-two' }); expect(second.summary.written).toBe(0);
   } finally { await f.cleanup(); }
 });
+it('recovers a failed refresh before a retry skips already-written sessions', async () => {
+  const f = await fixture();
+  const original = f.runtime.sessionQuery.readSession;
+  let broken = true, reads = 0;
+  f.runtime.sessionQuery.readSession = async id => { reads++; if (broken) throw new Error('cache refresh failed'); return original(id); };
+  try {
+    await expect(f.sync.apply(f.body)).rejects.toThrow('cache refresh failed');
+    broken = false;
+    const next = await f.sync.apply({ ...f.body, operationId: 'recovery-retry' });
+    expect(next.summary.failures).toEqual([]); expect(next.summary.unchanged).toBe(1);
+    expect(reads).toBeGreaterThan(1);
+    const writer = await f.storage.open(f.nativeId, 'write'); await writer.close();
+  } finally { broken = false; await f.cleanup(); }
+});
 it('respects an existing kernel lock and succeeds after its owner releases it', async () => {
   const f = await fixture(); let lock: { release(): Promise<void> } | undefined;
   try {

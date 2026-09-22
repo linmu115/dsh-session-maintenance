@@ -48,7 +48,7 @@ export class EndpointSyncCoordinator {
         const epoch = first ? initialEpoch : randomUUID(), policyRevision = this.ports.revision(endpointId);
         first = false;
         this.states.set(endpointId, { epoch, phase: 'aligning', policyRevision });
-        this.failures.delete(endpointId);
+        // Keep the last failure visible while retrying; replace it only with a new result.
         try { result = await this.ports.align(endpointId); }
         catch (error) {
           result = { written: 0, unchanged: 0, skippedOutOfScope: 0,
