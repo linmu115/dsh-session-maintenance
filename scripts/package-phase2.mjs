@@ -108,6 +108,12 @@ const pluginClient = await build({
   metafile: true,
 });
 await copyFile(join(root, "packages", "dsh-core-extension", "dist", "dsh-015-host.js"), join(plugin, "lib", "dsh-015-host.js"));
+// The release must include the independently loadable adapter and its installation verifier.
+for (const file of ["dsh-015-host.build.json", "verify-installation.mjs", "INSTALL.md", "ADAPTER-AUTHORING.md"]) {
+  await copyFile(join(root, "plugins", "dsh-session-maintenance", "lib", file), join(plugin, "lib", file));
+}
+await cp(join(root, "plugins", "dsh-session-maintenance", "lib", "adapter"), join(plugin, "lib", "adapter"), { recursive: true });
+await copyFile(join(root, "plugins", "dsh-session-maintenance", "maintenance-adapter.json"), join(plugin, "maintenance-adapter.json"));
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "cordis.patch.yml"), join(plugin, "cordis.patch.yml"));
 const documentationFiles = await packagePluginDocumentation(root, plugin, sourceCommit);
 await copyFile(join(root, "plugins", "dsh-session-maintenance", "CHANGELOG.md"), join(plugin, "CHANGELOG.md"));
@@ -117,7 +123,7 @@ await writeFile(join(plugin, "lib", "index.d.ts"), "export declare const name = 
 await writeFile(join(plugin, "lib", "client", "index.d.ts"), "export declare function apply(ctx: unknown): void;\n");
 const packagedPluginManifest = {
   ...sourcePluginManifest,
-  files: ["lib", "docs", "dsh-management", "cordis.patch.yml", "CHANGELOG.md", "README.md", "LICENSE"],
+  files: ["maintenance-adapter.json", "lib", "docs", "dsh-management", "cordis.patch.yml", "CHANGELOG.md", "README.md", "LICENSE"],
   dependencies: {},
 };
 delete packagedPluginManifest.devDependencies;

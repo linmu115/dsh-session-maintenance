@@ -1,5 +1,17 @@
 # 保存回执、对齐进度与新会话发现
 
+## 2026-09-22 21:22 安装补记
+
+用户再次正常停止后，已核验目标 stopped，并正常关闭旧 Engine .80，取得 PID 31068 的 drain / owner-release 回执。备份至 `sync-unblock-20260922/backup-before-host49`。**Engine .81 / 宿主接入 .49 / Dashboard .17 已安装运行**，最终发行目录为 `engine-0.1.43-rc2.81-final`；下文“待安装”是此前时点记录。
+
+安装前补齐发行脚本遗漏的独立 adapter、maintenance-adapter.json 和安装核验脚本，正式包现在可完整安装并自检。最终打包 41 项接入/构件测试通过；64 项发行文件哈希通过；实际安装模块及官方宿主持久化探针通过。其余 16 个插件、会话/插件状态、配置和 testvault 绑定合计 1,163 个文件安装前后哈希一致。
+
+Engine 已 ready，目录 connected / issues=[]，范围修订 8 和原三个工作区保持不变。通过正式 Launcher 入口启动一次后，核验 DSH 新 boot `66d1f4fb-bb42-4d55-9d02-1d1ecf2c0ec5`、web 身份及实际 home；目录接入仍为 unmanaged-running，无托管 run，因此包装器返回 SM_START_UNAVAILABLE 不能被解释为没有启动，也没有重试启动。
+
+真实大快照对齐已越过接收与解压，宿主当前返回 **HTTP 409 / DSH_BUSY**，不再是 HTTP 413。压缩传输问题已修复；需要改写的已有会话仍受宿主占用保护，**完整双向同步尚未通过**，不得把接入成功或 HTTP 413 消失写成 active。没有强制关闭任何会话。
+
+新会话和静态目录、原数据保持核验见 `sync-unblock-20260922/final-verification81.json`；安装校验见 `installation81.json`，实际对齐回执观察见 `engine81-alignment-observation.json`。本轮没有 Computer Use，UI 未验收。
+
 用户要求修复范围保存等待、对齐失败阻断新会话导入，保留“编辑 → 勾选 → 保存 / 撤销”。Maintenance 主体只调用通用同步协议；原生路径、投影身份、宿主锁和压缩传输在 DSH adapter 内。
 
 ## 已安装和在线核验
