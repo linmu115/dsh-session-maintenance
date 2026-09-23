@@ -1,0 +1,1607 @@
+{
+  "schema": "maintenance-map-coverage-before/v1",
+  "captured_at": "2026-09-23",
+  "current_revision": "669c1ea33950855270eb0185b2d22fab98dd4670",
+  "old_revision": "d3fdbe3",
+  "project_id": "0d05f813-7097-47d9-9e88-3d523bb537d6",
+  "current": {
+    "records": [
+      {
+        "id": "IMP-current-source",
+        "title": "当前源码的可用链路与限制",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/current-source.md",
+        "sources": [
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "apps/engine/src/composition-root.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "apps/engine/src/endpoint-sync.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/instance-integration-dsh/src/host-workspace-sync.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/adapter-lynn/src/runtime.ts"
+          }
+        ]
+      },
+      {
+        "id": "IF-endpoint-sync",
+        "title": "实例与真源的端点同步协议",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/interfaces/endpoint-sync.md",
+        "sources": [
+          {
+            "role": "contract",
+            "workspace_id": "source",
+            "path": "packages/contracts/src/workspace-sync.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "apps/engine/src/endpoint-sync.ts"
+          },
+          {
+            "role": "consumer",
+            "workspace_id": "source",
+            "path": "plugins/dsh-session-maintenance/src/host-session-sync.ts"
+          }
+        ]
+      },
+      {
+        "id": "IF-host-writeback",
+        "title": "宿主独占写回与回执",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/interfaces/host-writeback.md",
+        "sources": [
+          {
+            "role": "contract",
+            "workspace_id": "source",
+            "path": "packages/contracts/src/host-workspace-sync.ts"
+          },
+          {
+            "role": "provider",
+            "workspace_id": "source",
+            "path": "plugins/dsh-session-maintenance/src/host-workspace-sync.ts"
+          },
+          {
+            "role": "caller",
+            "workspace_id": "source",
+            "path": "packages/instance-integration-dsh/src/host-workspace-sync.ts"
+          }
+        ]
+      },
+      {
+        "id": "IF-plugin-data",
+        "title": "插件原数据的采集与目标映射",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/interfaces/plugin-data.md",
+        "sources": [
+          {
+            "role": "contract",
+            "workspace_id": "source",
+            "path": "packages/contracts/src/plugin-data-mapping.ts"
+          },
+          {
+            "role": "provider",
+            "workspace_id": "source",
+            "path": "packages/adapter-lynn/src/runtime.ts"
+          },
+          {
+            "role": "consumer",
+            "workspace_id": "source",
+            "path": "plugins/dsh-session-maintenance/src/host-workspace-sync.ts"
+          }
+        ]
+      },
+      {
+        "id": "ISS-remaining-coupling",
+        "title": "装配根仍含宿主与插件具体依赖",
+        "kind": "issue",
+        "status": "current",
+        "path": "docs/project/records/issues/remaining-coupling.md",
+        "sources": [
+          {
+            "role": "evidence",
+            "workspace_id": "source",
+            "path": "apps/engine/src/composition-root.ts"
+          },
+          {
+            "role": "evidence",
+            "workspace_id": "source",
+            "path": "apps/engine/src/integrations/launcher-discovery.ts"
+          }
+        ]
+      },
+      {
+        "id": "JRN-20260923-map-rebuild",
+        "title": "依当前代码重建 Maintenance 地图",
+        "kind": "journal",
+        "status": "current",
+        "path": "docs/project/records/journal/2026-09-23-map-rebuild.md",
+        "sources": []
+      },
+      {
+        "id": "MOD-core",
+        "title": "规范会话与持久化核心",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/core.md",
+        "sources": [
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/canonical-session-engine/src/engine.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/session-store/src/canonical-repository.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/contracts/src/opaque-data.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-dsh-host",
+        "title": "DSH 宿主与格式适配",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/dsh-host.md",
+        "sources": [
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/instance-integration-dsh/src/host-workspace-sync.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/instance-integration-dsh/src/host-write-barrier.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "plugins/dsh-session-maintenance/src/host-workspace-sync.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/adapter-dsh-0-1-5/src/index.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-endpoint",
+        "title": "端点同步协调",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/endpoint.md",
+        "sources": [
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "apps/engine/src/endpoint-sync.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "apps/engine/src/endpoint-session-commands.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/canonical-session-engine/src/endpoint-reconcile.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-plugin-adapters",
+        "title": "插件数据适配",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/plugin-adapters.md",
+        "sources": [
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/adapter-lynn/src/runtime.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "packages/extension-gpt-compat/src/mapping.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "apps/engine/src/adapters/lynn/composition.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-ui",
+        "title": "Maintenance 看板和 DSH 入口",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/ui.md",
+        "sources": [
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "apps/dashboard/src/app.tsx"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "plugins/dsh-session-maintenance/src/client/dashboard-entry.ts"
+          },
+          {
+            "role": "implementation",
+            "workspace_id": "source",
+            "path": "apps/engine/src/http/routes.ts"
+          }
+        ]
+      },
+      {
+        "id": "REQ-sync-coverage",
+        "title": "已选择工作区的双向会话维护",
+        "kind": "requirement",
+        "status": "current",
+        "path": "docs/project/records/requirements/sync-coverage.md",
+        "sources": [
+          {
+            "role": "user-requirement-summary",
+            "path": "../../../changes/2026-09-22-adapter-owned-workspace-sync.md"
+          }
+        ]
+      },
+      {
+        "id": "SRC-source-inventory",
+        "title": "源码入口与依赖",
+        "kind": "note",
+        "status": "current",
+        "path": "docs/project/records/source-analysis/overview.md",
+        "sources": []
+      },
+      {
+        "id": "VER-map-rebuild",
+        "title": "2026-09-23 项目地图结构与来源检查",
+        "kind": "verification",
+        "status": "current",
+        "path": "docs/project/records/verification/map-rebuild.md",
+        "sources": []
+      }
+    ],
+    "bindings": [
+      {
+        "id": "REQ-boundary",
+        "title": "Maintenance 主体与适配器分工",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "boundary-requirement",
+        "heading": "用户要求与本轮范围"
+      },
+      {
+        "id": "REQ-opaque-mapping",
+        "title": "插件数据忠实保留并由插件适配器映射",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "opaque-requirement",
+        "heading": "用户修正与实施范围"
+      },
+      {
+        "id": "REQ-lynn-gpt",
+        "title": "Lynn 综合适配器和独立 GPT 适配器",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "adapter-requirement",
+        "heading": "Lynn adapter 与独立 GPT adapter"
+      },
+      {
+        "id": "VER-sync-20260922",
+        "title": "2026-09-22 同步路径合成验证",
+        "kind": "verification",
+        "status": "current",
+        "source_id": "boundary-requirement",
+        "heading": "验证结果"
+      },
+      {
+        "id": "VER-host-20260922",
+        "title": "2026-09-22 写入屏障与映射合成验证",
+        "kind": "verification",
+        "status": "current",
+        "source_id": "opaque-requirement",
+        "heading": "验证"
+      }
+    ]
+  },
+  "old": {
+    "records": [
+      {
+        "id": "DEC-selection",
+        "title": "这张地图选了哪些资料",
+        "kind": "decision",
+        "status": "current",
+        "path": "docs/project/records/decision/DEC-selection.md",
+        "sources": []
+      },
+      {
+        "id": "DEC-authority",
+        "title": "真源原则和后续规格怎样继承",
+        "kind": "decision",
+        "status": "current",
+        "path": "docs/project/records/decision/authority-history.md",
+        "sources": [
+          {
+            "path": "../superpowers/specs/2026-08-31-session-maintenance-canonical-projection-design.md"
+          },
+          {
+            "path": "../superpowers/specs/2026-09-03-maintenance-canonical-session-format-v1.md"
+          },
+          {
+            "path": "../superpowers/specs/2026-09-10-persistent-native-session-space.md"
+          },
+          {
+            "path": "../superpowers/specs/2026-09-10-pluggable-extension-data-requirements.md"
+          },
+          {
+            "path": "../changes/2026-09-14-session-main-graph-spec-revision.md"
+          },
+          {
+            "path": "../superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md"
+          },
+          {
+            "path": "../superpowers/specs/2026-09-15-native-agent-context-management.md"
+          }
+        ]
+      },
+      {
+        "id": "DEC-directory-connect-sync-authority",
+        "title": "实例以目录选择接入，真源同步以同步工作区为界",
+        "kind": "decision",
+        "status": "current",
+        "path": "docs/project/records/decision/directory-connect-sync-authority.md",
+        "sources": [
+          {
+            "path": "../deployment/launcher-hook.md"
+          },
+          {
+            "path": "../superpowers/specs/2026-09-10-persistent-native-session-space.md"
+          },
+          {
+            "path": "../superpowers/specs/2026-08-31-session-maintenance-canonical-projection-design.md"
+          }
+        ]
+      },
+      {
+        "id": "HIST-context-progress",
+        "title": "让长历史压缩等待可见",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/context-progress.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-extension-pages-vault-binding",
+        "title": "公开业务栏目与实例同步范围的确认",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/extension-pages-vault-binding.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-gpt-extension-boundary",
+        "title": "将 GPT 插件误当成 Harness 的纠正过程",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/gpt-extension-boundary.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-image-startup",
+        "title": "GPT 图片升级后 Launcher 阻塞的恢复过程",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/image-startup.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-learning-association-repair",
+        "title": "学习关联修复与普通同步自动排除",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/learning-association-repair.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-learning-roundtrip-implementation",
+        "title": "学习交接首版实现与隔离闭环验证",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/learning-roundtrip-implementation.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-learning-roundtrip",
+        "title": "学习会话双向维护的范围收敛与回收锁",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/learning-roundtrip.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-maintenance-source-list",
+        "title": "真源同步名单折叠与选择布局",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/maintenance-source-list.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-manual-engine-start",
+        "title": "引擎手动启动入口与旧运行回收",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/manual-engine-start.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-offline-vault-binding",
+        "title": "Vault 绑定从在线 DSH 动作迁到 Maintenance 管理",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/offline-vault-binding.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-recovery-archive-title",
+        "title": "重启重复会话、归档复现与旧派生标题的修复过程",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/recovery-archive-title.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-recovery-regression",
+        "title": "升级遗漏启动恢复补丁与外部浏览器目录失败",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/recovery-regression.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-reference-identity-recovery",
+        "title": "派生会话引用在重启后失联的修复历程",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/reference-identity-recovery.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-reference-send",
+        "title": "模型设置误触发派生会话修复",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/reference-send.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-settings-entry",
+        "title": "DSH 设置面板收敛到完整看板入口",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/settings-entry.md",
+        "sources": []
+      },
+      {
+        "id": "HIST-startup-recovery",
+        "title": "从未回收会话报错到自动恢复启动",
+        "kind": "history",
+        "status": "current",
+        "path": "docs/project/records/history/startup-recovery.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-codex-mirror-title",
+        "title": "Codex 镜像标题的原生冷读取",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/IMP-codex-mirror-title.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-current",
+        "title": "当前源码已经做到哪",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/IMP-current.md",
+        "sources": [
+          {
+            "path": "../../README.md"
+          }
+        ]
+      },
+      {
+        "id": "IMP-lynn-adapter",
+        "title": "Lynn 组合与独立 GPT 数据映射",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/IMP-lynn-adapter.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-recovery-archive",
+        "title": "纯准备尾部恢复与宿主归档还原",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/IMP-recovery-archive.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-context-progress",
+        "title": "长历史发送预览与压缩进度",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/context-progress.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-image-startup",
+        "title": "图片升级后的历史恢复与启动兼容",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/image-startup.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-independent-components-20260920",
+        "title": "Maintenance 独立组件升级候选",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/independent-components-20260920.md",
+        "sources": [
+          {
+            "path": "../changes/2026-09-20-independent-components.md"
+          },
+          {
+            "path": "../../docs/deployment/independent-components.md"
+          }
+        ]
+      },
+      {
+        "id": "IMP-launcher-sync-directory",
+        "title": "同步实例使用 Launcher 当前名称",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/launcher-sync-directory.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-learning-roundtrip",
+        "title": "学习双向维护首版与使用边界",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/learning-roundtrip.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-plugin-package-migration",
+        "title": "测试实例插件迁移与源码发行包",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/plugin-package-migration.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-reference-identity-recovery",
+        "title": "重启后引用身份恢复与旧链接定位",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/reference-identity-recovery.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-reference-send",
+        "title": "模型设置误触发派生会话修复",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/reference-send.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-scope-business-pages",
+        "title": "工作区策略、运行快照与公共信息页当前实现",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/scope-business-pages.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-startup-gate-split",
+        "title": "启动门与普通插件库存分离（MNT-001）",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/startup-gate-split.md",
+        "sources": []
+      },
+      {
+        "id": "IMP-startup-recovery",
+        "title": "启动时自动处理已退出的旧运行",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/startup-recovery.md",
+        "sources": [
+          {
+            "path": "../reports/2026-09-19-startup-recovery-activation.md"
+          }
+        ]
+      },
+      {
+        "id": "IMP-sync-ui-release",
+        "title": "同步与扩展页面修复及 .39 待激活状态",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/sync-ui-release.md",
+        "sources": [
+          {
+            "path": "../changes/2026-09-18-extension-navigation-hierarchy.md"
+          },
+          {
+            "path": "../changes/2026-09-18-sync-sections-and-current-scopes.md"
+          }
+        ]
+      },
+      {
+        "id": "IMP-vault-folder-picker",
+        "title": "Vault 绑定文件夹窗口与等待期限",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/implementation/vault-folder-picker.md",
+        "sources": []
+      },
+      {
+        "id": "IF-offline-vault-binding",
+        "title": "Maintenance 管理 Vault 绑定的独立授权合同",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/interfaces/offline-vault-binding.md",
+        "sources": []
+      },
+      {
+        "id": "JOURNAL-20260922-lynn-adapters",
+        "title": "Lynn 数据映射与 GPT 独立适配",
+        "kind": "journal",
+        "status": "current",
+        "path": "docs/project/records/journal/2026-09-22-lynn-adapters.md",
+        "sources": []
+      },
+      {
+        "id": "INT-business-directory",
+        "title": "业务 Adapter 已知格式与接入目录",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/business/connected.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/extensions/adapters.ts"
+          }
+        ]
+      },
+      {
+        "id": "IF-extension",
+        "title": "业务对象怎样交给 Maintenance 管理",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/business/contract.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/extension-data.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/extension-directory.ts"
+          },
+          {
+            "path": "../extensions/plugin-data-integration.md"
+          },
+          {
+            "path": "../../apps/engine/src/extensions/adapters.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/extension-data.ts"
+          }
+        ]
+      },
+      {
+        "id": "INT-gpt-format",
+        "title": "GPT 兼容插件的扩展数据 Adapter",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/business/gpt-compat.md",
+        "sources": [
+          {
+            "path": "../../packages/extension-gpt-compat/src/extension.ts"
+          },
+          {
+            "path": "../../packages/extension-gpt-compat/src/codec.ts"
+          },
+          {
+            "path": "../../apps/engine/src/extensions/gpt-sync.ts"
+          }
+        ]
+      },
+      {
+        "id": "INT-annotation",
+        "title": "Core 的固定引用、镜像与原生接入",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/business/integrations/annotation.md",
+        "sources": [
+          {
+            "path": "../changes/2026-09-15-native-context-management.md"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/session-context.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/annotation-mirror.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/native-context.ts"
+          }
+        ]
+      },
+      {
+        "id": "INT-obsidian",
+        "title": "Obsidian：链接与引用分别接入",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/business/integrations/obsidian.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/session-knowledge.ts"
+          },
+          {
+            "path": "../../apps/engine/src/session-knowledge-service.ts"
+          },
+          {
+            "path": "../../apps/engine/src/extensions/adapters.ts"
+          },
+          {
+            "path": "../../../dsh-obsidian-session-reference-suite/docs/2026-09-18-vault-instance-binding-design.md",
+            "role": "linked-authority"
+          }
+        ]
+      },
+      {
+        "id": "INT-stickers",
+        "title": "贴纸：对象、会话与引用接入",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/business/integrations/stickers.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/extensions/adapters.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/session-knowledge.ts"
+          },
+          {
+            "path": "../reports/2026-09-15-graph-reference-lifecycle-release.md"
+          }
+        ]
+      },
+      {
+        "id": "INT-thoughtdag",
+        "title": "ThoughtDAG：主干领域与上下文视图",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/business/integrations/thoughtdag.md",
+        "sources": [
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/session-graph.ts"
+          },
+          {
+            "path": "../../apps/engine/src/session-graph-service.ts"
+          },
+          {
+            "path": "../../apps/engine/src/extensions/service.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-business",
+        "title": "业务插件／扩展数据适配器",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/business/overview.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/extensions/adapters.ts"
+          },
+          {
+            "path": "../../apps/engine/src/composition-root.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-harness-codex",
+        "title": "Codex：只读来源与原生续接",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/harness/codex.md",
+        "sources": [
+          {
+            "path": "../../packages/adapter-codex-read/src/index.ts"
+          },
+          {
+            "path": "../../packages/adapter-codex-read/src/stable-read.ts"
+          },
+          {
+            "path": "../../packages/adapter-codex-continuation/src/adapter.ts"
+          }
+        ]
+      },
+      {
+        "id": "INT-harness-directory",
+        "title": "平台 Adapter 已知实现与调用者",
+        "kind": "implementation",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/harness/connected.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/composition-root.ts"
+          },
+          {
+            "path": "../adapters/compatibility-matrix.md"
+          },
+          {
+            "path": "../../packages/adapter-dsh-0-1-5/COMPATIBILITY.md"
+          },
+          {
+            "path": "../../apps/engine/src/external-lifecycle-provider.ts"
+          },
+          {
+            "path": "../adapters/testing-guide.md"
+          }
+        ]
+      },
+      {
+        "id": "IF-harness-adapter",
+        "title": "平台读取、格式转换与续接合同",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/harness/contract.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/adapters.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/adapter-sdk.ts"
+          },
+          {
+            "path": "../adapters/contract.md"
+          },
+          {
+            "path": "../../packages/contracts/src/native-session-space.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/continuations.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-harness-dsh",
+        "title": "DSH：读取与原生格式族",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/harness/dsh.md",
+        "sources": [
+          {
+            "path": "../../packages/adapter-dsh-0-1-5/COMPATIBILITY.md"
+          },
+          {
+            "path": "../../packages/adapter-dsh-0-1-5/src/index.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-harness",
+        "title": "Harness／平台适配器",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/adapters/harness/overview.md",
+        "sources": [
+          {
+            "path": "../adapters/architecture.md"
+          }
+        ]
+      },
+      {
+        "id": "MOD-dashboard",
+        "title": "Dashboard：阅读与维护入口",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/dashboard/overview.md",
+        "sources": [
+          {
+            "path": "../../apps/dashboard/src/app.tsx"
+          },
+          {
+            "path": "../../apps/dashboard/src/session-reader.tsx"
+          },
+          {
+            "path": "../../apps/dashboard/src/extension-business-directory.tsx"
+          },
+          {
+            "path": "../../apps/engine/src/http/server.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-business-pages",
+        "title": "公开业务信息页与贡献者生命周期",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/business-pages/overview.md",
+        "sources": []
+      },
+      {
+        "id": "MOD-canonical",
+        "title": "会话真源、导入与维护",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/canonical/overview.md",
+        "sources": [
+          {
+            "path": "../../packages/canonical-session-engine/src/engine.ts"
+          },
+          {
+            "path": "../../apps/engine/src/codex-import-service.ts"
+          },
+          {
+            "path": "../../apps/engine/src/codex-project-mapping.ts"
+          },
+          {
+            "path": "../../apps/engine/src/session-maintenance-commands.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-continuation",
+        "title": "Codex 续接与恢复作业",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/continuation/overview.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/continuations.ts"
+          },
+          {
+            "path": "../../packages/continuation-engine/src/service.ts"
+          },
+          {
+            "path": "../../packages/handoff-context/src/index.ts"
+          },
+          {
+            "path": "../../tests/integration/phase-3-continuation.test.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-extension-store",
+        "title": "扩展存储、冲突与目录",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/extensions/overview.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/extensions/service.ts"
+          },
+          {
+            "path": "../../apps/engine/src/extensions/directory.ts"
+          },
+          {
+            "path": "../../apps/engine/src/extensions/annotation-sync.ts"
+          }
+        ]
+      },
+      {
+        "id": "IF-graph",
+        "title": "主干图与固定来源怎样交接",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/graph/contract.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/session-graph.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/session-context.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/session-graph.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/session-context.ts"
+          },
+          {
+            "path": "../../apps/engine/src/http/session-graph-routes.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-graph",
+        "title": "固定引用与主干领域",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/graph/overview.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/session-context-service.ts"
+          },
+          {
+            "path": "../../apps/engine/src/session-graph-service.ts"
+          },
+          {
+            "path": "../../apps/engine/src/session-graph-store.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-instance-workspace",
+        "title": "实例分类工作区策略与运行范围",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/instance-workspace/overview.md",
+        "sources": []
+      },
+      {
+        "id": "IF-native-context",
+        "title": "释放材料怎样才算生效",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/native-context/contract.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/native-context.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/native-context-evidence.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/user-request-index.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/native-context.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-native-context",
+        "title": "原生上下文状态与释放核验",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/native-context/overview.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/native-context-service.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/native-context.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/native-context-evidence.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-engine",
+        "title": "Engine：编排与持久事实",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/overview.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/composition-root.ts"
+          },
+          {
+            "path": "../../apps/engine/src/engine.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-reader",
+        "title": "会话阅读与用户请求索引",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/reader/overview.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/session-reader.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/user-request-index.ts"
+          },
+          {
+            "path": "../../apps/engine/src/session-reader-queries.ts"
+          },
+          {
+            "path": "../../apps/engine/src/user-request-index-service.ts"
+          }
+        ]
+      },
+      {
+        "id": "IF-runtime",
+        "title": "宿主怎样准备和提交运行",
+        "kind": "interface",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/runtime/contract.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/runtime-broker.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/external-lifecycle.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/projection.ts"
+          },
+          {
+            "path": "../deployment/launcher-hook.md"
+          }
+        ]
+      },
+      {
+        "id": "MOD-runtime",
+        "title": "运行准备、追加、关闭与恢复",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/engine/runtime/overview.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/runtime-broker.ts"
+          },
+          {
+            "path": "../../packages/projection-lifecycle/src/lifecycle.ts"
+          },
+          {
+            "path": "../../packages/projection-lifecycle/src/append.ts"
+          }
+        ]
+      },
+      {
+        "id": "MOD-host",
+        "title": "宿主接入：Provider、插件与桥",
+        "kind": "module",
+        "status": "current",
+        "path": "docs/project/records/modules/host/overview.md",
+        "sources": [
+          {
+            "path": "../../apps/engine/src/external-lifecycle-provider.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/projection-runtime.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/rc2-persistence.ts"
+          },
+          {
+            "path": "../../plugins/dsh-session-maintenance/src/index.ts"
+          }
+        ]
+      },
+      {
+        "id": "OBJ-extension",
+        "title": "扩展对象、所属会话与写入权",
+        "kind": "object",
+        "status": "current",
+        "path": "docs/project/records/objects/extensions.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/extension-data.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/extension-directory.ts"
+          }
+        ]
+      },
+      {
+        "id": "OBJ-graph",
+        "title": "每会话主干、固定引用与披露日志",
+        "kind": "object",
+        "status": "current",
+        "path": "docs/project/records/objects/graph.md",
+        "sources": [
+          {
+            "path": "../reports/2026-09-15-graph-reference-lifecycle-release.md"
+          },
+          {
+            "path": "../../packages/contracts/src/session-graph.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/session-context.ts"
+          }
+        ]
+      },
+      {
+        "id": "OBJ-session",
+        "title": "逻辑会话与工作区身份",
+        "kind": "object",
+        "status": "current",
+        "path": "docs/project/records/objects/overview.md",
+        "sources": [
+          {
+            "path": "../../README.md"
+          },
+          {
+            "path": "../../packages/contracts/src/canonical.ts"
+          },
+          {
+            "path": "../../packages/canonical-session-engine/src/dsh-append.ts"
+          }
+        ]
+      },
+      {
+        "id": "OBJ-runtime",
+        "title": "原生空间、运行租约与持久回执",
+        "kind": "object",
+        "status": "current",
+        "path": "docs/project/records/objects/runtime.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/native-session-space.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/projection.ts"
+          },
+          {
+            "path": "../../packages/projection-lifecycle/src/native-space.ts"
+          }
+        ]
+      },
+      {
+        "id": "OBJ-version",
+        "title": "版本、谱系、检查点与续接",
+        "kind": "object",
+        "status": "current",
+        "path": "docs/project/records/objects/versions.md",
+        "sources": [
+          {
+            "path": "../../packages/contracts/src/model.ts"
+          },
+          {
+            "path": "../../packages/contracts/src/canonical.ts"
+          },
+          {
+            "path": "../../packages/session-domain/src/graph.ts"
+          },
+          {
+            "path": "../../packages/continuation-engine/src/service.ts"
+          }
+        ]
+      },
+      {
+        "id": "REQ-detached-instance-attach-sync",
+        "title": "实例先启动、引擎后接管与覆盖式真源同步",
+        "kind": "requirement",
+        "status": "current",
+        "path": "docs/project/records/requirement/detached-instance-attach-sync.md",
+        "sources": []
+      },
+      {
+        "id": "REQ-learning-roundtrip",
+        "title": "实验性学习会话双端交接与受控回收",
+        "kind": "requirement",
+        "status": "current",
+        "path": "docs/project/records/requirement/learning-roundtrip.md",
+        "sources": []
+      },
+      {
+        "id": "REQ-maintenance-source-list",
+        "title": "默认折叠的 Maintenance 真源名单",
+        "kind": "requirement",
+        "status": "current",
+        "path": "docs/project/records/requirement/maintenance-source-list.md",
+        "sources": []
+      },
+      {
+        "id": "REQ-offline-vault-binding",
+        "title": "Maintenance 内按已登记实例管理 Vault 绑定",
+        "kind": "requirement",
+        "status": "current",
+        "path": "docs/project/records/requirement/offline-vault-binding.md",
+        "sources": []
+      },
+      {
+        "id": "REQ-runtime-workspace-creation",
+        "title": "实例新建工作区自动回写",
+        "kind": "requirement",
+        "status": "current",
+        "path": "docs/project/records/requirement/runtime-workspace-creation.md",
+        "sources": []
+      },
+      {
+        "id": "REQ-startup-recovery",
+        "title": "点击启动即可恢复安全可回收的旧运行",
+        "kind": "requirement",
+        "status": "current",
+        "path": "docs/project/records/requirement/startup-recovery.md",
+        "sources": []
+      },
+      {
+        "id": "REQ-sync-extension-navigation",
+        "title": "两类同步并列与插件内信息页层级",
+        "kind": "requirement",
+        "status": "current",
+        "path": "docs/project/records/requirement/sync-extension-navigation.md",
+        "sources": [
+          {
+            "path": "../changes/2026-09-18-extension-navigation-hierarchy.md"
+          },
+          {
+            "path": "../changes/2026-09-18-sync-sections-and-current-scopes.md"
+          }
+        ]
+      },
+      {
+        "id": "VER-adoption",
+        "title": "本次地图整理的验证范围",
+        "kind": "verification",
+        "status": "current",
+        "path": "docs/project/records/verification/VER-adoption.md",
+        "sources": [
+          {
+            "path": "../changes/2026-09-16-project-map-adoption.md"
+          }
+        ]
+      },
+      {
+        "id": "VER-browser-431-edge",
+        "title": "Edge 登录恢复与 DSH 请求头修复待安装",
+        "kind": "verification",
+        "status": "current",
+        "path": "docs/project/records/verification/browser-431-edge.md",
+        "sources": [
+          {
+            "path": "D:/AI/DeepSeekHarness-Plugin/artifacts/browser-431-20260919/report.md"
+          },
+          {
+            "path": "D:/AI/DeepSeekHarness-Plugin/artifacts/browser-431-20260919/prepared.json"
+          }
+        ]
+      },
+      {
+        "id": "VER-learning-roundtrip",
+        "title": "学习交接闭环与 Codex 上下文验证",
+        "kind": "verification",
+        "status": "current",
+        "path": "docs/project/records/verification/learning-roundtrip.md",
+        "sources": []
+      },
+      {
+        "id": "VER-scope-business-pages",
+        "title": "工作区范围与公共信息页的本地验收",
+        "kind": "verification",
+        "status": "current",
+        "path": "docs/project/records/verification/scope-business-pages.md",
+        "sources": []
+      },
+      {
+        "id": "VER-startup-gate-split",
+        "title": "启动门分离的测试与边界证据",
+        "kind": "verification",
+        "status": "current",
+        "path": "docs/project/records/verification/startup-gate-split.md",
+        "sources": []
+      },
+      {
+        "id": "VER-startup-recovery",
+        "title": "启动恢复的测试、安装与真实运行验收",
+        "kind": "verification",
+        "status": "current",
+        "path": "docs/project/records/verification/startup-recovery.md",
+        "sources": [
+          {
+            "path": "../reports/2026-09-19-startup-recovery-activation.md"
+          }
+        ]
+      },
+      {
+        "id": "VER-sync-ui-release",
+        "title": "本轮真实UI、独立安装与未激活边界",
+        "kind": "verification",
+        "status": "current",
+        "path": "docs/project/records/verification/sync-ui-release.md",
+        "sources": [
+          {
+            "path": "../changes/2026-09-18-extension-navigation-hierarchy.md"
+          },
+          {
+            "path": "../changes/2026-09-18-sync-sections-and-current-scopes.md"
+          },
+          {
+            "path": "D:/AI/DeepSeekHarness-Plugin/artifacts/single-bridge-20260918/dashboard-sync-sections-ui-verified.json"
+          },
+          {
+            "path": "D:/AI/DeepSeekHarness-Plugin/artifacts/maintenance-engine39-install-20260918/installed.json"
+          },
+          {
+            "path": "D:/AI/DeepSeekHarness-Plugin/artifacts/bridge-folder-binding-20260918/installed-verification.json"
+          }
+        ]
+      }
+    ],
+    "bindings": [
+      {
+        "id": "REQ-product",
+        "title": "维护哪些会话能力",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-1",
+        "heading": "当前功能"
+      },
+      {
+        "id": "REQ-ownership",
+        "title": "扩展条目归哪个会话",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-2",
+        "heading": "业务 Adapter 与所属会话"
+      },
+      {
+        "id": "REQ-reader",
+        "title": "长会话怎样阅读",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-2",
+        "heading": "会话阅读器"
+      },
+      {
+        "id": "REQ-context",
+        "title": "原生上下文管理的授权边界",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-3",
+        "heading": "1. 已确认的产品决定"
+      },
+      {
+        "id": "REQ-source",
+        "title": "引用固定来源和完成位置",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-4",
+        "heading": "3. 功能需求：跨会话引用"
+      },
+      {
+        "id": "MOD-boundaries",
+        "title": "Engine、插件、Adapter 与 Launcher 的分工",
+        "kind": "module",
+        "status": "current",
+        "source_id": "source-1",
+        "heading": "数据与组件边界"
+      },
+      {
+        "id": "IMP-usage",
+        "title": "现在怎样导入、运行与阅读",
+        "kind": "implementation",
+        "status": "current",
+        "source_id": "source-1",
+        "heading": "使用流程"
+      },
+      {
+        "id": "IMP-versions",
+        "title": "当前配套版本",
+        "kind": "implementation",
+        "status": "current",
+        "source_id": "source-1",
+        "heading": "当前配套版本"
+      },
+      {
+        "id": "VER-context",
+        "title": "原生上下文实现的历史验证",
+        "kind": "verification",
+        "status": "current",
+        "source_id": "source-5",
+        "heading": "验证对应"
+      },
+      {
+        "id": "VER-reader",
+        "title": "目录与阅读器的历史交付验证",
+        "kind": "verification",
+        "status": "current",
+        "source_id": "source-6",
+        "heading": "验证与部署"
+      },
+      {
+        "id": "REQ-adapter-families",
+        "title": "两类 Adapter 独立的要求",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-extension-requirements",
+        "heading": "两类 Adapter"
+      },
+      {
+        "id": "REQ-main-graph",
+        "title": "每个接收会话自己的主干图",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-4",
+        "heading": "5.2 每个会话自己的主干图"
+      },
+      {
+        "id": "REQ-graph-removal",
+        "title": "移除与撤销保持一致",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-4",
+        "heading": "5.4 移除、撤销和刷新"
+      },
+      {
+        "id": "REQ-runtime-space",
+        "title": "持久原生空间的范围",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "source-native-space",
+        "heading": "目标与本次范围"
+      },
+      {
+        "id": "REQ-extension-pages",
+        "title": "业务插件自主信息页与共享实例范围",
+        "kind": "requirement",
+        "status": "current",
+        "source_id": "extension-pages-design",
+        "heading": "已确认需求"
+      },
+      {
+        "id": "IF-extension-pages",
+        "title": "公开业务页面与栏目注册合同草案",
+        "kind": "interface",
+        "status": "proposed",
+        "source_id": "extension-pages-design",
+        "heading": "公开扩展注册合同草案"
+      },
+      {
+        "id": "IF-instance-workspace-scope",
+        "title": "实例有效工作区与会话范围合同草案",
+        "kind": "interface",
+        "status": "proposed",
+        "source_id": "extension-pages-design",
+        "heading": "实例有效范围合同草案"
+      },
+      {
+        "id": "VER-extension-pages-design",
+        "title": "公开扩展页设计的文档检查",
+        "kind": "verification",
+        "status": "current",
+        "source_id": "extension-pages-design-report",
+        "heading": "验证结果"
+      }
+    ]
+  },
+  "source_versions": {
+    "apps/engine/package.json": "0.1.43-rc2.95",
+    "apps/dashboard/package.json": "0.1.20",
+    "plugins/dsh-session-maintenance/package.json": "0.2.27-rc2.79"
+  },
+  "notes": [
+    "Current map had no uncommitted docs/project changes before this rebuild.",
+    "Old revision remains in Git; this inventory does not establish whether each old statement remains valid."
+  ]
+}

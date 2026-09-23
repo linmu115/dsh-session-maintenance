@@ -1,44 +1,52 @@
 # Session Maintenance 项目地图
 
-项目 ID：`0d05f813-7097-47d9-9e88-3d523bb537d6`。本地图于 2026-09-23 依据当前源码重建；源码核对起点为 `d3fdbe3`。它描述此仓库现在的职责、接口和已知缺口，不把历史测试、发行包版本或健康检查写成当前实例验收。
+项目 ID：`0d05f813-7097-47d9-9e88-3d523bb537d6`。本地图依据 2026-09-23 的工作树源码重建，保持原项目身份与文档层级。它区分**已确认要求**、**源码可见实现**和**真实实例验收**：图中的连线和历史测试不证明当前安装实例已完成双向同步。用户已要求 Maintenance 本体与实例、Launcher 和具体插件解耦；这个目标目前还有明确的装配缺口。
 
-## 项目做什么
+## 项目目标与阅读入口
 
-Maintenance 保存逻辑会话、工作区归属、不可变版本、来源、派生关系和同步回执。Codex 原日志仍由 Codex 拥有；DSH 原生会话由宿主拥有。同步时，平台适配器把各自格式转换为规范事件并处理物理读写。Maintenance 忠实保存插件数据的 namespace、类型、记录身份与原值，不解释插件图、引用或贴纸的业务含义。
+Maintenance 保存逻辑会话、工作区归属、不可变版本、来源/派生关系、同步回执和插件原值。Codex 日志仍由 Codex 拥有，DSH 原生会话由宿主拥有。平台适配器负责格式、身份和物理读写；插件适配器负责其数据的握手、映射和正常读取验证。核心不建立“通用图模型”，未知结构化数据按来源忠实保存并默认折叠。
 
-## 从哪里开始读
-
-| 问题 | 当前入口 |
+| 想了解 | 入口 |
 | --- | --- |
-| 核心应与什么解耦 | [[REQ-boundary]]、[[ISS-remaining-coupling]] |
-| 会话身份、版本与真源怎样保存 | [[MOD-core]]、[[IMP-current-source]] |
-| 工作区加入、启动对齐和运行期回传 | [[MOD-endpoint]]、[[IF-endpoint-sync]] |
-| DSH 身份、写入屏障与归档怎样接入 | [[MOD-dsh-host]]、[[IF-host-writeback]] |
-| 插件数据如何保存和恢复 | [[REQ-opaque-mapping]]、[[MOD-plugin-adapters]]、[[IF-plugin-data]] |
-| Lynn 与 GPT compat 分别做什么 | [[REQ-lynn-gpt]]、[[MOD-plugin-adapters]] |
-| DSH 插件入口与 Maintenance 看板 | [[MOD-ui]] |
-| 此次地图检查了什么 | [[VER-map-rebuild]]；旧产品证据 [[VER-sync-20260922]]、[[VER-host-20260922]] |
+| 真源、工作区选择和同步权威 | [[TERM-canonical-source]]、[[TERM-maintained-workspace]]、[[DEC-sync-authority]] |
+| 实例加入、启动对齐和运行期回传 | [[REQ-sync-coverage]]、[[REQ-detached-instance-attach-sync]]、[[IF-endpoint-sync]] |
+| 宿主安全写回与退出恢复 | [[IF-host-writeback]]、[[IF-runtime]]、[[REQ-startup-recovery]] |
+| 插件原值与 Lynn / GPT compat | [[REQ-opaque-mapping]]、[[IF-plugin-data]]、[[OBJ-plugin-graph]] |
+| Codex 读取、镜像、续接和学习交接 | [[MOD-codex]]、[[MOD-continuation]]、[[REQ-learning-roundtrip]] |
+| 看板、同步页和 Vault 绑定 | [[MOD-ui]]、[[REQ-sync-extension-navigation]]、[[REQ-offline-vault-binding]] |
+| 当前架构差距与验收边界 | [[ISS-remaining-coupling]]、[[VER-map-rebuild]] |
 
-## 当前代码的责任边界
+三种阅读图使用同一地图记录：[整体责任与适配边界](diagrams/architecture.json)展示归属；[主要使用与恢复流程](diagrams/workflow.json)展示分支和失败路径；[GitNexus 模块源码图](diagrams/gitnexus.json)展示选定生产源码的文件、符号、导入和调用静态分析。HTML 页的“模块架构”可展开文件、函数和调用链；静态图不推断动态注册、RPC 或实际运行结果。
 
-| 层 | 责任与代码入口 |
+## 核心对象和已确认决定
+
+[[OBJ-session]] 区分逻辑 ID、平台原生 ID、工作区成员与端点身份；[[OBJ-version]] 区分真源版本和物理投放回执；[[OBJ-runtime]] 保存运行租约、检查点与恢复证据；[[OBJ-extension]] 保存插件 namespace、类型、记录身份和原值。Lynn 图与固定引用作为插件专属内容见 [[OBJ-plugin-graph]]，不进入 Maintenance 核心业务模型。
+
+[[DEC-authority]] 确认“真源事实在 Maintenance，宿主与插件语义在适配器”；[[DEC-sync-authority]] 确认以 DSH Home 根目录和稳定身份接入，未显式选择的同步范围为空。工作区在实例中存在、被“加入维护”和被选为双向同步对象是三种不同事实。已选范围在接管前以真源对齐，端点进入 active 后才接收实例已有会话增量；范围外工作区正常留在实例且不被覆盖。旧“实例新建工作区自动进入真源”要求已被用户撤销。
+
+## 当前模块与接口
+
+| 责任 | 当前代码与说明 |
 | --- | --- |
-| 规范核心 | `packages/canonical-session-engine` 处理逻辑会话、版本、派生、归档/删除；`packages/session-store` 保存 SQLite 元数据和对象；`packages/projection-lifecycle`、`packages/transaction-engine` 管投影、恢复和事务。 |
-| 同步协调 | `apps/engine/src/endpoint-sync.ts` 管对齐阶段、epoch、策略修订及提交串行化；`endpoint-session-commands.ts` 处理逻辑变更。它们使用端点 ID 和规范 DTO。 |
-| 宿主适配 | `packages/instance-integration-dsh` 与 `plugins/dsh-session-maintenance` 处理实例发现、身份、Home/Profile、DSH 读写、宿主独占屏障、归档刷新及回执。DSH 格式编解码在 `packages/adapter-dsh-0-1-5` 等平台适配包。 |
-| 插件适配 | `packages/adapter-lynn` 处理当前 Core / DAG / Sticker 组合的握手、映射与正常读取验证；`packages/extension-gpt-compat` 单独处理 GPT 事件与引用重映射；`apps/engine/src/adapters/lynn` 提供遗留业务 API 的适配装配。 |
-| 呈现和接入 | `apps/dashboard` 调用 Engine API；DSH 插件提供工作区加入、变化上报和启动看板入口。界面不直接改写规范存储。 |
+| 规范核心及存储 | [[MOD-core]] 管逻辑会话、版本、归档/删除、派生和不透明原值；`packages/session-store`、`packages/transaction-engine` 保存并恢复事实。[[MOD-retention]] 管保留与清理预览。 |
+| 端点协调 | [[MOD-endpoint]] 管选择、对齐状态、epoch、范围修订及运行期提交，消费 [[IF-endpoint-sync]]、[[IF-host-writeback]]。保存范围先返回，物理对齐单独报告。 |
+| DSH 宿主接入 | [[MOD-dsh-host]] 在适配层发现、核验并接入实例，宿主插件提供写入屏障、归档刷新和回执；具体 DSH 格式编解码留在 DSH 适配包。 |
+| 插件数据与页面 | [[MOD-plugin-adapters]] 中 Lynn 综合当前 Core/DAG/Sticker 组合，GPT compat 独立；[[IF-plugin-data]] 要求目标插件握手、投放后按正常路径读回。[[MOD-business-pages]] 按实际注册展示栏目。 |
+| Codex 与交接 | [[MOD-codex]] 只读观察原日志和项目；[[MOD-continuation]] 在固定版本上建续接作业；[[MOD-learning]] 对已确认学习会话执行受控双端交接。 |
+| 运行、阅读与界面 | [[MOD-runtime]] 负责准备/关闭/恢复，[[MOD-context]] 负责原生上下文证据，[[MOD-reader]] 提供有界阅读；[[MOD-ui]] 呈现状态、同步与扩展页，[[MOD-vault]] 管独立 Vault 绑定。 |
 
-关键交接：实例加入维护并被选入同步范围 → Engine 对齐规范版本到该端点 → 宿主适配器取得目标会话写入权、恢复文件/归档/插件数据并核对回执 → 端点进入 active → 实例变化携带 epoch 回传并生成规范版本。对齐 blocked 时只允许新会话的插入式 discover，已有会话变更不冒充完成。缺少插件或未知结构化数据保留在真源，阅读时折叠，不能误投放到目标插件。
+这些模块的公共 DTO 由 contracts 保存。仓库 [[CONTRIBUTOR-rules]] 要求平台格式进入 adapter、编排留在 Engine、变更后核对测试和来源。当前 Engine `composition-root.ts` 仍直接导入 DSH/Launcher/Lynn/GPT 具体实现，见 [[ISS-remaining-coupling]]；因此“核心包和端点协调较为抽象”不能扩大成“整个 Maintenance 已完全解耦”。
 
-[当前责任与适配边界图源](diagrams/architecture.json) 随同一地图维护；图示为源码责任关系，不表示运行验收通过。
+## 主要使用流程及验收边界
 
-## 当前边界和待办
+1. **加入与对齐**：DSH 侧显式加入维护 → Maintenance 编辑并保存同步选择 → Engine 核对稳定实例身份、策略和版本 → 宿主适配器取得独占写入、排空既有写入并投放 → 核对宿主回执后端点 active。失败进入 blocked，保留原数据；新会话的插入式发现可与已有会话的反向写回分别处理。见 [[REQ-maintenance-source-list]]、[[IF-host-writeback]]。
+2. **运行期双向变化**：已选范围内的新增、续写、改名、移动、归档、取消归档和删除带 epoch 上报；Engine 串行创建规范版本并按端点投放，目标回执决定是否成功。来源标题不能退化为生成 ID，未选范围不能串入真源。见 [[REQ-sync-coverage]]。
+3. **插件数据恢复**：真源保留原始 namespace、dataType、recordId 和 value；Lynn/GPT 等各自适配器先握手，再投放到插件平常读取的位置并核验。目标缺插件时保留且不误投放，未知结构默认折叠。见 [[REQ-opaque-mapping]]、[[IF-plugin-data]]。
+4. **Codex 与学习交接**：Codex 只读导入规范版本；普通续接固定来源版本并保存作业回执。实验性学习交接要求显式双端绑定、成功同步回执、边界后完整新增问答和提交前冲突复核；未通过真实往返验收不得声称闭环。见 [[REQ-learning-roundtrip]]。
+5. **运行与恢复**：准备租约和原生空间 → 宿主运行/追加 → 正常 flush、drain、close → 检查点或旧运行恢复。身份不明、旧写入未释放或回执不确定时阻断，不能靠健康接口或直接杀进程宣布成功。见 [[MOD-runtime]]、[[IF-runtime]]。
 
-`apps/engine/src/composition-root.ts` 仍直接 import DSH、Launcher 发现、Lynn 与 GPT 的具体实现，并在这里装配它们。规范包和同步协调路径已经使用通用合同，但“Maintenance 整体不耦合宿主或插件”的全局要求尚不能标为完成。详情见 [[ISS-remaining-coupling]]。
+## 当前来源、限制和迁移
 
-源码包清单当前声明 Engine `0.1.43-rc2.95`、Dashboard `0.1.20`、DSH 接入插件 `0.2.27-rc2.79`。这些是源码版本，不证明某台实例正在运行该组合。Codex 工作区原生写回在 `WorkspaceSyncPolicyService` 中仍标为不支持；不要与 DSH 工作区双向同步混为一项能力。
+源码包清单声明 Engine `0.1.43-rc2.95`、Dashboard `0.1.20`、DSH 接入插件 `0.2.27-rc2.79`；它们不是在线实例的实测版本。Codex 工作区原生写回在当前策略中仍显式不支持，不等同于 DSH 工作区双向会话维护。当前说明见 [[IMP-current-source]]，地图自身的检查与真实产品验收范围见 [[VER-map-rebuild]]。
 
-## 旧地图定位
-
-本次删除了旧 `docs/project` 的冗余记录、旧图源、导出与历史索引，保留相同项目 ID。历史资料可在 Git 修订 `d3fdbe3:docs/project/` 查回；常用旧 ID 见[旧地图记录定位](legacy-id-index.md)。旧文档中的 `[[旧记录 ID]]` 仅供历史定位，不代表本地图仍有该记录。原规格和变更报告保留在 `docs/superpowers`、`docs/changes`、`docs/reports`，其当时的版本和验收边界不因地图重建而改变。
+重构前已保存 [重构前覆盖清单和 103 条旧资产逐条去向](migration/README.md)（原始 JSON 同目录保存）说明保留、合并、历史归档和用户撤销项。旧地图内容可按 `d3fdbe3:docs/project/` 查回，[旧 ID 索引](legacy-id-index.md)只用于定位；原规格、变更和报告仍在 `docs/superpowers`、`docs/changes`、`docs/reports`。旧时点成功不自动更新为今日验收。

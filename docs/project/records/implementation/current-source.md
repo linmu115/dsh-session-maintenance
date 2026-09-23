@@ -3,7 +3,7 @@ id: IMP-current-source
 kind: implementation
 title: 当前源码的可用链路与限制
 status: current
-summary: 依据 2026-09-23 当前提交 d3fdbe3 的代码核对，记录真源、同步、宿主写回、插件映射和看板入口。
+summary: 依据 2026-09-23 当前工作树及 669c1ea 源码核对，记录真源、同步、宿主写回、插件映射和看板入口。
 progress: implemented
 relations:
   - relation: implements

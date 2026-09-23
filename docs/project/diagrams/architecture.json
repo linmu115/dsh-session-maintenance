@@ -6,10 +6,10 @@
     "locale": "zh-CN",
     "viewBox": [
       1740,
-      700
+      1030
     ],
     "repository": {
-      "revision": "d3fdbe3c5a3a031f37bf4f741819e1ba2833202f",
+      "revision": "669c1ea33950855270eb0185b2d22fab98dd4670",
       "url": "https://github.com/linmu115/dsh-session-maintenance",
       "link_mode": "local-only"
     }
@@ -217,6 +217,94 @@
           "path": "packages/extension-gpt-compat/src/index.ts"
         }
       ]
+    },
+    {
+      "id": "business-pages",
+      "type": "frontend",
+      "label": "扩展目录与贡献页",
+      "sublabel": "仅展示实际注册的能力",
+      "pos": [
+        30,
+        745
+      ],
+      "size": [
+        210,
+        82
+      ],
+      "sources": [
+        {
+          "path": "apps/dashboard/src/extension-business-directory.tsx"
+        },
+        {
+          "path": "apps/engine/src/business-pages.ts"
+        }
+      ]
+    },
+    {
+      "id": "vault",
+      "type": "backend",
+      "label": "Vault 绑定",
+      "sublabel": "独立授权与目标核验",
+      "pos": [
+        285,
+        745
+      ],
+      "size": [
+        190,
+        82
+      ],
+      "sources": [
+        {
+          "path": "apps/engine/src/vault-bindings.ts"
+        }
+      ]
+    },
+    {
+      "id": "services",
+      "type": "backend",
+      "label": "运行与交接服务",
+      "sublabel": "续接 · 阅读 · 学习 · 上下文",
+      "pos": [
+        600,
+        745
+      ],
+      "size": [
+        235,
+        82
+      ],
+      "sources": [
+        {
+          "path": "apps/engine/src/runtime-broker.ts"
+        },
+        {
+          "path": "packages/continuation-engine/src/service.ts"
+        },
+        {
+          "path": "apps/engine/src/session-reader-queries.ts"
+        }
+      ]
+    },
+    {
+      "id": "retention",
+      "type": "database",
+      "label": "存储与保留治理",
+      "sublabel": "投影 · 事务 · 检查点",
+      "pos": [
+        900,
+        745
+      ],
+      "size": [
+        210,
+        82
+      ],
+      "sources": [
+        {
+          "path": "packages/session-store/src/index.ts"
+        },
+        {
+          "path": "packages/transaction-engine/src/index.ts"
+        }
+      ]
     }
   ],
   "boundaries": [
@@ -352,6 +440,43 @@
           1455,
           475
         ]
+      ]
+    },
+    {
+      "id": "dashboard-pages",
+      "from": "dashboard",
+      "to": "business-pages",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "dashboard-vault",
+      "from": "dashboard",
+      "to": "vault",
+      "label": "独立绑定操作",
+      "fromSide": "bottom",
+      "toSide": "top"
+    },
+    {
+      "id": "services-retention",
+      "from": "services",
+      "to": "retention",
+      "label": "恢复与保留回执",
+      "labelAt": [
+        868,
+        845
+      ]
+    },
+    {
+      "id": "endpoint-services",
+      "from": "endpoint",
+      "to": "services",
+      "label": "运行与阅读协调",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelAt": [
+        705,
+        640
       ]
     }
   ],

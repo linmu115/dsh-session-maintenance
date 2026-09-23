@@ -16,7 +16,7 @@ LLM 阅读入口：`project_map.py source <地图> --kind entrypoint|dependency|
 
 ## 工作区 source
 
-分支 `codex/image-startup-recovery-20260917`，提交 `d3fdbe3c5a3a031f37bf4f741819e1ba2833202f`；扫描 1015 个文件。内容指纹 `f40cb1e8ae1ce819`。
+分支 `codex/image-startup-recovery-20260917`，提交 `669c1ea33950855270eb0185b2d22fab98dd4670`；扫描 1015 个文件。内容指纹 `f623bd41d8004fed`。
 
 ### 入口
 
@@ -39,7 +39,7 @@ LLM 阅读入口：`project_map.py source <地图> --kind entrypoint|dependency|
 
 ### 依赖与待补登记
 
-提取 4819 项导入、62090 条静态调用/继承线索；待核对登记缺口 752 项。
+提取 4819 项导入、62090 条静态调用/继承线索；待核对登记缺口 745 项。
 - `apps/dashboard/src/app.tsx:1` → `apps/dashboard/src/learning-page.tsx`
 - `apps/dashboard/src/app.tsx:2` → `apps/dashboard/src/extension-page.tsx`
 - `apps/dashboard/src/app.tsx:6` → `apps/dashboard/src/session-workbench.tsx`
@@ -59,4 +59,4 @@ LLM 阅读入口：`project_map.py source <地图> --kind entrypoint|dependency|
 
 ### 覆盖范围
 
-排除或不支持的文件 492 项，解析限制 111 项。仅扫描当前 Git 工作区，包含未忽略的新文件；不进入子仓库、依赖包或默认排除目录。动态调用、反射、路径别名及未支持语言需另行核对。完整清单通过 `--kind coverage` 查询。
+排除或不支持的文件 527 项，解析限制 111 项。仅扫描当前 Git 工作区，包含未忽略的新文件；不进入子仓库、依赖包或默认排除目录。动态调用、反射、路径别名及未支持语言需另行核对。完整清单通过 `--kind coverage` 查询。

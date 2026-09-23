@@ -1,0 +1,91 @@
+{
+  "schema_version": 2,
+  "diagram_type": "workflow",
+  "meta": {
+    "title": "Session Maintenance · 主要使用与恢复路径",
+    "locale": "zh-CN",
+    "subtitle": "选择范围、双向会话、插件数据、Codex 续接与运行恢复",
+    "visual_preset": "classic",
+    "animation": "none"
+  },
+  "lanes": [
+    {"id":"selection","label":"工作区选择与启动对齐"},
+    {"id":"runtime-change","label":"实例运行期变化"},
+    {"id":"plugin","label":"插件数据恢复"},
+    {"id":"codex","label":"Codex 来源与续接"},
+    {"id":"lifecycle","label":"运行与故障恢复"}
+  ],
+  "groups": [
+    {"id":"sync-group","label":"选择 → 对齐 → 激活","lane":"selection","fromCol":0,"toCol":5},
+    {"id":"runtime-group","label":"新增 / 续写 / 改名 / 移动 / 归档 / 取消归档 / 删除","lane":"runtime-change","fromCol":0,"toCol":5},
+    {"id":"plugin-group","label":"保留原值，按插件能力投放","lane":"plugin","fromCol":0,"toCol":5},
+    {"id":"codex-group","label":"只读观察与有界交接","lane":"codex","fromCol":0,"toCol":5},
+    {"id":"lifecycle-group","label":"回执和恢复决定是否可用","lane":"lifecycle","fromCol":0,"toCol":5}
+  ],
+  "nodes": [
+    {"id":"join","lane":"selection","col":0,"type":"frontend","label":"加入维护","sublabel":"识别实例、Home、工作区","width":174},
+    {"id":"save-selection","lane":"selection","col":1,"type":"backend","label":"保存同步范围","sublabel":"选择立即持久化","width":174},
+    {"id":"align","lane":"selection","col":2,"type":"backend","label":"启动 / 变更对齐","sublabel":"版本、策略、epoch 核对","width":180},
+    {"id":"barrier","lane":"selection","col":3,"type":"security","label":"宿主独占写入","sublabel":"暂缓、排空、刷新、释放","width":180},
+    {"id":"commit","lane":"selection","col":4,"type":"database","label":"写入并核对回执","sublabel":"真源与宿主状态对应","width":180},
+    {"id":"active","lane":"selection","col":5,"type":"backend","label":"端点 active","sublabel":"允许已有会话增量回传","width":180},
+    {"id":"blocked","lane":"selection","col":5,"type":"security","label":"对齐 blocked","sublabel":"保留原数据；新会话可插入式发现","width":180,"yOffset":78},
+
+    {"id":"report-change","lane":"runtime-change","col":0,"type":"external","label":"宿主上报变化","sublabel":"身份、会话、epoch、范围","width":174},
+    {"id":"apply-change","lane":"runtime-change","col":1,"type":"backend","label":"核对并串行提交","sublabel":"拒绝旧世代和未选择范围","width":174},
+    {"id":"version-change","lane":"runtime-change","col":2,"type":"database","label":"生成规范版本","sublabel":"保留原生来源与标题","width":180},
+    {"id":"materialize","lane":"runtime-change","col":3,"type":"backend","label":"按端点投放","sublabel":"适配格式与物理位置","width":180},
+    {"id":"runtime-ack","lane":"runtime-change","col":4,"type":"database","label":"记录同步回执","sublabel":"失败不标记已恢复","width":180},
+    {"id":"reader","lane":"runtime-change","col":5,"type":"frontend","label":"看板可阅读","sublabel":"状态与静态会话分开呈现","width":180},
+
+    {"id":"opaque","lane":"plugin","col":0,"type":"database","label":"忠实保存插件原值","sublabel":"namespace / 类型 / recordId","width":174},
+    {"id":"handshake","lane":"plugin","col":1,"type":"backend","label":"插件适配握手","sublabel":"Lynn 或 GPT compat","width":174},
+    {"id":"plugin-map","lane":"plugin","col":2,"type":"backend","label":"映射至插件位置","sublabel":"插件能正常读取使用","width":180},
+    {"id":"plugin-ack","lane":"plugin","col":3,"type":"database","label":"核对映射回执","sublabel":"按插件记录恢复结果","width":180},
+    {"id":"no-plugin","lane":"plugin","col":3,"type":"security","label":"无对应插件","sublabel":"仅保留真源，不误投放","width":180,"yOffset":76},
+    {"id":"collapsed","lane":"plugin","col":4,"type":"frontend","label":"未知结构折叠","sublabel":"可找回，默认不展示详情","width":180},
+
+    {"id":"observe-codex","lane":"codex","col":0,"type":"external","label":"只读观察 Codex","sublabel":"原日志由 Codex 拥有","width":174},
+    {"id":"canonicalize","lane":"codex","col":1,"type":"backend","label":"规范化并定源","sublabel":"身份、工作区与派生","width":174},
+    {"id":"codex-version","lane":"codex","col":2,"type":"database","label":"保存不可变版本","sublabel":"证据和来源边界","width":180},
+    {"id":"continuation","lane":"codex","col":3,"type":"backend","label":"固定版本续接","sublabel":"作业与目标任务核对","width":180},
+    {"id":"codex-ack","lane":"codex","col":4,"type":"database","label":"保存续接回执","sublabel":"失败可检查、不可重复误写","width":180},
+    {"id":"codex-reader","lane":"codex","col":5,"type":"frontend","label":"阅读及学习交接","sublabel":"有界过程和受控双端绑定","width":180},
+
+    {"id":"prepare","lane":"lifecycle","col":0,"type":"backend","label":"准备原生空间","sublabel":"租约、恢复与范围冻结","width":174},
+    {"id":"preflight","lane":"lifecycle","col":1,"type":"security","label":"预检与身份确认","sublabel":"不覆盖未解决恢复","width":174},
+    {"id":"run","lane":"lifecycle","col":2,"type":"external","label":"宿主运行","sublabel":"流式追加与来源观察","width":180},
+    {"id":"flush","lane":"lifecycle","col":3,"type":"security","label":"排空 / 关闭","sublabel":"宿主最终回执","width":180},
+    {"id":"recover","lane":"lifecycle","col":4,"type":"backend","label":"检查点与恢复","sublabel":"不确定状态先核对落盘","width":180},
+    {"id":"lifecycle-status","lane":"lifecycle","col":5,"type":"frontend","label":"状态或阻塞原因","sublabel":"健康不等于业务验收","width":180}
+  ],
+  "edges": [
+    {"from":"join","to":"save-selection","role":"main"},
+    {"from":"save-selection","to":"align","role":"main"},
+    {"from":"align","to":"barrier","role":"main"},
+    {"from":"barrier","to":"commit","role":"main"},
+    {"from":"commit","to":"active","role":"main"},
+    {"from":"align","to":"blocked","role":"error","label":"身份 / 版本不符"},
+    {"from":"barrier","to":"blocked","role":"error","label":"无法取得写入权"},
+    {"from":"report-change","to":"apply-change","role":"main"},
+    {"from":"apply-change","to":"version-change","role":"main"},
+    {"from":"version-change","to":"materialize","role":"main"},
+    {"from":"materialize","to":"runtime-ack","role":"main"},
+    {"from":"runtime-ack","to":"reader","role":"main"},
+    {"from":"opaque","to":"handshake","role":"main"},
+    {"from":"handshake","to":"plugin-map","role":"main","label":"插件可用"},
+    {"from":"plugin-map","to":"plugin-ack","role":"main"},
+    {"from":"handshake","to":"no-plugin","role":"branch","label":"插件缺失"},
+    {"from":"no-plugin","to":"collapsed","role":"main"},
+    {"from":"observe-codex","to":"canonicalize","role":"main"},
+    {"from":"canonicalize","to":"codex-version","role":"main"},
+    {"from":"codex-version","to":"continuation","role":"main"},
+    {"from":"continuation","to":"codex-ack","role":"main"},
+    {"from":"codex-ack","to":"codex-reader","role":"main"},
+    {"from":"prepare","to":"preflight","role":"main"},
+    {"from":"preflight","to":"run","role":"main"},
+    {"from":"run","to":"flush","role":"main"},
+    {"from":"flush","to":"recover","role":"main"},
+    {"from":"recover","to":"lifecycle-status","role":"main"}
+  ]
+}
