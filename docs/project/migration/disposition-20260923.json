@@ -79,9 +79,9 @@
       "status": "current",
       "path": "docs/project/records/history/context-progress.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-context-progress",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/context-progress.md"
     },
     {
@@ -91,9 +91,9 @@
       "status": "current",
       "path": "docs/project/records/history/extension-pages-vault-binding.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-extension-pages-vault-binding",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/extension-pages-vault-binding.md"
     },
     {
@@ -103,9 +103,9 @@
       "status": "current",
       "path": "docs/project/records/history/gpt-extension-boundary.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-gpt-extension-boundary",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/gpt-extension-boundary.md"
     },
     {
@@ -115,9 +115,9 @@
       "status": "current",
       "path": "docs/project/records/history/image-startup.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-image-startup",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/image-startup.md"
     },
     {
@@ -127,9 +127,9 @@
       "status": "current",
       "path": "docs/project/records/history/learning-association-repair.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-learning-association-repair",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/learning-association-repair.md"
     },
     {
@@ -139,9 +139,9 @@
       "status": "current",
       "path": "docs/project/records/history/learning-roundtrip-implementation.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-learning-roundtrip-implementation",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/learning-roundtrip-implementation.md"
     },
     {
@@ -151,9 +151,9 @@
       "status": "current",
       "path": "docs/project/records/history/learning-roundtrip.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-learning-roundtrip",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/learning-roundtrip.md"
     },
     {
@@ -163,9 +163,9 @@
       "status": "current",
       "path": "docs/project/records/history/maintenance-source-list.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-maintenance-source-list",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/maintenance-source-list.md"
     },
     {
@@ -175,9 +175,9 @@
       "status": "current",
       "path": "docs/project/records/history/manual-engine-start.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-manual-engine-start",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/manual-engine-start.md"
     },
     {
@@ -187,9 +187,9 @@
       "status": "current",
       "path": "docs/project/records/history/offline-vault-binding.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-offline-vault-binding",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/offline-vault-binding.md"
     },
     {
@@ -199,9 +199,9 @@
       "status": "current",
       "path": "docs/project/records/history/recovery-archive-title.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-recovery-archive-title",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/recovery-archive-title.md"
     },
     {
@@ -211,9 +211,9 @@
       "status": "current",
       "path": "docs/project/records/history/recovery-regression.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-recovery-regression",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/recovery-regression.md"
     },
     {
@@ -223,9 +223,9 @@
       "status": "current",
       "path": "docs/project/records/history/reference-identity-recovery.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-reference-identity-recovery",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/reference-identity-recovery.md"
     },
     {
@@ -235,9 +235,9 @@
       "status": "current",
       "path": "docs/project/records/history/reference-send.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-reference-send",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/reference-send.md"
     },
     {
@@ -247,9 +247,9 @@
       "status": "current",
       "path": "docs/project/records/history/settings-entry.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-settings-entry",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/settings-entry.md"
     },
     {
@@ -259,9 +259,9 @@
       "status": "current",
       "path": "docs/project/records/history/startup-recovery.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "HIST-startup-recovery",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/history/startup-recovery.md"
     },
     {
@@ -509,9 +509,9 @@
       "status": "current",
       "path": "docs/project/records/journal/2026-09-22-lynn-adapters.md",
       "sources": [],
-      "disposition": "historical",
-      "target": null,
-      "reason": "时间点证据与开发经过保留在 Git 旧修订及原报告，当前代码和验证另由新记录说明。",
+      "disposition": "retained",
+      "target": "JOURNAL-20260922-lynn-adapters",
+      "reason": "恢复到新地图开发日志，保留原日期、版本边界和公开事件来源索引；旧关联入口已指向当前记录或原 Git 修订。",
       "historical_location": "d3fdbe3:docs/project/records/journal/2026-09-22-lynn-adapters.md"
     },
     {

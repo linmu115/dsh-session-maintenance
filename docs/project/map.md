@@ -49,4 +49,4 @@ Maintenance 保存逻辑会话、工作区归属、不可变版本、来源/派�
 
 源码包清单声明 Engine `0.1.43-rc2.95`、Dashboard `0.1.20`、DSH 接入插件 `0.2.27-rc2.79`；它们不是在线实例的实测版本。Codex 工作区原生写回在当前策略中仍显式不支持，不等同于 DSH 工作区双向会话维护。当前说明见 [[IMP-current-source]]，地图自身的检查与真实产品验收范围见 [[VER-map-rebuild]]。
 
-重构前已保存 [重构前覆盖清单和 103 条旧资产逐条去向](migration/README.md)（原始 JSON 同目录保存）说明保留、合并、历史归档和用户撤销项。旧地图内容可按 `d3fdbe3:docs/project/` 查回，[旧 ID 索引](legacy-id-index.md)只用于定位；原规格、变更和报告仍在 `docs/superpowers`、`docs/changes`、`docs/reports`。旧时点成功不自动更新为今日验收。
+重构前已保存 [重构前覆盖清单和 103 条旧资产逐条去向](migration/README.md)（原始 JSON 同目录保存）说明保留、合并、历史归档和用户撤销项。旧地图的 16 条可展开开发历程、1 条日志和来源定位索引现已补回“开发日志”；另外 6 份尚未绑定来源的草稿由 [[JRN-20260923-history-restoration]] 列出。其他旧地图内容可按 `d3fdbe3:docs/project/` 查回，[旧 ID 索引](legacy-id-index.md)只用于定位；原规格、变更和报告仍在 `docs/superpowers`、`docs/changes`、`docs/reports`。旧时点成功不自动更新为今日验收。

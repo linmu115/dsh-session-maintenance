@@ -2,7 +2,7 @@
 
 旧修订：`d3fdbe3`；盘点日期：`2026-09-23`。完整来源、状态及处置理由保存在 `coverage-before-20260923.json` 和 `disposition-20260923.json`。
 
-共 103 条：保留 31、合并 22、用户撤销 1、仅保留历史 49。历史条目留在 Git 旧修订及原报告，不自动代表现行实现或验收。
+共 103 条：保留 48、合并 22、用户撤销 1、仅保留历史 32。16 条 history 和 1 条 journal 已恢复到新地图的“开发日志”；原始公开事件定位索引也已恢复。未绑定来源的 6 份过程草稿另由本次补录日志列出。其余历史条目留在 Git 旧修订及原报告，均不自动代表现行实现或验收。
 
 “保留/合并”的目标 ID 指向当前地图；`map.md` 指当前首页。“用户撤销”只有旧自动登记工作区要求，后继为 `DEC-sync-authority`。
 
@@ -136,25 +136,25 @@
 
 | 旧 ID | 原标题 | 去向 | 当前入口 |
 | --- | --- | --- | --- |
-| `HIST-context-progress` | 让长历史压缩等待可见 | historical | `d3fdbe3:docs/project/records/history/context-progress.md` |
-| `HIST-extension-pages-vault-binding` | 公开业务栏目与实例同步范围的确认 | historical | `d3fdbe3:docs/project/records/history/extension-pages-vault-binding.md` |
-| `HIST-gpt-extension-boundary` | 将 GPT 插件误当成 Harness 的纠正过程 | historical | `d3fdbe3:docs/project/records/history/gpt-extension-boundary.md` |
-| `HIST-image-startup` | GPT 图片升级后 Launcher 阻塞的恢复过程 | historical | `d3fdbe3:docs/project/records/history/image-startup.md` |
-| `HIST-learning-association-repair` | 学习关联修复与普通同步自动排除 | historical | `d3fdbe3:docs/project/records/history/learning-association-repair.md` |
-| `HIST-learning-roundtrip` | 学习会话双向维护的范围收敛与回收锁 | historical | `d3fdbe3:docs/project/records/history/learning-roundtrip.md` |
-| `HIST-learning-roundtrip-implementation` | 学习交接首版实现与隔离闭环验证 | historical | `d3fdbe3:docs/project/records/history/learning-roundtrip-implementation.md` |
-| `HIST-maintenance-source-list` | 真源同步名单折叠与选择布局 | historical | `d3fdbe3:docs/project/records/history/maintenance-source-list.md` |
-| `HIST-manual-engine-start` | 引擎手动启动入口与旧运行回收 | historical | `d3fdbe3:docs/project/records/history/manual-engine-start.md` |
-| `HIST-offline-vault-binding` | Vault 绑定从在线 DSH 动作迁到 Maintenance 管理 | historical | `d3fdbe3:docs/project/records/history/offline-vault-binding.md` |
-| `HIST-recovery-archive-title` | 重启重复会话、归档复现与旧派生标题的修复过程 | historical | `d3fdbe3:docs/project/records/history/recovery-archive-title.md` |
-| `HIST-recovery-regression` | 升级遗漏启动恢复补丁与外部浏览器目录失败 | historical | `d3fdbe3:docs/project/records/history/recovery-regression.md` |
-| `HIST-reference-identity-recovery` | 派生会话引用在重启后失联的修复历程 | historical | `d3fdbe3:docs/project/records/history/reference-identity-recovery.md` |
-| `HIST-reference-send` | 模型设置误触发派生会话修复 | historical | `d3fdbe3:docs/project/records/history/reference-send.md` |
-| `HIST-settings-entry` | DSH 设置面板收敛到完整看板入口 | historical | `d3fdbe3:docs/project/records/history/settings-entry.md` |
-| `HIST-startup-recovery` | 从未回收会话报错到自动恢复启动 | historical | `d3fdbe3:docs/project/records/history/startup-recovery.md` |
+| `HIST-context-progress` | 让长历史压缩等待可见 | retained | HIST-context-progress |
+| `HIST-extension-pages-vault-binding` | 公开业务栏目与实例同步范围的确认 | retained | HIST-extension-pages-vault-binding |
+| `HIST-gpt-extension-boundary` | 将 GPT 插件误当成 Harness 的纠正过程 | retained | HIST-gpt-extension-boundary |
+| `HIST-image-startup` | GPT 图片升级后 Launcher 阻塞的恢复过程 | retained | HIST-image-startup |
+| `HIST-learning-association-repair` | 学习关联修复与普通同步自动排除 | retained | HIST-learning-association-repair |
+| `HIST-learning-roundtrip` | 学习会话双向维护的范围收敛与回收锁 | retained | HIST-learning-roundtrip |
+| `HIST-learning-roundtrip-implementation` | 学习交接首版实现与隔离闭环验证 | retained | HIST-learning-roundtrip-implementation |
+| `HIST-maintenance-source-list` | 真源同步名单折叠与选择布局 | retained | HIST-maintenance-source-list |
+| `HIST-manual-engine-start` | 引擎手动启动入口与旧运行回收 | retained | HIST-manual-engine-start |
+| `HIST-offline-vault-binding` | Vault 绑定从在线 DSH 动作迁到 Maintenance 管理 | retained | HIST-offline-vault-binding |
+| `HIST-recovery-archive-title` | 重启重复会话、归档复现与旧派生标题的修复过程 | retained | HIST-recovery-archive-title |
+| `HIST-recovery-regression` | 升级遗漏启动恢复补丁与外部浏览器目录失败 | retained | HIST-recovery-regression |
+| `HIST-reference-identity-recovery` | 派生会话引用在重启后失联的修复历程 | retained | HIST-reference-identity-recovery |
+| `HIST-reference-send` | 模型设置误触发派生会话修复 | retained | HIST-reference-send |
+| `HIST-settings-entry` | DSH 设置面板收敛到完整看板入口 | retained | HIST-settings-entry |
+| `HIST-startup-recovery` | 从未回收会话报错到自动恢复启动 | retained | HIST-startup-recovery |
 
 ## journal（1）
 
 | 旧 ID | 原标题 | 去向 | 当前入口 |
 | --- | --- | --- | --- |
-| `JOURNAL-20260922-lynn-adapters` | Lynn 数据映射与 GPT 独立适配 | historical | `d3fdbe3:docs/project/records/journal/2026-09-22-lynn-adapters.md` |
+| `JOURNAL-20260922-lynn-adapters` | Lynn 数据映射与 GPT 独立适配 | retained | JOURNAL-20260922-lynn-adapters |
