@@ -197,6 +197,7 @@ const rc2WorkerBundle = await build({
   metafile: true,
 });
 await cp(join(root, "apps", "dashboard", "dist"), join(engine, "dashboard"), { recursive: true });
+await cp(join(root, "scripts", "windows-maintenance"), join(engine, "windows-maintenance"), { recursive: true });
 await writeFile(join(engine, "Start-Session-Maintenance.cmd"), [
   "@echo off",
   "setlocal",

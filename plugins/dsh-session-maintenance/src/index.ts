@@ -34,6 +34,7 @@ import { readHostSession } from './host-session-reader.js';
 import { startTakeoverPolling } from "./takeover.js";
 import { createCoreGatewayHandler, type CoreRuntimeContext } from "./core-gateway.js";
 import { launchDashboard } from "./dashboard-launcher.js";
+import { startInstalledEngine } from './installed-engine-starter.js';
 import { createProxyHandler, FileConnectionProvider, RestrictedEngineProxy } from "./engine-proxy.js";
 import { registerManagerActions, type ManagerActionContext } from "./manager-actions.js";
 import {
@@ -124,7 +125,9 @@ export async function apply(ctx: HostContext, input: PluginConfig = {} as Plugin
   const connection = descriptorPath === undefined
     ? { current: async () => { throw new Error("维护引擎连接尚未由可信安装器登记"); } }
     : new FileConnectionProvider(descriptorPath);
-  const proxy = new RestrictedEngineProxy(config, connection, fetch, launchProfile?.runId);
+  const stateRoot = maintenanceStateRoot(config.connectionId);
+  const proxy = new RestrictedEngineProxy(config, connection, fetch, launchProfile?.runId,
+    stateRoot === undefined ? undefined : () => startInstalledEngine(stateRoot));
   let capturePluginRevision: ((sessionId: string) => Promise<string>) | undefined;
   await registerMaintenanceBusinessPages(ctx as unknown as Context, connection, {instanceId:config.dshInstanceId,profileId:config.profileId});
   (ctx as unknown as Context).provide("maintenanceReferenceResolver", {

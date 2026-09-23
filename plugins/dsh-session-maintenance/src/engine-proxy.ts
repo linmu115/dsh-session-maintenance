@@ -266,7 +266,7 @@ export class RestrictedEngineProxy {
   private readonly pending = new Map<string, Promise<ProxyResult>>();
 
   constructor(private readonly config: Config, connection: EngineConnectionProvider, fetchImpl: typeof fetch = fetch,
-    private readonly projectionRunId?: string) {
+    private readonly projectionRunId?: string, private readonly startEngine?: () => Promise<void>) {
     this.connection = connection;
     this.defaultInstanceId = config.dshInstanceId;
     this.fetchImpl = fetchImpl;
@@ -347,7 +347,13 @@ export class RestrictedEngineProxy {
       return { ok: true, message: "已提交当前 DSH 实例扫描；Engine 会按稳定 ID 更新此会话", jobId: value.job.id };
     }
     if (input.operation === "dashboard" && input.sessionId === undefined) {
-      const value = await this.engine("/v1/ui/launch-code", "POST", {}) as { launch: { url: string } };
+      let value: { launch: { url: string } };
+      try { value = await this.engine("/v1/ui/launch-code", "POST", {}) as typeof value; }
+      catch (error) {
+        if (!(error instanceof ProxyError) || error.code !== 'engine-unreachable' || !this.startEngine) throw error;
+        await this.startEngine();
+        value = await this.engine("/v1/ui/launch-code", "POST", {}) as typeof value;
+      }
       return { ok: true, message: "已打开会话维护看板", url: value.launch.url };
     }
     if (input.operation === "workspace-folders") {

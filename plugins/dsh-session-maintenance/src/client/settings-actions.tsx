@@ -23,8 +23,8 @@ export function SessionMaintenanceSettingsSection(props: SettingsSectionProps) {
   const open = async () => {
     if (busy) return;
     setBusy(true);
-    setFeedback("正在打开看板…");
-    try { setFeedback(await openDashboard(props.actions, props.instanceId)); }
+    setFeedback("正在启动看板…");
+    try { setFeedback(await openDashboard(props.actions, props.instanceId, undefined, undefined, 'same-tab')); }
     catch (error) { setFeedback(error instanceof Error ? error.message : "无法打开会话维护看板"); }
     finally { setBusy(false); }
   };
@@ -33,7 +33,7 @@ export function SessionMaintenanceSettingsSection(props: SettingsSectionProps) {
     <section className="dsm-settings-section" aria-label="会话维护设置">
       <p className="dsm-settings-intro">在完整看板中管理会话、同步范围和 Vault 绑定。</p>
       <div className="dsm-settings-actions">
-        <button type="button" className="dsm-primary" disabled={busy} onClick={() => { void open(); }}>打开完整看板</button>
+        <button type="button" className="dsm-primary" disabled={busy} onClick={() => { void open(); }}>启动看板</button>
       </div>
       {feedback ? <output className="dsm-settings-feedback" aria-live="polite">{feedback}</output> : null}
     </section>

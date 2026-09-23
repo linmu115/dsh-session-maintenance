@@ -15,8 +15,10 @@ vi.mock("react", async importOriginal => ({
 afterEach(() => { feedback.length = 0; vi.unstubAllGlobals(); });
 
 function fixture() {
-  const open = vi.fn();
-  vi.stubGlobal("window", { open });
+  const tab = { location: { replace: vi.fn() }, close: vi.fn(), opener: {} };
+  const open = vi.fn(() => tab);
+  const assign = vi.fn();
+  vi.stubGlobal("window", { open, location: { assign } });
   const calls: string[] = [];
   const proxy = new RestrictedEngineProxy({ connectionId: "synthetic", dshInstanceId: "dsh-fixture", profileId: "web" },
     { current: async () => ({ origin: "http://127.0.0.1:43123", token: "s".repeat(43) }) },
@@ -26,9 +28,9 @@ function fixture() {
       if (path.endsWith("/identity")) return new Response(JSON.stringify({ error: { code: "SESSION_NOT_MAPPED", message: "Session is not mapped in this active projection run" } }), { status: 404 });
       expect(path).toBe("/v1/ui/launch-code");
       expect(JSON.parse(String(init?.body))).toEqual({});
-      return new Response(JSON.stringify({ launch: { url: "http://127.0.0.1:43123/launch?code=synthetic" } }));
+      return new Response(JSON.stringify({ launch: { url: "http://127.0.0.1:43123/ui/claim?code=synthetic" } }));
     }, "run-current-synthetic");
-  return { open, calls, actions: { invoke: proxy.invoke.bind(proxy) } };
+  return { open, assign, tab, calls, actions: { invoke: proxy.invoke.bind(proxy) } };
 }
 
 function buttons(node: ReactNode): ReactElement<{ children?: ReactNode; onClick(): void }>[] {
@@ -42,14 +44,15 @@ it.each([undefined, "new-unmapped-native", "previous-run-native"])("opens the fu
   const f = fixture();
   const currentSessionId = vi.fn(() => selected);
   const tree = SessionMaintenanceSettingsSection({ actions: f.actions, currentSessionId });
-  const button = buttons(tree).find(item => item.props.children === "打开完整看板")!;
+  const button = buttons(tree).find(item => item.props.children === "启动看板")!;
   expect(button).toBeDefined();
   expect(buttons(tree)).toHaveLength(1);
   expect(f.calls).toEqual([]);
   button.props.onClick();
   await vi.waitFor(() => expect(feedback.at(-1)).toBe("已打开会话维护看板"));
   expect(feedback.at(-1)).toBe("已打开会话维护看板");
-  expect(f.open).toHaveBeenCalledWith("http://127.0.0.1:43123/launch?code=synthetic", "_blank", "noopener,noreferrer");
+  expect(f.open).not.toHaveBeenCalled();
+  expect(f.assign).toHaveBeenCalledWith("http://127.0.0.1:43123/ui/claim?code=synthetic");
   expect(f.calls).toEqual(["/v1/ui/launch-code"]);
   expect(currentSessionId).not.toHaveBeenCalled();
 });
@@ -59,6 +62,7 @@ it("opens a global navigation entry without requiring a session", async () => {
   await openDashboard(f.actions);
   expect(f.calls).toEqual(["/v1/ui/launch-code"]);
   expect(f.open).toHaveBeenCalledOnce();
+  expect(f.open).toHaveBeenCalledWith("http://127.0.0.1:43123/ui/claim?code=synthetic", "_blank", "noopener,noreferrer");
 });
 
 it("keeps session-targeted Dashboard navigation strict when the selected session is unmapped", async () => {

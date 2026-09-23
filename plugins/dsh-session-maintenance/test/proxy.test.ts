@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import { once } from "node:events";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createProxyHandler, FileConnectionProvider, RestrictedEngineProxy, type EngineConnectionProvider } from "../src/engine-proxy.js";
 
@@ -13,6 +13,23 @@ const cleanups: string[] = [];
 afterEach(async () => Promise.all(cleanups.splice(0).map((path) => rm(path, { recursive: true, force: true }))));
 
 describe("restricted Engine proxy", () => {
+  it('starts a stopped Engine only for the global Dashboard and retries its launch', async () => {
+    let online = false;
+    const starter = vi.fn(async () => { online = true; });
+    const provider: EngineConnectionProvider = { current: async () => {
+      if (!online) throw new Error('stopped');
+      return { origin: 'http://127.0.0.1:43123', token: 'x'.repeat(43) };
+    } };
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ launch: { url: 'http://127.0.0.1:43123/ui/claim?code=x' } })));
+    const proxy = new RestrictedEngineProxy(config, provider, fetcher, undefined, starter);
+    await expect(proxy.invoke({ operation: 'workspace-folders' })).rejects.toThrow('stopped');
+    expect(starter).not.toHaveBeenCalled();
+    expect((await proxy.invoke({ operation: 'dashboard' })).url).toContain('/ui/claim');
+    expect(starter).toHaveBeenCalledOnce();
+    expect(fetcher).toHaveBeenCalledOnce();
+    await proxy.invoke({ operation: 'dashboard' });
+    expect(starter).toHaveBeenCalledOnce();
+  });
   it("rejects cross-origin and simple-form mutations before Engine is contacted", async () => {
     let called = 0;
     const provider: EngineConnectionProvider = { current: async () => ({ origin: "http://127.0.0.1:43123", token: "x".repeat(43) }) };
