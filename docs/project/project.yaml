@@ -3,301 +3,66 @@ project_id: 0d05f813-7097-47d9-9e88-3d523bb537d6
 name: Session Maintenance
 kind: software
 map: map.md
+workspaces:
+  - id: source
+    path: ../..
 sources:
-- source_id: source-1
-  path: ../../README.md
-  format: markdown
-- source_id: source-2
-  path: ../superpowers/specs/2026-09-15-extension-ownership-and-session-reader.md
-  format: markdown
-- source_id: source-3
-  path: ../superpowers/specs/2026-09-15-native-agent-context-management.md
-  format: markdown
-- source_id: source-4
-  path: ../superpowers/specs/2026-09-10-session-context-graph-requirements.md
-  format: markdown
-- source_id: source-5
-  path: ../changes/2026-09-15-native-context-management.md
-  format: markdown
-- source_id: source-6
-  path: ../reports/2026-09-15-extension-ownership-reader-release.md
-  format: markdown
-- source_id: source-extension-requirements
-  path: ../superpowers/specs/2026-09-10-pluggable-extension-data-requirements.md
-  format: markdown
-- source_id: source-native-space
-  path: ../superpowers/specs/2026-09-10-persistent-native-session-space.md
-  format: markdown
-- source_id: extension-pages-design
-  path: ../superpowers/specs/2026-09-18-extension-pages-and-instance-scope.md
-  format: markdown
-- source_id: extension-pages-design-report
-  path: ../reports/2026-09-18-extension-pages-vault-binding-design.md
-  format: markdown
+  - source_id: boundary-requirement
+    path: ../changes/2026-09-22-adapter-owned-workspace-sync.md
+    format: markdown
+  - source_id: opaque-requirement
+    path: ../changes/2026-09-22-host-write-barrier-and-plugin-mapping.md
+    format: markdown
+  - source_id: adapter-requirement
+    path: ../changes/2026-09-22-lynn-and-gpt-adapters.md
+    format: markdown
 bindings:
-- id: REQ-product
-  kind: requirement
-  title: 维护哪些会话能力
-  source_id: source-1
-  heading: 当前功能
-  status: current
-  summary: 当前 RC2 会话导入、版本、持久运行、扩展目录与原生上下文能力。
-- id: REQ-ownership
-  kind: requirement
-  title: 扩展条目归哪个会话
-  source_id: source-2
-  heading: 业务 Adapter 与所属会话
-  status: current
-  summary: 按工作区、接收会话和业务条目浏览；引用来源不是所有者。
-- id: REQ-reader
-  kind: requirement
-  title: 长会话怎样阅读
-  source_id: source-2
-  heading: 会话阅读器
-  status: current
-  summary: 问答直接展示，本轮过程折叠、分级按需加载，保留可信来源角色。
-- id: REQ-context
-  kind: requirement
-  title: 原生上下文管理的授权边界
-  source_id: source-3
-  heading: 1. 已确认的产品决定
-  status: current
-  summary: 固定授权、活动窗口与实际保留材料分开；不修改历史真源。
-- id: REQ-source
-  kind: requirement
-  title: 引用固定来源和完成位置
-  source_id: source-4
-  heading: 3. 功能需求：跨会话引用
-  status: current
-  summary: 用户确定源版本和已完成回复截止，后续源更新不自动扩大范围。
-- id: MOD-boundaries
-  kind: module
-  title: Engine、插件、Adapter 与 Launcher 的分工
-  source_id: source-1
-  heading: 数据与组件边界
-  status: current
-  summary: Engine 维护事实；平台解析进 Adapter；插件负责宿主接入。
-- id: IMP-usage
-  kind: implementation
-  title: 现在怎样导入、运行与阅读
-  source_id: source-1
-  heading: 使用流程
-  status: current
-  summary: 当前工作区使用路径；是否已部署需另查运行副本回执。
-- id: IMP-versions
-  kind: implementation
-  title: 当前配套版本
-  source_id: source-1
-  heading: 当前配套版本
-  status: current
-  summary: 以当前 README 与包清单为准；旧验收版本不会随之升级。
-- id: VER-context
-  kind: verification
-  title: 原生上下文实现的历史验证
-  source_id: source-5
-  heading: 验证对应
-  status: current
-  summary: 2026-09-15 合成执行与持久回执验证；对应报告中的旧包组。
-- id: VER-reader
-  kind: verification
-  title: 目录与阅读器的历史交付验证
-  source_id: source-6
-  heading: 验证与部署
-  status: current
-  summary: 历史 129 项相关回归及副本交付记录；不代表今日复测。
-- id: REQ-adapter-families
-  kind: requirement
-  title: 两类 Adapter 独立的要求
-  source_id: source-extension-requirements
-  heading: 两类 Adapter
-  status: current
-  summary: 平台格式和业务对象的注册、兼容与启用独立。
-- id: REQ-main-graph
-  kind: requirement
-  title: 每个接收会话自己的主干图
-  source_id: source-4
-  heading: 5.2 每个会话自己的主干图
-  status: current
-  summary: 按需主干归属、固定来源与延迟绑定。
-- id: REQ-graph-removal
-  kind: requirement
-  title: 移除与撤销保持一致
-  source_id: source-4
-  heading: 5.4 移除、撤销和刷新
-  status: current
-  summary: 解除后停止读取，保留真实会话，刷新不复活。
-- id: REQ-runtime-space
-  kind: requirement
-  title: 持久原生空间的范围
-  source_id: source-native-space
-  heading: 目标与本次范围
-  status: current
-  summary: 沿用持久空间要求，原文保留RC1基线，当前RC2实现另查。
-- id: REQ-extension-pages
-  kind: requirement
-  title: 业务插件自主信息页与共享实例范围
-  source_id: extension-pages-design
-  heading: 已确认需求
-  status: current
-  progress: implemented
-  summary: 插件贡献页面栏目，目录可复用；可选 Bridge 集成与实例同步范围保持独立归属。
-  relations:
-  - relation: derived_from
-    to:
-      project_id: dd46311f-d98d-49ff-ae13-fef0a8a6f9c3
-      record_id: REQ-integration-complete
-    reason: 完整需求统一阅读入口；本项目仍维护提供方合同
-  gap: 原绑定保留设计来源；实现已落地，Dashboard .1.5已限定真实UI验收，Engine .39独立安装未激活。见IMP-sync-ui-release及VER-sync-ui-release。
-- id: IF-extension-pages
-  kind: interface
-  title: 公开业务页面与栏目注册合同草案
-  source_id: extension-pages-design
-  heading: 公开扩展注册合同草案
-  status: proposed
-  progress: in_progress
-  summary: 插件只注册自己的贡献，Maintenance 汇总名单；数据与页面能力可独立提供。
-  gap: 原绑定保留设计来源；实现已落地，Dashboard .1.5已限定真实UI验收，Engine .39独立安装未激活。见IMP-sync-ui-release及VER-sync-ui-release。
-- id: IF-instance-workspace-scope
-  kind: interface
-  title: 实例有效工作区与会话范围合同草案
-  source_id: extension-pages-design
-  heading: 实例有效范围合同草案
-  status: proposed
-  progress: in_progress
-  summary: 所有绑定 Vault 复用实例范围，未同步保留旧链接，提交时再次校验。
-  gap: 原绑定保留设计来源；实现已落地，Dashboard .1.5已限定真实UI验收，Engine .39独立安装未激活。见IMP-sync-ui-release及VER-sync-ui-release。
-- id: VER-extension-pages-design
-  kind: verification
-  title: 公开扩展页设计的文档检查
-  source_id: extension-pages-design-report
-  heading: 验证结果
-  status: current
-  summary: 保留设计时点的文档检查；后续真实UI与独立安装证据见VER-sync-ui-release。
+  - id: REQ-boundary
+    kind: requirement
+    title: Maintenance 主体与适配器分工
+    source_id: boundary-requirement
+    heading: 用户要求与本轮范围
+    status: current
+    summary: 主体只维护逻辑身份、版本、选择和同步回执；实例、Launcher 与插件差异由适配器承担。
+  - id: REQ-opaque-mapping
+    kind: requirement
+    title: 插件数据忠实保留并由插件适配器映射
+    source_id: opaque-requirement
+    heading: 用户修正与实施范围
+    status: current
+    summary: 主体不建立图业务模型；缺插件时保留来源数据且不投放，适配器恢复到插件正常读取的位置。
+  - id: REQ-lynn-gpt
+    kind: requirement
+    title: Lynn 综合适配器和独立 GPT 适配器
+    source_id: adapter-requirement
+    heading: Lynn adapter 与独立 GPT adapter
+    status: current
+    summary: Lynn 按成员握手处理指定组合，GPT compat 独立；外部 Vault 内容和机器绑定不随会话复制。
+  - id: VER-sync-20260922
+    kind: verification
+    title: 2026-09-22 同步路径合成验证
+    source_id: boundary-requirement
+    heading: 验证结果
+    status: current
+    summary: 该日源码候选与合成测试的历史证据，不代表当前实例验收。
+  - id: VER-host-20260922
+    kind: verification
+    title: 2026-09-22 写入屏障与映射合成验证
+    source_id: opaque-requirement
+    heading: 验证
+    status: current
+    summary: 该日宿主与插件映射测试的历史证据，不代表当前实例验收。
 archify:
   architecture:
     source: diagrams/architecture.json
     repo_root: ../..
     node_records:
-      source:
-      - OBJ-session
-      codex-reader:
-      - MOD-harness-codex
-      - IF-harness-adapter
-      adapter:
-      - MOD-harness-dsh
-      - IF-harness-adapter
-      - INT-harness-directory
-      engine:
-      - MOD-canonical
-      - OBJ-version
-      runtime:
-      - MOD-runtime
-      - IF-runtime
-      - OBJ-runtime
-      - IMP-sync-ui-release
-      - VER-sync-ui-release
-      continuation:
-      - MOD-continuation
-      reader:
-      - MOD-reader
-      launcher:
-      - IF-extension-pages
-      - MOD-host
-      dashboard:
-      - REQ-extension-pages
-      - IF-extension-pages
-      - MOD-dashboard
-      - IMP-sync-ui-release
-      - VER-sync-ui-release
-      business:
-      - INT-annotation
-      - INT-stickers
-      - INT-obsidian
-      business-adapter:
-      - IF-extension-pages
-      - INT-gpt-format
-      - MOD-business
-      - INT-business-directory
-      extension-store:
-      - IF-instance-workspace-scope
-      - MOD-extension-store
-      - IF-extension
-      - OBJ-extension
-      graph:
-      - MOD-graph
-      - IF-graph
-      - OBJ-graph
-      native-context:
-      - MOD-native-context
-      - IF-native-context
-      thoughtdag:
-      - INT-thoughtdag
-      instance-scope:
-      - MOD-instance-workspace
-      - IF-instance-workspace-scope
-      - VER-scope-business-pages
-      business-pages:
-      - MOD-business-pages
-      - IF-extension-pages
-      - VER-scope-business-pages
-      sync-maintenance:
-      - REQ-sync-extension-navigation
-      - MOD-instance-workspace
-      - IMP-sync-ui-release
-      sync-codex:
-      - REQ-sync-extension-navigation
-      - MOD-harness-codex
-      plugin-data:
-      - MOD-dashboard
-      - IF-extension
-      - REQ-sync-extension-navigation
-      plugin-info:
-      - MOD-dashboard
-      - MOD-business-pages
-      - REQ-sync-extension-navigation
-  workflow:
-    source: diagrams/workflow.json
-    node_records:
-      import:
-      - MOD-harness-codex
-      - IF-harness-adapter
-      canonical:
-      - MOD-canonical
-      - OBJ-session
-      prepare:
-      - REQ-startup-recovery
-      - IMP-startup-recovery
-      - MOD-runtime
-      - OBJ-runtime
-      - MOD-instance-workspace
-      materialize:
-      - MOD-harness-dsh
-      - IF-harness-adapter
-      run:
-      - MOD-host
-      - IF-runtime
-      wal:
-      - MOD-runtime
-      - IF-runtime
-      normalize:
-      - MOD-harness-dsh
-      - IF-harness-adapter
-      receipt:
-      - MOD-runtime
-      - OBJ-version
-      - IMP-scope-business-pages
-      read:
-      - MOD-reader
-      - MOD-dashboard
-      drain:
-      - MOD-host
-      - IF-runtime
-      - VER-sync-ui-release
-      close:
-      - MOD-runtime
-      recover:
-      - IMP-startup-recovery
-      - VER-startup-recovery
-      - HIST-startup-recovery
-      - MOD-runtime
-      - OBJ-runtime
+      codex-reader: [MOD-core]
+      canonical: [MOD-core]
+      dashboard: [MOD-ui]
+      endpoint: [MOD-endpoint, IF-endpoint-sync]
+      launcher: [ISS-remaining-coupling]
+      dsh-adapter: [MOD-dsh-host, IF-host-writeback]
+      host-plugin: [MOD-dsh-host, IF-host-writeback]
+      lynn: [MOD-plugin-adapters, IF-plugin-data]
+      gpt: [MOD-plugin-adapters, IF-plugin-data]
