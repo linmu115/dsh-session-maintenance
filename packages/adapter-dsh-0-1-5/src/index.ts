@@ -33,6 +33,7 @@ export {
   materializeV3,
 } from "./materialize.js";
 export { normalizeV3Append } from "./normalize-append.js";
+export { meaningfulDshTitle } from "./title-candidate.js";
 export { inspectV3, verifyV3 } from "./inspect.js";
 // The reusable half of the native-space reader: it walks the instance's own
 // one-directory-per-session layout and decodes every generation, which the

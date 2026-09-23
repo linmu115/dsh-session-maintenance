@@ -1,5 +1,6 @@
 import { mkdir, stat } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { meaningfulDshTitle } from "@linmu/dsh-session-adapter-0-1-5";
 
 import {
   RUNTIME_MANAGED_PROJECT_DIRECTORY,
@@ -893,7 +894,8 @@ export class SessionPersistenceProjection implements ProjectionPersistenceOverla
         lastPromptAt: item.eventCount === 0 || !Number.isSafeInteger(updatedAt) ? null : updatedAt,
       },
     };
-    const fallbackTitle = typeof payload.title === "string" && payload.title.trim().length > 0 ? payload.title.trim() : null;
+    const fallbackTitle = meaningfulDshTitle(payload.title, [item.nativeSessionId,
+      typeof payload.logicalSessionId === "string" ? payload.logicalSessionId : undefined]);
     const cached = rows.title !== null && typeof rows.title === "object" && !Array.isArray(rows.title)
       ? rows.title as { readonly ver?: unknown; readonly seq?: unknown; readonly val?: unknown }
       : undefined;

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { contextEvents, contextHeader } from "./context-fixture.js";
 import { normalizeV3Append } from "../src/normalize-append.js";
-import { materializeV3, v3ProjectedNativeRevision } from "../src/materialize.js";
+import { materializeV3, v3EndpointSessionId, v3ProjectedNativeRevision } from "../src/materialize.js";
 import { v3TitleProjection } from "../src/session-title.js";
 import { visibleContext } from "../src/official.js";
 import { CANONICAL_CONVERSATION_TOPOLOGY_EXTENSION as TOPOLOGY } from "@linmu/dsh-session-contracts";
@@ -64,6 +64,29 @@ describe("durable RC2 session titles",()=>{
     }]} as any,{writeWorkspace:async()=>{},writeSession:async(_id,value)=>{payload=value;}});
     expect(payload.title).toBe("Codex mirror title");
     expect(payload.titleProjection).toEqual({title:"Codex mirror title",eventSeq:0,throughSeq:0});
+  });
+  it.each(["native", "registration"])("does not write a %s placeholder as a native title before DSH can auto-name",async kind=>{
+    const events=contextEvents(false);
+    const normalized=await normalizeV3Append(operation(events));
+    const item={session:{id:"logical-native",originKind:"maintenance-native",headVersionId:"fixed-head",createdAt:at,updatedAt:at,
+      title:kind==="native"?contextHeader.id:`DSH session ${contextHeader.id}`,tags:[]},events:normalized.events,workspaceId:null};
+    let payload:any;
+    await materializeV3({run:{id:"write-back-title-instance",instanceId:"title-instance",profileId:"web"},sessions:[item],workspaces:[]} as any,
+      {writeWorkspace:async()=>{},writeSession:async(_id,value)=>{payload=value;}});
+    expect(v3EndpointSessionId(item as any,{id:"write-back-title-instance",instanceId:"title-instance",profileId:"web"} as any)).toBe(contextHeader.id);
+    expect(payload.events).toEqual(events);
+    expect(payload.titleProjection.title).toBeNull();
+  });
+  it("does not promote an empty portable mirror's generated identity into an explicit title",async()=>{
+    const base={session:{id:"mirror-placeholder",originKind:"codex-mirror",headVersionId:"fixed",createdAt:at,updatedAt:at,title:"",tags:[]},events:[],workspaceId:null};
+    const run={id:"run",instanceId:"instance",profileId:"web"},nativeId=v3EndpointSessionId(base as any,run as any);
+    for(const name of [String(nativeId),`DSH session ${nativeId}`]){
+      let payload:any;
+      await materializeV3({run,sessions:[{...base,session:{...base.session,title:name}}],workspaces:[]} as any,
+        {writeWorkspace:async()=>{},writeSession:async(_id,value)=>{payload=value;}});
+      expect(payload.events).toEqual([]);
+      expect(payload.titleProjection.title).toBeNull();
+    }
   });
 });
 

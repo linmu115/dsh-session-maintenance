@@ -274,6 +274,13 @@ describe("DSH projection runtime", () => {
     await missing.attach({ title: "Fallback without history proof" });
     expect(missing.row()).toMatchObject({ title: { ver: 1, seq: -1, val: "Fallback without history proof" } });
   });
+  it("does not seed a generated session identity as a title cache hint", async () => {
+    for (const title of ["native-title-cache", "DSH session native-title-cache"]) {
+      const fixture = titleCacheFixture();
+      await fixture.attach({ title, titleProjection: { title: null, eventSeq: null, throughSeq: 9 } });
+      expect(fixture.row()).toMatchObject({ title: { ver: 1, seq: 9, val: null } });
+    }
+  });
 
   it.each([
     { title: "Native title", eventSeq: 4, throughSeq: 8 },

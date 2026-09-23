@@ -7,6 +7,7 @@ import { migrateLegacy } from "./legacy-import.js";
 import { validateV3 } from "./official.js";
 import { currentManifest, currentFormatId } from "./dialect.js";
 import { v3TitleProjection } from "./session-title.js";
+import { meaningfulDshTitle } from "./title-candidate.js";
 export { rc1NativeSessionId as v3NativeSessionId };
 /** A native log returning to its owning endpoint keeps its identity. Forks and
  * cross-endpoint projections still receive independent projection identities. */
@@ -68,12 +69,13 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
   // existing message anchors remain unchanged. A derived tail's original offset
   // distinguishes the new title-bearing prefix from older title-less prefixes.
   const portableOrigin=portable!==undefined||item.session.originKind==="codex-mirror"||item.session.originKind==="codex-derived";
+  const meaningfulTitle=meaningfulDshTitle(item.session.title,[nativeId,item.session.id,item.events[0]?.source.sessionId]);
   const firstTailSeq=tail.length===0?undefined:record(tail[0]!.rawPayload).seq;
   const needsTitle=portableOrigin && (tail.length===0||firstTailSeq===nativePrefix.length+1)
    && v3TitleProjection(nativePrefix,nativePrefix.length-1).title===null;
-  if(needsTitle && typeof item.session.title==="string" && item.session.title.trim().length>0) {
+  if(needsTitle && meaningfulTitle!==null) {
    nativePrefix.push({type:"session/title",seq:nativePrefix.length,time:nativePrefix.at(-1)?.time??createdAt,
-    data:{title:item.session.title,messageSeqs:[],source:{kind:"user"}}});
+    data:{title:meaningfulTitle,messageSeqs:[],source:{kind:"user"}}});
   }
   const all=[...nativePrefix,...tail.map(e=>{if(!isRecord(e.extensions.nativeProjectionEvent ?? e.rawPayload))throw new TypeError("V3 event evidence is unavailable");return (e.extensions.nativeProjectionEvent ?? e.rawPayload) as unknown as SessionFormatEvent;})];
   const projectionTitles = item.events[0]?.extensions.nativeProjectionTitles;
@@ -87,9 +89,9 @@ export async function materializeV3(input:CanonicalProjectionInput,output:Projec
    }
    all.sort((a,b)=>a.seq-b.seq);
   }
-  if (String(input.run.id).startsWith('write-back-') && item.session.title.trim() && item.session.title !== nativeId
-    && v3TitleProjection(all, all.length - 1).title !== item.session.title) all.push({ type: 'session/title', seq: all.length,
-      time: Date.parse(item.session.updatedAt), data: { title: item.session.title, messageSeqs: [], source: { kind: 'user' } } });
+  if (String(input.run.id).startsWith('write-back-') && meaningfulTitle !== null
+    && v3TitleProjection(all, all.length - 1).title !== meaningfulTitle) all.push({ type: 'session/title', seq: all.length,
+      time: Date.parse(item.session.updatedAt), data: { title: meaningfulTitle, messageSeqs: [], source: { kind: 'user' } } });
   const artifact=validateV3({header:converted?.artifact.header??header,events:all,inheritedEventCount:converted?.artifact.inheritedEventCount??count(cut)});
   const titleProjection=v3TitleProjection(artifact.events,artifact.events.length-1);
   const legacyAliases=[...new Set(item.events.map(e=>e.source.sessionId).filter(id=>id!==nativeId))];
